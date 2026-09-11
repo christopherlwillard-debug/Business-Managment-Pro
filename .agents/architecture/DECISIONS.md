@@ -486,6 +486,23 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 **Status:** Accepted
 **Date:** 2026-09-11
 
+## ADR-028
+
+**Title:** Component work sessions are an operational evidence ledger
+
+**Decision:** Add `job_component_work_sessions` as the Jobs-owned source for raw production work by job, approved component snapshot, work date, worker, decimal hours, and optional notes. Allow an assigned subcontractor or explicitly named outside worker. Permit corrections but not deletion; do not reuse payroll, expense, labor-learning, or daily-presence tables.
+
+**Reason:** Component work needs traceable evidence at a finer grain than job/day presence, but it must remain operational until a later phase explicitly defines payroll, reporting, or learning consumers. Referencing the exact component snapshot preserves historical meaning when the current component is superseded.
+
+**Rejected Alternatives:**
+- Reusing `job_sub_hours`, which carries payroll, expense, and payment behavior
+- Reusing `job_labor_entries`, which belongs to Knowledge Center summaries
+- Treating daily presence as component work evidence
+- Adding financial, payroll, profit, invoice, mileage, checklist, or learning side effects to a work-session write
+
+**Status:** Accepted
+**Date:** 2026-09-11
+
 ## ADR-027
 
 **Title:** Job production snapshot sync serializes by job

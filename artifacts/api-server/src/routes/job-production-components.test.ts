@@ -9,10 +9,14 @@ const h = vi.hoisted(() => ({
   jobs: [] as any[],
   services: [] as any[],
   components: [] as any[],
+  sessions: [] as any[],
+  assignedWorkers: [] as any[],
   nextJobId: 100,
   nextComponentId: 1,
+  nextSessionId: 1,
   supersedeKey: null as string | null,
   statusTarget: null as string | null,
+  sessionTarget: null as number | null,
   updatePayloads: [] as Record<string, unknown>[],
   lockTail: Promise.resolve(),
   lockCalls: 0,
@@ -48,6 +52,22 @@ vi.mock("@workspace/db", async () => {
     if (name === "job_production_components") {
       return h.components.slice();
     }
+    if (name === "job_component_work_sessions") {
+      return h.sessions.map(session => {
+        const component = h.components.find(row => row.id === session.productionComponentId);
+        return {
+          ...session,
+          componentInstanceKey: component?.componentInstanceKey,
+          componentKey: component?.componentKey,
+          componentLabel: component?.componentLabel,
+          variant: component?.variant,
+          snapshotVersion: component?.snapshotVersion,
+        };
+      });
+    }
+    if (name === "job_subcontractors") {
+      return h.assignedWorkers.slice();
+    }
     return [];
   }
 
@@ -59,9 +79,11 @@ vi.mock("@workspace/db", async () => {
         return chain;
       },
       leftJoin: () => chain,
+      innerJoin: () => chain,
       where: () => chain,
       orderBy: () => chain,
       limit: () => chain,
+      for: () => chain,
       then(resolve: (value: any) => unknown, reject: (reason: unknown) => unknown) {
         return Promise.resolve(selectResult(table, projection)).then(resolve, reject);
       },
@@ -91,6 +113,15 @@ vi.mock("@workspace/db", async () => {
         return false;
       });
       if (!row) row = h.components.find(component => component.supersededAt == null);
+      if (!row) return [];
+      Object.assign(row, payload);
+      return [row];
+    }
+
+    if (name === "job_component_work_sessions") {
+      const row = h.sessions.find(session =>
+        h.sessionTarget == null || session.id === h.sessionTarget,
+      );
       if (!row) return [];
       Object.assign(row, payload);
       return [row];
@@ -189,6 +220,18 @@ vi.mock("@workspace/db", async () => {
           updatedAt: payload.updatedAt ?? new Date("2026-09-11T12:00:00Z"),
         };
         h.components.push(row);
+        result = [row];
+        return result;
+      }
+
+      if (name === "job_component_work_sessions") {
+        const row = {
+          ...payload,
+          id: h.nextSessionId++,
+          createdAt: payload.createdAt ?? new Date("2026-09-11T12:00:00Z"),
+          updatedAt: payload.updatedAt ?? new Date("2026-09-11T12:00:00Z"),
+        };
+        h.sessions.push(row);
         result = [row];
         return result;
       }
@@ -372,10 +415,14 @@ beforeEach(() => {
     },
   );
   h.components.splice(0, h.components.length);
+  h.sessions.splice(0, h.sessions.length);
+  h.assignedWorkers.splice(0, h.assignedWorkers.length);
   h.nextJobId = 100;
   h.nextComponentId = 1;
+  h.nextSessionId = 1;
   h.supersedeKey = null;
   h.statusTarget = null;
+  h.sessionTarget = null;
   h.updatePayloads.length = 0;
   h.lockTail = Promise.resolve();
   h.lockCalls = 0;
@@ -626,5 +673,126 @@ describe("authenticated production component Jobs API", () => {
       expect.objectContaining({ componentInstanceKey: "interior_finish:vog", persisted: true }),
       expect.objectContaining({ componentInstanceKey: "siding:unspecified", persisted: true }),
     ]));
+  });
+
+  it("records independent same-day workers and components with exact decimal totals", async () => {
+    h.jobs.push(jobDefaults({ id: 50 }));
+    const snapshot = await request(app)
+      .post("/jobs/50/production-components/snapshot")
+      .send({ businessId: 1 });
+    expect(snapshot.status).toBe(201);
+    const interior = h.components.find(row => row.componentInstanceKey === "interior_finish:vog");
+    const siding = h.components.find(row => row.componentInstanceKey === "siding:unspecified");
+    h.assignedWorkers.push({ id: 7, name: "Assigned Worker" });
+
+    const assigned = await request(app)
+      .post("/jobs/50/component-work-sessions?businessId=1")
+      .send({
+        productionComponentId: interior.id,
+        workDate: "2026-09-11",
+        linkedSubcontractorId: 7,
+        actualHours: "3.5",
+      });
+    const outside = await request(app)
+      .post("/jobs/50/component-work-sessions?businessId=1")
+      .send({
+        productionComponentId: siding.id,
+        workDate: "2026-09-11",
+        workerName: "Outside Worker",
+        actualHours: "1.75",
+        notes: "Independent component entry",
+      });
+
+    expect(assigned.status).toBe(201);
+    expect(assigned.body).toEqual(expect.objectContaining({
+      productionComponentId: interior.id,
+      workerName: "Assigned Worker",
+      linkedSubcontractorId: 7,
+      actualHours: "3.50",
+    }));
+    expect(outside.status).toBe(201);
+
+    const list = await request(app).get("/jobs/50/component-work-sessions?businessId=1");
+    expect(list.status).toBe(200);
+    expect(list.body.sessions).toHaveLength(2);
+    expect(list.body.sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        productionComponentId: siding.id,
+        workerName: "Outside Worker",
+        linkedSubcontractorId: null,
+        actualHours: "1.75",
+      }),
+    ]));
+    expect(list.body.totalsByComponent[interior.componentInstanceKey]).toBe("3.50");
+    expect(list.body.totalsByComponent[siding.componentInstanceKey]).toBe("1.75");
+  });
+
+  it("supports worker-link corrections while retaining the production snapshot reference", async () => {
+    h.jobs.push(jobDefaults({ id: 60 }));
+    await request(app).post("/jobs/60/production-components/snapshot").send({ businessId: 1 });
+    const component = h.components.find(row => row.componentInstanceKey === "interior_finish:vog");
+    h.assignedWorkers.push({ id: 8, name: "Roster Worker" });
+
+    const created = await request(app)
+      .post("/jobs/60/component-work-sessions?businessId=1")
+      .send({
+        productionComponentId: component.id,
+        workDate: "2026-09-10",
+        workerName: "Temporary Worker",
+        actualHours: "2.25",
+      });
+    expect(created.status).toBe(201);
+
+    h.sessionTarget = created.body.id;
+    const corrected = await request(app)
+      .patch(`/jobs/60/component-work-sessions/${created.body.id}?businessId=1`)
+      .send({ linkedSubcontractorId: 8, actualHours: "2.50" });
+
+    expect(corrected.status).toBe(200);
+    expect(corrected.body).toEqual(expect.objectContaining({
+      productionComponentId: component.id,
+      workerName: "Roster Worker",
+      linkedSubcontractorId: 8,
+      actualHours: "2.50",
+    }));
+    expect(h.sessions[0]).toEqual(expect.objectContaining({
+      productionComponentId: component.id,
+      linkedSubcontractorId: 8,
+    }));
+  });
+
+  it("rejects invalid decimals, cross-business access, and closed-job mutations", async () => {
+    h.jobs.push(jobDefaults({ id: 70 }));
+    await request(app).post("/jobs/70/production-components/snapshot").send({ businessId: 1 });
+    const component = h.components.find(row => row.componentInstanceKey === "interior_finish:vog");
+
+    const invalid = await request(app)
+      .post("/jobs/70/component-work-sessions?businessId=1")
+      .send({
+        productionComponentId: component.id,
+        workDate: "2026-09-11",
+        workerName: "Worker",
+        actualHours: "1.234",
+      });
+    expect(invalid.status).toBe(400);
+
+    h.jobs[0].businessId = 2;
+    h.jobs[0].businessLine = "asphalt_sealing";
+    const denied = await request(app).get("/jobs/70/component-work-sessions?businessId=1");
+    expect(denied.status).toBe(404);
+
+    h.jobs[0].businessId = 1;
+    h.jobs[0].businessLine = "general_contracting";
+    h.jobs[0].status = "closed";
+    h.jobs[0].closedAt = "2026-09-11";
+    const closed = await request(app)
+      .post("/jobs/70/component-work-sessions?businessId=1")
+      .send({
+        productionComponentId: component.id,
+        workDate: "2026-09-11",
+        workerName: "Worker",
+        actualHours: "1.00",
+      });
+    expect(closed.status).toBe(409);
   });
 });

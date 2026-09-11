@@ -1,5 +1,13 @@
 export * from "./generated/api";
 export type * from "./generated/types";
+// Orval emits path-parameter Zod schemas and query-parameter TypeScript types
+// with the same operation name for job-scoped endpoints. Resolve those
+// intentional value/type namespace overlaps explicitly.
+export type {
+  CreateJobComponentWorkSessionParams,
+  ListJobComponentWorkSessionsParams,
+  UpdateJobComponentWorkSessionParams,
+} from "./generated/types";
 export {
   PortalCheckSessionBody,
   PortalSetPinBody,

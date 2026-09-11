@@ -426,6 +426,7 @@ describe("job mileage reimbursement ownership and validation", () => {
       [{ subcontractorId: 12 }, { subcontractorId: 13 }], // current assignments
       [], // recomputeSubPaid
       [{ id: 7, createdAt: new Date(), subcontractorId: null, subcontractorName: null }], // refreshed job
+      [], // no source job row for the production-component projection
     );
 
     const res = await request(app)

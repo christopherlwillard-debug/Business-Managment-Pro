@@ -56,6 +56,7 @@ export * from "./job-readiness-conditions";
 export * from "./job-daily-presence";
 export * from "./mfh";
 export * from "./job-production-components";
+export * from "./job-component-work-sessions";
 export * from "./client-billing-profiles";
 export * from "./growth-fund-deployments";
 export * from "./business-trips";

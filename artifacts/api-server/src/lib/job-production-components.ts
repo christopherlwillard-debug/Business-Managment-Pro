@@ -592,6 +592,13 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
     // determine the next version must happen after the lock is acquired;
     // otherwise two callers can both calculate the same version.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('job-production-components'), ${job.id})`);
+    // Work-session mutations use the same job-row lock so snapshot
+    // supersession and component-work evidence have one deterministic
+    // linearization point.
+    await tx.select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, job.id))
+      .for("update");
     const existingRows = await tx
       .select()
       .from(jobProductionComponentsTable)

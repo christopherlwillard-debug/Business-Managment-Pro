@@ -13,3 +13,15 @@ summary. A successful script exit still does not prove database parity.
 read-only development metadata check, then use the approved development
 synchronization path only after review. Never use production DDL or startup
 self-healing to recover parity.
+
+The API server's pretest schema gate also stops the full test workflow when a
+new source migration has not reached development, even if the migration file
+and generated types are present. Verify the live development metadata before
+interpreting a test failure as application behavior.
+
+**Why:** A passing typecheck and a committed migration can coexist with a
+missing development table, causing the test command to fail before Vitest runs.
+
+**How to apply:** After additive schema work, apply the development migration
+through the approved development path, rerun the schema gate, then run the
+focused and full test suites.

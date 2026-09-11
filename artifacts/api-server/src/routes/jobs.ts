@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -42,6 +42,136 @@ function isDateOnly(value: unknown): value is string {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+const workHoursPattern = /^(?:0|[1-9]|1[0-9]|2[0-4])(?:\.[0-9]{1,2})?$/;
+
+function parseWorkHours(value: unknown): { dbValue: string; cents: number } | null {
+  if (typeof value !== "string" || !workHoursPattern.test(value)) return null;
+  const [wholePart, fractionalPart = ""] = value.split(".");
+  const cents = Number(wholePart) * 100 + Number(fractionalPart.padEnd(2, "0") || 0);
+  if (!Number.isInteger(cents) || cents <= 0 || cents > 2400) return null;
+  return {
+    dbValue: `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`,
+    cents,
+  };
+}
+
+function dbHoursToCents(value: unknown): number {
+  const text = String(value ?? "");
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) throw new Error("Invalid stored work-session hours");
+  return Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0") || 0);
+}
+
+function formatWorkHours(cents: number): string {
+  return `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
+}
+
+function parseWorkerName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 160 ? trimmed : null;
+}
+
+function parseWorkNotes(value: unknown): string | null | "invalid" {
+  if (value == null) return null;
+  if (typeof value !== "string") return "invalid";
+  const trimmed = value.trim();
+  if (trimmed.length > 2000) return "invalid";
+  return trimmed || null;
+}
+
+function isoTimestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+async function getWorkSessionJob(req: Request, res: any, id: number) {
+  const rawBusinessId = String(req.query.businessId ?? "").trim();
+  const businessId = Number(rawBusinessId);
+  if (!rawBusinessId || !Number.isInteger(businessId) || businessId <= 0 || req.query.businessLine != null) {
+    res.status(400).json({ error: "A valid businessId query parameter is required" });
+    return null;
+  }
+  const scope = await requestedBusiness(req);
+  const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+  if (!job || !scope || scope.id !== businessId) {
+    res.status(404).json({ error: "Job not found" });
+    return null;
+  }
+  const canonical = await canonicalRecordBusiness(job);
+  if (canonical.state !== "resolved" || canonical.business.id !== scope.id || !belongsToBusiness(job, scope)) {
+    res.status(404).json({ error: "Job not found" });
+    return null;
+  }
+  return { job, scope };
+}
+
+async function assignedWorkerName(query: any, jobId: number, subcontractorId: number): Promise<string | null> {
+  const [worker] = await query
+    .select({ id: subcontractorsTable.id, name: subcontractorsTable.name })
+    .from(jobSubcontractorsTable)
+    .innerJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
+    .where(and(
+      eq(jobSubcontractorsTable.jobId, jobId),
+      eq(jobSubcontractorsTable.subcontractorId, subcontractorId),
+    ))
+    .limit(1);
+  return worker?.name?.trim() || null;
+}
+
+async function listComponentWorkSessions(query: any, jobId: number, sessionId?: number) {
+  const conditions = [eq(jobComponentWorkSessionsTable.jobId, jobId)];
+  if (sessionId != null) conditions.push(eq(jobComponentWorkSessionsTable.id, sessionId));
+  return query
+    .select({
+      id: jobComponentWorkSessionsTable.id,
+      productionComponentId: jobComponentWorkSessionsTable.productionComponentId,
+      componentInstanceKey: jobProductionComponentsTable.componentInstanceKey,
+      componentKey: jobProductionComponentsTable.componentKey,
+      componentLabel: jobProductionComponentsTable.componentLabel,
+      variant: jobProductionComponentsTable.variant,
+      snapshotVersion: jobProductionComponentsTable.snapshotVersion,
+      workerName: jobComponentWorkSessionsTable.workerName,
+      linkedSubcontractorId: jobComponentWorkSessionsTable.linkedSubcontractorId,
+      workDate: jobComponentWorkSessionsTable.workDate,
+      actualHours: jobComponentWorkSessionsTable.actualHours,
+      notes: jobComponentWorkSessionsTable.notes,
+      createdAt: jobComponentWorkSessionsTable.createdAt,
+      updatedAt: jobComponentWorkSessionsTable.updatedAt,
+    })
+    .from(jobComponentWorkSessionsTable)
+    .innerJoin(jobProductionComponentsTable, eq(
+      jobComponentWorkSessionsTable.productionComponentId,
+      jobProductionComponentsTable.id,
+    ))
+    .where(and(...conditions))
+    .orderBy(desc(jobComponentWorkSessionsTable.workDate), desc(jobComponentWorkSessionsTable.id));
+}
+
+function serializeComponentWorkSession(row: any) {
+  return {
+    ...row,
+    actualHours: formatWorkHours(dbHoursToCents(row.actualHours)),
+    createdAt: isoTimestamp(row.createdAt),
+    updatedAt: isoTimestamp(row.updatedAt),
+  };
+}
+
+function componentWorkSessionResponse(rows: any[]) {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(
+      row.componentInstanceKey,
+      (totals.get(row.componentInstanceKey) ?? 0) + dbHoursToCents(row.actualHours),
+    );
+  }
+  return {
+    sessions: rows.map(serializeComponentWorkSession),
+    totalsByComponent: Object.fromEntries(
+      [...totals.entries()].map(([key, cents]) => [key, formatWorkHours(cents)]),
+    ),
+  };
 }
 
 function catalogPhotoUrl(objectPath: string | null | undefined): string | null {
@@ -831,6 +961,202 @@ router.patch("/:id/production-components/status", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update production component status" });
+  }
+});
+
+router.get("/:id/component-work-sessions", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const context = await getWorkSessionJob(req, res, id);
+    if (!context) return;
+    const rows = await listComponentWorkSessions(db, id);
+    res.json(componentWorkSessionResponse(rows));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch component work sessions" });
+  }
+});
+
+router.post("/:id/component-work-sessions", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const context = await getWorkSessionJob(req, res, id);
+    if (!context) return;
+
+    const productionComponentId = req.body?.productionComponentId;
+    const workDate = req.body?.workDate;
+    const hours = parseWorkHours(req.body?.actualHours);
+    const linkedValue = req.body?.linkedSubcontractorId;
+    const linkedSubcontractorId = linkedValue == null ? null : linkedValue;
+    if (!Number.isInteger(productionComponentId) || productionComponentId <= 0) {
+      return res.status(400).json({ error: "productionComponentId must be a positive integer" });
+    }
+    if (!isDateOnly(workDate)) {
+      return res.status(400).json({ error: "workDate must be a valid YYYY-MM-DD date" });
+    }
+    if (!hours) return res.status(400).json({ error: "actualHours must be a decimal string from 0.01 to 24.00" });
+    if (linkedSubcontractorId !== null && (!Number.isInteger(linkedSubcontractorId) || linkedSubcontractorId <= 0)) {
+      return res.status(400).json({ error: "linkedSubcontractorId must be a positive integer or null" });
+    }
+    if (linkedSubcontractorId !== null && Object.prototype.hasOwnProperty.call(req.body, "workerName")) {
+      return res.status(400).json({ error: "workerName must be omitted for an assigned worker" });
+    }
+    const outsideWorkerName = parseWorkerName(req.body?.workerName);
+    if (linkedSubcontractorId === null && !outsideWorkerName) {
+      return res.status(400).json({ error: "workerName is required for an outside worker" });
+    }
+    const notes = parseWorkNotes(req.body?.notes);
+    if (notes === "invalid") return res.status(400).json({ error: "notes must be at most 2000 characters" });
+
+    const result = await db.transaction(async (tx) => {
+      const [lockedJob] = await tx.select().from(jobsTable).where(eq(jobsTable.id, id)).for("update");
+      if (!lockedJob) return { status: 404, error: "Job not found" } as const;
+      if (lockedJob.status === "closed" || lockedJob.closedAt != null) {
+        return { status: 409, error: "Closed jobs cannot receive component work entries" } as const;
+      }
+      const canonical = await canonicalRecordBusiness(lockedJob);
+      if (canonical.state !== "resolved" || canonical.business.id !== context.scope.id || !belongsToBusiness(lockedJob, context.scope)) {
+        return { status: 404, error: "Job not found" } as const;
+      }
+      const components = await getJobProductionComponents(lockedJob);
+      const component = components.find(candidate => candidate.id === productionComponentId);
+      if (!component || !component.persisted || component.supersededAt != null || component.status === "not_applicable") {
+        return { status: 404, error: "Production component not found" } as const;
+      }
+      if (component.businessId != null && component.businessId !== context.scope.id) {
+        return { status: 404, error: "Production component not found" } as const;
+      }
+      const sameInstance = components.filter(candidate =>
+        candidate.componentInstanceKey === component.componentInstanceKey &&
+        candidate.persisted &&
+        candidate.supersededAt == null &&
+        candidate.status !== "not_applicable",
+      );
+      if (sameInstance.length > 1) {
+        return { status: 409, error: "Production component snapshot history must be repaired before recording work" } as const;
+      }
+      const workerName = linkedSubcontractorId == null
+        ? outsideWorkerName!
+        : await assignedWorkerName(tx, id, linkedSubcontractorId);
+      if (!workerName) return { status: 404, error: "Assigned worker not found for this job" } as const;
+      const [created] = await tx.insert(jobComponentWorkSessionsTable).values({
+        jobId: id,
+        productionComponentId,
+        workDate,
+        linkedSubcontractorId,
+        workerName,
+        actualHours: hours.dbValue,
+        notes,
+      }).returning({ id: jobComponentWorkSessionsTable.id });
+      return created ? { status: 201, id: created.id } as const : { status: 500, error: "Failed to create component work session" } as const;
+    });
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    const [created] = await listComponentWorkSessions(db, id, result.id);
+    if (!created) return res.status(500).json({ error: "Created component work session could not be loaded" });
+    res.status(201).json(serializeComponentWorkSession(created));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create component work session" });
+  }
+});
+
+router.patch("/:id/component-work-sessions/:sessionId", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const sessionId = Number(req.params.sessionId);
+    if (!Number.isInteger(id) || !Number.isInteger(sessionId)) {
+      return res.status(400).json({ error: "Invalid job or session id" });
+    }
+    const context = await getWorkSessionJob(req, res, id);
+    if (!context) return;
+    const bodyKeys = Object.keys(req.body ?? {});
+    if (bodyKeys.length === 0) return res.status(400).json({ error: "At least one update field is required" });
+    if ("jobId" in (req.body ?? {}) || "productionComponentId" in (req.body ?? {})) {
+      return res.status(400).json({ error: "Job and production component cannot be changed" });
+    }
+    const allowedKeys = new Set(["workDate", "linkedSubcontractorId", "workerName", "actualHours", "notes"]);
+    if (bodyKeys.some(key => !allowedKeys.has(key))) return res.status(400).json({ error: "Unsupported component work-session field" });
+
+    const result = await db.transaction(async (tx) => {
+      const [lockedJob] = await tx.select().from(jobsTable).where(eq(jobsTable.id, id)).for("update");
+      if (!lockedJob) return { status: 404, error: "Job not found" } as const;
+      if (lockedJob.status === "closed" || lockedJob.closedAt != null) {
+        return { status: 409, error: "Closed jobs cannot receive component work entries" } as const;
+      }
+      const canonical = await canonicalRecordBusiness(lockedJob);
+      if (canonical.state !== "resolved" || canonical.business.id !== context.scope.id || !belongsToBusiness(lockedJob, context.scope)) {
+        return { status: 404, error: "Job not found" } as const;
+      }
+      const [existing] = await tx.select().from(jobComponentWorkSessionsTable).where(and(
+        eq(jobComponentWorkSessionsTable.id, sessionId),
+        eq(jobComponentWorkSessionsTable.jobId, id),
+      )).limit(1);
+      if (!existing) return { status: 404, error: "Component work session not found" } as const;
+      const [component] = await tx.select().from(jobProductionComponentsTable)
+        .where(eq(jobProductionComponentsTable.id, existing.productionComponentId))
+        .limit(1);
+      if (!component || component.jobId !== id || (component.businessId != null && component.businessId !== context.scope.id)) {
+        return { status: 404, error: "Component work session not found" } as const;
+      }
+
+      const updates: Record<string, unknown> = { updatedAt: new Date() };
+      if ("workDate" in req.body) {
+        if (!isDateOnly(req.body.workDate)) return { status: 400, error: "workDate must be a valid YYYY-MM-DD date" } as const;
+        updates.workDate = req.body.workDate;
+      }
+      if ("actualHours" in req.body) {
+        const hours = parseWorkHours(req.body.actualHours);
+        if (!hours) return { status: 400, error: "actualHours must be a decimal string from 0.01 to 24.00" } as const;
+        updates.actualHours = hours.dbValue;
+      }
+      if ("notes" in req.body) {
+        const notes = parseWorkNotes(req.body.notes);
+        if (notes === "invalid") return { status: 400, error: "notes must be at most 2000 characters" } as const;
+        updates.notes = notes;
+      }
+
+      const nextLinkedSubcontractorId = "linkedSubcontractorId" in req.body
+        ? req.body.linkedSubcontractorId
+        : existing.linkedSubcontractorId;
+      if (nextLinkedSubcontractorId !== null && (!Number.isInteger(nextLinkedSubcontractorId) || nextLinkedSubcontractorId <= 0)) {
+        return { status: 400, error: "linkedSubcontractorId must be a positive integer or null" } as const;
+      }
+      if ("linkedSubcontractorId" in req.body && nextLinkedSubcontractorId !== existing.linkedSubcontractorId) {
+        updates.linkedSubcontractorId = nextLinkedSubcontractorId;
+      }
+      if (nextLinkedSubcontractorId !== null) {
+        if ("workerName" in req.body) {
+          return { status: 400, error: "workerName must be omitted for an assigned worker" } as const;
+        }
+        const workerName = await assignedWorkerName(tx, id, nextLinkedSubcontractorId);
+        if (!workerName) return { status: 404, error: "Assigned worker not found for this job" } as const;
+        updates.workerName = workerName;
+      } else if ("workerName" in req.body) {
+        const workerName = parseWorkerName(req.body.workerName);
+        if (!workerName) return { status: 400, error: "workerName is required for an outside worker" } as const;
+        updates.workerName = workerName;
+      } else if (existing.linkedSubcontractorId !== null) {
+        return { status: 400, error: "workerName is required when unlinking an assigned worker" } as const;
+      }
+
+      const [updated] = await tx.update(jobComponentWorkSessionsTable)
+        .set(updates)
+        .where(and(
+          eq(jobComponentWorkSessionsTable.id, sessionId),
+          eq(jobComponentWorkSessionsTable.jobId, id),
+        ))
+        .returning({ id: jobComponentWorkSessionsTable.id });
+      return updated ? { status: 200, id: updated.id } as const : { status: 404, error: "Component work session not found" } as const;
+    });
+    if ("error" in result) return res.status(result.status).json({ error: result.error });
+    const [updated] = await listComponentWorkSessions(db, id, result.id);
+    if (!updated) return res.status(500).json({ error: "Updated component work session could not be loaded" });
+    res.json(serializeComponentWorkSession(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update component work session" });
   }
 });
 

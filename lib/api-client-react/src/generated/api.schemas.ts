@@ -358,6 +358,83 @@ export interface UpdateProductionComponentStatusRequest {
   status: UpdateProductionComponentStatusRequestStatus;
 }
 
+export interface CreateComponentWorkSessionRequest {
+  productionComponentId: number;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  workDate: string;
+  linkedSubcontractorId?: number | null;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  workerName?: string;
+  /** @pattern ^(?:0|[1-9]|1[0-9]|2[0-4])(?:\.[0-9]{1,2})?$ */
+  actualHours: string;
+  /** @maxLength 2000 */
+  notes?: string | null;
+}
+
+export interface UpdateComponentWorkSessionRequest {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  workDate?: string;
+  linkedSubcontractorId?: number | null;
+  /** @maxLength 160 */
+  workerName?: string | null;
+  /** @pattern ^(?:0|[1-9]|1[0-9]|2[0-4])(?:\.[0-9]{1,2})?$ */
+  actualHours?: string;
+  /** @maxLength 2000 */
+  notes?: string | null;
+}
+
+export type ComponentWorkSessionComponentKey =
+  (typeof ComponentWorkSessionComponentKey)[keyof typeof ComponentWorkSessionComponentKey];
+
+export const ComponentWorkSessionComponentKey = {
+  interior_finish: "interior_finish",
+  siding: "siding",
+  plumbing: "plumbing",
+  skirting: "skirting",
+  custom: "custom",
+} as const;
+
+export type ComponentWorkSessionVariant =
+  | (typeof ComponentWorkSessionVariant)[keyof typeof ComponentWorkSessionVariant]
+  | null;
+
+export const ComponentWorkSessionVariant = {
+  vog: "vog",
+  hybrid: "hybrid",
+  drywall: "drywall",
+} as const;
+
+export interface ComponentWorkSession {
+  id: number;
+  productionComponentId: number;
+  componentInstanceKey: string;
+  componentKey: ComponentWorkSessionComponentKey;
+  componentLabel: string;
+  variant: ComponentWorkSessionVariant;
+  snapshotVersion: number;
+  workerName: string;
+  linkedSubcontractorId: number | null;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  workDate: string;
+  /** @pattern ^\d+\.\d{2}$ */
+  actualHours: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ComponentWorkSessionsResponseTotalsByComponent = {
+  [key: string]: string;
+};
+
+export interface ComponentWorkSessionsResponse {
+  sessions: ComponentWorkSession[];
+  totalsByComponent: ComponentWorkSessionsResponseTotalsByComponent;
+}
+
 export type JobProfitMileageReimbursementRecipientType =
   (typeof JobProfitMileageReimbursementRecipientType)[keyof typeof JobProfitMileageReimbursementRecipientType];
 
@@ -1796,6 +1873,18 @@ export type ListJobsParams = {
 
 export type GetReadyToStartJobsParams = {
   businessId?: number;
+};
+
+export type ListJobComponentWorkSessionsParams = {
+  businessId: number;
+};
+
+export type CreateJobComponentWorkSessionParams = {
+  businessId: number;
+};
+
+export type UpdateJobComponentWorkSessionParams = {
+  businessId: number;
 };
 
 export type GetJobsProfitSummaryParams = {

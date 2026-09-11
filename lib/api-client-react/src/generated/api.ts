@@ -23,12 +23,16 @@ import type {
   Client,
   ClientBillingProfile,
   ComplianceReport,
+  ComponentWorkSession,
+  ComponentWorkSessionsResponse,
   CreateClientBillingProfileRequest,
   CreateClientRequest,
+  CreateComponentWorkSessionRequest,
   CreateDailyLogRequest,
   CreateEstimateRequest,
   CreateExpenseRequest,
   CreateInvoiceRequest,
+  CreateJobComponentWorkSessionParams,
   CreateJobRequest,
   CreateMileageLogRequest,
   CreateRecurringExpenseRequest,
@@ -61,6 +65,7 @@ import type {
   ListDailyLogsParams,
   ListExpensesParams,
   ListInvoicesParams,
+  ListJobComponentWorkSessionsParams,
   ListJobsParams,
   ListMileageLogsParams,
   LogoutSuccess,
@@ -87,7 +92,9 @@ import type {
   TaxReportRow,
   TrimOutCatalogResponse,
   UpdateClientBillingProfileRequest,
+  UpdateComponentWorkSessionRequest,
   UpdateInvoiceStatusBody,
+  UpdateJobComponentWorkSessionParams,
   UpdateProductionComponentStatusRequest,
   UpdateRecurringExpenseRequest,
   UploadExpenseReceiptBody,
@@ -1963,6 +1970,394 @@ export const useUpdateJobProductionComponentStatus = <
   return useMutation(
     getUpdateJobProductionComponentStatusMutationOptions(options),
   );
+};
+
+/**
+ * @summary List raw component work sessions for a job
+ */
+export const getListJobComponentWorkSessionsUrl = (
+  id: number,
+  params: ListJobComponentWorkSessionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/${id}/component-work-sessions?${stringifiedParams}`
+    : `/api/jobs/${id}/component-work-sessions`;
+};
+
+export const listJobComponentWorkSessions = async (
+  id: number,
+  params: ListJobComponentWorkSessionsParams,
+  options?: RequestInit,
+): Promise<ComponentWorkSessionsResponse> => {
+  return customFetch<ComponentWorkSessionsResponse>(
+    getListJobComponentWorkSessionsUrl(id, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListJobComponentWorkSessionsQueryKey = (
+  id: number,
+  params?: ListJobComponentWorkSessionsParams,
+) => {
+  return [
+    `/api/jobs/${id}/component-work-sessions`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListJobComponentWorkSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listJobComponentWorkSessions>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  params: ListJobComponentWorkSessionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listJobComponentWorkSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListJobComponentWorkSessionsQueryKey(id, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listJobComponentWorkSessions>>
+  > = ({ signal }) =>
+    listJobComponentWorkSessions(id, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listJobComponentWorkSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListJobComponentWorkSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listJobComponentWorkSessions>>
+>;
+export type ListJobComponentWorkSessionsQueryError = ErrorType<void>;
+
+/**
+ * @summary List raw component work sessions for a job
+ */
+
+export function useListJobComponentWorkSessions<
+  TData = Awaited<ReturnType<typeof listJobComponentWorkSessions>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  params: ListJobComponentWorkSessionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listJobComponentWorkSessions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListJobComponentWorkSessionsQueryOptions(
+    id,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record raw work for an approved job production component
+ */
+export const getCreateJobComponentWorkSessionUrl = (
+  id: number,
+  params: CreateJobComponentWorkSessionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/${id}/component-work-sessions?${stringifiedParams}`
+    : `/api/jobs/${id}/component-work-sessions`;
+};
+
+export const createJobComponentWorkSession = async (
+  id: number,
+  createComponentWorkSessionRequest: CreateComponentWorkSessionRequest,
+  params: CreateJobComponentWorkSessionParams,
+  options?: RequestInit,
+): Promise<ComponentWorkSession> => {
+  return customFetch<ComponentWorkSession>(
+    getCreateJobComponentWorkSessionUrl(id, params),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(createComponentWorkSessionRequest),
+    },
+  );
+};
+
+export const getCreateJobComponentWorkSessionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobComponentWorkSession>>,
+    TError,
+    {
+      id: number;
+      data: BodyType<CreateComponentWorkSessionRequest>;
+      params: CreateJobComponentWorkSessionParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createJobComponentWorkSession>>,
+  TError,
+  {
+    id: number;
+    data: BodyType<CreateComponentWorkSessionRequest>;
+    params: CreateJobComponentWorkSessionParams;
+  },
+  TContext
+> => {
+  const mutationKey = ["createJobComponentWorkSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createJobComponentWorkSession>>,
+    {
+      id: number;
+      data: BodyType<CreateComponentWorkSessionRequest>;
+      params: CreateJobComponentWorkSessionParams;
+    }
+  > = (props) => {
+    const { id, data, params } = props ?? {};
+
+    return createJobComponentWorkSession(id, data, params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateJobComponentWorkSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createJobComponentWorkSession>>
+>;
+export type CreateJobComponentWorkSessionMutationBody =
+  BodyType<CreateComponentWorkSessionRequest>;
+export type CreateJobComponentWorkSessionMutationError = ErrorType<void>;
+
+/**
+ * @summary Record raw work for an approved job production component
+ */
+export const useCreateJobComponentWorkSession = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobComponentWorkSession>>,
+    TError,
+    {
+      id: number;
+      data: BodyType<CreateComponentWorkSessionRequest>;
+      params: CreateJobComponentWorkSessionParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createJobComponentWorkSession>>,
+  TError,
+  {
+    id: number;
+    data: BodyType<CreateComponentWorkSessionRequest>;
+    params: CreateJobComponentWorkSessionParams;
+  },
+  TContext
+> => {
+  return useMutation(getCreateJobComponentWorkSessionMutationOptions(options));
+};
+
+/**
+ * @summary Correct a raw component work session
+ */
+export const getUpdateJobComponentWorkSessionUrl = (
+  id: number,
+  sessionId: number,
+  params: UpdateJobComponentWorkSessionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/${id}/component-work-sessions/${sessionId}?${stringifiedParams}`
+    : `/api/jobs/${id}/component-work-sessions/${sessionId}`;
+};
+
+export const updateJobComponentWorkSession = async (
+  id: number,
+  sessionId: number,
+  updateComponentWorkSessionRequest: UpdateComponentWorkSessionRequest,
+  params: UpdateJobComponentWorkSessionParams,
+  options?: RequestInit,
+): Promise<ComponentWorkSession> => {
+  return customFetch<ComponentWorkSession>(
+    getUpdateJobComponentWorkSessionUrl(id, sessionId, params),
+    {
+      ...options,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(updateComponentWorkSessionRequest),
+    },
+  );
+};
+
+export const getUpdateJobComponentWorkSessionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobComponentWorkSession>>,
+    TError,
+    {
+      id: number;
+      sessionId: number;
+      data: BodyType<UpdateComponentWorkSessionRequest>;
+      params: UpdateJobComponentWorkSessionParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateJobComponentWorkSession>>,
+  TError,
+  {
+    id: number;
+    sessionId: number;
+    data: BodyType<UpdateComponentWorkSessionRequest>;
+    params: UpdateJobComponentWorkSessionParams;
+  },
+  TContext
+> => {
+  const mutationKey = ["updateJobComponentWorkSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateJobComponentWorkSession>>,
+    {
+      id: number;
+      sessionId: number;
+      data: BodyType<UpdateComponentWorkSessionRequest>;
+      params: UpdateJobComponentWorkSessionParams;
+    }
+  > = (props) => {
+    const { id, sessionId, data, params } = props ?? {};
+
+    return updateJobComponentWorkSession(
+      id,
+      sessionId,
+      data,
+      params,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateJobComponentWorkSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateJobComponentWorkSession>>
+>;
+export type UpdateJobComponentWorkSessionMutationBody =
+  BodyType<UpdateComponentWorkSessionRequest>;
+export type UpdateJobComponentWorkSessionMutationError = ErrorType<void>;
+
+/**
+ * @summary Correct a raw component work session
+ */
+export const useUpdateJobComponentWorkSession = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobComponentWorkSession>>,
+    TError,
+    {
+      id: number;
+      sessionId: number;
+      data: BodyType<UpdateComponentWorkSessionRequest>;
+      params: UpdateJobComponentWorkSessionParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateJobComponentWorkSession>>,
+  TError,
+  {
+    id: number;
+    sessionId: number;
+    data: BodyType<UpdateComponentWorkSessionRequest>;
+    params: UpdateJobComponentWorkSessionParams;
+  },
+  TContext
+> => {
+  return useMutation(getUpdateJobComponentWorkSessionMutationOptions(options));
 };
 
 /**

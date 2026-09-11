@@ -16,6 +16,7 @@ import {
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
+  CreateComponentWorkSessionRequest, UpdateComponentWorkSessionRequest,
 } from "@workspace/api-client-react";
 import {
   useListMfhManufacturers, useMfhPanelData, useListMfhConstructionTypes,
@@ -24,6 +25,8 @@ import {
   useUpdateProductionServiceType, useDeleteProductionServiceType,
   useGetJobProductionComponents, useGetJobProductionComponentHistory,
   useUpdateJobProductionComponentStatus,
+  useListJobComponentWorkSessions, useCreateJobComponentWorkSession,
+  useUpdateJobComponentWorkSession,
   useListServiceAddonPrompts, type ServiceAddonPrompt,
 } from "@workspace/api-client-react";
 import type {
@@ -31,6 +34,7 @@ import type {
   JobProfitSummaryResponse,
   ProductionComponent,
   ProductionComponentStatus,
+  ComponentWorkSession,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -179,6 +183,377 @@ function productionSourceLabel(component: ProductionComponent): string {
     return component.sourceServiceIds.map(id => `Service #${id}`).join(", ");
   }
   return "No source services";
+}
+
+type WorkSessionForm = {
+  productionComponentId: string;
+  workDate: string;
+  workerMode: "assigned" | "outside";
+  linkedSubcontractorId: string;
+  workerName: string;
+  actualHours: string;
+  notes: string;
+};
+
+function emptyWorkSessionForm(componentId: number | null, date: string): WorkSessionForm {
+  return {
+    productionComponentId: componentId == null ? "" : String(componentId),
+    workDate: date,
+    workerMode: "assigned",
+    linkedSubcontractorId: "",
+    workerName: "",
+    actualHours: "",
+    notes: "",
+  };
+}
+
+function workSessionFormFromRow(row: ComponentWorkSession): WorkSessionForm {
+  return {
+    productionComponentId: String(row.productionComponentId),
+    workDate: row.workDate,
+    workerMode: row.linkedSubcontractorId == null ? "outside" : "assigned",
+    linkedSubcontractorId: row.linkedSubcontractorId == null ? "" : String(row.linkedSubcontractorId),
+    workerName: row.linkedSubcontractorId == null ? row.workerName : "",
+    actualHours: row.actualHours,
+    notes: row.notes ?? "",
+  };
+}
+
+function ComponentWorkSessionsPanel({
+  job,
+  businessId,
+  components,
+  subcontractorOptions,
+}: {
+  job: Job;
+  businessId?: number;
+  components: ProductionComponent[];
+  subcontractorOptions: Subcontractor[];
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const eligibleComponents = useMemo(
+    () => components.filter(component =>
+      component.id != null &&
+      component.persisted &&
+      component.supersededAt == null &&
+      component.status !== "not_applicable",
+    ),
+    [components],
+  );
+  const assignedSubcontractors = useMemo(() => {
+    const ids = Array.isArray(job.subcontractorIds) ? job.subcontractorIds as number[] : [];
+    return subcontractorOptions.filter(subcontractor => ids.includes(subcontractor.id));
+  }, [job.subcontractorIds, subcontractorOptions]);
+  const [form, setForm] = useState<WorkSessionForm>(() =>
+    emptyWorkSessionForm(eligibleComponents[0]?.id ?? null, localDateString()),
+  );
+  const [editForm, setEditForm] = useState<WorkSessionForm | null>(null);
+  const businessReady = businessId != null;
+  const jobClosed = job.status === "closed" || (job as Job & { closedAt?: string | null }).closedAt != null;
+  const sessionsQuery = useListJobComponentWorkSessions(job.id, { businessId: businessId ?? 0 }, {
+    query: {
+      queryKey: [`/api/jobs/${job.id}/component-work-sessions`, { businessId: businessId ?? 0 }],
+      enabled: open && businessReady,
+      staleTime: 15_000,
+    },
+  });
+  const createSession = useCreateJobComponentWorkSession();
+  const updateSession = useUpdateJobComponentWorkSession();
+  const sessions = sessionsQuery.data?.sessions ?? [];
+  const totalsByComponent = sessionsQuery.data?.totalsByComponent ?? {};
+  const invalidateSessions = () => {
+    void qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}/component-work-sessions`] });
+  };
+
+  function updateForm(setter: React.Dispatch<React.SetStateAction<WorkSessionForm>>, patch: Partial<WorkSessionForm>) {
+    setter(current => ({ ...current, ...patch }));
+  }
+
+  async function saveNewSession() {
+    if (!businessId) {
+      toast({ title: "Select a business first", description: "Choose a business context before recording production work.", variant: "destructive" });
+      return;
+    }
+    const componentId = Number(form.productionComponentId);
+    const hours = form.actualHours.trim();
+    if (!Number.isInteger(componentId) || componentId <= 0 || !form.workDate || !/^(?:0|[1-9]|1[0-9]|2[0-4])(?:\.[0-9]{1,2})?$/.test(hours) || Number(hours) <= 0) {
+      toast({ title: "Check the work entry", description: "Choose a component, date, and hours from 0.01 to 24.00.", variant: "destructive" });
+      return;
+    }
+    const data: CreateComponentWorkSessionRequest = {
+      productionComponentId: componentId,
+      workDate: form.workDate,
+      actualHours: hours,
+      notes: form.notes.trim() || null,
+      ...(form.workerMode === "assigned"
+        ? { linkedSubcontractorId: Number(form.linkedSubcontractorId) }
+        : { linkedSubcontractorId: null, workerName: form.workerName.trim() }),
+    };
+    if (form.workerMode === "assigned" && !Number.isInteger(data.linkedSubcontractorId)) {
+      toast({ title: "Choose an assigned worker", variant: "destructive" });
+      return;
+    }
+    if (form.workerMode === "outside" && !data.workerName) {
+      toast({ title: "Enter the outside worker's name", variant: "destructive" });
+      return;
+    }
+    try {
+      await createSession.mutateAsync({ id: job.id, data, params: { businessId } });
+      setForm(emptyWorkSessionForm(eligibleComponents[0]?.id ?? null, localDateString()));
+      invalidateSessions();
+      toast({ title: "Work session recorded" });
+    } catch (error) {
+      toast({ title: "Could not record work session", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    }
+  }
+
+  async function saveEdit(row: ComponentWorkSession) {
+    if (!businessId || !editForm) return;
+    const hours = editForm.actualHours.trim();
+    if (!editForm.workDate || !/^(?:0|[1-9]|1[0-9]|2[0-4])(?:\.[0-9]{1,2})?$/.test(hours) || Number(hours) <= 0) {
+      toast({ title: "Check the correction", description: "Date and hours are required; hours must be from 0.01 to 24.00.", variant: "destructive" });
+      return;
+    }
+    const data: UpdateComponentWorkSessionRequest = {
+      workDate: editForm.workDate,
+      actualHours: hours,
+      notes: editForm.notes.trim() || null,
+      ...(editForm.workerMode === "assigned"
+        ? { linkedSubcontractorId: Number(editForm.linkedSubcontractorId) }
+        : { linkedSubcontractorId: null, workerName: editForm.workerName.trim() }),
+    };
+    if (editForm.workerMode === "assigned" && !Number.isInteger(data.linkedSubcontractorId)) {
+      toast({ title: "Choose an assigned worker", variant: "destructive" });
+      return;
+    }
+    if (editForm.workerMode === "outside" && !data.workerName) {
+      toast({ title: "Enter the outside worker's name", variant: "destructive" });
+      return;
+    }
+    try {
+      await updateSession.mutateAsync({ id: job.id, sessionId: row.id, data, params: { businessId } });
+      setEditingId(null);
+      setEditForm(null);
+      invalidateSessions();
+      toast({ title: "Work session corrected" });
+    } catch (error) {
+      toast({ title: "Could not correct work session", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    }
+  }
+
+  function renderWorkerFields(current: WorkSessionForm, setter: React.Dispatch<React.SetStateAction<WorkSessionForm>>, disabled: boolean) {
+    return (
+      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-[auto_1fr] sm:items-center">
+        <select
+          value={current.workerMode}
+          disabled={disabled}
+          onChange={event => updateForm(setter, {
+            workerMode: event.target.value as WorkSessionForm["workerMode"],
+            linkedSubcontractorId: "",
+            workerName: "",
+          })}
+          className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+          aria-label="Worker type"
+        >
+          <option value="assigned">Assigned subcontractor</option>
+          <option value="outside">Outside worker</option>
+        </select>
+        {current.workerMode === "assigned" ? (
+          <select
+            value={current.linkedSubcontractorId}
+            disabled={disabled}
+            onChange={event => updateForm(setter, { linkedSubcontractorId: event.target.value })}
+            className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+            aria-label="Assigned worker"
+          >
+            <option value="">Choose worker…</option>
+            {assignedSubcontractors.map(subcontractor => (
+              <option key={subcontractor.id} value={subcontractor.id}>{subcontractor.name}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            value={current.workerName}
+            disabled={disabled}
+            onChange={event => updateForm(setter, { workerName: event.target.value })}
+            className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+            placeholder="Worker name"
+            aria-label="Outside worker name"
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-sky-200/80 bg-sky-50/40 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-sky-800">
+          <HardHat className="h-3 w-3" />
+          Component work sessions
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(value => !value)}
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold text-sky-800 hover:bg-sky-100"
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Record or view"}
+          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </button>
+      </div>
+      {!open ? (
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Record actual hours by approved component and worker.
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2 border-t border-sky-200/80 pt-2">
+          {!businessReady ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              Select a business context to load and record work sessions.
+            </p>
+          ) : jobClosed ? (
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-700">
+              This job is closed. Existing sessions remain available for history, but new entries and corrections are locked.
+            </p>
+          ) : eligibleComponents.length === 0 ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              No current approved production components are available for new work.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                <select
+                  value={form.productionComponentId}
+                  onChange={event => updateForm(setForm, { productionComponentId: event.target.value })}
+                  className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+                  aria-label="Production component"
+                >
+                  {eligibleComponents.map(component => (
+                    <option key={component.id} value={component.id!}>
+                      {component.componentLabel}{component.variant ? ` · ${component.variant.toUpperCase()}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="date"
+                  value={form.workDate}
+                  onChange={event => updateForm(setForm, { workDate: event.target.value })}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  aria-label="Work date"
+                />
+              </div>
+              {renderWorkerFields(form, setForm, createSession.isPending)}
+              <div className="grid gap-1.5 sm:grid-cols-[7rem_1fr]">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Hours"
+                  value={form.actualHours}
+                  onChange={event => updateForm(setForm, { actualHours: event.target.value })}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  aria-label="Actual hours"
+                />
+                <input
+                  value={form.notes}
+                  onChange={event => updateForm(setForm, { notes: event.target.value })}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+                  placeholder="Optional notes"
+                  maxLength={2000}
+                  aria-label="Work session notes"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => void saveNewSession()}
+                disabled={createSession.isPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {createSession.isPending ? "Saving…" : "Record work"}
+              </button>
+            </div>
+          )}
+
+          {sessionsQuery.isLoading ? (
+            <p className="text-[11px] text-muted-foreground">Loading work history…</p>
+          ) : sessionsQuery.isError ? (
+            <p className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-700">
+              Work-session history could not be loaded.
+            </p>
+          ) : (
+            <>
+              {Object.keys(totalsByComponent).length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(totalsByComponent).map(([instanceKey, total]) => {
+                    const session = sessions.find(row => row.componentInstanceKey === instanceKey);
+                    return (
+                      <span key={instanceKey} className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                        {session?.componentLabel ?? instanceKey}: {total} hrs
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {sessions.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground">No work sessions recorded yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">History</div>
+                  {sessions.map(row => (
+                    editingId === row.id && editForm ? (
+                      <div key={row.id} className="space-y-1.5 rounded-md border border-sky-300 bg-background p-2">
+                        <div className="text-[10px] font-semibold text-foreground">
+                          Correct {row.componentLabel} · snapshot {row.snapshotVersion}
+                        </div>
+                        <div className="grid gap-1.5 sm:grid-cols-2">
+                          <input type="date" value={editForm.workDate} onChange={event => updateForm(setEditForm, { workDate: event.target.value })} className="h-8 rounded-md border border-border bg-background px-2 text-xs" aria-label="Corrected work date" />
+                          <input type="text" inputMode="decimal" value={editForm.actualHours} onChange={event => updateForm(setEditForm, { actualHours: event.target.value })} className="h-8 rounded-md border border-border bg-background px-2 text-xs" aria-label="Corrected actual hours" />
+                        </div>
+                        {renderWorkerFields(editForm, setEditForm, updateSession.isPending)}
+                        <input value={editForm.notes} onChange={event => updateForm(setEditForm, { notes: event.target.value })} className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs" placeholder="Optional notes" maxLength={2000} aria-label="Corrected work session notes" />
+                        <div className="flex gap-1.5">
+                          <button type="button" onClick={() => void saveEdit(row)} disabled={updateSession.isPending} className="h-7 rounded-md bg-sky-600 px-2.5 text-[10px] font-semibold text-white disabled:opacity-60">{updateSession.isPending ? "Saving…" : "Save correction"}</button>
+                          <button type="button" onClick={() => { setEditingId(null); setEditForm(null); }} className="h-7 rounded-md border border-border px-2.5 text-[10px] font-semibold text-muted-foreground">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div key={row.id} className="flex items-start gap-2 rounded-md border border-border/70 bg-background/70 px-2 py-1.5 text-[11px]">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                            <span className="font-semibold text-foreground">{row.componentLabel}</span>
+                            <span className="text-muted-foreground">· snapshot {row.snapshotVersion}</span>
+                            <span className="text-muted-foreground">· {row.workDate}</span>
+                          </div>
+                          <div className="text-muted-foreground">
+                            {row.workerName} · <span className="font-semibold text-foreground">{row.actualHours} hrs</span>
+                            {row.notes ? ` · ${row.notes}` : ""}
+                          </div>
+                        </div>
+                        {!jobClosed && (
+                          <button
+                            type="button"
+                            onClick={() => { setEditingId(row.id); setEditForm(workSessionFormFromRow(row)); }}
+                            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-border px-1.5 text-[10px] font-semibold text-muted-foreground hover:bg-muted"
+                            aria-label={`Edit work session for ${row.componentLabel}`}
+                          >
+                            <Pencil className="h-3 w-3" /> Edit
+                          </button>
+                        )}
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function startOfScheduleWeek(date: Date): Date {
@@ -5525,7 +5900,7 @@ function JobCard({
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
-  paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged,
+  paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId,
 }: {
   job: Job;
   onEdit: (job: Job) => void;
@@ -5557,6 +5932,7 @@ function JobCard({
   paymentSummary?: JobFinancialSummary;
   paymentSummaryStatus?: "loading" | "ready" | "error";
   onPaymentSummaryChanged?: () => void;
+  businessId?: number;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -6090,6 +6466,12 @@ function JobCard({
                   )}
                 </div>
               )}
+              <ComponentWorkSessionsPanel
+                job={job}
+                businessId={businessId}
+                components={productionComponents}
+                subcontractorOptions={subcontractorOptions}
+              />
             </div>
           )}
           {(job.subcontractorNames?.length ?? 0) > 0 && (
@@ -9292,6 +9674,7 @@ export default function Jobs() {
                       profitData={profitMap.get(job.id) ?? null}
                       paymentSummary={jobFinancialSummaryMap.get(job.id)}
                       paymentSummaryStatus={jobFinancialSummaryStatus}
+                      businessId={activeBusiness?.id}
                       onPaymentSummaryChanged={refreshJobFinancialSummary}
                       onSendPaymentLink={handleGetPaymentLink}
                       onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
@@ -9341,6 +9724,7 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
                         paymentSummaryStatus={jobFinancialSummaryStatus}
+                        businessId={activeBusiness?.id}
                         onPaymentSummaryChanged={refreshJobFinancialSummary}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
@@ -9394,6 +9778,7 @@ export default function Jobs() {
                         profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
                         paymentSummaryStatus={jobFinancialSummaryStatus}
+                        businessId={activeBusiness?.id}
                         onPaymentSummaryChanged={refreshJobFinancialSummary}
                         onSendPaymentLink={handleGetPaymentLink}
                         onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}

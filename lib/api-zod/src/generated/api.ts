@@ -1392,6 +1392,171 @@ export const UpdateJobProductionComponentStatusResponse = zod.object({
 });
 
 /**
+ * @summary List raw component work sessions for a job
+ */
+export const ListJobComponentWorkSessionsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListJobComponentWorkSessionsQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const listJobComponentWorkSessionsResponseSessionsItemWorkDateRegExp =
+  new RegExp("^\\d{4}-\\d{2}-\\d{2}$");
+export const listJobComponentWorkSessionsResponseSessionsItemActualHoursRegExp =
+  new RegExp("^\\d+\\.\\d{2}$");
+export const listJobComponentWorkSessionsResponseTotalsByComponentRegExpOne =
+  new RegExp("^\\d+\\.\\d{2}$");
+
+export const ListJobComponentWorkSessionsResponse = zod.object({
+  sessions: zod.array(
+    zod.object({
+      id: zod.number(),
+      productionComponentId: zod.number(),
+      componentInstanceKey: zod.string(),
+      componentKey: zod.enum([
+        "interior_finish",
+        "siding",
+        "plumbing",
+        "skirting",
+        "custom",
+      ]),
+      componentLabel: zod.string(),
+      variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+      snapshotVersion: zod.number(),
+      workerName: zod.string(),
+      linkedSubcontractorId: zod.number().nullable(),
+      workDate: zod
+        .string()
+        .regex(listJobComponentWorkSessionsResponseSessionsItemWorkDateRegExp),
+      actualHours: zod
+        .string()
+        .regex(
+          listJobComponentWorkSessionsResponseSessionsItemActualHoursRegExp,
+        ),
+      notes: zod.string().nullable(),
+      createdAt: zod.date(),
+      updatedAt: zod.date(),
+    }),
+  ),
+  totalsByComponent: zod.record(
+    zod.string(),
+    zod
+      .string()
+      .regex(listJobComponentWorkSessionsResponseTotalsByComponentRegExpOne),
+  ),
+});
+
+/**
+ * @summary Record raw work for an approved job production component
+ */
+export const CreateJobComponentWorkSessionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateJobComponentWorkSessionQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const createJobComponentWorkSessionBodyWorkDateRegExp = new RegExp(
+  "^\\d{4}-\\d{2}-\\d{2}$",
+);
+export const createJobComponentWorkSessionBodyWorkerNameMax = 160;
+
+export const createJobComponentWorkSessionBodyActualHoursRegExp = new RegExp(
+  "^(?:0|[1-9]|1[0-9]|2[0-4])(?:\\.[0-9]{1,2})?$",
+);
+export const createJobComponentWorkSessionBodyNotesMax = 2000;
+
+export const CreateJobComponentWorkSessionBody = zod.object({
+  productionComponentId: zod.number(),
+  workDate: zod.string().regex(createJobComponentWorkSessionBodyWorkDateRegExp),
+  linkedSubcontractorId: zod.number().nullish(),
+  workerName: zod
+    .string()
+    .min(1)
+    .max(createJobComponentWorkSessionBodyWorkerNameMax)
+    .optional(),
+  actualHours: zod
+    .string()
+    .regex(createJobComponentWorkSessionBodyActualHoursRegExp),
+  notes: zod.string().max(createJobComponentWorkSessionBodyNotesMax).nullish(),
+});
+
+/**
+ * @summary Correct a raw component work session
+ */
+export const UpdateJobComponentWorkSessionParams = zod.object({
+  id: zod.coerce.number(),
+  sessionId: zod.coerce.number(),
+});
+
+export const UpdateJobComponentWorkSessionQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const updateJobComponentWorkSessionBodyWorkDateRegExp = new RegExp(
+  "^\\d{4}-\\d{2}-\\d{2}$",
+);
+export const updateJobComponentWorkSessionBodyWorkerNameMax = 160;
+
+export const updateJobComponentWorkSessionBodyActualHoursRegExp = new RegExp(
+  "^(?:0|[1-9]|1[0-9]|2[0-4])(?:\\.[0-9]{1,2})?$",
+);
+export const updateJobComponentWorkSessionBodyNotesMax = 2000;
+
+export const UpdateJobComponentWorkSessionBody = zod.object({
+  workDate: zod
+    .string()
+    .regex(updateJobComponentWorkSessionBodyWorkDateRegExp)
+    .optional(),
+  linkedSubcontractorId: zod.number().nullish(),
+  workerName: zod
+    .string()
+    .max(updateJobComponentWorkSessionBodyWorkerNameMax)
+    .nullish(),
+  actualHours: zod
+    .string()
+    .regex(updateJobComponentWorkSessionBodyActualHoursRegExp)
+    .optional(),
+  notes: zod.string().max(updateJobComponentWorkSessionBodyNotesMax).nullish(),
+});
+
+export const updateJobComponentWorkSessionResponseWorkDateRegExp = new RegExp(
+  "^\\d{4}-\\d{2}-\\d{2}$",
+);
+export const updateJobComponentWorkSessionResponseActualHoursRegExp =
+  new RegExp("^\\d+\\.\\d{2}$");
+
+export const UpdateJobComponentWorkSessionResponse = zod.object({
+  id: zod.number(),
+  productionComponentId: zod.number(),
+  componentInstanceKey: zod.string(),
+  componentKey: zod.enum([
+    "interior_finish",
+    "siding",
+    "plumbing",
+    "skirting",
+    "custom",
+  ]),
+  componentLabel: zod.string(),
+  variant: zod.enum(["vog", "hybrid", "drywall"]).nullable(),
+  snapshotVersion: zod.number(),
+  workerName: zod.string(),
+  linkedSubcontractorId: zod.number().nullable(),
+  workDate: zod
+    .string()
+    .regex(updateJobComponentWorkSessionResponseWorkDateRegExp),
+  actualHours: zod
+    .string()
+    .regex(updateJobComponentWorkSessionResponseActualHoursRegExp),
+  notes: zod.string().nullable(),
+  createdAt: zod.date(),
+  updatedAt: zod.date(),
+});
+
+/**
  * @summary Get canonical profit calculations for multiple jobs
  */
 export const GetJobsProfitSummaryQueryParams = zod.object({

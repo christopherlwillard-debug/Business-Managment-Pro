@@ -46,6 +46,25 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 - Added authenticated API, UI, focused API coverage, and browser verification for
   Today and specific-date starts and the scheduling-only write boundary.
 
+### Production Intelligence Phase 5: component work sessions
+
+- Added the Jobs-owned `job_component_work_sessions` operational evidence table,
+  including exact component-snapshot references, work dates, worker identity,
+  decimal actual hours, optional notes, and database hour bounds.
+- Added business-scoped list, create, and correction endpoints. New rows require
+  a current applicable component; historical/superseded snapshots remain readable
+  for corrections, while closed jobs reject writes.
+- Added assigned-subcontractor and outside-worker entry modes plus exact-hour
+  totals, history, correction UI, and explicit loading/error/closed-job states
+  beneath the existing Jobs production-component section.
+- Kept work-session writes separate from payroll, expenses, profit, invoices,
+  mileage, checklists, presence, and Knowledge Center learning. Shared job-row
+  locking serializes work-session and component-snapshot mutations.
+- Added focused API coverage for multiple same-day workers/components, exact
+  totals, worker-link corrections, business isolation, decimal validation, and
+  closed-job protection. Development schema, full API tests, app build, and
+  browser release verifiers were verified.
+
 ## 2026-09-10
 
 ### Production Intelligence Phase 2: persistent daily presence

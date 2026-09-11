@@ -202,6 +202,16 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Source of truth:** `jobs.mh_production_services` remains the selected-service source; `job_production_components` owns versioned component context and independent component status.
 - **Rule:** The classifier exposes only Interior Finish (VOG/Hybrid/Drywall), Siding, Plumbing, Skirting, and Custom. Service-only and travel-surcharge catalog rows are excluded. Historical snapshots are superseded rather than rewritten.
 
+## Production Intelligence / Component Work Sessions
+
+- **Table:** `job_component_work_sessions`
+- **Schema:** `lib/db/src/schema/job-component-work-sessions.ts`
+- **API:** `artifacts/api-server/src/routes/jobs.ts` (`/:id/component-work-sessions` and `/:id/component-work-sessions/:sessionId`)
+- **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → Component work sessions beneath Production components
+- **Reports:** None; sessions are raw operational evidence only.
+- **Source of truth:** `job_component_work_sessions` owns job/component snapshot/work-date/worker/actual-hours/notes records. Each row references the exact `job_production_components` snapshot used at creation.
+- **Rule:** Sessions require a current, applicable component on create, allow assigned subcontractors or explicitly named outside workers, support corrections without deletion, and never create or update payroll, expenses, profit, invoices, mileage, checklists, presence, or Knowledge Center learning. Closed jobs are read-only.
+
 ---
 
 ## Clients / Customers
