@@ -32,6 +32,20 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
   before reading versions, preventing concurrent writers from producing conflicting
   current rows. Focused concurrent API coverage verifies deterministic versioning.
 
+### Production Intelligence Phase 4.1: ready-to-start scheduling
+
+- Added a separate Ready to Start queue for jobs without a definite start date,
+  including production-component summaries and active dependency details.
+- Starting a job is limited to writing its requested `startDate` and scheduled
+  `planningState`; it does not create presence, clear blockers, reschedule
+  checklists, or touch financial, payroll, expense, mileage, invoice, profit, or
+  learning data.
+- Waiting and actively blocked jobs remain ineligible for starting. Queue order is
+  deterministic and server-owned: explicit `queuePosition`, then `createdAt`,
+  then `id`, with ranks preserved across ready and waiting groups.
+- Added authenticated API, UI, focused API coverage, and browser verification for
+  Today and specific-date starts and the scheduling-only write boundary.
+
 ## 2026-09-10
 
 ### Production Intelligence Phase 2: persistent daily presence
