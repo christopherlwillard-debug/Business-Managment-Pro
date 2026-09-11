@@ -182,13 +182,22 @@ async function createFixture(): Promise<Fixture> {
 
     await db.insert(jobDailyPresenceTable).values([
       ...jobs.slice(0, 3).flatMap((job, index) => {
-        const dates = index === 0
-          ? ["2025-01-13", "2025-01-11", "2025-01-12"]
-          : [`2025-01-1${index + 1}`];
-        return dates.map((date) => ({
+        const records = index === 0
+          ? [
+              { date: "2025-01-13", state: "here" },
+              { date: "2025-01-11", state: "here" },
+              { date: "2025-01-12", state: "here" },
+            ]
+          : index === 1
+            ? [
+                { date: "2025-01-15", state: "here" },
+                { date: "2025-01-13", state: "not_here", notHereReason: "weather", notes: "Second job weather note" },
+                { date: "2025-01-14", state: "here" },
+              ]
+            : [{ date: "2025-01-13", state: "here" }];
+        return records.map((record) => ({
           jobId: job.id,
-          date,
-          state: "here",
+          ...record,
           source: "manual_presence",
           provenance: "confirmed",
         }));
@@ -352,6 +361,42 @@ async function main() {
       orderedEligibleEvidence.includes("Job 1")
         && orderedEligibleEvidence.includes("Confirmed here: 01/11/2025, 01/12/2025, 01/13/2025")
         && !orderedEligibleEvidence.includes("Not included"),
+    );
+    const observations = await page.evaluate(async (modelId) => {
+      const response = await fetch(`/api/mfh/knowledge-base/${modelId}/production-observations`);
+      if (!response.ok) throw new Error(`Observation request failed with ${response.status}`);
+      return response.json();
+    }, fixture.modelId);
+    const observationsByJobId = new Map<number, {
+      presence: Array<{
+        date: string;
+        state: string;
+        provenance: string;
+        notHereReason: string | null;
+        notes: string | null;
+      }>;
+    }>(observations.jobs.map((job: {
+      id: number;
+      presence: Array<{
+        date: string;
+        state: string;
+        provenance: string;
+        notHereReason: string | null;
+        notes: string | null;
+      }>;
+    }) => [job.id, job]));
+    const firstEligibleObservation = observationsByJobId.get(fixture.jobIds[0]);
+    const secondEligibleObservation = observationsByJobId.get(fixture.jobIds[1]);
+    recordResult(
+      "Observation route orders each job independently and preserves metadata",
+      JSON.stringify(firstEligibleObservation?.presence.map(record => record.date))
+        === JSON.stringify(["2025-01-11", "2025-01-12", "2025-01-13"])
+        && JSON.stringify(secondEligibleObservation?.presence.map(record => record.date))
+        === JSON.stringify(["2025-01-13", "2025-01-14", "2025-01-15"])
+        && secondEligibleObservation?.presence[0]?.state === "not_here"
+        && secondEligibleObservation.presence[0].provenance === "confirmed"
+        && secondEligibleObservation.presence[0].notHereReason === "weather"
+        && secondEligibleObservation.presence[0].notes === "Second job weather note",
     );
     const excludedEvidence = await page.$eval(
       `#mfh-evidence-job-${fixture.excludedJobId}`,
