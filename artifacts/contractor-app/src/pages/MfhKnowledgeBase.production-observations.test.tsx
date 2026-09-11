@@ -132,6 +132,26 @@ describe("ProductionObservationCard response states", () => {
       .toBe("Open job details for Oak Ridge 28x76");
   });
 
+  it("shows confirmed production dates in chronological order", async () => {
+    h.observations.data = {
+      ...populated,
+      jobs: [{
+        ...populated.jobs[0],
+        presence: [
+          { date: "2026-09-10", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+          { date: "2026-09-08", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+          { date: "2026-09-09", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+        ],
+      }],
+    };
+    await renderCard();
+    await act(async () => button("Why this observation?").click());
+
+    expect(host.querySelector("#mfh-evidence-job-101")?.textContent).toContain(
+      "Confirmed here: 09/08/2026, 09/09/2026, 09/10/2026",
+    );
+  });
+
   it("reveals benchmark history details and jumps to linked source evidence", async () => {
     h.observations.data = populated;
     h.reviews.data = [{

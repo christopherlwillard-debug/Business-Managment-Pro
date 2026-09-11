@@ -511,9 +511,14 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                             : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.customProfile?.name ?? service.name).join(", ")}`}
                         </p>
                         {!job.exclusionReason && (
-                          <p className="text-[10px] text-muted-foreground">
-                            {job.explicitPauseDays} pause · {job.unrecordedDays} missing evidence · {job.calendarSpanDays} calendar days
-                          </p>
+                          <>
+                            <p className="text-[10px] text-muted-foreground">
+                              <span className="font-semibold text-foreground">Confirmed here:</span> {dateList(confirmedHereDates)}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {job.explicitPauseDays} pause · {job.unrecordedDays} missing evidence · {job.calendarSpanDays} calendar days
+                            </p>
+                          </>
                         )}
                         {job.exclusionReason && (
                           <div className="mt-2 border-t border-amber-200/70 pt-2 space-y-1.5">

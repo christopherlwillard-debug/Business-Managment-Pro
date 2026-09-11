@@ -348,7 +348,7 @@ async function main() {
       element => element.textContent ?? "",
     );
     recordResult(
-      `Eligible evidence shows confirmed production days chronologically — ${orderedEligibleEvidence}`,
+      "Eligible evidence shows confirmed production days chronologically",
       orderedEligibleEvidence.includes("Job 1")
         && orderedEligibleEvidence.includes("Confirmed here: 01/11/2025, 01/12/2025, 01/13/2025")
         && !orderedEligibleEvidence.includes("Not included"),
