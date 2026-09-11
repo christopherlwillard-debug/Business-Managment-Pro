@@ -602,6 +602,26 @@ async function main() {
         && scopedSecondJob.presence[0].notHereReason === "weather"
         && scopedSecondJob.presence[0].notes === "Second job weather note",
     );
+    const invalidBusinessResponses = await page.evaluate(async (modelId) => {
+      const selectors = [
+        `businessId=2147483647`,
+        `businessLine=e2e_unknown_business_scope`,
+      ];
+      return Promise.all(selectors.map(async selector => {
+        const response = await fetch(`/api/mfh/knowledge-base/${modelId}/production-observations?${selector}`);
+        const body = await response.json();
+        return { status: response.status, body };
+      }));
+    }, fixture.modelId);
+    recordResult(
+      `Unknown business scopes are rejected without leaking observations — ${JSON.stringify(invalidBusinessResponses)}`,
+      invalidBusinessResponses.length === 2
+        && invalidBusinessResponses.every(({ status, body }) =>
+          status === 400
+          && body?.error === "Unknown business"
+          && !Object.prototype.hasOwnProperty.call(body, "jobs"),
+        ),
+    );
     await page.screenshot({ path: `${SHOTS}/01-review-panel.png`, fullPage: true });
 
     await clickButton(page, "Review baseline");
