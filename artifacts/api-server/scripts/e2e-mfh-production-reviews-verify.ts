@@ -199,13 +199,22 @@ async function createFixture(): Promise<Fixture> {
       {
         jobId: jobs[3].id,
         date: "2025-01-22",
-        state: "unrecorded",
+        state: "not_here",
+        notHereReason: "customer_delay",
+        notes: "Customer requested a later start",
         source: "manual_presence",
         provenance: "confirmed",
       },
       {
         jobId: jobs[3].id,
         date: "2025-01-23",
+        state: "unrecorded",
+        source: "manual_presence",
+        provenance: "confirmed",
+      },
+      {
+        jobId: jobs[3].id,
+        date: "2025-01-24",
         state: "here",
         source: "job_schedule",
         provenance: "inferred",
@@ -342,8 +351,11 @@ async function main() {
     );
     recordResult(
       "Excluded evidence does not promote inferred or unrecorded rows",
-      !excludedEvidence.includes("01/22/2025")
+      excludedEvidence.includes("01/22/2025")
+        && excludedEvidence.includes("Customer Delay")
+        && excludedEvidence.includes("Customer requested a later start")
         && !excludedEvidence.includes("01/23/2025")
+        && !excludedEvidence.includes("01/24/2025")
         && excludedEvidence.includes("Unrecorded or inferred rows are not treated as here or not here"),
     );
     const noPresenceEvidence = await page.$eval(
@@ -428,9 +440,14 @@ async function main() {
         && narrowEvidence.linkWidth > 0
         && narrowEvidence.linkHeight > 0
         && narrowEvidence.linkHref === `/jobs?openJob=${fixture.excludedJobId}`
-        && narrowEvidence.text.includes("01/21/2025")
+        && narrowEvidence.text.indexOf("01/21/2025") >= 0
+        && narrowEvidence.text.indexOf("01/22/2025") > narrowEvidence.text.indexOf("01/21/2025")
         && narrowEvidence.text.includes("Weather")
         && narrowEvidence.text.includes("Rain delay before the first workday")
+        && narrowEvidence.text.includes("Customer Delay")
+        && narrowEvidence.text.includes("Customer requested a later start")
+        && !narrowEvidence.text.includes("01/23/2025")
+        && !narrowEvidence.text.includes("01/24/2025")
         && narrowEvidence.text.includes("No confirmed here record was recorded"),
       JSON.stringify(narrowEvidence),
     );
