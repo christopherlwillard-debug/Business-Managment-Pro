@@ -88,9 +88,6 @@ presence days are never copied to every component.
 
 The existing job-level semantics remain unchanged:
 
-- **Expected production days:** the expected duration value from the relevant
-  persisted component snapshot, shown as a snapshot-derived expectation rather
-  than a newly recalculated value.
 - **Actual production days:** distinct confirmed `here` dates from Phase 2.
 - **Calendar span:** inclusive days from the first confirmed `here` date through
   the last confirmed `here` date.
@@ -100,12 +97,17 @@ The existing job-level semantics remain unchanged:
 Scheduled/planned dates are context only. They never become actual production
 days.
 
+Phase 6 does not introduce a new whole-job expected-day value. Expected-versus-
+actual comparison is component-level, where the expected value has an
+unambiguous snapshot owner.
+
 ### Component-level measures
 
 For each component snapshot:
 
-- **Expected component days:** `expectedDurationDays` from that immutable
-  snapshot.
+- **Expected component days:** integer `expectedDurationDays` from that
+  immutable snapshot. A missing value makes that component evidence
+  ineligible, not zero days.
 - **Actual component work days:** distinct Phase 5 session `workDate` values
   for that exact snapshot.
 - **Expected-versus-actual delta:** actual component work days minus expected
@@ -115,12 +117,36 @@ For each component snapshot:
   remain visible alongside the component evidence; they are not substituted for
   component work days.
 
+The authoritative join is:
+
+`job_component_work_sessions.production_component_id =
+job_production_components.id`, with both rows also required to have the same
+`job_id`. A session that fails the job match is excluded and reported as a
+relationship conflict. The database foreign key prevents a missing snapshot
+reference; a missing snapshot returned by a defensive read is also excluded
+and reported rather than joined by component name or service ID.
+
 If a session date falls on a confirmed `not_here` date, that date is treated as
 a conflict: it is excluded from the component learning aggregate and surfaced
 in the evidence row. A session date with no presence row may count as component
 work evidence, but the absence of presence remains visible as unrecorded
 context. This preserves both raw evidence sources without silently converting a
 pause into work.
+
+Multiple session rows for the same component snapshot and date count as one
+actual work day, regardless of worker count or notes. Multiple snapshots for
+the same component learning key within one job are normalized into one
+job-level component observation:
+
+- union and deduplicate valid session dates across the snapshots
+- retain every snapshot ID/version as nested evidence
+- use the shared expected-day value when all eligible snapshots agree
+- if eligible snapshots disagree on expected days, exclude that job from the
+  aggregate with `conflicting_snapshot_expectations`, while retaining the
+  conflicting evidence for review
+
+This makes the aggregate one observation per job and learning key, so a job
+cannot be overweighted by snapshot history.
 
 Component work days are distinct dates, not summed hours. Phase 5 actual hours
 remain operational evidence only and are not converted into labor-hour
@@ -139,10 +165,15 @@ Every component evidence row carries:
 - session-derived actual work-day value
 
 Knowledge Center changes must not reinterpret old jobs. For Custom, Phase 6
-will extend component snapshot context so newly synchronized snapshots capture
-the named profile ID/key/name and source service IDs. Existing Custom snapshots
-without that immutable profile context remain ineligible rather than being
-reclassified from the current mapping.
+will extend the existing snapshot synchronization path so newly synchronized
+snapshots capture the named profile ID/key/name and mapped source service IDs
+inside the existing `knowledgeContext` JSONB. No new column or migration is
+needed. The profile metadata participates in the snapshot fingerprint, so a
+changed mapping creates a new snapshot rather than rewriting the old one.
+Existing Custom snapshots without that immutable profile context remain
+ineligible rather than being reclassified from the current mapping. Snapshots
+written outside the synchronization path are handled the same way: missing
+profile context means missing Custom evidence, not a current-mapping fallback.
 
 Superseded snapshots remain readable through their existing history and remain
 valid references for Phase 5 sessions. Current-component status changes and
@@ -154,16 +185,32 @@ Keep the existing endpoint and all existing fields backward compatible:
 
 `GET /mfh/knowledge-base/:modelId/production-observations`
 
-Extend the response with a component-observation collection under the existing
-observation payload. Each aggregate includes:
+Extend the response with `observed.componentObservations` under the existing
+observation payload. Each aggregate is grouped by a stable learning key:
 
-- component identity and custom-profile identity when applicable
-- eligible count, minimum sample size, and sufficiency
+- `interior_finish:vog`, `interior_finish:hybrid`, or
+  `interior_finish:drywall`
+- `siding`, `plumbing`, or `skirting`
+- `custom:<profileKey>` for a named Custom profile
+
+Each aggregate includes:
+
+- component identity, stable learning key, and custom-profile identity when
+  applicable
+- `eligibleJobCount`, `minimumJobsRequired`, and `sufficient`; the count is
+  distinct eligible job IDs for that learning key, not session rows or
+  snapshot rows
 - expected production-day median/range
 - actual component-work-day median/range
 - expected-versus-actual delta median/range
 - paused and unrecorded context totals
-- evidence jobs with snapshot/version IDs and exclusion/conflict reasons
+- evidence jobs with job IDs, exact snapshot IDs/versions, captured expected
+  days, actual work-day values, nested snapshot evidence, and
+  exclusion/conflict reasons
+
+Expected days, actual days, and deltas are integers per evidence row. Aggregate
+medians may be `.5` when an even sample produces a midpoint; no rounding is
+performed before aggregation. Ranges retain integer endpoints.
 
 The existing model-level `productionDaysMedian`, calendar-span values, service
 scope counts, job evidence, and benchmark review routes remain unchanged.
