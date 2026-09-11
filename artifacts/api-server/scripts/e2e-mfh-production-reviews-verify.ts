@@ -474,10 +474,20 @@ async function main() {
     );
     await clickButton(page, "Create pending review");
     const firstResponse = await createFirstResponse;
-    const firstReview = await firstResponse.json() as { id: number };
+    const firstReview = await firstResponse.json() as { id: number; sourceJobIds: number[] };
+    const eligibleSourceJobIds = fixture.jobIds.filter(
+      jobId => jobId !== fixture.excludedJobId && jobId !== fixture.noPresenceJobId,
+    );
     recordResult(
       "Sufficient evidence creates a pending review",
       firstResponse.status() === 201 && Number.isInteger(firstReview.id),
+    );
+    recordResult(
+      "Pending review sources include only eligible jobs",
+      JSON.stringify(firstReview.sourceJobIds) === JSON.stringify(eligibleSourceJobIds)
+        && !firstReview.sourceJobIds.includes(fixture.excludedJobId)
+        && !firstReview.sourceJobIds.includes(fixture.noPresenceJobId),
+      `sourceJobIds=${JSON.stringify(firstReview.sourceJobIds)}`,
     );
     await waitForText(page, "Pending approval: 26.0 hours");
 
@@ -491,6 +501,31 @@ async function main() {
       "Rejecting a review leaves the active benchmark unchanged",
       rejected.status() === 200
         && await page.$eval("body", body => body.innerText.includes("Existing benchmark: 10.0 hours")),
+    );
+    await clickButton(page, "Rejected 26.0 hours · 3 jobs");
+    const rejectedSourceLabels = await page.$$eval(
+      'button[title="Show this job in production evidence"]',
+      buttons => buttons.map(button => button.textContent?.trim() ?? ""),
+    );
+    recordResult(
+      "Review history links only eligible source jobs",
+      rejectedSourceLabels.length === eligibleSourceJobIds.length
+        && eligibleSourceJobIds.every(jobId => rejectedSourceLabels.some(label => label.startsWith(`Job #${jobId} ·`)))
+        && !rejectedSourceLabels.some(label => label.startsWith(`Job #${fixture.excludedJobId} ·`))
+        && !rejectedSourceLabels.some(label => label.startsWith(`Job #${fixture.noPresenceJobId} ·`)),
+      JSON.stringify(rejectedSourceLabels),
+    );
+    recordResult(
+      "No-presence job remains traceable as evidence only",
+      await page.$eval(
+        `#mfh-evidence-job-${fixture.noPresenceJobId}`,
+        element => element.textContent?.includes("No Presence Job") ?? false,
+      )
+        && await page.$eval(
+          `#mfh-evidence-job-${fixture.noPresenceJobId}`,
+          element => (element.closest("a") as HTMLAnchorElement | null)?.getAttribute("href") ?? "",
+        ) === `/jobs?openJob=${fixture.noPresenceJobId}`,
+      `source link=/jobs?openJob=${fixture.noPresenceJobId}`,
     );
 
     await clickButton(page, "Review baseline");
