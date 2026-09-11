@@ -60,6 +60,26 @@ export interface MfhProductionObservationSummary {
   jobs: MfhProductionObservationJob[];
 }
 
+export interface MfhProductionBenchmarkReview {
+  id: number;
+  benchmarkId: number;
+  mfhModelId: number;
+  priorBenchmarkHours: number | null;
+  proposedBenchmarkHours: number;
+  observedProductionDaysMedian: number;
+  observedProductionDaysRange: { min: number; max: number };
+  sampleSize: number;
+  sourceJobIds: number[];
+  status: "pending" | "approved" | "rejected";
+  reviewerNote: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  reviewedByUserId: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+}
+
 export interface LaborEntry {
   id: number;
   jobId: number;
@@ -467,6 +487,73 @@ export function useMfhProductionObservations(modelId: number | null, businessId?
       { method: "GET" },
     ),
     enabled: modelId != null,
+  });
+}
+
+export function useMfhProductionBenchmarkReviews(modelId: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ["/api/mfh/knowledge-base", modelId, "production-reviews"],
+    queryFn: () => customFetch<MfhProductionBenchmarkReview[]>(
+      `/api/mfh/knowledge-base/${modelId}/production-reviews`,
+      { method: "GET" },
+    ),
+    enabled: modelId != null && enabled,
+  });
+}
+
+export function useCreateMfhProductionBenchmarkReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { modelId: number; proposedBenchmarkHours: number; reviewerNote?: string | null }) =>
+      customFetch<MfhProductionBenchmarkReview>(
+        `/api/mfh/knowledge-base/${data.modelId}/production-reviews`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            proposedBenchmarkHours: data.proposedBenchmarkHours,
+            reviewerNote: data.reviewerNote ?? null,
+          }),
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-reviews"] });
+    },
+  });
+}
+
+export function useApproveMfhProductionBenchmarkReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { modelId: number; revisionId: number }) =>
+      customFetch<MfhProductionBenchmarkReview>(
+        `/api/mfh/knowledge-base/${data.modelId}/production-reviews/${data.revisionId}/approve`,
+        { method: "PATCH", body: JSON.stringify({}), headers: { "Content-Type": "application/json" } },
+      ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-reviews"] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-observations"] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
+    },
+  });
+}
+
+export function useRejectMfhProductionBenchmarkReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { modelId: number; revisionId: number; reviewerNote?: string | null }) =>
+      customFetch<MfhProductionBenchmarkReview>(
+        `/api/mfh/knowledge-base/${data.modelId}/production-reviews/${data.revisionId}/reject`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ reviewerNote: data.reviewerNote ?? null }),
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-reviews"] });
+    },
   });
 }
 
