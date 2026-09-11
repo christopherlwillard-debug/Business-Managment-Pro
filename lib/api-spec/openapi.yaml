@@ -362,6 +362,27 @@ paths:
                 items:
                   $ref: "#/components/schemas/ProductionComponent"
 
+  /jobs/{id}/production-components/history:
+    get:
+      operationId: getJobProductionComponentHistory
+      tags: [jobs]
+      summary: Get current and superseded job-specific production component snapshots
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Production component snapshot history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductionComponent"
+
   /jobs/{id}/production-components/status:
     patch:
       operationId: updateJobProductionComponentStatus
@@ -2180,6 +2201,7 @@ components:
         pricingContext: { type: object, nullable: true, additionalProperties: true }
         knowledgeContext: { type: object, nullable: true, additionalProperties: true }
         capturedAt: { type: string, nullable: true }
+        supersededAt: { type: string, nullable: true }
         persisted: { type: boolean }
       required:
         - id
@@ -2201,6 +2223,7 @@ components:
         - pricingContext
         - knowledgeContext
         - capturedAt
+        - supersededAt
         - persisted
 
     UpdateProductionComponentStatusRequest:

@@ -28,6 +28,7 @@ import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
 import {
   getJobProductionComponents,
+  getJobProductionComponentHistory,
   isProductionComponentStatus,
   setJobProductionComponentStatus,
   syncJobProductionComponents,
@@ -787,6 +788,19 @@ router.get("/:id/production-components", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch production components" });
+  }
+});
+
+router.get("/:id/production-components/history", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.json(await getJobProductionComponentHistory(job));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch production component history" });
   }
 });
 
