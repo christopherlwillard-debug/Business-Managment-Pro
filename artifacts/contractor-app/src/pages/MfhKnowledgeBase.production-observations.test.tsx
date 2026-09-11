@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({
   },
   reviews: { data: [] as any[] },
   toast: vi.fn(),
-  activeBusiness: null as { id: number } | null,
+  activeBusiness: null as { id: number; name: string } | null,
 }));
 
 vi.mock("@workspace/api-client-react", () => ({
@@ -121,6 +121,7 @@ describe("ProductionObservationCard response states", () => {
     expect(text()).toContain("Learned production days");
     expect(text()).toContain("2.0");
     expect(text()).toContain("Existing benchmark: 24.0 hours");
+    expect(text()).toContain("Scope: All businesses");
     expect(text()).not.toContain("Oak Ridge 28x76");
 
     await act(async () => button("Why this observation?").click());
@@ -243,10 +244,11 @@ describe("ProductionObservationCard response states", () => {
   });
 
   it("keeps business-scoped history read-only and does not show global review controls", async () => {
-    h.activeBusiness = { id: 42 };
+    h.activeBusiness = { id: 42, name: "Asphalt Sealing" };
     h.observations.data = populated;
     await renderCard();
 
+    expect(text()).toContain("Scope: Asphalt Sealing");
     expect(text()).toContain("Benchmark review is available from the all-business view only");
     expect(text()).not.toContain("Review baseline");
   });

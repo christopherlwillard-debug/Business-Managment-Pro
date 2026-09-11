@@ -197,6 +197,9 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
           <div>
             <p className="font-semibold text-foreground text-sm">Observed Production History</p>
             <p className="text-xs text-muted-foreground mt-0.5">Read-only observations from completed production jobs</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              <span className="font-semibold text-foreground">Scope:</span> {activeBusiness?.name ?? "All businesses"}
+            </p>
           </div>
         </div>
         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap">
