@@ -1,11 +1,13 @@
 export type ObservationPresenceState = "unrecorded" | "here" | "not_here";
 
 export type ObservationPresenceRecord = {
+  id?: number;
   date: string;
   state: ObservationPresenceState;
   provenance: string;
   notHereReason: string | null;
   notes: string | null;
+  updatedAt?: string | null;
 };
 
 export type ObservationServiceScope = {

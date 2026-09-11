@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import express from "express";
+import { buildProductionObservationResponse } from "../lib/production-observations";
+import { buildComponentBaselineEvidence } from "../lib/component-baselines";
 
 const h = vi.hoisted(() => ({
   selectQueue: [] as any[][],
@@ -54,6 +56,7 @@ vi.mock("@workspace/db", () => {
       }),
       transaction: async (callback: (tx: any) => Promise<unknown>) => callback({
         select: () => selectChain(),
+        execute: () => Promise.resolve([]),
         update: () => ({
           set: (payload: any) => {
             h.updatePayloads.push(payload);
@@ -171,6 +174,100 @@ function queueCustomObservation({
   services?: any[];
 }) {
   h.selectQueue.push([model], observationJobs, services, profiles, presence, []);
+}
+
+function componentBaselineFixture() {
+  const observationJobs = Array.from({ length: 5 }, (_, index) => {
+    const id = index + 1;
+    return {
+      ...jobs[0],
+      id,
+      title: `Component production job ${id}`,
+      businessId: 1,
+      mhProductionServices: [101],
+      serviceScopes: [{ id: 101, name: "Interior Finish" }],
+      presence: [{
+        date: `2026-09-0${id}`,
+        state: "here" as const,
+        provenance: "confirmed",
+        notHereReason: null,
+        notes: null,
+      }],
+      components: [{
+        id: 500 + id,
+        jobId: id,
+        componentKey: "interior_finish",
+        componentInstanceKey: "interior_finish:vog",
+        componentLabel: "Interior Finish",
+        variant: "vog",
+        snapshotVersion: 2,
+        status: "completed",
+        expectedDurationDays: 2,
+        knowledgeContext: null,
+      }],
+      workSessions: [{
+        id: 700 + id,
+        jobId: id,
+        productionComponentId: 500 + id,
+        workDate: `2026-09-0${id}`,
+      }],
+    };
+  });
+  const summary = buildProductionObservationResponse(
+    7,
+    observationJobs,
+    { id: 11, jobType: "MFH Trim-Out", estimatedHours: 24 },
+  );
+  const evidence = buildComponentBaselineEvidence(summary, 1, "interior_finish:vog");
+  if (!evidence) throw new Error("fixture did not produce component evidence");
+  const revision = {
+    id: 31,
+    businessId: 1,
+    mfhModelId: 7,
+    learningKey: "interior_finish:vog",
+    componentKey: "interior_finish",
+    componentLabel: "Interior Finish",
+    variant: "vog",
+    customProfile: null,
+    priorApprovedRevisionId: null,
+    priorApprovedProductionDays: null,
+    proposedProductionDays: "1.00",
+    observedActualProductionDaysMedian: "1.00",
+    observedActualProductionDaysMin: "1.00",
+    observedActualProductionDaysMax: "1.00",
+    observedExpectedProductionDaysMedian: "2.00",
+    observedExpectedProductionDaysMin: "2.00",
+    observedExpectedProductionDaysMax: "2.00",
+    sampleSize: 5,
+    sourceJobIds: evidence.sourceJobIds,
+    sourceEvidence: evidence.evidence,
+    sourceEvidenceHash: evidence.sourceEvidenceHash,
+    status: "pending",
+    reviewerNote: null,
+    createdByUserId: "user_1",
+    createdByName: "Test Reviewer",
+    createdAt: new Date("2026-09-10T12:00:00Z"),
+    reviewedByUserId: null,
+    reviewedByName: null,
+    reviewedAt: null,
+    supersededByUserId: null,
+    supersededByName: null,
+    supersededAt: null,
+  };
+  return { observationJobs, evidence, revision };
+}
+
+function queueComponentObservation(fixture: ReturnType<typeof componentBaselineFixture>) {
+  const { observationJobs } = fixture;
+  h.selectQueue.push(
+    [model],
+    observationJobs.map(({ presence: _presence, components: _components, workSessions: _sessions, ...job }) => job),
+    [{ id: 101, name: "Interior Finish", itemKey: "interior_finish", appliesTo: "production", businessId: null }],
+    [],
+    observationJobs.flatMap((job) => job.presence.map((row) => ({ jobId: job.id, ...row }))),
+    observationJobs.flatMap((job) => job.components),
+    observationJobs.flatMap((job) => job.workSessions),
+  );
 }
 
 describe("production benchmark reviews", () => {
@@ -349,5 +446,107 @@ describe("production benchmark reviews", () => {
     expect(response.status).toBe(409);
     expect(response.body.error).toMatch(/changed/i);
     expect(h.updatePayloads).toHaveLength(0);
+  });
+
+  it("requires a concrete business scope for component baseline review history", async () => {
+    const response = await request(app)
+      .get("/mfh/knowledge-base/7/component-baseline-reviews");
+
+    expect(response.status).toBe(400);
+    expect(h.consumedSlots).toBe(0);
+  });
+
+  it("creates a component baseline review only after five eligible jobs", async () => {
+    h.scope = { id: 1, slug: "general_contracting" };
+    const fixture = componentBaselineFixture();
+    queueComponentObservation(fixture);
+    h.selectQueue.push([]);
+    h.insertResult = [fixture.revision];
+
+    const response = await request(app)
+      .post("/mfh/knowledge-base/7/component-baseline-reviews")
+      .query({ businessId: 1 })
+      .send({
+        learningKey: "interior_finish:vog",
+        proposedProductionDays: 1,
+        reviewerNote: "Stable five-job sample.",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      businessId: 1,
+      learningKey: "interior_finish:vog",
+      sampleSize: 5,
+      sourceJobIds: [1, 2, 3, 4, 5],
+      status: "pending",
+    });
+    expect(response.body.sourceEvidence.jobs[0].snapshotEvidence[0]).toMatchObject({
+      snapshotId: 501,
+      snapshotVersion: 2,
+    });
+  });
+
+  it("rejects a component baseline without changing any active baseline", async () => {
+    h.scope = { id: 1, slug: "general_contracting" };
+    const fixture = componentBaselineFixture();
+    h.selectQueue.push([{ ...fixture.revision }]);
+    h.updateResults = [[{ ...fixture.revision, status: "rejected", reviewerNote: "Needs another review." }]];
+
+    const response = await request(app)
+      .patch("/mfh/knowledge-base/7/component-baseline-reviews/31/reject")
+      .query({ businessId: 1 })
+      .send({ reviewerNote: "Needs another review." });
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("rejected");
+    expect(h.updatePayloads).toEqual([
+      expect.objectContaining({ status: "rejected", reviewerNote: "Needs another review." }),
+    ]);
+  });
+
+  it("blocks component approval when source evidence is stale", async () => {
+    h.scope = { id: 1, slug: "general_contracting" };
+    const fixture = componentBaselineFixture();
+    const staleRevision = { ...fixture.revision, sourceEvidenceHash: "stale-hash" };
+    h.selectQueue.push([{ id: 31, learningKey: staleRevision.learningKey }], [staleRevision]);
+    queueComponentObservation(fixture);
+
+    const response = await request(app)
+      .patch("/mfh/knowledge-base/7/component-baseline-reviews/31/approve")
+      .query({ businessId: 1 })
+      .send({});
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatch(/source evidence changed/i);
+    expect(h.updatePayloads).toHaveLength(0);
+  });
+
+  it("supersedes the prior approved component baseline during approval", async () => {
+    h.scope = { id: 1, slug: "general_contracting" };
+    const fixture = componentBaselineFixture();
+    const revision = {
+      ...fixture.revision,
+      priorApprovedRevisionId: 30,
+      priorApprovedProductionDays: "1.50",
+    };
+    h.selectQueue.push([{ id: 31, learningKey: revision.learningKey }], [revision]);
+    queueComponentObservation(fixture);
+    h.selectQueue.push([{ id: 30, proposedProductionDays: "1.50" }]);
+    h.updateResults = [
+      [],
+      [{ ...revision, status: "approved", reviewedByName: "Test Reviewer" }],
+    ];
+
+    const response = await request(app)
+      .patch("/mfh/knowledge-base/7/component-baseline-reviews/31/approve")
+      .query({ businessId: 1 })
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("approved");
+    expect(h.updatePayloads).toEqual([
+      expect.objectContaining({ status: "superseded", supersededByUserId: "user_1" }),
+      expect.objectContaining({ status: "approved", reviewedByUserId: "user_1" }),
+    ]);
   });
 });

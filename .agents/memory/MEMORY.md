@@ -73,5 +73,5 @@
 - [Job-profit response contract](job-profit-response-contract.md) — canonical profit responses carry a version; clients must reject missing or stale markers instead of rendering old arithmetic
 - [Client business scope](client-business-scope.md) — client list/profile reads use canonical business_id with business_line fallback; related owned rows stay scoped
 - [Production intelligence boundaries](production-intelligence-boundaries.md) — Scheduling owns presence/history; Knowledge Center learns from it; Willard has five production components and Service stays separate
-- [Production learning boundaries](production-learning-phase3.md) — read-only model/component observations use confirmed presence plus exact snapshot/work-session evidence; no automatic benchmark or labor-hour learning
+- [Production learning boundaries](production-learning-phase3.md) — Phase 6 observations stay read-only; Phase 7A adds only reviewed business/model/component baselines, never automatic labor-hour learning
 - [Ready-to-start scheduling boundary](ready-to-start-scheduling-boundary.md) — starting a no-date job only assigns its requested date/state; presence and readiness remain separate

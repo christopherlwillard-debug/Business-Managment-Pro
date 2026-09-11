@@ -12,6 +12,7 @@ import {
   estimatesTable,
   jobTypeBenchmarksTable,
   jobTypeBenchmarkRevisionsTable,
+  mfhComponentBaselineRevisionsTable,
   checklistTemplatesTable,
   checklistTemplateSectionsTable,
   checklistTemplateItemsTable,
@@ -37,7 +38,14 @@ import {
   businessPredicate,
   resolveMutationBusiness,
 } from "../lib/business-scope";
-import { buildProductionObservationResponse, type ObservationPresenceState } from "../lib/production-observations";
+import {
+  buildProductionObservationResponse,
+  type ObservationPresenceState,
+} from "../lib/production-observations";
+import {
+  buildComponentBaselineEvidence,
+  COMPONENT_BASELINE_MINIMUM_SAMPLE_SIZE,
+} from "../lib/component-baselines";
 import { isEligibleForProductionLearning } from "../lib/production-intelligence-contract";
 import { getRequestUser } from "./guards";
 
@@ -820,9 +828,14 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
 });
 
 type ProductionObservationScope = Awaited<ReturnType<typeof requestedBusiness>>;
+type ObservationDatabase = Pick<typeof db, "select">;
 
-async function loadProductionObservation(modelId: number, scope: ProductionObservationScope) {
-  const [model] = await db.select({
+async function loadProductionObservation(
+  modelId: number,
+  scope: ProductionObservationScope,
+  database: ObservationDatabase = db,
+) {
+  const [model] = await database.select({
       id: mfhModelsTable.id,
       benchmarkId: mfhModelsTable.benchmarkId,
       benchmarkJobType: jobTypeBenchmarksTable.jobType,
@@ -834,7 +847,7 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
   if (!model) return null;
 
   const jobBusinessFilter = businessPredicate(jobsTable, scope);
-  const candidateJobs = await db.select({
+    const candidateJobs = await database.select({
       id: jobsTable.id,
       title: jobsTable.title,
       status: jobsTable.status,
@@ -854,7 +867,7 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
         : [],
     )));
     const serviceRows = serviceIds.length > 0
-      ? await db.select({
+      ? await database.select({
         id: productionServiceTypesTable.id,
         name: productionServiceTypesTable.name,
         itemKey: productionServiceTypesTable.itemKey,
@@ -867,8 +880,8 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
           : undefined,
       ))
       : [];
-  const profileServiceRows = serviceIds.length > 0
-    ? await db.select({
+    const profileServiceRows = serviceIds.length > 0
+     ? await database.select({
         businessId: mfhCustomProductionProfileServicesTable.businessId,
         serviceTypeId: mfhCustomProductionProfileServicesTable.serviceTypeId,
         profileId: mfhCustomProductionProfilesTable.id,
@@ -898,13 +911,15 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
   );
   const jobIds = candidateJobs.map((job) => job.id);
   const presenceRows = jobIds.length > 0
-      ? await db.select({
+      ? await database.select({
+        id: jobDailyPresenceTable.id,
         jobId: jobDailyPresenceTable.jobId,
         date: jobDailyPresenceTable.date,
         state: jobDailyPresenceTable.state,
         provenance: jobDailyPresenceTable.provenance,
         notHereReason: jobDailyPresenceTable.notHereReason,
         notes: jobDailyPresenceTable.notes,
+        updatedAt: jobDailyPresenceTable.updatedAt,
       }).from(jobDailyPresenceTable)
         .where(inArray(jobDailyPresenceTable.jobId, jobIds))
         .orderBy(asc(jobDailyPresenceTable.jobId), asc(jobDailyPresenceTable.date))
@@ -917,7 +932,7 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
   }
 
   const componentRows = jobIds.length > 0
-    ? await db.select({
+    ? await database.select({
       id: jobProductionComponentsTable.id,
       jobId: jobProductionComponentsTable.jobId,
       componentKey: jobProductionComponentsTable.componentKey,
@@ -934,7 +949,7 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
     : [];
   const componentIds = componentRows.map((component) => component.id);
   const workSessionRows = componentIds.length > 0
-    ? await db.select({
+    ? await database.select({
       id: jobComponentWorkSessionsTable.id,
       jobId: jobComponentWorkSessionsTable.jobId,
       productionComponentId: jobComponentWorkSessionsTable.productionComponentId,
@@ -983,13 +998,21 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
              })
              .filter((entry): entry is readonly [number, { id: number; name: string; customProfile?: { id: number; key: string; name: string } }] => entry != null),
         ).values()),
-        presence: (presenceByJob.get(job.id) ?? []).map((row) => ({
-          date: row.date,
-          state: row.state as ObservationPresenceState,
-          provenance: row.provenance,
-           notHereReason: row.notHereReason,
-           notes: row.notes,
-        })),
+          presence: (presenceByJob.get(job.id) ?? []).map((row) => ({
+            ...(row.id == null ? {} : { id: row.id }),
+            date: row.date,
+            state: row.state as ObservationPresenceState,
+            provenance: row.provenance,
+            notHereReason: row.notHereReason,
+            notes: row.notes,
+            ...(row.updatedAt == null
+              ? {}
+              : {
+                  updatedAt: row.updatedAt instanceof Date
+                    ? row.updatedAt.toISOString()
+                    : String(row.updatedAt),
+                }),
+          })),
          components: (componentsByJob.get(job.id) ?? []).map((component) => ({
            id: component.id,
            jobId: component.jobId,
@@ -1213,6 +1236,327 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load production observations" });
+  }
+});
+
+function componentBaselineRevisionResponse(
+  revision: typeof mfhComponentBaselineRevisionsTable.$inferSelect,
+) {
+  return {
+    id: revision.id,
+    businessId: revision.businessId,
+    mfhModelId: revision.mfhModelId,
+    learningKey: revision.learningKey,
+    componentKey: revision.componentKey,
+    componentLabel: revision.componentLabel,
+    variant: revision.variant,
+    customProfile: revision.customProfile,
+    priorApprovedRevisionId: revision.priorApprovedRevisionId,
+    priorApprovedProductionDays: revision.priorApprovedProductionDays == null
+      ? null
+      : parseFloat(revision.priorApprovedProductionDays),
+    proposedProductionDays: parseFloat(revision.proposedProductionDays),
+    observedActualProductionDaysMedian: parseFloat(revision.observedActualProductionDaysMedian),
+    observedActualProductionDaysRange: {
+      min: parseFloat(revision.observedActualProductionDaysMin),
+      max: parseFloat(revision.observedActualProductionDaysMax),
+    },
+    observedExpectedProductionDaysMedian: parseFloat(revision.observedExpectedProductionDaysMedian),
+    observedExpectedProductionDaysRange: {
+      min: parseFloat(revision.observedExpectedProductionDaysMin),
+      max: parseFloat(revision.observedExpectedProductionDaysMax),
+    },
+    sampleSize: revision.sampleSize,
+    sourceJobIds: revision.sourceJobIds,
+    sourceEvidence: revision.sourceEvidence,
+    sourceEvidenceHash: revision.sourceEvidenceHash,
+    status: revision.status as "pending" | "approved" | "rejected" | "superseded",
+    reviewerNote: revision.reviewerNote,
+    createdByUserId: revision.createdByUserId,
+    createdByName: revision.createdByName,
+    createdAt: revision.createdAt,
+    reviewedByUserId: revision.reviewedByUserId,
+    reviewedByName: revision.reviewedByName,
+    reviewedAt: revision.reviewedAt,
+    supersededByUserId: revision.supersededByUserId,
+    supersededByName: revision.supersededByName,
+    supersededAt: revision.supersededAt,
+  };
+}
+
+async function requiredComponentBaselineBusiness(req: Parameters<typeof requestedBusiness>[0]) {
+  const scope = await requestedBusiness(req);
+  return scope;
+}
+
+// Component baselines are deliberately separate from model-level benchmark
+// reviews. They are business-scoped review history and never mutate pricing,
+// payroll, scheduling, or the shared job-type benchmark.
+mfhLibraryRouter.get("/knowledge-base/:modelId/component-baseline-reviews", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+    const scope = await requiredComponentBaselineBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
+
+    const revisions = await db.select().from(mfhComponentBaselineRevisionsTable)
+      .where(and(
+        eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+        eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+      ))
+      .orderBy(desc(mfhComponentBaselineRevisionsTable.createdAt));
+    res.json(revisions.map(componentBaselineRevisionResponse));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load component baseline reviews" });
+  }
+});
+
+mfhLibraryRouter.post("/knowledge-base/:modelId/component-baseline-reviews", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+    const scope = await requiredComponentBaselineBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
+
+    const learningKey = typeof req.body?.learningKey === "string"
+      ? req.body.learningKey.trim()
+      : "";
+    if (!learningKey) return res.status(400).json({ error: "learningKey is required" });
+
+    const result = await loadProductionObservation(modelId, scope);
+    if (!result) return res.status(404).json({ error: "Model not found" });
+    const evidence = buildComponentBaselineEvidence(result.summary, scope.id, learningKey);
+    if (!evidence) {
+      return res.status(400).json({
+        error: `At least ${COMPONENT_BASELINE_MINIMUM_SAMPLE_SIZE} eligible jobs with immutable component evidence are required before creating a baseline review`,
+      });
+    }
+    const proposedDays = numericValue(req.body?.proposedProductionDays)
+      ?? evidence.component.actualWorkDaysMedian;
+    if (proposedDays == null || proposedDays <= 0) {
+      return res.status(400).json({ error: "proposedProductionDays must be a positive number" });
+    }
+    if (
+      evidence.component.actualWorkDaysRange == null
+      || evidence.component.expectedProductionDaysMedian == null
+      || evidence.component.expectedProductionDaysRange == null
+    ) {
+      return res.status(400).json({ error: "Component observation is missing derived production-day evidence" });
+    }
+
+    const [active] = await db.select({
+      id: mfhComponentBaselineRevisionsTable.id,
+      proposedProductionDays: mfhComponentBaselineRevisionsTable.proposedProductionDays,
+    }).from(mfhComponentBaselineRevisionsTable).where(and(
+      eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+      eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+      eq(mfhComponentBaselineRevisionsTable.learningKey, learningKey),
+      eq(mfhComponentBaselineRevisionsTable.status, "approved"),
+    )).limit(1);
+    const identity = reviewerIdentity(req);
+    try {
+      const [revision] = await db.insert(mfhComponentBaselineRevisionsTable).values({
+        businessId: scope.id,
+        mfhModelId: modelId,
+        learningKey: evidence.component.learningKey,
+        componentKey: evidence.component.componentKey,
+        componentLabel: evidence.component.componentLabel,
+        variant: evidence.component.variant,
+        customProfile: evidence.component.customProfile,
+        priorApprovedRevisionId: active?.id ?? null,
+        priorApprovedProductionDays: active?.proposedProductionDays ?? null,
+        proposedProductionDays: proposedDays.toFixed(2),
+        observedActualProductionDaysMedian: evidence.component.actualWorkDaysMedian!.toFixed(2),
+        observedActualProductionDaysMin: evidence.component.actualWorkDaysRange.min.toFixed(2),
+        observedActualProductionDaysMax: evidence.component.actualWorkDaysRange.max.toFixed(2),
+        observedExpectedProductionDaysMedian: evidence.component.expectedProductionDaysMedian.toFixed(2),
+        observedExpectedProductionDaysMin: evidence.component.expectedProductionDaysRange.min.toFixed(2),
+        observedExpectedProductionDaysMax: evidence.component.expectedProductionDaysRange.max.toFixed(2),
+        sampleSize: evidence.sourceJobIds.length,
+        sourceJobIds: evidence.sourceJobIds,
+        sourceEvidence: evidence.evidence,
+        sourceEvidenceHash: evidence.sourceEvidenceHash,
+        reviewerNote: typeof req.body?.reviewerNote === "string"
+          ? req.body.reviewerNote.trim().slice(0, 2000) || null
+          : null,
+        createdByUserId: identity.userId,
+        createdByName: identity.name,
+      }).returning();
+      res.status(201).json(componentBaselineRevisionResponse(revision));
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === "23505") {
+        return res.status(409).json({ error: "A pending component baseline review already exists for this learning key" });
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create component baseline review" });
+  }
+});
+
+mfhLibraryRouter.patch("/knowledge-base/:modelId/component-baseline-reviews/:revisionId/approve", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    const revisionId = parseInt(req.params.revisionId);
+    if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
+    const scope = await requiredComponentBaselineBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
+    const identity = reviewerIdentity(req);
+
+    const result = await db.transaction(async (tx) => {
+      const [unlockedRevision] = await tx.select({
+        id: mfhComponentBaselineRevisionsTable.id,
+        learningKey: mfhComponentBaselineRevisionsTable.learningKey,
+      }).from(mfhComponentBaselineRevisionsTable)
+        .where(and(
+          eq(mfhComponentBaselineRevisionsTable.id, revisionId),
+          eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+          eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+        ))
+        .limit(1);
+      if (!unlockedRevision) return { kind: "not_found" as const };
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`mfh-component-baseline:${scope.id}:${modelId}:${unlockedRevision.learningKey}`}))`);
+      const [revision] = await tx.select().from(mfhComponentBaselineRevisionsTable)
+        .where(and(
+          eq(mfhComponentBaselineRevisionsTable.id, revisionId),
+          eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+          eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+        ))
+        .limit(1);
+      if (!revision) return { kind: "not_found" as const };
+      if (revision.status !== "pending") return { kind: "not_pending" as const, revision };
+
+      const current = await loadProductionObservation(modelId, scope, tx);
+      if (!current) return { kind: "model_missing" as const };
+      const evidence = buildComponentBaselineEvidence(current.summary, scope.id, revision.learningKey);
+      if (!evidence) return { kind: "insufficient" as const, revision };
+      if (evidence.sourceEvidenceHash !== revision.sourceEvidenceHash) {
+        return { kind: "stale_evidence" as const, revision };
+      }
+      const [active] = await tx.select({
+        id: mfhComponentBaselineRevisionsTable.id,
+        proposedProductionDays: mfhComponentBaselineRevisionsTable.proposedProductionDays,
+      }).from(mfhComponentBaselineRevisionsTable).where(and(
+        eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+        eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+        eq(mfhComponentBaselineRevisionsTable.learningKey, revision.learningKey),
+        eq(mfhComponentBaselineRevisionsTable.status, "approved"),
+      )).limit(1);
+      if (
+        (active?.id ?? null) !== (revision.priorApprovedRevisionId ?? null)
+        || !sameHours(active?.proposedProductionDays ?? null, revision.priorApprovedProductionDays)
+      ) {
+        return { kind: "stale_baseline" as const, revision };
+      }
+
+      if (active) {
+        await tx.update(mfhComponentBaselineRevisionsTable)
+          .set({
+            status: "superseded",
+            supersededByUserId: identity.userId,
+            supersededByName: identity.name,
+            supersededAt: new Date(),
+          })
+          .where(eq(mfhComponentBaselineRevisionsTable.id, active.id));
+      }
+      const [updated] = await tx.update(mfhComponentBaselineRevisionsTable)
+        .set({
+          status: "approved",
+          reviewedByUserId: identity.userId,
+          reviewedByName: identity.name,
+          reviewedAt: new Date(),
+        })
+        .where(and(
+          eq(mfhComponentBaselineRevisionsTable.id, revision.id),
+          eq(mfhComponentBaselineRevisionsTable.status, "pending"),
+        ))
+        .returning();
+      return {
+        kind: "approved" as const,
+        revision: updated ?? {
+          ...revision,
+          status: "approved",
+          reviewedByUserId: identity.userId,
+          reviewedByName: identity.name,
+          reviewedAt: new Date(),
+        },
+      };
+    });
+
+    if (result.kind === "not_found") return res.status(404).json({ error: "Review not found" });
+    if (result.kind === "not_pending") {
+      return res.status(409).json({
+        error: "Review is no longer pending",
+        review: componentBaselineRevisionResponse(result.revision),
+      });
+    }
+    if (result.kind === "model_missing") return res.status(404).json({ error: "Model not found" });
+    if (result.kind === "insufficient") {
+      return res.status(409).json({ error: "The component no longer has five eligible jobs with immutable evidence" });
+    }
+    if (result.kind === "stale_evidence") {
+      return res.status(409).json({ error: "Component source evidence changed after this review was created" });
+    }
+    if (result.kind === "stale_baseline") {
+      return res.status(409).json({ error: "The active component baseline changed after this review was created" });
+    }
+    return res.json(componentBaselineRevisionResponse(result.revision));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to approve component baseline review" });
+  }
+});
+
+mfhLibraryRouter.patch("/knowledge-base/:modelId/component-baseline-reviews/:revisionId/reject", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    const revisionId = parseInt(req.params.revisionId);
+    if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
+    const scope = await requiredComponentBaselineBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
+    const identity = reviewerIdentity(req);
+    const note = typeof req.body?.reviewerNote === "string"
+      ? req.body.reviewerNote.trim().slice(0, 2000) || null
+      : null;
+
+    const [revision] = await db.select().from(mfhComponentBaselineRevisionsTable)
+      .where(and(
+        eq(mfhComponentBaselineRevisionsTable.id, revisionId),
+        eq(mfhComponentBaselineRevisionsTable.businessId, scope.id),
+        eq(mfhComponentBaselineRevisionsTable.mfhModelId, modelId),
+      ))
+      .limit(1);
+    if (!revision) return res.status(404).json({ error: "Review not found" });
+    if (revision.status !== "pending") {
+      return res.status(409).json({
+        error: "Review is no longer pending",
+        review: componentBaselineRevisionResponse(revision),
+      });
+    }
+    const [updated] = await db.update(mfhComponentBaselineRevisionsTable)
+      .set({
+        status: "rejected",
+        reviewerNote: note ?? revision.reviewerNote,
+        reviewedByUserId: identity.userId,
+        reviewedByName: identity.name,
+        reviewedAt: new Date(),
+      })
+      .where(and(
+        eq(mfhComponentBaselineRevisionsTable.id, revisionId),
+        eq(mfhComponentBaselineRevisionsTable.status, "pending"),
+      ))
+      .returning();
+    if (!updated) return res.status(409).json({ error: "Review is no longer pending" });
+    res.json(componentBaselineRevisionResponse(updated));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reject component baseline review" });
   }
 });
 

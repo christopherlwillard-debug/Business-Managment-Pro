@@ -85,6 +85,20 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
   contractor-app tests/build, closed-job release check, profit contracts, and
   active workflow startup.
 
+### Production Intelligence Phase 7A: reviewed component production-day baselines
+
+- Added a dedicated business-scoped append-only component baseline review ledger
+  with pending, approved, rejected, and superseded proposal history.
+- Kept Phase 6’s three-job observation threshold for visibility while requiring
+  five distinct eligible jobs for a persisted proposal.
+- Captured deterministic source-evidence fingerprints with job, presence,
+  immutable snapshot/version, and work-session references. Approval re-computes
+  the existing Phase 6 observation, rejects stale evidence or active baselines,
+  and transactionally supersedes the prior approved revision.
+- Added business-scoped Knowledge Center controls for proposal, approval,
+  rejection, current approved values, history, and evidence references without
+  touching labor hours, financials, payroll, pricing, scheduling, or checklists.
+
 ## 2026-09-10
 
 ### Production Intelligence Phase 2: persistent daily presence

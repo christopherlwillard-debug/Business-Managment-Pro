@@ -12,6 +12,10 @@ import {
   useCreateMfhProductionBenchmarkReview,
   useApproveMfhProductionBenchmarkReview,
   useRejectMfhProductionBenchmarkReview,
+  useMfhComponentBaselineReviews,
+  useCreateMfhComponentBaselineReview,
+  useApproveMfhComponentBaselineReview,
+  useRejectMfhComponentBaselineReview,
   usePatchKnowledgeRecord,
   type MfhKnowledgeBaseEntry,
   type MfhKbRecord,
@@ -78,9 +82,13 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const observations = useMfhProductionObservations(modelId, activeBusiness?.id ?? null);
   const isAllBusiness = activeBusiness == null;
   const reviews = useMfhProductionBenchmarkReviews(modelId, isAllBusiness);
+  const componentReviews = useMfhComponentBaselineReviews(modelId, activeBusiness?.id ?? null);
   const createReview = useCreateMfhProductionBenchmarkReview();
   const approveReview = useApproveMfhProductionBenchmarkReview();
   const rejectReview = useRejectMfhProductionBenchmarkReview();
+  const createComponentReview = useCreateMfhComponentBaselineReview();
+  const approveComponentReview = useApproveMfhComponentBaselineReview();
+  const rejectComponentReview = useRejectMfhComponentBaselineReview();
   const [showEvidence, setShowEvidence] = useState(false);
   const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
   const [highlightedEvidenceJobId, setHighlightedEvidenceJobId] = useState<number | null>(null);
@@ -89,6 +97,11 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const [reviewNote, setReviewNote] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
   const [expandedComponentKey, setExpandedComponentKey] = useState<string | null>(null);
+  const [componentReviewFormKey, setComponentReviewFormKey] = useState<string | null>(null);
+  const [componentReviewDays, setComponentReviewDays] = useState("");
+  const [componentReviewNote, setComponentReviewNote] = useState("");
+  const [componentDecisionNote, setComponentDecisionNote] = useState("");
+  const [expandedComponentReviewId, setExpandedComponentReviewId] = useState<number | null>(null);
 
   if (observations.isLoading) {
     return (
@@ -127,6 +140,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const remaining = Math.max(data.sample.minimumJobsRequired - data.sample.eligibleJobCount, 0);
   const pendingReview = reviews.data?.find((review) => review.status === "pending") ?? null;
   const historicalReviews = reviews.data?.filter((review) => review.status !== "pending") ?? [];
+  const componentReviewRows = componentReviews.data ?? [];
   const evidenceJobsById = new Map(data.jobs.map((job) => [job.id, job]));
 
   function openEvidenceJob(jobId: number) {
@@ -182,6 +196,62 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
       toast({ title: "Baseline review rejected" });
     } catch {
       toast({ title: "Could not reject baseline review", variant: "destructive" });
+    }
+  }
+
+  async function handleCreateComponentReview(learningKey: string, fallbackDays: number | null) {
+    if (!activeBusiness) return;
+    const proposedDays = Number(componentReviewDays || fallbackDays);
+    if (!Number.isFinite(proposedDays) || proposedDays <= 0) {
+      toast({ title: "Enter a positive production-day value", variant: "destructive" });
+      return;
+    }
+    try {
+      await createComponentReview.mutateAsync({
+        modelId,
+        businessId: activeBusiness.id,
+        learningKey,
+        proposedProductionDays: proposedDays,
+        reviewerNote: componentReviewNote.trim() || null,
+      });
+      setComponentReviewFormKey(null);
+      setComponentReviewDays("");
+      setComponentReviewNote("");
+      toast({ title: "Component baseline review created" });
+    } catch {
+      toast({ title: "Could not create component baseline review", variant: "destructive" });
+    }
+  }
+
+  async function handleApproveComponentReview(review: (typeof componentReviewRows)[number]) {
+    if (!activeBusiness || !window.confirm(`Approve ${fmt(review.proposedProductionDays, "decimal")} production days for ${review.componentLabel}?`)) return;
+    try {
+      await approveComponentReview.mutateAsync({
+        modelId,
+        businessId: activeBusiness.id,
+        revisionId: review.id,
+      });
+      setComponentDecisionNote("");
+      toast({ title: "Component production-day baseline approved" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The source evidence may have changed since this review was created.";
+      toast({ title: "Could not approve component baseline", description: message, variant: "destructive" });
+    }
+  }
+
+  async function handleRejectComponentReview(review: (typeof componentReviewRows)[number]) {
+    if (!activeBusiness || !window.confirm(`Reject this proposed ${review.componentLabel} baseline?`)) return;
+    try {
+      await rejectComponentReview.mutateAsync({
+        modelId,
+        businessId: activeBusiness.id,
+        revisionId: review.id,
+        reviewerNote: componentDecisionNote.trim() || null,
+      });
+      setComponentDecisionNote("");
+      toast({ title: "Component baseline review rejected" });
+    } catch {
+      toast({ title: "Could not reject component baseline", variant: "destructive" });
     }
   }
 
@@ -457,11 +527,19 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                     Actual component days come from Phase 5 work sessions. Pauses and unrecorded presence stay separate.
                   </p>
                 </div>
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">Read-only</span>
+                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">Phase 6 read-only · Phase 7A review</span>
               </div>
               <div className="space-y-2">
                 {(data.observed.componentObservations ?? []).map((component) => {
                   const expanded = expandedComponentKey === component.learningKey;
+                  const componentReviewsForKey = componentReviewRows.filter((review) => review.learningKey === component.learningKey);
+                  const pendingComponentReview = componentReviewsForKey.find((review) => review.status === "pending") ?? null;
+                  const approvedComponentReview = componentReviewsForKey.find((review) => review.status === "approved") ?? null;
+                  const historicalComponentReviews = componentReviewsForKey.filter((review) => review.status !== "pending" && review.status !== "approved");
+                  const canProposeComponentBaseline = activeBusiness != null
+                    && component.eligibleJobCount >= 5
+                    && component.actualWorkDaysMedian != null
+                    && pendingComponentReview == null;
                   const label = component.customProfile?.name
                     ?? (component.variant ? `${component.componentLabel} · ${component.variant.toUpperCase()}` : component.componentLabel);
                   const insufficientText = component.eligibleJobCount === 0
@@ -518,6 +596,162 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                             <span>{component.explicitPauseDaysTotal} pause day{component.explicitPauseDaysTotal === 1 ? "" : "s"} in eligible jobs</span>
                             <span>{component.unrecordedDaysTotal} unrecorded day{component.unrecordedDaysTotal === 1 ? "" : "s"} in eligible jobs</span>
                           </div>
+                           <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-2.5 py-2.5 space-y-2">
+                             <div className="flex items-start justify-between gap-3">
+                               <div>
+                                 <p className="text-[11px] font-semibold text-blue-950">Persisted component baseline</p>
+                                 <p className="text-[10px] text-blue-900/75 mt-0.5">
+                                   Business-scoped and manually reviewed. This never changes pricing, payroll, scheduling, or financials.
+                                 </p>
+                               </div>
+                               {approvedComponentReview && (
+                                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap">
+                                   Approved
+                                 </span>
+                               )}
+                             </div>
+                             {!activeBusiness ? (
+                               <p className="text-[10px] text-blue-900/75">Select a business to review a component baseline.</p>
+                             ) : (
+                               <>
+                                 {approvedComponentReview && (
+                                   <p className="text-[10px] text-blue-900">
+                                     Current approved baseline: <span className="font-semibold">{fmt(approvedComponentReview.proposedProductionDays, "decimal")} production days</span>
+                                     {" "}· approved {fmtDateTime(approvedComponentReview.reviewedAt)}
+                                   </p>
+                                 )}
+                                 {!approvedComponentReview && !pendingComponentReview && (
+                                   <p className="text-[10px] text-blue-900/75">No approved baseline exists for this business and component key.</p>
+                                 )}
+                                 {canProposeComponentBaseline && componentReviewFormKey !== component.learningKey && (
+                                   <button
+                                     type="button"
+                                     onClick={() => {
+                                       setComponentReviewFormKey(component.learningKey);
+                                       setComponentReviewDays(String(component.actualWorkDaysMedian ?? ""));
+                                     }}
+                                     className="px-2.5 py-1.5 rounded-lg bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700"
+                                   >
+                                     Propose baseline
+                                   </button>
+                                 )}
+                                 {component.eligibleJobCount < 5 && (
+                                   <p className="text-[10px] text-amber-700">
+                                     {Math.max(5 - component.eligibleJobCount, 0)} more eligible job{5 - component.eligibleJobCount === 1 ? "" : "s"} needed before a persisted baseline can be proposed.
+                                   </p>
+                                 )}
+                                 {componentReviewFormKey === component.learningKey && (
+                                   <div className="border-t border-blue-200 pt-2 space-y-2">
+                                     <label className="block text-[10px] font-semibold text-blue-950">
+                                       Proposed production days
+                                       <input
+                                         type="number"
+                                         min="0.01"
+                                         step="0.5"
+                                         value={componentReviewDays}
+                                         onChange={(event) => setComponentReviewDays(event.target.value)}
+                                         className="mt-1 w-full px-2 py-1.5 rounded-md border border-blue-300 bg-background text-xs text-foreground"
+                                       />
+                                     </label>
+                                     <label className="block text-[10px] font-semibold text-blue-950">
+                                       Reviewer note (optional)
+                                       <textarea
+                                         value={componentReviewNote}
+                                         onChange={(event) => setComponentReviewNote(event.target.value)}
+                                         rows={2}
+                                         maxLength={2000}
+                                         className="mt-1 w-full px-2 py-1.5 rounded-md border border-blue-300 bg-background text-[10px] text-foreground resize-none"
+                                         placeholder="Why should this component baseline be accepted?"
+                                       />
+                                     </label>
+                                     <div className="flex gap-2">
+                                       <button
+                                         type="button"
+                                         onClick={() => handleCreateComponentReview(component.learningKey, component.actualWorkDaysMedian)}
+                                         disabled={createComponentReview.isPending}
+                                         className="px-2.5 py-1.5 rounded-md bg-blue-600 text-white text-[10px] font-semibold hover:bg-blue-700 disabled:opacity-50"
+                                       >
+                                         {createComponentReview.isPending ? "Saving…" : "Create pending review"}
+                                       </button>
+                                       <button
+                                         type="button"
+                                         onClick={() => setComponentReviewFormKey(null)}
+                                         className="px-2.5 py-1.5 rounded-md border border-blue-300 text-[10px] font-semibold text-blue-900 hover:bg-blue-100"
+                                       >
+                                         Cancel
+                                       </button>
+                                     </div>
+                                   </div>
+                                 )}
+                                 {pendingComponentReview && (
+                                   <div className="border-t border-blue-200 pt-2 space-y-2">
+                                     <div className="flex items-start justify-between gap-2">
+                                       <p className="text-[10px] text-blue-900">
+                                         Pending: <span className="font-semibold">{fmt(pendingComponentReview.proposedProductionDays, "decimal")} days</span>
+                                         {" "}from {pendingComponentReview.sampleSize} eligible jobs
+                                       </p>
+                                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Pending</span>
+                                     </div>
+                                     {pendingComponentReview.reviewerNote && <p className="text-[10px] text-blue-900 italic">“{pendingComponentReview.reviewerNote}”</p>}
+                                     <textarea
+                                       value={componentDecisionNote}
+                                       onChange={(event) => setComponentDecisionNote(event.target.value)}
+                                       rows={2}
+                                       maxLength={2000}
+                                       className="w-full px-2 py-1.5 rounded-md border border-blue-300 bg-background text-[10px] text-foreground resize-none"
+                                       placeholder="Optional rejection note"
+                                     />
+                                     <div className="flex gap-2">
+                                       <button
+                                         type="button"
+                                         onClick={() => handleApproveComponentReview(pendingComponentReview)}
+                                         disabled={approveComponentReview.isPending || rejectComponentReview.isPending}
+                                         className="px-2.5 py-1.5 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                                       >
+                                         {approveComponentReview.isPending ? "Approving…" : "Approve"}
+                                       </button>
+                                       <button
+                                         type="button"
+                                         onClick={() => handleRejectComponentReview(pendingComponentReview)}
+                                         disabled={approveComponentReview.isPending || rejectComponentReview.isPending}
+                                         className="px-2.5 py-1.5 rounded-md border border-red-300 text-[10px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                       >
+                                         {rejectComponentReview.isPending ? "Rejecting…" : "Reject"}
+                                       </button>
+                                     </div>
+                                   </div>
+                                 )}
+                                 {historicalComponentReviews.length > 0 && (
+                                   <div className="border-t border-blue-200 pt-2 space-y-1.5">
+                                     <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-900/70">Component review history</p>
+                                     {historicalComponentReviews.map((review) => (
+                                       <div key={review.id} className="rounded-md border border-blue-200/70 bg-background/40 overflow-hidden">
+                                         <button
+                                           type="button"
+                                           onClick={() => setExpandedComponentReviewId((current) => current === review.id ? null : review.id)}
+                                           className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-left text-[10px] text-blue-900/80 hover:bg-blue-100/40"
+                                           aria-expanded={expandedComponentReviewId === review.id}
+                                         >
+                                           <span className="flex items-center gap-1 min-w-0">
+                                             {expandedComponentReviewId === review.id ? <ChevronUp className="w-3 h-3 shrink-0" /> : <ChevronDown className="w-3 h-3 shrink-0" />}
+                                             <span className="truncate">{review.status === "superseded" ? "Superseded" : "Rejected"} · {fmt(review.proposedProductionDays, "decimal")} days · {review.sampleSize} jobs</span>
+                                           </span>
+                                           <span className="shrink-0">{review.reviewedByName ?? "Willard"}</span>
+                                         </button>
+                                         {expandedComponentReviewId === review.id && (
+                                           <div className="border-t border-blue-200/70 px-2 py-2 space-y-1.5 text-[10px] text-blue-950/80">
+                                             <p><span className="font-semibold">Decision:</span> {fmtDateTime(review.reviewedAt)}{review.reviewedByName ? ` by ${review.reviewedByName}` : ""}</p>
+                                             <p><span className="font-semibold">Source evidence:</span> {review.sourceJobIds.length} jobs · snapshots {review.sourceEvidence.jobs.flatMap((job) => job.snapshotEvidence.map((snapshot) => `${snapshot.snapshotId} v${snapshot.snapshotVersion}`)).join(", ") || "none"} · evidence hash {review.sourceEvidenceHash.slice(0, 12)}…</p>
+                                             <p><span className="font-semibold">Reviewer note:</span> {review.reviewerNote || "No reviewer note."}</p>
+                                           </div>
+                                         )}
+                                       </div>
+                                     ))}
+                                   </div>
+                                 )}
+                               </>
+                             )}
+                           </div>
                           {component.jobs.map((job) => (
                             <Link
                               key={job.jobId}

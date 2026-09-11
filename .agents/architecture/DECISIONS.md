@@ -543,7 +543,7 @@ businesses from changing historical meaning or merging unrelated evidence.
 
 - Attributing all job-level presence days to every selected component
 - Joining historical work to the current component or Custom profile mapping
-- Persisting a parallel component baseline/revision table in this phase
+- Persisting component baselines before a separately reviewed Phase 7A design
 - Counting session hours as labor-hour learning
 - Treating `not_here` or unrecorded days as component work
 

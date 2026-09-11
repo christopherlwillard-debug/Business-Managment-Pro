@@ -27,11 +27,13 @@ export interface MfhProductionObservationJob {
   title: string;
   status: string;
   presence: Array<{
+    id?: number;
     date: string;
     state: "unrecorded" | "here" | "not_here";
     provenance: string;
     notHereReason: string | null;
     notes: string | null;
+    updatedAt?: string | null;
   }>;
   productionDays: number | null;
   calendarSpanDays: number | null;
@@ -137,6 +139,78 @@ export interface MfhProductionBenchmarkReview {
   reviewedByUserId: string | null;
   reviewedByName: string | null;
   reviewedAt: string | null;
+}
+
+export interface MfhComponentBaselineSourceEvidenceJob {
+  jobId: number;
+  title: string;
+  expectedProductionDays: number | null;
+  actualWorkDays: number | null;
+  expectedVsActualDays: number | null;
+  workDates: string[];
+  conflictDates: string[];
+  explicitPauseDays: number;
+  unrecordedDays: number;
+  presence: Array<{
+    id?: number;
+    date: string;
+    state: "unrecorded" | "here" | "not_here";
+    provenance: string;
+    notHereReason: string | null;
+    notes: string | null;
+    updatedAt?: string | null;
+  }>;
+  snapshotEvidence: Array<{
+    snapshotId: number;
+    snapshotVersion: number;
+    expectedProductionDays: number | null;
+    sessionIds: number[];
+  }>;
+}
+
+export interface MfhComponentBaselineReview {
+  id: number;
+  businessId: number;
+  mfhModelId: number;
+  learningKey: string;
+  componentKey: string;
+  componentLabel: string;
+  variant: string | null;
+  customProfile: { id: number; key: string; name: string } | null;
+  priorApprovedRevisionId: number | null;
+  priorApprovedProductionDays: number | null;
+  proposedProductionDays: number;
+  observedActualProductionDaysMedian: number;
+  observedActualProductionDaysRange: { min: number; max: number };
+  observedExpectedProductionDaysMedian: number;
+  observedExpectedProductionDaysRange: { min: number; max: number };
+  sampleSize: number;
+  sourceJobIds: number[];
+  sourceEvidence: {
+    schemaVersion: 1;
+    businessId: number;
+    modelId: number;
+    learningKey: string;
+    componentKey: string;
+    componentLabel: string;
+    variant: string | null;
+    customProfile: { id: number; key: string; name: string } | null;
+    observationMinimumJobs: number;
+    observationEligibleJobCount: number;
+    jobs: MfhComponentBaselineSourceEvidenceJob[];
+  };
+  sourceEvidenceHash: string;
+  status: "pending" | "approved" | "rejected" | "superseded";
+  reviewerNote: string | null;
+  createdByUserId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  reviewedByUserId: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  supersededByUserId: string | null;
+  supersededByName: string | null;
+  supersededAt: string | null;
 }
 
 export interface LaborEntry {
@@ -612,6 +686,82 @@ export function useRejectMfhProductionBenchmarkReview() {
       ),
     onSuccess: (_result, vars) => {
       qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-reviews"] });
+    },
+  });
+}
+
+export function useMfhComponentBaselineReviews(modelId: number | null, businessId?: number | null) {
+  const query = businessId != null ? `?businessId=${encodeURIComponent(String(businessId))}` : "";
+  return useQuery({
+    queryKey: ["/api/mfh/knowledge-base", modelId, "component-baseline-reviews", businessId ?? "none"],
+    queryFn: () => customFetch<MfhComponentBaselineReview[]>(
+      `/api/mfh/knowledge-base/${modelId}/component-baseline-reviews${query}`,
+      { method: "GET" },
+    ),
+    enabled: modelId != null && businessId != null,
+  });
+}
+
+export function useCreateMfhComponentBaselineReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      modelId: number;
+      businessId: number;
+      learningKey: string;
+      proposedProductionDays?: number;
+      reviewerNote?: string | null;
+    }) => customFetch<MfhComponentBaselineReview>(
+      `/api/mfh/knowledge-base/${data.modelId}/component-baseline-reviews?businessId=${encodeURIComponent(String(data.businessId))}`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          learningKey: data.learningKey,
+          proposedProductionDays: data.proposedProductionDays,
+          reviewerNote: data.reviewerNote ?? null,
+        }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "component-baseline-reviews", vars.businessId] });
+    },
+  });
+}
+
+export function useApproveMfhComponentBaselineReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { modelId: number; businessId: number; revisionId: number }) =>
+      customFetch<MfhComponentBaselineReview>(
+        `/api/mfh/knowledge-base/${data.modelId}/component-baseline-reviews/${data.revisionId}/approve?businessId=${encodeURIComponent(String(data.businessId))}`,
+        { method: "PATCH", body: JSON.stringify({}), headers: { "Content-Type": "application/json" } },
+      ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "component-baseline-reviews", vars.businessId] });
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "production-observations"] });
+    },
+  });
+}
+
+export function useRejectMfhComponentBaselineReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      modelId: number;
+      businessId: number;
+      revisionId: number;
+      reviewerNote?: string | null;
+    }) => customFetch<MfhComponentBaselineReview>(
+      `/api/mfh/knowledge-base/${data.modelId}/component-baseline-reviews/${data.revisionId}/reject?businessId=${encodeURIComponent(String(data.businessId))}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ reviewerNote: data.reviewerNote ?? null }),
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
+    onSuccess: (_result, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base", vars.modelId, "component-baseline-reviews", vars.businessId] });
     },
   });
 }

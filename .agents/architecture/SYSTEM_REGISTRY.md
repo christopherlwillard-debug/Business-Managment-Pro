@@ -190,7 +190,17 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → Observed Production History
 - **Reports:** None; approved hours remain the existing benchmark input for future consumers.
 - **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
-- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories. Component production-day observations are derived read-only from exact versioned snapshots and work-session evidence; they do not write or automatically change this benchmark.
+- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories. Component production-day observations remain separate from this model-level benchmark and never update it.
+
+## Production Intelligence / Component Baseline Review
+
+- **Table:** `mfh_component_baseline_revisions`
+- **Schema:** `lib/db/src/schema/mfh-component-baseline-revisions.ts`
+- **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/component-baseline-reviews`)
+- **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → component production-day learning
+- **Reports:** None; approved component baselines are Knowledge Center production-intelligence inputs only.
+- **Source of truth:** `mfh_component_baseline_revisions` owns business-scoped, model/component-learning-key review history. Its approved row is the current reviewed baseline; source evidence is an immutable review-time reference, not a recalculated cache.
+- **Rule:** Proposals require five distinct eligible jobs, while Phase 6 observation visibility remains three jobs. Approval re-reads the Phase 6 engine, verifies the source-evidence fingerprint and prior approved revision, then transactionally supersedes the prior approved row. No client, manufacturer, cross-business, labor-hour, pricing, payroll, scheduling, checklist, or financial baseline is created.
 
 ## Production Intelligence / Job Components
 

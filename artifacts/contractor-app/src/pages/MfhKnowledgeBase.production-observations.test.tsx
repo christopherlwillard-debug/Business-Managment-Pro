@@ -11,6 +11,7 @@ const h = vi.hoisted(() => ({
     refetch: vi.fn(),
   },
   reviews: { data: [] as any[] },
+  componentReviews: { data: [] as any[] },
   toast: vi.fn(),
   activeBusiness: null as { id: number; name: string } | null,
 }));
@@ -18,9 +19,13 @@ const h = vi.hoisted(() => ({
 vi.mock("@workspace/api-client-react", () => ({
   useMfhProductionObservations: () => h.observations,
   useMfhProductionBenchmarkReviews: () => h.reviews,
+  useMfhComponentBaselineReviews: () => h.componentReviews,
   useCreateMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useApproveMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useRejectMfhProductionBenchmarkReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateMfhComponentBaselineReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useApproveMfhComponentBaselineReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRejectMfhComponentBaselineReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/contexts/BusinessContext", () => ({
@@ -42,6 +47,7 @@ beforeEach(() => {
   root = createRoot(host);
   h.observations = { isLoading: false, isError: false, data: undefined, refetch: vi.fn() };
   h.reviews = { data: [] };
+  h.componentReviews = { data: [] };
   h.toast.mockReset();
   h.activeBusiness = null;
 });
