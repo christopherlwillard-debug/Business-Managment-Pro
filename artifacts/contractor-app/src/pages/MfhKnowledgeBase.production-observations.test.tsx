@@ -123,6 +123,8 @@ describe("ProductionObservationCard response states", () => {
     expect(text()).toContain("Oak Ridge 28x76");
     expect(text()).toContain("Trim-Out");
     expect(text()).toContain("1 pause");
+    expect(host.querySelector('a[href="/jobs?openJob=101"]')?.getAttribute("aria-label"))
+      .toBe("Open job details for Oak Ridge 28x76");
   });
 
   it("reveals benchmark history details and jumps to linked source evidence", async () => {
@@ -179,6 +181,10 @@ describe("ProductionObservationCard response states", () => {
     };
     await renderCard();
     expect(text()).toContain("These jobs have no confirmed here record yet");
+    await act(async () => button("Why this observation?").click());
+    expect(text()).toContain("Daily presence must include a confirmed here record before this job can contribute.");
+    expect(host.querySelector('a[href="/jobs?openJob=101"]')?.getAttribute("aria-label"))
+      .toBe("Open job details for Oak Ridge 28x76");
   });
 
   it("renders the empty state separately from insufficient evidence", async () => {
