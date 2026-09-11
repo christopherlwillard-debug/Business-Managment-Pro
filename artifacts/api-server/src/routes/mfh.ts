@@ -28,7 +28,13 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, asc, desc, inArray, sql, ilike, or, isNull } from "drizzle-orm";
 import crypto from "crypto";
-import { requestedBusiness, invalidBusinessScope, businessPredicate, resolveMutationBusiness } from "../lib/business-scope";
+import {
+  requestedBusiness,
+  invalidBusinessScope,
+  hasRequestedBusiness,
+  businessPredicate,
+  resolveMutationBusiness,
+} from "../lib/business-scope";
 import { buildProductionObservationResponse, type ObservationPresenceState } from "../lib/production-observations";
 import { isEligibleForProductionLearning } from "../lib/production-intelligence-contract";
 import { getRequestUser } from "./guards";
@@ -1015,7 +1021,7 @@ function normalizeCustomProfileKey(value: unknown): string {
 mfhLibraryRouter.get("/custom-production-profiles", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return res.status(400).json({ error: "businessId or businessLine is required" });
 
     const rows = await db.select({
@@ -1140,7 +1146,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
     if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
 
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const result = await loadProductionObservation(modelId, scope);
     if (!result) return res.status(404).json({ error: "Model not found" });
     res.json(result.summary);

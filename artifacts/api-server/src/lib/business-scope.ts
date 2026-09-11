@@ -134,9 +134,28 @@ export async function requestedBusiness(req: Request): Promise<BusinessScope | n
   return null;
 }
 
-export function invalidBusinessScope(res: Response, scope: BusinessScope | null): boolean {
+export function hasRequestedBusiness(req: Request): boolean {
+  const rawId = req.query.businessId ?? req.body?.businessId;
+  const rawSlug = req.query.businessLine ?? req.body?.businessLine;
+  return (
+    (rawId != null && String(rawId).trim() !== "")
+    || (typeof rawSlug === "string" && rawSlug.trim() !== "")
+  );
+}
+
+export function invalidBusinessScope(
+  res: Response,
+  scope: BusinessScope | null,
+  selectorRequested = false,
+): boolean {
   if ((res.locals as { businessScopeError?: boolean }).businessScopeError) return true;
-  if (scope === null && (res.locals as { businessScopeRequested?: boolean }).businessScopeRequested) {
+  if (
+    scope === null
+    && (
+      selectorRequested
+      || (res.locals as { businessScopeRequested?: boolean }).businessScopeRequested
+    )
+  ) {
     res.status(400).json({ error: "Unknown business" });
     return true;
   }

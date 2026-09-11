@@ -614,7 +614,7 @@ async function main() {
       }));
     }, fixture.modelId);
     recordResult(
-      `Unknown business scopes are rejected without leaking observations — ${JSON.stringify(invalidBusinessResponses)}`,
+      "Unknown business scopes are rejected without leaking observations",
       invalidBusinessResponses.length === 2
         && invalidBusinessResponses.every(({ status, body }) =>
           status === 400
