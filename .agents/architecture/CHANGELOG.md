@@ -65,6 +65,26 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
   closed-job protection. Development schema, full API tests, app build, and
   browser release verifiers were verified.
 
+### Production Intelligence Phase 6: component production-day learning
+
+- Extended the existing read-only Knowledge Center observation engine with
+  component-level expected-versus-actual production-day observations sourced
+  from exact versioned component snapshots and Phase 5 work-session dates.
+- Kept whole-job confirmed presence, calendar span, pauses, and unrecorded gaps
+  separate; jobs without component sessions remain job-level evidence only.
+- Normalized one observation per job and stable component learning key,
+  deduplicated same-day sessions, excluded explicit pause conflicts, and kept
+  snapshot/version evidence and exclusion reasons traceable.
+- Captured immutable named Custom-profile context in new component snapshots;
+  historical snapshots without that context remain ineligible rather than
+  being reinterpreted.
+- Added Knowledge Center component cards and evidence expansion without
+  creating benchmark writes, labor-hour learning, forecasts, or financial,
+  payroll, invoice, expense, mileage, checklist, or presence side effects.
+- Verified focused and full API tests, development schema, typechecks,
+  contractor-app tests/build, closed-job release check, profit contracts, and
+  active workflow startup.
+
 ## 2026-09-10
 
 ### Production Intelligence Phase 2: persistent daily presence

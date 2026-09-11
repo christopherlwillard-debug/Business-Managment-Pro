@@ -22,6 +22,8 @@ import {
   clientsTable,
   jobKnowledgeRecordsTable,
   jobDailyPresenceTable,
+  jobProductionComponentsTable,
+  jobComponentWorkSessionsTable,
   productionServiceTypesTable,
   mfhCustomProductionProfilesTable,
   mfhCustomProductionProfileServicesTable,
@@ -914,6 +916,46 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
     presenceByJob.set(row.jobId, rows);
   }
 
+  const componentRows = jobIds.length > 0
+    ? await db.select({
+      id: jobProductionComponentsTable.id,
+      jobId: jobProductionComponentsTable.jobId,
+      componentKey: jobProductionComponentsTable.componentKey,
+      componentInstanceKey: jobProductionComponentsTable.componentInstanceKey,
+      componentLabel: jobProductionComponentsTable.componentLabel,
+      variant: jobProductionComponentsTable.variant,
+      snapshotVersion: jobProductionComponentsTable.snapshotVersion,
+      status: jobProductionComponentsTable.status,
+      expectedDurationDays: jobProductionComponentsTable.expectedDurationDays,
+      knowledgeContext: jobProductionComponentsTable.knowledgeContext,
+    }).from(jobProductionComponentsTable)
+      .where(inArray(jobProductionComponentsTable.jobId, jobIds))
+      .orderBy(asc(jobProductionComponentsTable.jobId), asc(jobProductionComponentsTable.id))
+    : [];
+  const componentIds = componentRows.map((component) => component.id);
+  const workSessionRows = componentIds.length > 0
+    ? await db.select({
+      id: jobComponentWorkSessionsTable.id,
+      jobId: jobComponentWorkSessionsTable.jobId,
+      productionComponentId: jobComponentWorkSessionsTable.productionComponentId,
+      workDate: jobComponentWorkSessionsTable.workDate,
+    }).from(jobComponentWorkSessionsTable)
+      .where(inArray(jobComponentWorkSessionsTable.productionComponentId, componentIds))
+      .orderBy(asc(jobComponentWorkSessionsTable.productionComponentId), asc(jobComponentWorkSessionsTable.workDate), asc(jobComponentWorkSessionsTable.id))
+    : [];
+  const componentsByJob = new Map<number, typeof componentRows>();
+  for (const row of componentRows) {
+    const rows = componentsByJob.get(row.jobId) ?? [];
+    rows.push(row);
+    componentsByJob.set(row.jobId, rows);
+  }
+  const sessionsByJob = new Map<number, typeof workSessionRows>();
+  for (const row of workSessionRows) {
+    const rows = sessionsByJob.get(row.jobId) ?? [];
+    rows.push(row);
+    sessionsByJob.set(row.jobId, rows);
+  }
+
   const summary = buildProductionObservationResponse(
       model.id,
       candidateJobs.map((job) => ({
@@ -948,6 +990,24 @@ async function loadProductionObservation(modelId: number, scope: ProductionObser
            notHereReason: row.notHereReason,
            notes: row.notes,
         })),
+         components: (componentsByJob.get(job.id) ?? []).map((component) => ({
+           id: component.id,
+           jobId: component.jobId,
+           componentKey: component.componentKey,
+           componentInstanceKey: component.componentInstanceKey,
+           componentLabel: component.componentLabel,
+           variant: component.variant,
+           snapshotVersion: component.snapshotVersion,
+           status: component.status,
+           expectedDurationDays: component.expectedDurationDays,
+           knowledgeContext: component.knowledgeContext,
+         })),
+         workSessions: (sessionsByJob.get(job.id) ?? []).map((session) => ({
+           id: session.id,
+           jobId: session.jobId,
+           productionComponentId: session.productionComponentId,
+           workDate: session.workDate,
+         })),
       })),
       {
         id: model.benchmarkId ?? null,

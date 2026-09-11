@@ -197,4 +197,145 @@ describe("production observations", () => {
       explicitPauseDays: 0,
     });
   });
+
+  it("learns component days from exact snapshots and keeps pause conflicts separate", () => {
+    const response = buildProductionObservationResponse(
+      22,
+      [1, 2, 3].map((id) => ({
+        id,
+        title: `Component job ${id}`,
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [
+          { date: "2026-09-01", state: "here" as const, provenance: "confirmed", notHereReason: null, notes: null },
+          { date: "2026-09-02", state: "not_here" as const, provenance: "confirmed", notHereReason: "weather", notes: null },
+          { date: "2026-09-03", state: "here" as const, provenance: "confirmed", notHereReason: null, notes: null },
+        ],
+        components: [{
+          id: id * 10,
+          jobId: id,
+          componentKey: "interior_finish",
+          componentInstanceKey: "interior_finish:vog",
+          componentLabel: "Interior Finish",
+          variant: "vog",
+          snapshotVersion: 1,
+          status: "completed",
+          expectedDurationDays: 2,
+          knowledgeContext: null,
+        }],
+        workSessions: [
+          { id: id * 100, jobId: id, productionComponentId: id * 10, workDate: "2026-09-01" },
+          { id: id * 100 + 1, jobId: id, productionComponentId: id * 10, workDate: "2026-09-01" },
+          { id: id * 100 + 2, jobId: id, productionComponentId: id * 10, workDate: "2026-09-02" },
+          { id: id * 100 + 3, jobId: id, productionComponentId: id * 10, workDate: "2026-09-03" },
+        ],
+      })),
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    const component = response.observed.componentObservations[0];
+    expect(component.learningKey).toBe("interior_finish:vog");
+    expect(component.eligibleJobCount).toBe(3);
+    expect(component.sufficient).toBe(true);
+    expect(component.expectedProductionDaysMedian).toBe(2);
+    expect(component.actualWorkDaysMedian).toBe(2);
+    expect(component.expectedVsActualDaysMedian).toBe(0);
+    expect(component.jobs[0]).toMatchObject({
+      actualWorkDays: 2,
+      workDates: ["2026-09-01", "2026-09-03"],
+      conflictDates: ["2026-09-02"],
+      exclusionReason: null,
+    });
+  });
+
+  it("does not reinterpret Custom snapshots without an immutable profile identity", () => {
+    const response = buildProductionObservationResponse(
+      22,
+      [{
+        id: 1,
+        title: "Unmapped custom job",
+        status: "invoiced",
+        workflow: "mh_production",
+        serviceScopes: [{ id: 99, name: "Custom work" }],
+        presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed", notHereReason: null, notes: null }],
+        components: [{
+          id: 10,
+          jobId: 1,
+          componentKey: "custom",
+          componentInstanceKey: "custom:99",
+          componentLabel: "Custom",
+          variant: null,
+          snapshotVersion: 2,
+          status: "completed",
+          expectedDurationDays: 1,
+          knowledgeContext: null,
+        }],
+        workSessions: [{ id: 100, jobId: 1, productionComponentId: 10, workDate: "2026-09-01" }],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    expect(response.observed.componentObservations[0]).toMatchObject({
+      learningKey: "custom:unresolved:custom:99",
+      eligibleJobCount: 0,
+      sufficient: false,
+    });
+    expect(response.observed.componentObservations[0].jobs[0].exclusionReason).toBe("missing_custom_profile_snapshot");
+  });
+
+  it("uses one job observation when historical snapshots overlap and rejects expectation conflicts", () => {
+    const response = buildProductionObservationResponse(
+      22,
+      [{
+        id: 1,
+        title: "Versioned component job",
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed", notHereReason: null, notes: null }],
+        components: [
+          {
+            id: 10,
+            jobId: 1,
+            componentKey: "siding",
+            componentInstanceKey: "siding:unspecified",
+            componentLabel: "Siding",
+            variant: null,
+            snapshotVersion: 1,
+            status: "completed",
+            expectedDurationDays: 1,
+            knowledgeContext: null,
+          },
+          {
+            id: 11,
+            jobId: 1,
+            componentKey: "siding",
+            componentInstanceKey: "siding:unspecified",
+            componentLabel: "Siding",
+            variant: null,
+            snapshotVersion: 2,
+            status: "completed",
+            expectedDurationDays: 2,
+            knowledgeContext: null,
+          },
+        ],
+        workSessions: [
+          { id: 100, jobId: 1, productionComponentId: 10, workDate: "2026-09-01" },
+          { id: 101, jobId: 1, productionComponentId: 11, workDate: "2026-09-01" },
+        ],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    const component = response.observed.componentObservations[0];
+    expect(component.eligibleJobCount).toBe(0);
+    expect(component.jobs[0]).toMatchObject({
+      actualWorkDays: null,
+      expectedProductionDays: null,
+      exclusionReason: "conflicting_snapshot_expectations",
+      workDates: ["2026-09-01"],
+    });
+    expect(component.jobs[0].snapshotEvidence).toHaveLength(2);
+  });
 });

@@ -25,6 +25,89 @@ export type ProductionObservationJobInput = {
   workflow: string | null;
   serviceScopes: ObservationServiceScope[];
   presence: ObservationPresenceRecord[];
+  components?: ProductionObservationComponentInput[];
+  workSessions?: ProductionObservationWorkSessionInput[];
+};
+
+export type ProductionObservationComponentInput = {
+  id: number;
+  jobId: number;
+  componentKey: string;
+  componentInstanceKey: string;
+  componentLabel: string;
+  variant: string | null;
+  snapshotVersion: number;
+  status: string;
+  expectedDurationDays: number | null;
+  knowledgeContext: Record<string, unknown> | null;
+};
+
+export type ProductionObservationWorkSessionInput = {
+  id: number;
+  jobId: number;
+  productionComponentId: number;
+  workDate: string;
+};
+
+export type ProductionObservationSnapshotEvidence = {
+  snapshotId: number;
+  snapshotVersion: number;
+  expectedProductionDays: number | null;
+  sessionIds: number[];
+};
+
+export type ProductionObservationComponentJob = {
+  jobId: number;
+  title: string;
+  learningKey: string;
+  componentKey: string;
+  componentLabel: string;
+  variant: string | null;
+  customProfile: {
+    id: number;
+    key: string;
+    name: string;
+  } | null;
+  expectedProductionDays: number | null;
+  actualWorkDays: number | null;
+  expectedVsActualDays: number | null;
+  workDates: string[];
+  conflictDates: string[];
+  explicitPauseDays: number;
+  unrecordedDays: number;
+  snapshotEvidence: ProductionObservationSnapshotEvidence[];
+  exclusionReason:
+    | "no_component_work_evidence"
+    | "missing_expected_duration"
+    | "not_here_work_conflict"
+    | "conflicting_snapshot_expectations"
+    | "snapshot_job_mismatch"
+    | "missing_custom_profile_snapshot"
+    | null;
+};
+
+export type ProductionObservationComponent = {
+  learningKey: string;
+  componentKey: string;
+  componentLabel: string;
+  variant: string | null;
+  customProfile: {
+    id: number;
+    key: string;
+    name: string;
+  } | null;
+  eligibleJobCount: number;
+  minimumJobsRequired: number;
+  sufficient: boolean;
+  expectedProductionDaysMedian: number | null;
+  expectedProductionDaysRange: { min: number; max: number } | null;
+  actualWorkDaysMedian: number | null;
+  actualWorkDaysRange: { min: number; max: number } | null;
+  expectedVsActualDaysMedian: number | null;
+  expectedVsActualDaysRange: { min: number; max: number } | null;
+  explicitPauseDaysTotal: number;
+  unrecordedDaysTotal: number;
+  jobs: ProductionObservationComponentJob[];
 };
 
 export type ProductionObservationJob = {
@@ -62,6 +145,7 @@ export type ProductionObservationResponse = {
     calendarSpanRange: { min: number; max: number } | null;
     explicitPauseDaysTotal: number;
     serviceScopes: Array<ObservationServiceScope & { jobCount: number }>;
+    componentObservations: ProductionObservationComponent[];
   };
   jobs: ProductionObservationJob[];
 };
@@ -156,6 +240,242 @@ export function calculateProductionObservation(records: ObservationPresenceRecor
   };
 }
 
+function customProfileFromSnapshot(
+  knowledgeContext: Record<string, unknown> | null,
+): { id: number; key: string; name: string } | null {
+  const value = knowledgeContext?.customProfile;
+  if (!value || typeof value !== "object") return null;
+  const profile = value as Record<string, unknown>;
+  if (
+    typeof profile.id !== "number" ||
+    !Number.isInteger(profile.id) ||
+    typeof profile.key !== "string" ||
+    !profile.key.trim() ||
+    typeof profile.name !== "string" ||
+    !profile.name.trim()
+  ) {
+    return null;
+  }
+  return {
+    id: profile.id,
+    key: profile.key.trim(),
+    name: profile.name.trim(),
+  };
+}
+
+function learningKeyForComponent(component: ProductionObservationComponentInput): {
+  learningKey: string;
+  customProfile: { id: number; key: string; name: string } | null;
+} | null {
+  if (component.componentKey === "interior_finish") {
+    if (component.variant !== "vog" && component.variant !== "hybrid" && component.variant !== "drywall") {
+      return null;
+    }
+    return {
+      learningKey: `interior_finish:${component.variant}`,
+      customProfile: null,
+    };
+  }
+
+  if (component.componentKey === "siding" || component.componentKey === "plumbing" || component.componentKey === "skirting") {
+    return {
+      learningKey: component.componentKey,
+      customProfile: null,
+    };
+  }
+
+  if (component.componentKey === "custom") {
+    const customProfile = customProfileFromSnapshot(component.knowledgeContext);
+    if (!customProfile) return null;
+    return {
+      learningKey: `custom:${customProfile.id}:${customProfile.key}`,
+      customProfile,
+    };
+  }
+
+  return null;
+}
+
+function buildComponentObservations(
+  jobs: ProductionObservationJobInput[],
+  observedJobs: ProductionObservationJob[],
+): ProductionObservationComponent[] {
+  const observedJobById = new Map(observedJobs.map((job) => [job.id, job]));
+  const groups = new Map<string, {
+    componentKey: string;
+    componentLabel: string;
+    variant: string | null;
+    customProfile: { id: number; key: string; name: string } | null;
+    jobs: ProductionObservationComponentJob[];
+  }>();
+
+  for (const job of jobs) {
+    const observedJob = observedJobById.get(job.id);
+    if (!observedJob || observedJob.exclusionReason !== null) continue;
+
+    const sessionsByComponentId = new Map<number, ProductionObservationWorkSessionInput[]>();
+    for (const session of job.workSessions ?? []) {
+      const sessions = sessionsByComponentId.get(session.productionComponentId) ?? [];
+      sessions.push(session);
+      sessionsByComponentId.set(session.productionComponentId, sessions);
+    }
+
+    const componentGroups = new Map<string, ProductionObservationComponentInput[]>();
+    for (const component of job.components ?? []) {
+      const identity = learningKeyForComponent(component);
+      if (!identity) {
+        if (component.componentKey === "custom") {
+          const fallbackKey = `custom:unresolved:${component.componentInstanceKey}`;
+          const existing = componentGroups.get(fallbackKey) ?? [];
+          existing.push(component);
+          componentGroups.set(fallbackKey, existing);
+        }
+        continue;
+      }
+      const existing = componentGroups.get(identity.learningKey) ?? [];
+      existing.push(component);
+      componentGroups.set(identity.learningKey, existing);
+    }
+
+    const normalizedPresence = normalizeObservationPresence(job.presence);
+    const confirmedNotHereDates = new Set(
+      normalizedPresence
+        .filter((record) => record.provenance === "confirmed" && record.state === "not_here")
+        .map((record) => record.date),
+    );
+
+    for (const [learningKey, components] of componentGroups) {
+      const firstComponent = components[0];
+      const identity = learningKeyForComponent(firstComponent);
+      const customProfile = identity?.customProfile ?? null;
+      const snapshotEvidence: ProductionObservationSnapshotEvidence[] = [];
+      const expectedValues = new Set<number>();
+      const validDates = new Set<string>();
+      const conflictDates = new Set<string>();
+      let snapshotJobMismatch = false;
+      let hasMissingExpectedDuration = false;
+
+      for (const component of components) {
+        if (component.jobId !== job.id) {
+          snapshotJobMismatch = true;
+        }
+        if (component.status === "not_applicable") continue;
+        if (component.expectedDurationDays == null) {
+          hasMissingExpectedDuration = true;
+        } else if (Number.isInteger(component.expectedDurationDays) && component.expectedDurationDays >= 0) {
+          expectedValues.add(component.expectedDurationDays);
+        } else {
+          hasMissingExpectedDuration = true;
+        }
+
+        const componentSessions = sessionsByComponentId.get(component.id) ?? [];
+        const sessionIds = componentSessions.map((session) => session.id).sort((a, b) => a - b);
+        snapshotEvidence.push({
+          snapshotId: component.id,
+          snapshotVersion: component.snapshotVersion,
+          expectedProductionDays: component.expectedDurationDays,
+          sessionIds,
+        });
+        for (const session of componentSessions) {
+          if (session.jobId !== job.id || component.jobId !== job.id) {
+            snapshotJobMismatch = true;
+            continue;
+          }
+          if (confirmedNotHereDates.has(session.workDate)) {
+            conflictDates.add(session.workDate);
+          } else {
+            validDates.add(session.workDate);
+          }
+        }
+      }
+
+      snapshotEvidence.sort((a, b) => a.snapshotId - b.snapshotId);
+      const sortedWorkDates = [...validDates].sort();
+      const sortedConflictDates = [...conflictDates].sort();
+      let exclusionReason: ProductionObservationComponentJob["exclusionReason"] = null;
+      if (snapshotJobMismatch) exclusionReason = "snapshot_job_mismatch";
+      else if (!identity && firstComponent.componentKey === "custom") {
+        exclusionReason = "missing_custom_profile_snapshot";
+      } else if (hasMissingExpectedDuration || expectedValues.size === 0) {
+        exclusionReason = "missing_expected_duration";
+      } else if (expectedValues.size > 1) {
+        exclusionReason = "conflicting_snapshot_expectations";
+      } else if (sortedWorkDates.length === 0) {
+        exclusionReason = sortedConflictDates.length > 0
+          ? "not_here_work_conflict"
+          : "no_component_work_evidence";
+      }
+
+      const expectedProductionDays = expectedValues.size === 1 ? [...expectedValues][0] : null;
+      const actualWorkDays = exclusionReason === null ? sortedWorkDates.length : null;
+      const componentJob: ProductionObservationComponentJob = {
+        jobId: job.id,
+        title: job.title,
+        learningKey,
+        componentKey: firstComponent.componentKey,
+        componentLabel: firstComponent.componentLabel,
+        variant: firstComponent.variant,
+        customProfile,
+        expectedProductionDays,
+        actualWorkDays,
+        expectedVsActualDays: expectedProductionDays != null && actualWorkDays != null
+          ? actualWorkDays - expectedProductionDays
+          : null,
+        workDates: sortedWorkDates,
+        conflictDates: sortedConflictDates,
+        explicitPauseDays: observedJob.explicitPauseDays,
+        unrecordedDays: observedJob.unrecordedDays,
+        snapshotEvidence,
+        exclusionReason,
+      };
+      const group = groups.get(learningKey);
+      if (group) {
+        group.jobs.push(componentJob);
+      } else {
+        groups.set(learningKey, {
+          componentKey: firstComponent.componentKey,
+          componentLabel: firstComponent.componentLabel,
+          variant: firstComponent.variant,
+          customProfile,
+          jobs: [componentJob],
+        });
+      }
+    }
+  }
+
+  const range = (values: number[]): { min: number; max: number } | null =>
+    values.length > 0 ? { min: Math.min(...values), max: Math.max(...values) } : null;
+
+  return [...groups.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([learningKey, group]) => {
+      const eligibleJobs = group.jobs.filter((job) => job.exclusionReason === null);
+      const expectedDays = eligibleJobs.flatMap((job) => job.expectedProductionDays == null ? [] : [job.expectedProductionDays]);
+      const actualWorkDays = eligibleJobs.flatMap((job) => job.actualWorkDays == null ? [] : [job.actualWorkDays]);
+      const deltas = eligibleJobs.flatMap((job) => job.expectedVsActualDays == null ? [] : [job.expectedVsActualDays]);
+      const sufficient = eligibleJobs.length >= MINIMUM_SAMPLE_SIZE;
+      return {
+        learningKey,
+        componentKey: group.componentKey,
+        componentLabel: group.componentLabel,
+        variant: group.variant,
+        customProfile: group.customProfile,
+        eligibleJobCount: eligibleJobs.length,
+        minimumJobsRequired: MINIMUM_SAMPLE_SIZE,
+        sufficient,
+        expectedProductionDaysMedian: sufficient ? median(expectedDays) : null,
+        expectedProductionDaysRange: sufficient ? range(expectedDays) : null,
+        actualWorkDaysMedian: sufficient ? median(actualWorkDays) : null,
+        actualWorkDaysRange: sufficient ? range(actualWorkDays) : null,
+        expectedVsActualDaysMedian: sufficient ? median(deltas) : null,
+        expectedVsActualDaysRange: sufficient ? range(deltas) : null,
+        explicitPauseDaysTotal: eligibleJobs.reduce((total, job) => total + job.explicitPauseDays, 0),
+        unrecordedDaysTotal: eligibleJobs.reduce((total, job) => total + job.unrecordedDays, 0),
+        jobs: [...group.jobs].sort((left, right) => left.jobId - right.jobId),
+      };
+    });
+}
+
 export function buildProductionObservationResponse(
   modelId: number,
   jobs: ProductionObservationJobInput[],
@@ -219,6 +539,7 @@ export function buildProductionObservationResponse(
       calendarSpanRange: sufficient ? range(calendarSpans) : null,
       explicitPauseDaysTotal: eligibleJobs.reduce((total, job) => total + job.explicitPauseDays, 0),
       serviceScopes: [...serviceCounts.values()],
+      componentObservations: buildComponentObservations(jobs, observedJobs),
     },
     jobs: observedJobs,
   };

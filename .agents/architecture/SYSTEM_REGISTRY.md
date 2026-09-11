@@ -190,7 +190,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → Observed Production History
 - **Reports:** None; approved hours remain the existing benchmark input for future consumers.
 - **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
-- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories.
+- **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories. Component production-day observations are derived read-only from exact versioned snapshots and work-session evidence; they do not write or automatically change this benchmark.
 
 ## Production Intelligence / Job Components
 
@@ -200,7 +200,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → Production components
 - **Reports:** None; component snapshots are operational context only and never enter financial, payroll, mileage, invoice, or benchmark calculations.
 - **Source of truth:** `jobs.mh_production_services` remains the selected-service source; `job_production_components` owns versioned component context and independent component status.
-- **Rule:** The classifier exposes only Interior Finish (VOG/Hybrid/Drywall), Siding, Plumbing, Skirting, and Custom. Service-only and travel-surcharge catalog rows are excluded. Historical snapshots are superseded rather than rewritten.
+- **Rule:** The classifier exposes only Interior Finish (VOG/Hybrid/Drywall), Siding, Plumbing, Skirting, and Custom. Service-only and travel-surcharge catalog rows are excluded. Historical snapshots are superseded rather than rewritten. Custom snapshots capture named-profile identity in `knowledge_context` when available; missing historical profile context is not reconstructed from the live catalog.
 
 ## Production Intelligence / Component Work Sessions
 
@@ -210,7 +210,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → Component work sessions beneath Production components
 - **Reports:** None; sessions are raw operational evidence only.
 - **Source of truth:** `job_component_work_sessions` owns job/component snapshot/work-date/worker/actual-hours/notes records. Each row references the exact `job_production_components` snapshot used at creation.
-- **Rule:** Sessions require a current, applicable component on create, allow assigned subcontractors or explicitly named outside workers, support corrections without deletion, and never create or update payroll, expenses, profit, invoices, mileage, checklists, presence, or Knowledge Center learning. Closed jobs are read-only.
+- **Rule:** Sessions require a current, applicable component on create, allow assigned subcontractors or explicitly named outside workers, support corrections without deletion, and never create or update payroll, expenses, profit, invoices, mileage, checklists, or presence. Knowledge Center may consume sessions as read-only component work-date evidence, but session writes never create learning records or benchmarks. Closed jobs are read-only.
 
 ---
 

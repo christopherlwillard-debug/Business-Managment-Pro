@@ -519,3 +519,33 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Status:** Accepted
 **Date:** 2026-09-11
+
+## ADR-029
+
+**Title:** Component production-day learning is derived from immutable evidence
+
+**Decision:** Extend the existing read-only Knowledge Center observation engine
+to derive component expected-versus-actual production-day observations from
+versioned `job_production_components`, confirmed `job_daily_presence`, and
+exactly referenced `job_component_work_sessions`. Normalize one observation
+per eligible job and stable component learning key; keep pauses, unrecorded
+days, missing evidence, and session/presence conflicts separate. Capture
+business-scoped Custom profile identity in new component snapshot context, and
+never reclassify historical snapshots from the current catalog.
+
+**Reason:** Whole-job presence cannot truthfully be copied to every component,
+while work sessions provide component-specific dates without becoming payroll,
+labor-hour learning, or a second learning ledger. Immutable snapshot identity
+and profile IDs prevent catalog/profile changes or same-key profiles in different
+businesses from changing historical meaning or merging unrelated evidence.
+
+**Rejected Alternatives:**
+
+- Attributing all job-level presence days to every selected component
+- Joining historical work to the current component or Custom profile mapping
+- Persisting a parallel component baseline/revision table in this phase
+- Counting session hours as labor-hour learning
+- Treating `not_here` or unrecorded days as component work
+
+**Status:** Accepted
+**Date:** 2026-09-11

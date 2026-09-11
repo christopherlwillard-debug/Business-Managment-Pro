@@ -191,7 +191,8 @@ observation payload. Each aggregate is grouped by a stable learning key:
 - `interior_finish:vog`, `interior_finish:hybrid`, or
   `interior_finish:drywall`
 - `siding`, `plumbing`, or `skirting`
-- `custom:<profileKey>` for a named Custom profile
+- `custom:<profileId>:<profileKey>` for a named Custom profile; the immutable
+  profile ID prevents same-key profiles from different businesses being merged
 
 Each aggregate includes:
 

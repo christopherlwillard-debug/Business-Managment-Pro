@@ -10,6 +10,8 @@ import {
   jobsTable,
   materialListItemsTable,
   materialListsTable,
+  mfhCustomProductionProfilesTable,
+  mfhCustomProductionProfileServicesTable,
   mfhModelsTable,
   productionPriceOverridesTable,
   productionServiceTypesTable,
@@ -367,6 +369,35 @@ async function buildDrafts(job: Job): Promise<ComponentDraft[]> {
   if (!services.length) return [];
   services.sort((a, b) => a.id - b.id);
 
+  const customServiceIds = services
+    .filter((service) => classifyProductionService(service, job.mfhConstructionType?.replace(/^(FIELD|LOT)_/i, ""))?.componentKey === "custom")
+    .map((service) => service.id);
+  const customProfileRows = customServiceIds.length > 0 && job.businessId != null
+    ? await db
+      .select({
+        serviceTypeId: mfhCustomProductionProfileServicesTable.serviceTypeId,
+        profileId: mfhCustomProductionProfilesTable.id,
+        profileKey: mfhCustomProductionProfilesTable.profileKey,
+        profileName: mfhCustomProductionProfilesTable.name,
+      })
+      .from(mfhCustomProductionProfileServicesTable)
+      .innerJoin(
+        mfhCustomProductionProfilesTable,
+        eq(mfhCustomProductionProfileServicesTable.profileId, mfhCustomProductionProfilesTable.id),
+      )
+      .where(and(
+        eq(mfhCustomProductionProfileServicesTable.businessId, job.businessId),
+        inArray(mfhCustomProductionProfileServicesTable.serviceTypeId, customServiceIds),
+        eq(mfhCustomProductionProfilesTable.active, true),
+      ))
+    : [];
+  const customProfileByServiceId = new Map(
+    customProfileRows.map((row) => [
+      row.serviceTypeId,
+      { id: row.profileId, key: row.profileKey, name: row.profileName },
+    ]),
+  );
+
   const [modelContext] = job.mfhModelId
     ? await db
       .select({
@@ -504,6 +535,14 @@ async function buildDrafts(job: Job): Promise<ComponentDraft[]> {
         knowledgeUpdatedAt: iso(knowledgeRecord?.updatedAt),
         latestVersionId: knowledgeVersion?.id ?? null,
         latestVersionSnapshotAt: iso(knowledgeVersion?.snapshotAt),
+        ...(classification.componentKey === "custom" && customProfileByServiceId.has(service.id)
+          ? {
+            customProfile: {
+              ...customProfileByServiceId.get(service.id)!,
+              serviceTypeIds: [service.id],
+            },
+          }
+          : {}),
       },
     });
   }

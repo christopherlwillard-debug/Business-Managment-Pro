@@ -157,6 +157,7 @@ function queueObservation() {
     [{ id: 101, name: "Trim-Out", itemKey: "trim-out", appliesTo: "production", businessId: null }],
     [],
     presence,
+    [],
   );
 }
 
@@ -169,7 +170,7 @@ function queueCustomObservation({
   profiles?: any[];
   services?: any[];
 }) {
-  h.selectQueue.push([model], observationJobs, services, profiles, presence);
+  h.selectQueue.push([model], observationJobs, services, profiles, presence, []);
 }
 
 describe("production benchmark reviews", () => {
@@ -252,6 +253,57 @@ describe("production benchmark reviews", () => {
     expect(response.status).toBe(200);
     expect(response.body.jobs[0].serviceScopes[0].customProfile.name).toBe("Custom Exterior");
     expect(response.body.jobs.map((job: { id: number }) => job.id)).toEqual([1]);
+  });
+
+  it("returns component production-day observations from exact snapshot sessions", async () => {
+    const componentJobs = jobs.map((job) => ({
+      ...job,
+      mhProductionServices: [101],
+    }));
+    const components = componentJobs.map((job, index) => ({
+      id: 500 + index,
+      jobId: job.id,
+      componentKey: "interior_finish",
+      componentInstanceKey: "interior_finish:vog",
+      componentLabel: "Interior Finish",
+      variant: "vog",
+      snapshotVersion: 2,
+      status: "completed",
+      expectedDurationDays: 2,
+      knowledgeContext: null,
+    }));
+    const sessions = components.map((component, index) => ({
+      id: 700 + index,
+      jobId: component.jobId,
+      productionComponentId: component.id,
+      workDate: `2026-09-0${index + 1}`,
+    }));
+    h.selectQueue.push(
+      [model],
+      componentJobs,
+      [{ id: 101, name: "Interior Finish VOG", itemKey: "vog", appliesTo: "production", businessId: null }],
+      [],
+      presence,
+      components,
+      sessions,
+    );
+
+    const response = await request(app)
+      .get("/mfh/knowledge-base/7/production-observations");
+
+    expect(response.status).toBe(200);
+    expect(response.body.observed.componentObservations).toEqual([
+      expect.objectContaining({
+        learningKey: "interior_finish:vog",
+        eligibleJobCount: 3,
+        sufficient: true,
+        expectedProductionDaysMedian: 2,
+        actualWorkDaysMedian: 1,
+      }),
+    ]);
+    expect(response.body.observed.componentObservations[0].jobs[0].snapshotEvidence).toEqual([
+      expect.objectContaining({ snapshotId: 500, snapshotVersion: 2, sessionIds: [700] }),
+    ]);
   });
 
   it("rejects a pending review without changing the active benchmark", async () => {

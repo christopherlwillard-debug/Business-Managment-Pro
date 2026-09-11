@@ -43,6 +43,57 @@ export interface MfhProductionObservationJob {
   exclusionReason: "no_confirmed_presence" | null;
 }
 
+export interface MfhProductionObservationComponentJob {
+  jobId: number;
+  title: string;
+  learningKey: string;
+  componentKey: string;
+  componentLabel: string;
+  variant: string | null;
+  customProfile: { id: number; key: string; name: string } | null;
+  expectedProductionDays: number | null;
+  actualWorkDays: number | null;
+  expectedVsActualDays: number | null;
+  workDates: string[];
+  conflictDates: string[];
+  explicitPauseDays: number;
+  unrecordedDays: number;
+  snapshotEvidence: Array<{
+    snapshotId: number;
+    snapshotVersion: number;
+    expectedProductionDays: number | null;
+    sessionIds: number[];
+  }>;
+  exclusionReason:
+    | "no_component_work_evidence"
+    | "missing_expected_duration"
+    | "not_here_work_conflict"
+    | "conflicting_snapshot_expectations"
+    | "snapshot_job_mismatch"
+    | "missing_custom_profile_snapshot"
+    | null;
+}
+
+export interface MfhProductionObservationComponent {
+  learningKey: string;
+  componentKey: string;
+  componentLabel: string;
+  variant: string | null;
+  customProfile: { id: number; key: string; name: string } | null;
+  eligibleJobCount: number;
+  minimumJobsRequired: number;
+  sufficient: boolean;
+  expectedProductionDaysMedian: number | null;
+  expectedProductionDaysRange: { min: number; max: number } | null;
+  actualWorkDaysMedian: number | null;
+  actualWorkDaysRange: { min: number; max: number } | null;
+  expectedVsActualDaysMedian: number | null;
+  expectedVsActualDaysRange: { min: number; max: number } | null;
+  explicitPauseDaysTotal: number;
+  unrecordedDaysTotal: number;
+  jobs: MfhProductionObservationComponentJob[];
+}
+
 export interface MfhProductionObservationSummary {
   modelId: number;
   benchmark: {
@@ -63,6 +114,7 @@ export interface MfhProductionObservationSummary {
     calendarSpanRange: { min: number; max: number } | null;
     explicitPauseDaysTotal: number;
     serviceScopes: Array<{ id: number; name: string; jobCount: number; customProfile?: { id: number; key: string; name: string } }>;
+    componentObservations: MfhProductionObservationComponent[];
   };
   jobs: MfhProductionObservationJob[];
 }

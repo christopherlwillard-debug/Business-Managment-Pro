@@ -93,6 +93,7 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const [reviewHours, setReviewHours] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [expandedComponentKey, setExpandedComponentKey] = useState<string | null>(null);
 
   if (observations.isLoading) {
     return (
@@ -449,6 +450,110 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                   {service.customProfile?.name ?? service.name} · {service.jobCount}
                 </span>
               ))}
+            </div>
+          )}
+
+          {(data.observed.componentObservations ?? []).length > 0 && (
+            <div className="border-t border-border pt-3 space-y-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Component production-day learning</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Actual component days come from Phase 5 work sessions. Pauses and unrecorded presence stay separate.
+                  </p>
+                </div>
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">Read-only</span>
+              </div>
+              <div className="space-y-2">
+                {(data.observed.componentObservations ?? []).map((component) => {
+                  const expanded = expandedComponentKey === component.learningKey;
+                  const label = component.customProfile?.name
+                    ?? (component.variant ? `${component.componentLabel} · ${component.variant.toUpperCase()}` : component.componentLabel);
+                  const insufficientText = component.eligibleJobCount === 0
+                    ? "No component work-session evidence is eligible yet."
+                    : `${Math.max(component.minimumJobsRequired - component.eligibleJobCount, 0)} more eligible job${component.minimumJobsRequired - component.eligibleJobCount === 1 ? "" : "s"} needed.`;
+                  return (
+                    <div key={component.learningKey} className="rounded-lg border border-border/70 bg-muted/10 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedComponentKey((current) => current === component.learningKey ? null : component.learningKey)}
+                        className="w-full px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
+                        aria-expanded={expanded}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {expanded ? <ChevronUp className="w-3 h-3 shrink-0 text-muted-foreground" /> : <ChevronDown className="w-3 h-3 shrink-0 text-muted-foreground" />}
+                              <p className="text-xs font-semibold text-foreground truncate">{label}</p>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              {component.eligibleJobCount} eligible job{component.eligibleJobCount === 1 ? "" : "s"} · {component.minimumJobsRequired}-job minimum
+                            </p>
+                          </div>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            component.sufficient ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                          }`}>
+                            {component.sufficient ? "Learned" : "Insufficient history"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2.5">
+                          <StatTile
+                            label="Expected days"
+                            value={fmt(component.expectedProductionDaysMedian, "decimal")}
+                            sub={component.expectedProductionDaysRange ? `${fmt(component.expectedProductionDaysRange.min, "decimal")}–${fmt(component.expectedProductionDaysRange.max, "decimal")} range` : "snapshot value"}
+                          />
+                          <StatTile
+                            label="Actual work days"
+                            value={fmt(component.actualWorkDaysMedian, "decimal")}
+                            sub={component.actualWorkDaysRange ? `${fmt(component.actualWorkDaysRange.min, "decimal")}–${fmt(component.actualWorkDaysRange.max, "decimal")} range` : "session evidence"}
+                          />
+                          <StatTile
+                            label="Actual − expected"
+                            value={fmt(component.expectedVsActualDaysMedian, "decimal")}
+                            sub={component.expectedVsActualDaysRange ? `${fmt(component.expectedVsActualDaysRange.min, "decimal")}–${fmt(component.expectedVsActualDaysRange.max, "decimal")} range` : "delta"}
+                          />
+                        </div>
+                        {!component.sufficient && (
+                          <p className="text-[10px] text-amber-700 mt-2">{insufficientText}</p>
+                        )}
+                      </button>
+                      {expanded && (
+                        <div className="border-t border-border/70 px-3 py-2.5 space-y-2">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted-foreground">
+                            <span>{component.explicitPauseDaysTotal} pause day{component.explicitPauseDaysTotal === 1 ? "" : "s"} in eligible jobs</span>
+                            <span>{component.unrecordedDaysTotal} unrecorded day{component.unrecordedDaysTotal === 1 ? "" : "s"} in eligible jobs</span>
+                          </div>
+                          {component.jobs.map((job) => (
+                            <Link
+                              key={job.jobId}
+                              href={`/jobs?openJob=${job.jobId}`}
+                              className="block rounded-md border border-border/60 bg-background px-2.5 py-2 hover:border-amber-300 hover:bg-amber-50/30 transition-colors"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="text-[11px] font-semibold text-foreground truncate">{job.title}</p>
+                                <span className={`text-[10px] whitespace-nowrap ${job.exclusionReason ? "text-amber-700" : "text-muted-foreground"}`}>
+                                  {job.exclusionReason
+                                    ? job.exclusionReason.replaceAll("_", " ")
+                                    : `${job.actualWorkDays} work day${job.actualWorkDays === 1 ? "" : "s"}`}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                Expected {fmt(job.expectedProductionDays, "decimal")} · Δ {fmt(job.expectedVsActualDays, "decimal")} · Snapshot{job.snapshotEvidence.length === 1 ? "" : "s"} {job.snapshotEvidence.map((snapshot) => `${snapshot.snapshotId} v${snapshot.snapshotVersion}`).join(", ")}
+                              </p>
+                              {job.workDates.length > 0 && (
+                                <p className="text-[10px] text-muted-foreground mt-1">Work dates: {job.workDates.map(fmtDate).join(", ")}</p>
+                              )}
+                              {job.conflictDates.length > 0 && (
+                                <p className="text-[10px] text-amber-700 mt-1">Excluded pause-conflict dates: {job.conflictDates.map(fmtDate).join(", ")}</p>
+                              )}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

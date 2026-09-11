@@ -133,6 +133,62 @@ describe("ProductionObservationCard response states", () => {
       .toBe("Open job details for Oak Ridge 28x76");
   });
 
+  it("renders component expected-versus-actual learning without exposing labor hours", async () => {
+    h.observations.data = {
+      ...populated,
+      observed: {
+        ...populated.observed,
+        componentObservations: [{
+          learningKey: "interior_finish:vog",
+          componentKey: "interior_finish",
+          componentLabel: "Interior Finish",
+          variant: "vog",
+          customProfile: null,
+          eligibleJobCount: 3,
+          minimumJobsRequired: 3,
+          sufficient: true,
+          expectedProductionDaysMedian: 2,
+          expectedProductionDaysRange: { min: 1, max: 3 },
+          actualWorkDaysMedian: 2,
+          actualWorkDaysRange: { min: 1, max: 3 },
+          expectedVsActualDaysMedian: 0,
+          expectedVsActualDaysRange: { min: -1, max: 1 },
+          explicitPauseDaysTotal: 1,
+          unrecordedDaysTotal: 2,
+          jobs: [{
+            jobId: 101,
+            title: "Oak Ridge 28x76",
+            learningKey: "interior_finish:vog",
+            componentKey: "interior_finish",
+            componentLabel: "Interior Finish",
+            variant: "vog",
+            customProfile: null,
+            expectedProductionDays: 2,
+            actualWorkDays: 2,
+            expectedVsActualDays: 0,
+            workDates: ["2026-09-09", "2026-09-10"],
+            conflictDates: [],
+            explicitPauseDays: 1,
+            unrecordedDays: 0,
+            snapshotEvidence: [{ snapshotId: 55, snapshotVersion: 2, expectedProductionDays: 2, sessionIds: [88] }],
+            exclusionReason: null,
+          }],
+        }],
+      },
+    };
+    await renderCard();
+
+    expect(text()).toContain("Component production-day learning");
+    expect(text()).toContain("Interior Finish · VOG");
+    expect(text()).toContain("Actual − expected");
+    expect(text()).not.toContain("actual hours");
+
+    await act(async () => button("Interior Finish · VOG").click());
+    expect(text()).toContain("Snapshot 55 v2");
+    expect(text()).toContain("Work dates: 09/09/2026, 09/10/2026");
+    expect(host.querySelector('a[href="/jobs?openJob=101"]')).not.toBeNull();
+  });
+
   it("shows confirmed production dates in chronological order", async () => {
     h.observations.data = {
       ...populated,
