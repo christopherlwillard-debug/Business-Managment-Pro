@@ -382,6 +382,45 @@ async function main() {
         && browserWrites.length === 0,
       blockedWrites.length ? blockedWrites.join(", ") : "database snapshots unchanged",
     );
+    await page.setViewport({ width: 390, height: 844 });
+    const narrowEvidence = await page.$eval(
+      `#mfh-evidence-job-${fixture.excludedJobId}`,
+      element => {
+        const rect = element.getBoundingClientRect();
+        const link = element.closest("a") as HTMLAnchorElement | null;
+        const linkRect = link?.getBoundingClientRect() ?? null;
+        return {
+          text: element.textContent ?? "",
+          evidenceLeft: rect.left,
+          evidenceRight: rect.right,
+          evidenceWidth: rect.width,
+          evidenceHeight: rect.height,
+          evidenceScrollWidth: element.scrollWidth,
+          evidenceClientWidth: element.clientWidth,
+          linkHref: link?.getAttribute("href") ?? "",
+          linkWidth: linkRect?.width ?? 0,
+          linkHeight: linkRect?.height ?? 0,
+        };
+      },
+    );
+    recordResult(
+      "Excluded provenance remains readable at a narrow viewport",
+      narrowEvidence.evidenceLeft >= 0
+        && narrowEvidence.evidenceRight <= 390
+        && narrowEvidence.evidenceWidth > 0
+        && narrowEvidence.evidenceHeight > 0
+        && narrowEvidence.evidenceScrollWidth <= narrowEvidence.evidenceClientWidth + 1
+        && narrowEvidence.linkWidth > 0
+        && narrowEvidence.linkHeight > 0
+        && narrowEvidence.linkHref === `/jobs?openJob=${fixture.excludedJobId}`
+        && narrowEvidence.text.includes("01/21/2025")
+        && narrowEvidence.text.includes("Weather")
+        && narrowEvidence.text.includes("Rain delay before the first workday")
+        && narrowEvidence.text.includes("No confirmed here record was recorded"),
+      JSON.stringify(narrowEvidence),
+    );
+    await page.screenshot({ path: `${SHOTS}/03-narrow-provenance.png`, fullPage: true });
+    await page.setViewport({ width: 1440, height: 1200 });
     recordResult(
       "All-business Knowledge Center opens the benchmark review panel",
       await page.$eval("body", body => body.innerText.includes("Benchmark review"))
