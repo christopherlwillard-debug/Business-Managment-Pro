@@ -32,6 +32,29 @@ describe("production observations", () => {
     ])).toBeNull();
   });
 
+  it("returns no observation when a job has no presence rows", () => {
+    expect(calculateProductionObservation([])).toBeNull();
+
+    const response = buildProductionObservationResponse(
+      22,
+      [{
+        id: 10,
+        title: "No Presence",
+        status: "completed",
+        workflow: "mh_production",
+        serviceScopes: service(),
+        presence: [],
+      }],
+      { id: null, jobType: null, estimatedHours: null },
+    );
+
+    expect(response.jobs[0]).toMatchObject({
+      presence: [],
+      productionDays: null,
+      exclusionReason: "no_confirmed_presence",
+    });
+  });
+
   it("uses the average of the middle pair for an even median", () => {
     expect(median([1, 4, 2, 8])).toBe(3);
   });

@@ -47,6 +47,7 @@ type Fixture = {
   benchmarkId: number;
   jobIds: number[];
   excludedJobId: number;
+  noPresenceJobId: number;
   modelName: string;
   benchmarkHours: string;
 };
@@ -143,20 +144,25 @@ async function createFixture(): Promise<Fixture> {
     if (!model) throw new Error("Failed to create model fixture");
     partial.modelId = model.id;
 
-    const jobs = await db.insert(jobsTable).values([1, 2, 3, 4].map(index => ({
-      title: index === 4 ? `${modelName} Excluded Job` : `${modelName} Job ${index}`,
+    const jobs = await db.insert(jobsTable).values([1, 2, 3, 4, 5].map(index => ({
+      title: index === 4
+        ? `${modelName} Excluded Job`
+        : index === 5
+          ? `${modelName} No Presence Job`
+          : `${modelName} Job ${index}`,
       status: "completed",
       businessId: business.id,
       businessLine: business.slug,
       workflow: "mh_production",
       mfhModelId: model.id,
       mhProductionServices: [service.id],
-      startDate: index === 4 ? "2025-01-21" : `2025-01-0${index}`,
-      endDate: index === 4 ? "2025-01-23" : `2025-01-0${index}`,
+      startDate: index === 4 ? "2025-01-21" : index === 5 ? "2025-01-24" : `2025-01-0${index}`,
+      endDate: index === 4 ? "2025-01-23" : index === 5 ? "2025-01-25" : `2025-01-0${index}`,
     }))).returning({ id: jobsTable.id });
-    if (jobs.length !== 4) throw new Error("Failed to create all job fixtures");
+    if (jobs.length !== 5) throw new Error("Failed to create all job fixtures");
     partial.jobIds = jobs.map(job => job.id);
     partial.excludedJobId = jobs[3].id;
+    partial.noPresenceJobId = jobs[4].id;
 
     await db.insert(jobDailyPresenceTable).values([
       ...jobs.slice(0, 3).map((job, index) => ({
@@ -196,6 +202,7 @@ async function createFixture(): Promise<Fixture> {
       benchmarkId: benchmark.id,
       jobIds: jobs.map(job => job.id),
       excludedJobId: jobs[3].id,
+      noPresenceJobId: jobs[4].id,
       modelName,
       benchmarkHours,
     };
@@ -323,6 +330,21 @@ async function main() {
       !excludedEvidence.includes("01/22/2025")
         && !excludedEvidence.includes("01/23/2025")
         && excludedEvidence.includes("Unrecorded or inferred rows are not treated as here or not here"),
+    );
+    const noPresenceEvidence = await page.$eval(
+      `#mfh-evidence-job-${fixture.noPresenceJobId}`,
+      element => element.textContent ?? "",
+    );
+    recordResult(
+      "Job with no presence rows stays separate from recorded delays",
+      noPresenceEvidence.includes("No Presence Job")
+        && noPresenceEvidence.includes("Confirmed here: None recorded")
+        && noPresenceEvidence.includes("Confirmed not here: None recorded")
+        && noPresenceEvidence.includes("No confirmed here record was recorded")
+        && !noPresenceEvidence.includes("01/24/2025")
+        && !noPresenceEvidence.includes("01/25/2025")
+        && !noPresenceEvidence.includes("Weather")
+        && !noPresenceEvidence.includes("Rain delay"),
     );
     recordResult(
       "Excluded evidence links to the source job",
