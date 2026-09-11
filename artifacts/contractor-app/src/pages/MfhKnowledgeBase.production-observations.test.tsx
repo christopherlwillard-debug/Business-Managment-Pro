@@ -194,6 +194,14 @@ describe("ProductionObservationCard response states", () => {
     expect(text()).toContain("Unrecorded or inferred rows are not treated as here or not here.");
     expect(host.querySelector('a[href="/jobs?openJob=101"]')?.getAttribute("aria-label"))
       .toBe("Open job details for Oak Ridge 28x76");
+
+    h.observations.data = {
+      ...populated,
+      jobs: [{ ...populated.jobs[0], presence: [], exclusionReason: "no_confirmed_presence" }],
+    };
+    await renderCard();
+    expect(text()).toContain("No daily presence records were found for this job.");
+    expect(text()).not.toContain("Weather");
   });
 
   it("renders the empty state separately from insufficient evidence", async () => {

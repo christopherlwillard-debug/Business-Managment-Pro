@@ -495,7 +495,19 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                         </div>
                         <p className="text-[10px] text-muted-foreground mt-1">
                           {job.exclusionReason
-                            ? "Daily presence must include a confirmed here record before this job can contribute."
+                            ? (
+                              <>
+                                Daily presence must include a confirmed here record before this job can contribute.
+                                {job.presence.length === 0 && (
+                                  <>
+                                    <br />
+                                    <span className="font-semibold text-amber-800">
+                                      No daily presence records were found for this job.
+                                    </span>
+                                  </>
+                                )}
+                              </>
+                            )
                             : `${job.firstProductionDate} to ${job.lastProductionDate} · ${job.serviceScopes.map((service) => service.customProfile?.name ?? service.name).join(", ")}`}
                         </p>
                         {!job.exclusionReason && (
