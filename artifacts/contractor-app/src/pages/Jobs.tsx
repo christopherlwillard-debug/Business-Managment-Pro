@@ -136,6 +136,7 @@ export type ScheduleJob = Job & {
   unscheduledChecklistItems: ScheduleItem[];
   productionComponents?: ProductionComponent[];
   activeReadinessCondition?: ReadinessBlocker | null;
+  queueOrder?: number;
 };
 
 function scheduleDate(date: string): Date {

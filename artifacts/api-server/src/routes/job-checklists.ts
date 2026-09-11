@@ -298,7 +298,18 @@ router.get("/ready-to-start", async (req, res) => {
       job.closedAt == null &&
       !job.startDate &&
       (job.planningState === "ready" || job.planningState === "waiting"),
-    );
+    ).sort((a, b) => {
+      const aPosition = a.queuePosition;
+      const bPosition = b.queuePosition;
+      if (aPosition != null && bPosition == null) return -1;
+      if (aPosition == null && bPosition != null) return 1;
+      if (aPosition != null && bPosition != null && aPosition !== bPosition) {
+        return aPosition - bPosition;
+      }
+      const aCreatedAt = a.createdAt?.getTime() ?? 0;
+      const bCreatedAt = b.createdAt?.getTime() ?? 0;
+      return aCreatedAt - bCreatedAt || a.id - b.id;
+    });
     if (candidateJobs.length === 0) return res.json({ readyJobs: [], waitingJobs: [] });
 
     const activeConditions = await db.select().from(jobReadinessConditionsTable)
@@ -312,13 +323,14 @@ router.get("/ready-to-start", async (req, res) => {
       if (!activeByJob.has(condition.jobId)) activeByJob.set(condition.jobId, condition);
     }
 
-    const enriched = await Promise.all(candidateJobs.map(async job => ({
+    const enriched = await Promise.all(candidateJobs.map(async (job, index) => ({
       ...job,
       productionComponents: await getJobProductionComponents(job),
       activeReadinessCondition: activeByJob.get(job.id) ?? null,
+      queueOrder: index + 1,
     })));
     const waitingJobs = enriched.filter(job => job.planningState === "waiting" || job.activeReadinessCondition != null);
-    const readyJobs = enriched.filter(job => !waitingJobs.includes(job));
+    const readyJobs = enriched.filter(job => job.planningState === "ready" && job.activeReadinessCondition == null);
     res.json({ readyJobs, waitingJobs });
   } catch (err) {
     console.error(err);
