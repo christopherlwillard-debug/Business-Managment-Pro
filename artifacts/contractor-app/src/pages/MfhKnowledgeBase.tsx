@@ -47,6 +47,15 @@ function fmtDateTime(value: string | null | undefined) {
   return date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
+const PRESENCE_REASON_LABELS: Record<string, string> = {
+  pulled_off: "Pulled Off",
+  customer_delay: "Customer Delay",
+  material_delay: "Material Delay",
+  weather: "Weather",
+  waiting_on_other_trade: "Waiting on Other Trade",
+  other: "Other",
+};
+
 const CT_COLORS: Record<string, string> = {
   VOG: "bg-blue-100 text-blue-700",
   Hybrid: "bg-purple-100 text-purple-700",
@@ -460,10 +469,9 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                       .filter((record) => record.state === "here")
                       .map((record) => record.date)
                       .sort();
-                    const confirmedNotHereDates = confirmedPresence
+                    const confirmedNotHereRecords = confirmedPresence
                       .filter((record) => record.state === "not_here")
-                      .map((record) => record.date)
-                      .sort();
+                      .sort((a, b) => a.date.localeCompare(b.date));
                     const dateList = (dates: string[]) => dates.length > 0 ? dates.map(fmtDate).join(", ") : "None recorded";
 
                     return (
@@ -500,7 +508,23 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                             <p className="text-[10px] font-semibold text-amber-900">Presence provenance</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[10px] text-muted-foreground">
                               <p><span className="font-semibold text-foreground">Confirmed here:</span> {dateList(confirmedHereDates)}</p>
-                              <p><span className="font-semibold text-foreground">Confirmed not here:</span> {dateList(confirmedNotHereDates)}</p>
+                              <div>
+                                <span className="font-semibold text-foreground">Confirmed not here:</span>
+                                {confirmedNotHereRecords.length === 0 ? (
+                                  <span> None recorded</span>
+                                ) : (
+                                  <ul className="mt-0.5 space-y-0.5">
+                                    {confirmedNotHereRecords.map((record) => (
+                                      <li key={record.date}>
+                                        {fmtDate(record.date)} — {record.notHereReason
+                                          ? PRESENCE_REASON_LABELS[record.notHereReason] ?? record.notHereReason
+                                          : "No reason recorded"}
+                                        {record.notes ? ` · ${record.notes}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
                             </div>
                             <p className="text-[10px] text-amber-800">
                               <span className="font-semibold">Missing evidence:</span> No confirmed here record was recorded. Unrecorded or inferred rows are not treated as here or not here.

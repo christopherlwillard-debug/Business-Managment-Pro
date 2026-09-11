@@ -30,6 +30,8 @@ export interface MfhProductionObservationJob {
     date: string;
     state: "unrecorded" | "here" | "not_here";
     provenance: string;
+    notHereReason: string | null;
+    notes: string | null;
   }>;
   productionDays: number | null;
   calendarSpanDays: number | null;

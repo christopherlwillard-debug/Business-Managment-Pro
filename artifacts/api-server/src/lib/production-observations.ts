@@ -4,6 +4,8 @@ export type ObservationPresenceRecord = {
   date: string;
   state: ObservationPresenceState;
   provenance: string;
+  notHereReason: string | null;
+  notes: string | null;
 };
 
 export type ObservationServiceScope = {

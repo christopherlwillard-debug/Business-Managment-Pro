@@ -10,11 +10,11 @@ const service = (name = "Interior Finish", id = 1) => [{ id, name }];
 describe("production observations", () => {
   it("counts only confirmed here days and keeps pauses separate from missing evidence", () => {
     expect(calculateProductionObservation([
-      { date: "2026-09-01", state: "here", provenance: "confirmed" },
-      { date: "2026-09-02", state: "not_here", provenance: "confirmed" },
-      { date: "2026-09-03", state: "unrecorded", provenance: "confirmed" },
-      { date: "2026-09-04", state: "here", provenance: "confirmed" },
-      { date: "2026-09-05", state: "here", provenance: "inferred" },
+      { date: "2026-09-01", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+      { date: "2026-09-02", state: "not_here", provenance: "confirmed", notHereReason: "weather", notes: "Rain delay" },
+      { date: "2026-09-03", state: "unrecorded", provenance: "confirmed", notHereReason: null, notes: null },
+      { date: "2026-09-04", state: "here", provenance: "confirmed", notHereReason: null, notes: null },
+      { date: "2026-09-05", state: "here", provenance: "inferred", notHereReason: "other", notes: "Ignored because inferred" },
     ])).toEqual({
       firstProductionDate: "2026-09-01",
       lastProductionDate: "2026-09-04",
@@ -27,8 +27,8 @@ describe("production observations", () => {
 
   it("returns no observation when there is no confirmed here evidence", () => {
     expect(calculateProductionObservation([
-      { date: "2026-09-01", state: "here", provenance: "inferred" },
-      { date: "2026-09-02", state: "not_here", provenance: "confirmed" },
+      { date: "2026-09-01", state: "here", provenance: "inferred", notHereReason: null, notes: null },
+      { date: "2026-09-02", state: "not_here", provenance: "confirmed", notHereReason: "weather", notes: null },
     ])).toBeNull();
   });
 
@@ -40,9 +40,9 @@ describe("production observations", () => {
     const response = buildProductionObservationResponse(
       22,
       [
-        { id: 1, title: "One", status: "completed", workflow: "mh_production", serviceScopes: service(), presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed" }] },
-        { id: 2, title: "Two", status: "invoiced", workflow: "mh_production", serviceScopes: service(), presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed" }] },
-        { id: 3, title: "Waiting", status: "completed", workflow: "mh_production", serviceScopes: service("Siding", 2), presence: [{ date: "2026-09-01", state: "here", provenance: "inferred" }] },
+        { id: 1, title: "One", status: "completed", workflow: "mh_production", serviceScopes: service(), presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed", notHereReason: null, notes: null }] },
+        { id: 2, title: "Two", status: "invoiced", workflow: "mh_production", serviceScopes: service(), presence: [{ date: "2026-09-01", state: "here", provenance: "confirmed", notHereReason: null, notes: null }] },
+        { id: 3, title: "Waiting", status: "completed", workflow: "mh_production", serviceScopes: service("Siding", 2), presence: [{ date: "2026-09-01", state: "here", provenance: "inferred", notHereReason: null, notes: null }] },
       ],
       { id: 4, jobType: "Clayton", estimatedHours: 16 },
     );
@@ -72,6 +72,8 @@ describe("production observations", () => {
           date: `2026-09-0${day + 1}`,
           state: "here" as const,
           provenance: "confirmed",
+          notHereReason: null,
+          notes: null,
         })),
       })),
       { id: null, jobType: null, estimatedHours: null },
@@ -97,9 +99,9 @@ describe("production observations", () => {
         workflow: "mh_production",
         serviceScopes: service(),
         presence: [
-          { date: "2026-09-01", state: "not_here", provenance: "confirmed" },
-          { date: "2026-09-02", state: "unrecorded", provenance: "confirmed" },
-          { date: "2026-09-03", state: "here", provenance: "inferred" },
+          { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "customer_delay", notes: "Customer requested a later start" },
+          { date: "2026-09-02", state: "unrecorded", provenance: "confirmed", notHereReason: null, notes: null },
+          { date: "2026-09-03", state: "here", provenance: "inferred", notHereReason: "weather", notes: "Ignored because inferred" },
         ],
       }],
       { id: null, jobType: null, estimatedHours: null },
@@ -108,9 +110,9 @@ describe("production observations", () => {
     expect(response.jobs[0]).toMatchObject({
       exclusionReason: "no_confirmed_presence",
       presence: [
-        { date: "2026-09-01", state: "not_here", provenance: "confirmed" },
-        { date: "2026-09-02", state: "unrecorded", provenance: "confirmed" },
-        { date: "2026-09-03", state: "here", provenance: "inferred" },
+        { date: "2026-09-01", state: "not_here", provenance: "confirmed", notHereReason: "customer_delay", notes: "Customer requested a later start" },
+        { date: "2026-09-02", state: "unrecorded", provenance: "confirmed", notHereReason: null, notes: null },
+        { date: "2026-09-03", state: "here", provenance: "inferred", notHereReason: "weather", notes: "Ignored because inferred" },
       ],
     });
     expect(response.jobs[0].productionDays).toBeNull();
