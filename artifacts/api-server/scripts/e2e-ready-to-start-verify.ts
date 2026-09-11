@@ -72,6 +72,7 @@ function readyToStartFixture() {
         variant: null,
       }],
       activeReadinessCondition: null,
+      queueOrder: 1,
     }],
     waitingJobs: [{
       id: WAITING_JOB_ID,
@@ -95,6 +96,7 @@ function readyToStartFixture() {
         expectedDate: START_DATE,
         clearedAt: null,
       },
+      queueOrder: 2,
     }],
   };
 }
@@ -187,6 +189,13 @@ async function main() {
         WAITING_JOB_TITLE,
       ) &&
         await page.$(`[data-testid="start-job-${WAITING_JOB_ID}"]`) === null,
+    );
+    recordResult(
+      "Ready and waiting jobs show their stable queue ranks",
+      await page.$eval(area, element =>
+        element.textContent?.includes("Queue #1") === true &&
+        element.textContent?.includes("#2") === true,
+      ),
     );
 
     await page.click(`[data-testid="start-job-${READY_JOB_ID}"]`);
