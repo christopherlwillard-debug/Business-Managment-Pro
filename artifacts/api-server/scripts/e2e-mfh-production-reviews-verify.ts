@@ -181,13 +181,18 @@ async function createFixture(): Promise<Fixture> {
     partial.noPresenceJobId = jobs[4].id;
 
     await db.insert(jobDailyPresenceTable).values([
-      ...jobs.slice(0, 3).map((job, index) => ({
-      jobId: job.id,
-      date: `2025-01-1${index + 1}`,
-      state: "here",
-      source: "manual_presence",
-      provenance: "confirmed",
-      })),
+      ...jobs.slice(0, 3).flatMap((job, index) => {
+        const dates = index === 0
+          ? ["2025-01-13", "2025-01-11", "2025-01-12"]
+          : [`2025-01-1${index + 1}`];
+        return dates.map((date) => ({
+          jobId: job.id,
+          date,
+          state: "here",
+          source: "manual_presence",
+          provenance: "confirmed",
+        }));
+      }),
       {
         jobId: jobs[3].id,
         date: "2025-01-22",
@@ -338,6 +343,16 @@ async function main() {
     };
 
     await clickButton(page, "Why this observation?");
+    const orderedEligibleEvidence = await page.$eval(
+      `#mfh-evidence-job-${fixture.jobIds[0]}`,
+      element => element.textContent ?? "",
+    );
+    recordResult(
+      `Eligible evidence shows confirmed production days chronologically — ${orderedEligibleEvidence}`,
+      orderedEligibleEvidence.includes("Job 1")
+        && orderedEligibleEvidence.includes("Confirmed here: 01/11/2025, 01/12/2025, 01/13/2025")
+        && !orderedEligibleEvidence.includes("Not included"),
+    );
     const excludedEvidence = await page.$eval(
       `#mfh-evidence-job-${fixture.excludedJobId}`,
       element => element.textContent ?? "",
