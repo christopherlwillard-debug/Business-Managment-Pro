@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import {
   Home, ChevronRight, BarChart2, Briefcase,
-  Plus, Trash2, ArrowLeft, TrendingUp, Users, Pencil,
+  ArrowLeft,
   BookOpen, ChevronDown, ChevronUp, ArrowUpDown, Brain, Clock3, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import {
@@ -12,11 +12,6 @@ import {
   useCreateMfhProductionBenchmarkReview,
   useApproveMfhProductionBenchmarkReview,
   useRejectMfhProductionBenchmarkReview,
-  useSetMfhClientPrice,
-  useUpdateMfhClientPrice,
-  useDeleteMfhClientPrice,
-  useUpdateMfhModel,
-  useListClients,
   usePatchKnowledgeRecord,
   type MfhKnowledgeBaseEntry,
   type MfhKbRecord,
@@ -788,19 +783,8 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
     }
   }
   const { data, isLoading } = useMfhModelDetail(modelId);
-  const { data: clients = [] } = useListClients();
-  const setPrice = useSetMfhClientPrice();
-  const updatePrice = useUpdateMfhClientPrice();
-  const deletePrice = useDeleteMfhClientPrice();
-  const updateModel = useUpdateMfhModel();
 
-  const [addingClient, setAddingClient] = useState(false);
-  const [clientForm, setClientForm] = useState({ clientId: "", price: "", notes: "" });
   const [expandedJobs, setExpandedJobs] = useState(false);
-  const [editingCp, setEditingCp] = useState<{ id: number; price: string; notes: string } | null>(null);
-
-  const [editingBaseline, setEditingBaseline] = useState(false);
-  const [baselineVal, setBaselineVal] = useState("");
 
   if (isLoading) {
     return (
@@ -811,64 +795,12 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
   }
   if (!data) return null;
 
-  const { model, jobs, clientPricing, knowledgeRecords = [] } = data;
+  const { model, jobs, knowledgeRecords = [] } = data;
   const margin = model.avgInvoice != null && model.avgDealerPrice != null
     ? model.avgInvoice - model.avgDealerPrice
     : null;
 
   const jobsToShow = expandedJobs ? jobs : jobs.slice(0, 5);
-
-  async function handleAddClientPrice() {
-    if (!clientForm.clientId || !clientForm.price) return;
-    try {
-      await setPrice.mutateAsync({
-        modelId,
-        clientId: parseInt(clientForm.clientId),
-        price: parseFloat(clientForm.price),
-        notes: clientForm.notes || undefined,
-      });
-      setClientForm({ clientId: "", price: "", notes: "" });
-      setAddingClient(false);
-      toast({ title: "Client price saved" });
-    } catch {
-      toast({ title: "Failed to save price", variant: "destructive" });
-    }
-  }
-
-  async function handleUpdateClientPrice() {
-    if (!editingCp || !editingCp.price) return;
-    try {
-      await updatePrice.mutateAsync({ id: editingCp.id, modelId, price: parseFloat(editingCp.price), notes: editingCp.notes || undefined });
-      setEditingCp(null);
-      toast({ title: "Client price updated" });
-    } catch {
-      toast({ title: "Failed to update price", variant: "destructive" });
-    }
-  }
-
-  async function handleDeleteClientPrice(id: number) {
-    try {
-      await deletePrice.mutateAsync({ id, modelId });
-      toast({ title: "Removed" });
-    } catch {
-      toast({ title: "Failed to remove", variant: "destructive" });
-    }
-  }
-
-  async function handleSaveBaseline() {
-    try {
-      const price = parseFloat(baselineVal);
-      await updateModel.mutateAsync({ id: modelId, basePrice: isNaN(price) ? null : String(price) });
-      qc.invalidateQueries({ queryKey: ["/api/mfh/knowledge-base"] });
-      setEditingBaseline(false);
-      toast({ title: "Baseline price saved" });
-    } catch {
-      toast({ title: "Failed to save baseline", variant: "destructive" });
-    }
-  }
-
-  const usedClientIds = new Set(clientPricing.map(c => c.clientId));
-  const availableClients = clients.filter(c => !usedClientIds.has(c.id));
 
   return (
     <div className="space-y-5">
@@ -900,51 +832,6 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
         <p className="text-xs text-muted-foreground/60 -mt-1">No accepted KB records yet</p>
       )}
 
-      {/* Baseline price */}
-      <div className="bg-card border border-border rounded-xl p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-amber-500" />
-            <p className="font-semibold text-foreground text-sm">Clayton Baseline Price</p>
-          </div>
-          {!editingBaseline && (
-            <button onClick={() => { setBaselineVal(model.basePrice ?? ""); setEditingBaseline(true); }}
-              className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-amber-600 transition-colors">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-        {editingBaseline ? (
-          <div className="flex gap-2 items-center">
-            <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input
-                autoFocus
-                type="number"
-                className="w-full pl-7 pr-3 py-2 rounded-xl border border-border bg-background text-sm"
-                placeholder="e.g. 1500"
-                value={baselineVal}
-                onChange={e => setBaselineVal(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") handleSaveBaseline(); if (e.key === "Escape") setEditingBaseline(false); }}
-              />
-            </div>
-            <button onClick={handleSaveBaseline} disabled={updateModel.isPending}
-              className="px-3 py-2 rounded-xl bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50 transition-colors">
-              {updateModel.isPending ? "…" : "Save"}
-            </button>
-            <button onClick={() => setEditingBaseline(false)}
-              className="px-3 py-2 rounded-xl border border-border text-xs text-muted-foreground hover:bg-muted/50 transition-colors">
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <p className="text-2xl font-bold text-foreground">
-            {model.basePrice ? fmt(model.basePrice) : <span className="text-muted-foreground text-sm">Not set — click edit to add</span>}
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">Standard Clayton trim-out price used as the starting point for quotes on this model.</p>
-      </div>
-
       {/* Notes */}
       {model.notes && (
         <div className="bg-muted/20 border border-border rounded-xl p-3">
@@ -954,116 +841,6 @@ function ModelDetail({ modelId, onClose }: { modelId: number; onClose: () => voi
       )}
 
       <ProductionObservationCard modelId={modelId} />
-
-      {/* Client pricing */}
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-amber-500" />
-            <p className="font-semibold text-foreground text-sm">Client-Specific Prices</p>
-            {clientPricing.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{clientPricing.length}</span>
-            )}
-          </div>
-          {!addingClient && (
-            <button onClick={() => setAddingClient(true)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-600 hover:bg-amber-50 transition-colors">
-              <Plus className="w-3 h-3" /> Add
-            </button>
-          )}
-        </div>
-
-        {addingClient && (
-          <div className="px-4 py-3 border-b border-border bg-amber-50/30 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground">Client</label>
-                <select className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                  value={clientForm.clientId} onChange={e => setClientForm(f => ({ ...f, clientId: e.target.value }))}>
-                  <option value="">Select client…</option>
-                  {availableClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-muted-foreground">Price</label>
-                <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
-                  <input type="number" className="w-full pl-5 pr-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                    placeholder="e.g. 1400" value={clientForm.price} onChange={e => setClientForm(f => ({ ...f, price: e.target.value }))} />
-                </div>
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold text-muted-foreground">Notes (optional)</label>
-              <input className="w-full px-2 py-1.5 text-xs rounded-lg border border-border bg-background"
-                placeholder="e.g. Volume discount" value={clientForm.notes} onChange={e => setClientForm(f => ({ ...f, notes: e.target.value }))} />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => { setAddingClient(false); setClientForm({ clientId: "", price: "", notes: "" }); }}
-                className="px-3 py-1.5 text-xs rounded-lg border border-border hover:bg-muted/50 text-muted-foreground">Cancel</button>
-              <button onClick={handleAddClientPrice} disabled={!clientForm.clientId || !clientForm.price || setPrice.isPending}
-                className="px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white font-semibold hover:bg-amber-600 disabled:opacity-50">
-                {setPrice.isPending ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {clientPricing.length === 0 && !addingClient ? (
-          <div className="px-4 py-5 text-center">
-            <Users className="w-7 h-7 text-muted-foreground/30 mx-auto mb-1.5" />
-            <p className="text-xs text-muted-foreground">No client-specific prices yet.</p>
-          </div>
-        ) : (
-          <table className="w-full text-xs">
-            <tbody className="divide-y divide-border/50">
-              {clientPricing.map(cp => (
-                editingCp?.id === cp.id ? (
-                  <tr key={cp.id} className="bg-amber-50/30">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{cp.clientName ?? "Unknown Client"}</td>
-                    <td className="px-3 py-2">
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                        <input autoFocus type="number" className="w-24 pl-5 pr-2 py-1 rounded-lg border border-amber-300 bg-background text-xs"
-                          value={editingCp.price} onChange={e => setEditingCp(prev => prev ? { ...prev, price: e.target.value } : null)} />
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input className="w-full px-2 py-1 rounded-lg border border-border bg-background text-xs" placeholder="Notes…"
-                        value={editingCp.notes} onChange={e => setEditingCp(prev => prev ? { ...prev, notes: e.target.value } : null)} />
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <button onClick={handleUpdateClientPrice} disabled={updatePrice.isPending}
-                        className="px-2 py-1 rounded bg-amber-500 text-white text-[10px] font-semibold hover:bg-amber-600 mr-1 disabled:opacity-50">
-                        {updatePrice.isPending ? "…" : "Save"}
-                      </button>
-                      <button onClick={() => setEditingCp(null)} className="px-2 py-1 rounded border border-border text-[10px] text-muted-foreground hover:bg-muted/50">Cancel</button>
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={cp.id} className="hover:bg-muted/10">
-                    <td className="px-4 py-2.5 font-medium text-foreground">{cp.clientName ?? "Unknown Client"}</td>
-                    <td className="px-4 py-2.5 text-amber-600 font-semibold">{fmt(cp.price)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground italic">{cp.notes ?? ""}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <div className="flex gap-1 justify-end">
-                        <button onClick={() => setEditingCp({ id: cp.id, price: cp.price, notes: cp.notes ?? "" })}
-                          className="p-1 rounded hover:bg-amber-50 text-muted-foreground hover:text-amber-600 transition-colors">
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                        <button onClick={() => handleDeleteClientPrice(cp.id)}
-                          className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-500 transition-colors">
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
 
       {/* Learning History */}
       {knowledgeRecords.length > 0 && (() => {
