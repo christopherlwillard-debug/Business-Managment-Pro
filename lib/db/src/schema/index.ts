@@ -45,6 +45,7 @@ export * from "./equipment";
 export * from "./contacts";
 export * from "./job-sub-hours";
 export * from "./job-type-benchmarks";
+export * from "./job-type-benchmark-revisions";
 export * from "./website";
 export * from "./client-errors";
 export * from "./owner-capital";

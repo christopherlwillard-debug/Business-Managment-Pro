@@ -11,6 +11,7 @@ import {
   jobsTable,
   estimatesTable,
   jobTypeBenchmarksTable,
+  jobTypeBenchmarkRevisionsTable,
   checklistTemplatesTable,
   checklistTemplateSectionsTable,
   checklistTemplateItemsTable,
@@ -27,6 +28,7 @@ import { eq, and, asc, desc, inArray, sql, ilike, or, isNull } from "drizzle-orm
 import crypto from "crypto";
 import { requestedBusiness, invalidBusinessScope, businessPredicate } from "../lib/business-scope";
 import { buildProductionObservationResponse, type ObservationPresenceState } from "../lib/production-observations";
+import { getRequestUser } from "./guards";
 
 // ── Seed ──────────────────────────────────────────────────────────────────────
 let seeded = false;
@@ -806,17 +808,10 @@ mfhLibraryRouter.get("/knowledge-base", async (_req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
-// GET /api/mfh/knowledge-base/:modelId/production-observations — read-only,
-// business-scoped learning from confirmed daily presence.
-mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (req, res) => {
-  try {
-    const modelId = parseInt(req.params.modelId);
-    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+type ProductionObservationScope = Awaited<ReturnType<typeof requestedBusiness>>;
 
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
-
-    const [model] = await db.select({
+async function loadProductionObservation(modelId: number, scope: ProductionObservationScope) {
+  const [model] = await db.select({
       id: mfhModelsTable.id,
       benchmarkId: mfhModelsTable.benchmarkId,
       benchmarkJobType: jobTypeBenchmarksTable.jobType,
@@ -825,10 +820,10 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
       .leftJoin(jobTypeBenchmarksTable, eq(mfhModelsTable.benchmarkId, jobTypeBenchmarksTable.id))
       .where(eq(mfhModelsTable.id, modelId));
 
-    if (!model) return res.status(404).json({ error: "Model not found" });
+  if (!model) return null;
 
-    const jobBusinessFilter = businessPredicate(jobsTable, scope);
-    const candidateJobs = await db.select({
+  const jobBusinessFilter = businessPredicate(jobsTable, scope);
+  const candidateJobs = await db.select({
       id: jobsTable.id,
       title: jobsTable.title,
       status: jobsTable.status,
@@ -841,7 +836,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
       jobBusinessFilter,
     ));
 
-    const serviceIds = Array.from(new Set(candidateJobs.flatMap((job) =>
+  const serviceIds = Array.from(new Set(candidateJobs.flatMap((job) =>
       Array.isArray(job.mhProductionServices)
         ? job.mhProductionServices.filter((id): id is number => Number.isInteger(id))
         : [],
@@ -860,9 +855,9 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
           : undefined,
       ))
       : [];
-    const serviceById = new Map(serviceRows.map((service) => [service.id, service]));
-    const jobIds = candidateJobs.map((job) => job.id);
-    const presenceRows = jobIds.length > 0
+  const serviceById = new Map(serviceRows.map((service) => [service.id, service]));
+  const jobIds = candidateJobs.map((job) => job.id);
+  const presenceRows = jobIds.length > 0
       ? await db.select({
         jobId: jobDailyPresenceTable.jobId,
         date: jobDailyPresenceTable.date,
@@ -870,14 +865,14 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
         provenance: jobDailyPresenceTable.provenance,
       }).from(jobDailyPresenceTable).where(inArray(jobDailyPresenceTable.jobId, jobIds))
       : [];
-    const presenceByJob = new Map<number, typeof presenceRows>();
-    for (const row of presenceRows) {
-      const rows = presenceByJob.get(row.jobId) ?? [];
-      rows.push(row);
-      presenceByJob.set(row.jobId, rows);
-    }
+  const presenceByJob = new Map<number, typeof presenceRows>();
+  for (const row of presenceRows) {
+    const rows = presenceByJob.get(row.jobId) ?? [];
+    rows.push(row);
+    presenceByJob.set(row.jobId, rows);
+  }
 
-    const summary = buildProductionObservationResponse(
+  const summary = buildProductionObservationResponse(
       model.id,
       candidateJobs.map((job) => ({
         id: job.id,
@@ -905,10 +900,234 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (
       },
     );
 
-    res.json(summary);
+  return { model, summary };
+}
+
+function revisionResponse(revision: typeof jobTypeBenchmarkRevisionsTable.$inferSelect) {
+  return {
+    id: revision.id,
+    benchmarkId: revision.benchmarkId,
+    mfhModelId: revision.mfhModelId,
+    priorBenchmarkHours: revision.priorBenchmarkHours == null ? null : parseFloat(revision.priorBenchmarkHours),
+    proposedBenchmarkHours: parseFloat(revision.proposedBenchmarkHours),
+    observedProductionDaysMedian: parseFloat(revision.observedProductionDaysMedian),
+    observedProductionDaysRange: {
+      min: parseFloat(revision.observedProductionDaysMin),
+      max: parseFloat(revision.observedProductionDaysMax),
+    },
+    sampleSize: revision.sampleSize,
+    sourceJobIds: revision.sourceJobIds,
+    status: revision.status as "pending" | "approved" | "rejected",
+    reviewerNote: revision.reviewerNote,
+    createdByUserId: revision.createdByUserId,
+    createdByName: revision.createdByName,
+    createdAt: revision.createdAt,
+    reviewedByUserId: revision.reviewedByUserId,
+    reviewedByName: revision.reviewedByName,
+    reviewedAt: revision.reviewedAt,
+  };
+}
+
+function reviewerIdentity(req: Parameters<typeof getRequestUser>[0]) {
+  const user = getRequestUser(req);
+  return {
+    userId: user?.id ?? null,
+    name: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || null,
+  };
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function sameHours(a: string | number | null, b: string | number | null): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  return Number(a) === Number(b);
+}
+
+// GET /api/mfh/knowledge-base/:modelId/production-observations — read-only,
+// business-scoped learning from confirmed daily presence.
+mfhLibraryRouter.get("/knowledge-base/:modelId/production-observations", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    const result = await loadProductionObservation(modelId, scope);
+    if (!result) return res.status(404).json({ error: "Model not found" });
+    res.json(result.summary);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to load production observations" });
+  }
+});
+
+// Review history is global because job type benchmarks are global. Keep this
+// route in the all-business view so a business-scoped sample cannot be
+// mistaken for evidence that is safe to apply to the shared benchmark.
+mfhLibraryRouter.get("/knowledge-base/:modelId/production-reviews", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
+
+    const revisions = await db.select().from(jobTypeBenchmarkRevisionsTable)
+      .where(eq(jobTypeBenchmarkRevisionsTable.mfhModelId, modelId))
+      .orderBy(desc(jobTypeBenchmarkRevisionsTable.createdAt));
+    res.json(revisions.map(revisionResponse));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to load benchmark reviews" });
+  }
+});
+
+mfhLibraryRouter.post("/knowledge-base/:modelId/production-reviews", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
+
+    const proposedHours = numericValue(req.body?.proposedBenchmarkHours);
+    if (proposedHours == null || proposedHours <= 0) {
+      return res.status(400).json({ error: "proposedBenchmarkHours must be a positive number" });
+    }
+    const reviewerNote = typeof req.body?.reviewerNote === "string"
+      ? req.body.reviewerNote.trim().slice(0, 2000) || null
+      : null;
+    const result = await loadProductionObservation(modelId, null);
+    if (!result) return res.status(404).json({ error: "Model not found" });
+    const { model, summary } = result;
+    if (model.benchmarkId == null) return res.status(400).json({ error: "This model has no linked benchmark" });
+    if (!summary.sample.sufficient || summary.observed.productionDaysMedian == null || !summary.observed.productionDaysRange) {
+      return res.status(400).json({ error: "At least three eligible production jobs are required before creating a review" });
+    }
+
+    const sourceJobIds = summary.jobs.filter(job => job.exclusionReason == null).map(job => job.id);
+    const identity = reviewerIdentity(req);
+    try {
+      const [revision] = await db.insert(jobTypeBenchmarkRevisionsTable).values({
+        benchmarkId: model.benchmarkId,
+        mfhModelId: modelId,
+        priorBenchmarkHours: model.benchmarkHours,
+        proposedBenchmarkHours: proposedHours.toFixed(2),
+        observedProductionDaysMedian: summary.observed.productionDaysMedian.toFixed(2),
+        observedProductionDaysMin: summary.observed.productionDaysRange.min.toFixed(2),
+        observedProductionDaysMax: summary.observed.productionDaysRange.max.toFixed(2),
+        sampleSize: summary.sample.eligibleJobCount,
+        sourceJobIds,
+        reviewerNote,
+        createdByUserId: identity.userId,
+        createdByName: identity.name,
+      }).returning();
+      res.status(201).json(revisionResponse(revision));
+    } catch (err: unknown) {
+      if ((err as { code?: string })?.code === "23505") {
+        return res.status(409).json({ error: "A pending review already exists for this model benchmark" });
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create benchmark review" });
+  }
+});
+
+mfhLibraryRouter.patch("/knowledge-base/:modelId/production-reviews/:revisionId/approve", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    const revisionId = parseInt(req.params.revisionId);
+    if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
+    const identity = reviewerIdentity(req);
+
+    const result = await db.transaction(async (tx) => {
+      const [revision] = await tx.select().from(jobTypeBenchmarkRevisionsTable)
+        .where(and(eq(jobTypeBenchmarkRevisionsTable.id, revisionId), eq(jobTypeBenchmarkRevisionsTable.mfhModelId, modelId)))
+        .limit(1);
+      if (!revision) return { kind: "not_found" as const };
+      if (revision.status !== "pending") return { kind: "not_pending" as const, revision };
+
+      const [benchmark] = await tx.select().from(jobTypeBenchmarksTable)
+        .where(eq(jobTypeBenchmarksTable.id, revision.benchmarkId)).limit(1);
+      if (!benchmark) return { kind: "benchmark_missing" as const };
+      if (!sameHours(benchmark.estimatedHours, revision.priorBenchmarkHours)) {
+        return { kind: "stale" as const, revision, currentHours: benchmark.estimatedHours };
+      }
+
+      const [updatedBenchmark] = await tx.update(jobTypeBenchmarksTable)
+        .set({ estimatedHours: revision.proposedBenchmarkHours })
+        .where(eq(jobTypeBenchmarksTable.id, revision.benchmarkId))
+        .returning();
+      const [updatedRevision] = await tx.update(jobTypeBenchmarkRevisionsTable)
+        .set({
+          status: "approved",
+          reviewedByUserId: identity.userId,
+          reviewedByName: identity.name,
+          reviewedAt: new Date(),
+        })
+        .where(eq(jobTypeBenchmarkRevisionsTable.id, revision.id))
+        .returning();
+      return { kind: "approved" as const, benchmark: updatedBenchmark, revision: updatedRevision };
+    });
+
+    if (result.kind === "not_found") return res.status(404).json({ error: "Review not found" });
+    if (result.kind === "not_pending") return res.status(409).json({ error: "Review is no longer pending", review: revisionResponse(result.revision) });
+    if (result.kind === "benchmark_missing") return res.status(409).json({ error: "Linked benchmark no longer exists" });
+    if (result.kind === "stale") return res.status(409).json({ error: "Benchmark changed after this review was created", currentBenchmarkHours: result.currentHours == null ? null : parseFloat(result.currentHours) });
+    return res.json(revisionResponse(result.revision));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to approve benchmark review" });
+  }
+});
+
+mfhLibraryRouter.patch("/knowledge-base/:modelId/production-reviews/:revisionId/reject", async (req, res) => {
+  try {
+    const modelId = parseInt(req.params.modelId);
+    const revisionId = parseInt(req.params.revisionId);
+    if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope)) return;
+    if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
+    const identity = reviewerIdentity(req);
+    const note = typeof req.body?.reviewerNote === "string" ? req.body.reviewerNote.trim().slice(0, 2000) || null : null;
+
+    const result = await db.transaction(async (tx) => {
+      const [revision] = await tx.select().from(jobTypeBenchmarkRevisionsTable)
+        .where(and(eq(jobTypeBenchmarkRevisionsTable.id, revisionId), eq(jobTypeBenchmarkRevisionsTable.mfhModelId, modelId)))
+        .limit(1);
+      if (!revision) return { kind: "not_found" as const };
+      if (revision.status !== "pending") return { kind: "not_pending" as const, revision };
+      const [updated] = await tx.update(jobTypeBenchmarkRevisionsTable)
+        .set({
+          status: "rejected",
+          reviewerNote: note ?? revision.reviewerNote,
+          reviewedByUserId: identity.userId,
+          reviewedByName: identity.name,
+          reviewedAt: new Date(),
+        })
+        .where(eq(jobTypeBenchmarkRevisionsTable.id, revision.id))
+        .returning();
+      return { kind: "rejected" as const, revision: updated };
+    });
+    if (result.kind === "not_found") return res.status(404).json({ error: "Review not found" });
+    if (result.kind === "not_pending") return res.status(409).json({ error: "Review is no longer pending", review: revisionResponse(result.revision) });
+    return res.json(revisionResponse(result.revision));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to reject benchmark review" });
   }
 });
 
