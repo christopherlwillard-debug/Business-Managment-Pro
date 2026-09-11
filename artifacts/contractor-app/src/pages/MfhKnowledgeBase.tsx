@@ -39,6 +39,13 @@ function fmtDate(d: string | null | undefined) {
   return `${m}/${day}/${y}`;
 }
 
+function fmtDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+}
+
 const CT_COLORS: Record<string, string> = {
   VOG: "bg-blue-100 text-blue-700",
   Hybrid: "bg-purple-100 text-purple-700",
@@ -70,6 +77,8 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const approveReview = useApproveMfhProductionBenchmarkReview();
   const rejectReview = useRejectMfhProductionBenchmarkReview();
   const [showEvidence, setShowEvidence] = useState(false);
+  const [expandedReviewId, setExpandedReviewId] = useState<number | null>(null);
+  const [highlightedEvidenceJobId, setHighlightedEvidenceJobId] = useState<number | null>(null);
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewHours, setReviewHours] = useState("");
   const [reviewNote, setReviewNote] = useState("");
@@ -112,6 +121,15 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
   const remaining = Math.max(data.sample.minimumJobsRequired - data.sample.eligibleJobCount, 0);
   const pendingReview = reviews.data?.find((review) => review.status === "pending") ?? null;
   const historicalReviews = reviews.data?.filter((review) => review.status !== "pending") ?? [];
+  const evidenceJobsById = new Map(data.jobs.map((job) => [job.id, job]));
+
+  function openEvidenceJob(jobId: number) {
+    setShowEvidence(true);
+    setHighlightedEvidenceJobId(jobId);
+    window.setTimeout(() => {
+      document.getElementById(`mfh-evidence-job-${jobId}`)?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
 
   async function handleCreateReview() {
     const hours = Number(reviewHours);
@@ -328,11 +346,73 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                 <div className="border-t border-amber-200 pt-2 space-y-1.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-900/70">Review history</p>
                   {historicalReviews.map((review) => (
-                    <div key={review.id} className="flex items-center justify-between gap-2 text-[11px] text-amber-900/80">
-                      <span>
-                        {review.status === "approved" ? "Approved" : "Rejected"} {fmt(review.proposedBenchmarkHours, "decimal")} hours · {review.sampleSize} jobs
-                      </span>
-                      <span className="text-[10px]">{review.reviewedByName ?? "Willard"}</span>
+                    <div key={review.id} className="rounded-lg border border-amber-200/70 bg-background/40 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedReviewId((current) => current === review.id ? null : review.id)}
+                        className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left text-[11px] text-amber-900/80 hover:bg-amber-100/40 transition-colors"
+                        aria-expanded={expandedReviewId === review.id}
+                      >
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          {expandedReviewId === review.id
+                            ? <ChevronUp className="w-3 h-3 shrink-0" />
+                            : <ChevronDown className="w-3 h-3 shrink-0" />}
+                          <span className="truncate">
+                            {review.status === "approved" ? "Approved" : "Rejected"} {fmt(review.proposedBenchmarkHours, "decimal")} hours · {review.sampleSize} jobs
+                          </span>
+                        </span>
+                        <span className="text-[10px] shrink-0">{review.reviewedByName ?? "Willard"}</span>
+                      </button>
+                      {expandedReviewId === review.id && (
+                        <div className="border-t border-amber-200/70 px-2.5 py-2.5 space-y-2 text-[10px] text-amber-950/80">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-md bg-amber-50/70 px-2 py-1.5">
+                              <p className="text-amber-900/60">Prior benchmark</p>
+                              <p className="font-semibold text-amber-950">{fmt(review.priorBenchmarkHours, "decimal")} hours</p>
+                            </div>
+                            <div className="rounded-md bg-amber-50/70 px-2 py-1.5">
+                              <p className="text-amber-900/60">Proposed benchmark</p>
+                              <p className="font-semibold text-amber-950">{fmt(review.proposedBenchmarkHours, "decimal")} hours</p>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-amber-900">Decision:</span>{" "}
+                            {fmtDateTime(review.reviewedAt)}
+                            {review.reviewedByName ? ` by ${review.reviewedByName}` : ""}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-amber-900 mb-1">Reviewer note</p>
+                            <p className="rounded-md bg-amber-50/50 px-2 py-1.5 whitespace-pre-wrap">
+                              {review.reviewerNote || "No reviewer note."}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-amber-900 mb-1">Source jobs</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {review.sourceJobIds.length > 0 ? review.sourceJobIds.map((jobId) => {
+                                const job = evidenceJobsById.get(jobId);
+                                return job ? (
+                                  <button
+                                    key={jobId}
+                                    type="button"
+                                    onClick={() => openEvidenceJob(jobId)}
+                                    className="rounded-md border border-amber-300 bg-background px-2 py-1 text-left text-amber-800 hover:bg-amber-100 transition-colors"
+                                    title="Show this job in production evidence"
+                                  >
+                                    Job #{jobId} · {job.title}
+                                  </button>
+                                ) : (
+                                  <span key={jobId} className="rounded-md border border-amber-200 px-2 py-1">
+                                    Job #{jobId}
+                                  </span>
+                                );
+                              }) : (
+                                <span>No source jobs recorded.</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -373,7 +453,15 @@ export function ProductionObservationCard({ modelId }: { modelId: number }) {
                   Only confirmed <span className="font-semibold">here</span> and <span className="font-semibold">not here</span> records inside each job’s first and last confirmed workday are included.
                 </p>
                 {data.jobs.map((job) => (
-                  <div key={job.id} className="rounded-lg bg-muted/20 border border-border/70 px-3 py-2">
+                  <div
+                    key={job.id}
+                    id={`mfh-evidence-job-${job.id}`}
+                    className={`rounded-lg border px-3 py-2 transition-colors ${
+                      highlightedEvidenceJobId === job.id
+                        ? "bg-amber-50 border-amber-400 ring-1 ring-amber-300"
+                        : "bg-muted/20 border-border/70"
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <p className="text-xs font-semibold text-foreground">{job.title}</p>
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap">

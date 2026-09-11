@@ -125,6 +125,44 @@ describe("ProductionObservationCard response states", () => {
     expect(text()).toContain("1 pause");
   });
 
+  it("reveals benchmark history details and jumps to linked source evidence", async () => {
+    h.observations.data = populated;
+    h.reviews.data = [{
+      id: 55,
+      benchmarkId: 11,
+      mfhModelId: 7,
+      priorBenchmarkHours: 24,
+      proposedBenchmarkHours: 26,
+      observedProductionDaysMedian: 2,
+      observedProductionDaysRange: { min: 1, max: 3 },
+      sampleSize: 1,
+      sourceJobIds: [101],
+      status: "approved",
+      reviewerNote: "Confirmed after the trim-out review.",
+      createdByUserId: "user_1",
+      createdByName: "Willard",
+      createdAt: "2026-09-11T14:00:00.000Z",
+      reviewedByUserId: "user_1",
+      reviewedByName: "Willard",
+      reviewedAt: "2026-09-12T15:30:00.000Z",
+    }];
+    await renderCard();
+
+    await act(async () => button("Approved 26.0 hours").click());
+    expect(text()).toContain("Prior benchmark");
+    expect(text()).toContain("24.0 hours");
+    expect(text()).toContain("Proposed benchmark");
+    expect(text()).toContain("26.0 hours");
+    expect(text()).toContain("Confirmed after the trim-out review.");
+    expect(text()).toContain("Decision:");
+    expect(text()).toContain("Job #101 · Oak Ridge 28x76");
+    expect(host.querySelector("#mfh-evidence-job-101")).toBeNull();
+
+    await act(async () => button("Job #101").click());
+    expect(text()).toContain("Oak Ridge 28x76");
+    expect(host.querySelector("#mfh-evidence-job-101")?.className).toContain("border-amber-400");
+  });
+
   it("explains an insufficient sample and a sample with no confirmed presence", async () => {
     h.observations.data = {
       ...populated,
