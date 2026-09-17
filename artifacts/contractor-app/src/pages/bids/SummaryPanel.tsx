@@ -109,7 +109,13 @@ function FactorRow({ factor }: { factor: RecommendationFactor }) {
   );
 }
 
-function DeepReadEvidenceBlock({ evidence }: { evidence?: DeepReadEvidence }) {
+function DeepReadEvidenceBlock({
+  evidence,
+  officialSourceUrl,
+}: {
+  evidence?: DeepReadEvidence;
+  officialSourceUrl?: string | null;
+}) {
   if (!evidence || evidence.status !== "confirmed") {
     return (
       <div className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
@@ -126,9 +132,23 @@ function DeepReadEvidenceBlock({ evidence }: { evidence?: DeepReadEvidence }) {
 
   return (
     <div className="rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-xs">
-      <p className="font-medium text-muted-foreground">
-        Source{evidence.source ? ` · ${evidence.source}` : ""}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-muted-foreground">
+          Source{evidence.source ? ` · ${evidence.source}` : ""}
+        </p>
+        {officialSourceUrl && evidence.excerpt && (
+          <a
+            href={officialSourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open official solicitation for this finding"
+            className="inline-flex shrink-0 items-center gap-1 font-medium text-primary hover:underline"
+          >
+            <ExternalLink className="h-3 w-3" />
+            Open source
+          </a>
+        )}
+      </div>
       {evidence.excerpt ? (
         <p className="mt-0.5 leading-relaxed text-foreground/80">“{evidence.excerpt}”</p>
       ) : (
@@ -141,9 +161,11 @@ function DeepReadEvidenceBlock({ evidence }: { evidence?: DeepReadEvidence }) {
 function DeepReadValue({
   value,
   evidence,
+  officialSourceUrl,
 }: {
   value: string | null | undefined;
   evidence?: DeepReadEvidence;
+  officialSourceUrl?: string | null;
 }) {
   return (
     <div className="space-y-1.5">
@@ -153,7 +175,7 @@ function DeepReadValue({
       )}>
         {value ?? "Not stated in the solicitation"}
       </span>
-      {evidence && <DeepReadEvidenceBlock evidence={evidence} />}
+      {evidence && <DeepReadEvidenceBlock evidence={evidence} officialSourceUrl={officialSourceUrl} />}
     </div>
   );
 }
@@ -161,12 +183,14 @@ function DeepReadValue({
 function DeepReadList({
   items,
   evidence,
+  officialSourceUrl,
 }: {
   items: string[];
   evidence?: DeepReadEvidence[];
+  officialSourceUrl?: string | null;
 }) {
   if (items.length === 0) {
-    return <DeepReadValue value={null} evidence={evidence?.[0]} />;
+    return <DeepReadValue value={null} evidence={evidence?.[0]} officialSourceUrl={officialSourceUrl} />;
   }
   return (
     <ul className="space-y-1.5">
@@ -177,7 +201,7 @@ function DeepReadList({
             <span>{item}</span>
           </div>
           <div className="pl-3.5">
-            <DeepReadEvidenceBlock evidence={evidence?.[index]} />
+            <DeepReadEvidenceBlock evidence={evidence?.[index]} officialSourceUrl={officialSourceUrl} />
           </div>
         </li>
       ))}
@@ -185,7 +209,13 @@ function DeepReadList({
   );
 }
 
-function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
+function DeepReadSection({
+  deepRead,
+  officialSourceUrl,
+}: {
+  deepRead: DeepRead;
+  officialSourceUrl?: string | null;
+}) {
   const deadline = deepRead.submissionDeadline;
   const siteVisit = deepRead.siteVisit;
   const contact = deepRead.pointOfContact;
@@ -213,7 +243,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             Submission deadline
           </h4>
           <div className="pl-5 space-y-1">
-            <DeepReadValue value={deadline.raw} evidence={deepRead.evidence?.submissionDeadline} />
+            <DeepReadValue value={deadline.raw} evidence={deepRead.evidence?.submissionDeadline} officialSourceUrl={officialSourceUrl} />
             {!deadline.raw && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><span className="text-xs text-muted-foreground">Date</span><br /><DeepReadValue value={deadline.date} /></div>
@@ -239,9 +269,9 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               <>
                 <DeepReadValue value={[siteVisit.date, siteVisit.time, siteVisit.timezone].filter(Boolean).join(" · ") || null} />
                 <DeepReadValue value={siteVisit.location} />
-                <DeepReadEvidenceBlock evidence={deepRead.evidence?.siteVisit} />
+                <DeepReadEvidenceBlock evidence={deepRead.evidence?.siteVisit} officialSourceUrl={officialSourceUrl} />
               </>
-            ) : <DeepReadValue value={null} evidence={deepRead.evidence?.siteVisit} />}
+            ) : <DeepReadValue value={null} evidence={deepRead.evidence?.siteVisit} officialSourceUrl={officialSourceUrl} />}
           </div>
         </section>
 
@@ -254,11 +284,11 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             {insuranceRows.map(([label, value, evidence]) => (
               <div key={label} className="grid grid-cols-[9rem_1fr] gap-2 items-start">
                 <span className="text-xs text-muted-foreground">{label}</span>
-                <DeepReadValue value={value} evidence={evidence} />
+                <DeepReadValue value={value} evidence={evidence} officialSourceUrl={officialSourceUrl} />
               </div>
             ))}
             {insurance.other.length > 0 && (
-              <div className="pt-1"><DeepReadList items={insurance.other} evidence={deepRead.evidence?.insuranceRequirements.other} /></div>
+              <div className="pt-1"><DeepReadList items={insurance.other} evidence={deepRead.evidence?.insuranceRequirements.other} officialSourceUrl={officialSourceUrl} /></div>
             )}
           </div>
         </section>
@@ -272,7 +302,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               </p>
               <DeepReadValue value={deepRead.bonding.amounts} />
               <DeepReadValue value={deepRead.bonding.details} />
-              <DeepReadEvidenceBlock evidence={deepRead.evidence?.bonding} />
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.bonding} officialSourceUrl={officialSourceUrl} />
             </div>
           </div>
           <div className="space-y-2">
@@ -283,7 +313,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               </p>
               <DeepReadValue value={deepRead.prevailingWage.wageDeterminationNumber ? `Wage determination ${deepRead.prevailingWage.wageDeterminationNumber}` : null} />
               <DeepReadValue value={deepRead.prevailingWage.details} />
-              <DeepReadEvidenceBlock evidence={deepRead.evidence?.prevailingWage} />
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.prevailingWage} officialSourceUrl={officialSourceUrl} />
             </div>
           </div>
         </section>
@@ -295,13 +325,13 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               {deepRead.smallBusinessSubcontracting.required ? "Required" : "Not identified"}
             </p>
             <DeepReadValue value={deepRead.smallBusinessSubcontracting.details} />
-            <DeepReadEvidenceBlock evidence={deepRead.evidence?.smallBusinessSubcontracting} />
+            <DeepReadEvidenceBlock evidence={deepRead.evidence?.smallBusinessSubcontracting} officialSourceUrl={officialSourceUrl} />
           </div>
         </section>
 
         <section className="space-y-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Evaluation criteria</h4>
-          <DeepReadList items={deepRead.evaluationCriteria} evidence={deepRead.evidence?.evaluationCriteria} />
+          <DeepReadList items={deepRead.evaluationCriteria} evidence={deepRead.evidence?.evaluationCriteria} officialSourceUrl={officialSourceUrl} />
         </section>
 
         <section className="space-y-2">
@@ -314,14 +344,14 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
               <DeepReadValue value={contact.name} />
               {contact.email && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`mailto:${contact.email}`}><Mail className="w-3.5 h-3.5" />{contact.email}</a>}
               {contact.phone && <a className="flex items-center gap-1.5 text-sm text-primary hover:underline" href={`tel:${contact.phone}`}><Phone className="w-3.5 h-3.5" />{contact.phone}</a>}
-              <DeepReadEvidenceBlock evidence={deepRead.evidence?.pointOfContact} />
+              <DeepReadEvidenceBlock evidence={deepRead.evidence?.pointOfContact} officialSourceUrl={officialSourceUrl} />
             </div>
-          ) : <div className="pl-5"><DeepReadValue value={null} evidence={deepRead.evidence?.pointOfContact} /></div>}
+          ) : <div className="pl-5"><DeepReadValue value={null} evidence={deepRead.evidence?.pointOfContact} officialSourceUrl={officialSourceUrl} /></div>}
         </section>
 
         <section className="space-y-1">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Award slots</h4>
-          <DeepReadValue value={deepRead.awardSlots === null ? null : String(deepRead.awardSlots)} evidence={deepRead.evidence?.awardSlots} />
+          <DeepReadValue value={deepRead.awardSlots === null ? null : String(deepRead.awardSlots)} evidence={deepRead.evidence?.awardSlots} officialSourceUrl={officialSourceUrl} />
         </section>
 
         <section className="space-y-2 rounded-lg border border-red-200 bg-red-50/60 p-3 dark:border-red-900/60 dark:bg-red-950/20">
@@ -329,7 +359,7 @@ function DeepReadSection({ deepRead }: { deepRead: DeepRead }) {
             <AlertTriangle className="w-3.5 h-3.5" />
             Red flags
           </h4>
-          <DeepReadList items={deepRead.redFlags} evidence={deepRead.evidence?.redFlags} />
+          <DeepReadList items={deepRead.redFlags} evidence={deepRead.evidence?.redFlags} officialSourceUrl={officialSourceUrl} />
         </section>
       </div>
     </details>
@@ -665,7 +695,12 @@ export default function SummaryPanel({
                 </div>
               )}
 
-              {summary.deepRead && <DeepReadSection deepRead={summary.deepRead} />}
+              {summary.deepRead && (
+                <DeepReadSection
+                  deepRead={summary.deepRead}
+                  officialSourceUrl={bid.officialSourceStatus === "found" ? bid.officialSourceUrl : null}
+                />
+              )}
 
               {/* ── Official source section ──────────────────────────────────── */}
               {bid.officialSourceStatus && bid.officialSourceStatus !== "not_checked" && (() => {
