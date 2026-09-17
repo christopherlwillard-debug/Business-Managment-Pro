@@ -7,7 +7,7 @@ import type {
 // Increment when the canonical wire response changes in a way that can make
 // an older API/UI pair display a misleading financial value. Clients reject
 // responses without the current marker instead of rendering stale arithmetic.
-export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 4;
+export const CANONICAL_JOB_PROFIT_RESPONSE_VERSION = 5;
 
 export type JobProfitExpenseRow = {
   id?: number | null;
