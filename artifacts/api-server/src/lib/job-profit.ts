@@ -112,8 +112,8 @@ export function buildJobProfitResponse(
     responseVersion: CANONICAL_JOB_PROFIT_RESPONSE_VERSION,
     ...calculationFields,
     ...extras,
-    estimatedFuelCost,
-    actualFuelCost,
+    estimatedFuelCost: extras.estimatedFuelCost !== undefined ? extras.estimatedFuelCost : estimatedFuelCost,
+    actualFuelCost: extras.actualFuelCost !== undefined ? extras.actualFuelCost : actualFuelCost,
   };
 }
 
@@ -149,8 +149,8 @@ export function buildJobProfitSummaryResponse(
     responseVersion: CANONICAL_JOB_PROFIT_RESPONSE_VERSION,
     ...calculationFields,
     ...extras,
-    estimatedFuelCost,
-    actualFuelCost,
+    estimatedFuelCost: extras.estimatedFuelCost !== undefined ? extras.estimatedFuelCost : estimatedFuelCost,
+    actualFuelCost: extras.actualFuelCost !== undefined ? extras.actualFuelCost : actualFuelCost,
   };
 }
 

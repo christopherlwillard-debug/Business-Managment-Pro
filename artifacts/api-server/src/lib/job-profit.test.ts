@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { calculateJobProfit } from "./job-profit.js";
+import {
+  buildJobProfitResponse,
+  buildJobProfitSummaryResponse,
+  calculateJobProfit,
+} from "./job-profit.js";
 
 describe("calculateJobProfit", () => {
   it("keeps a job positive when its source records contain ordinary costs and hourly labor", () => {
@@ -116,5 +120,50 @@ describe("calculateJobProfit", () => {
     expect(result.netProfit).toBeCloseTo(350);
     expect(result.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
     expect(result.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
+  });
+});
+
+describe("job profit response builders", () => {
+  it("preserves explicit unavailable fuel values instead of restoring calculation zeroes", () => {
+    const calculation = calculateJobProfit({
+      invoices: [{ total: "2500.00", status: "paid" }],
+      estimatedFuelCost: 0,
+    });
+
+    const detail = buildJobProfitResponse(calculation, {
+      splitPool: 0,
+      mileageReimbursement: null,
+      estimatedFuelCost: null,
+      actualFuelCost: null,
+    });
+    const summary = buildJobProfitSummaryResponse(calculation, {
+      splitPool: 0,
+      estimatedFuelCost: null,
+      actualFuelCost: null,
+    });
+
+    expect(detail.estimatedFuelCost).toBeNull();
+    expect(detail.actualFuelCost).toBeNull();
+    expect(summary.estimatedFuelCost).toBeNull();
+    expect(summary.actualFuelCost).toBeNull();
+  });
+
+  it("keeps route estimate and real fuel expense values when the route supplies them", () => {
+    const calculation = calculateJobProfit({
+      invoices: [{ total: "2500.00", status: "paid" }],
+      expenses: [{ id: 1, amount: "38.50", category: "Fuel/Travel", countsTowardJobProfit: true }],
+      estimatedFuelCost: 25,
+      hasActualFuelExpense: true,
+    });
+
+    const response = buildJobProfitResponse(calculation, {
+      splitPool: 0,
+      mileageReimbursement: null,
+      estimatedFuelCost: null,
+      actualFuelCost: 38.5,
+    });
+
+    expect(response.estimatedFuelCost).toBeNull();
+    expect(response.actualFuelCost).toBe(38.5);
   });
 });
