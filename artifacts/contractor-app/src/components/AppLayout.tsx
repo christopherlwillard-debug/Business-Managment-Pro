@@ -323,6 +323,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {isOwner && (
           <div className={cn("px-3 py-2 border-b border-primary-foreground/10", isStudioMode && "lg:hidden")}>
             <button
+              data-testid="business-switcher"
               onClick={openBusinessSwitcher}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-white transition-colors"
             >

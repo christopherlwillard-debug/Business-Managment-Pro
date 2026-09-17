@@ -43,12 +43,18 @@ if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(
 
 type Fixture = {
   businessId: number;
+  secondBusinessId: number;
+  secondBusinessName: string;
   modelId: number;
   modelName: string;
   serviceId: number;
+  secondServiceId: number;
   jobIds: number[];
+  secondJobIds: number[];
   componentIds: number[];
+  secondComponentIds: number[];
   sessionIds: number[];
+  secondSessionIds: number[];
 };
 
 type ReviewResponse = {
@@ -98,6 +104,25 @@ async function click(page: Page, selector: string) {
   await page.click(selector);
 }
 
+async function openModelForCurrentBusiness(page: Page, fixture: Fixture) {
+  await waitForText(page, fixture.modelName);
+  await page.evaluate((modelName) => {
+    const row = Array.from(document.querySelectorAll("tr"))
+      .find(candidate => candidate.textContent?.includes(modelName)) as HTMLTableRowElement | undefined;
+    if (!row) throw new Error(`Could not find model row: ${modelName}`);
+    row.click();
+  }, fixture.modelName);
+  await waitForText(page, "Component production-day learning");
+  await click(page, `[data-testid="mfh-component-learning-${LEARNING_KEY}"] > button`);
+}
+
+async function switchModelBusiness(page: Page, fixture: Fixture, businessId: number) {
+  await click(page, `[data-testid="business-switcher"]`);
+  await click(page, `[data-testid="business-select-${businessId}"]`);
+  await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
+  await openModelForCurrentBusiness(page, fixture);
+}
+
 async function createFixture(): Promise<Fixture> {
   const partial: Partial<Fixture> = {};
   try {
@@ -120,6 +145,17 @@ async function createFixture(): Promise<Fixture> {
 
     partial.businessId = business.id;
     const suffix = `${Date.now()}-${process.pid}`;
+    const secondBusinessName = `E2E Baseline Business ${suffix}`;
+    const [secondBusiness] = await db.insert(businessesTable).values({
+      name: secondBusinessName,
+      slug: `e2e-baseline-${suffix}`,
+      type: "general_contracting",
+      parentBusinessId: business.id,
+      enabledFeatures: ["jobs"],
+    }).returning({ id: businessesTable.id, slug: businessesTable.slug });
+    if (!secondBusiness) throw new Error("Failed to create second business fixture");
+    partial.secondBusinessId = secondBusiness.id;
+    partial.secondBusinessName = secondBusinessName;
     const [service] = await db.insert(productionServiceTypesTable).values({
       businessId: business.id,
       itemKey: "siding",
@@ -137,6 +173,23 @@ async function createFixture(): Promise<Fixture> {
     });
     if (!service) throw new Error("Failed to create component baseline service fixture");
     partial.serviceId = service.id;
+    const [secondService] = await db.insert(productionServiceTypesTable).values({
+      businessId: secondBusiness.id,
+      itemKey: "siding",
+      name: `E2E Second Siding ${suffix}`,
+      billingType: "Fixed",
+      category: "Exterior",
+      appliesTo: "production",
+      active: true,
+    }).returning({
+      id: productionServiceTypesTable.id,
+      name: productionServiceTypesTable.name,
+      itemKey: productionServiceTypesTable.itemKey,
+      category: productionServiceTypesTable.category,
+      appliesTo: productionServiceTypesTable.appliesTo,
+    });
+    if (!secondService) throw new Error("Failed to create second component baseline service fixture");
+    partial.secondServiceId = secondService.id;
     const modelName = `E2E Component Baseline ${suffix}`;
     const [model] = await db.insert(mfhModelsTable).values({
       manufacturerId: manufacturer.id,
@@ -213,14 +266,82 @@ async function createFixture(): Promise<Fixture> {
     ).returning({ id: jobComponentWorkSessionsTable.id });
     partial.sessionIds = sessions.map(session => session.id);
 
+    const secondJobs = await db.insert(jobsTable).values(
+      [1, 2, 3, 4, 5].map(index => ({
+        title: `${modelName} Second Job ${index}`,
+        status: "completed",
+        businessId: secondBusiness.id,
+        businessLine: secondBusiness.slug,
+        workflow: "mh_production",
+        mfhModelId: model.id,
+        mhProductionServices: [secondService.id],
+        startDate: `2026-07-${String(index * 3).padStart(2, "0")}`,
+        endDate: `2026-07-${String(index * 3 + 1).padStart(2, "0")}`,
+      })),
+    ).returning({ id: jobsTable.id });
+    partial.secondJobIds = secondJobs.map(job => job.id);
+    await db.insert(jobDailyPresenceTable).values(secondJobs.map((job, index) => ({
+      jobId: job.id,
+      date: `2026-07-${String(index * 3 + 1).padStart(2, "0")}`,
+      state: "here",
+      source: "manual_presence",
+      provenance: "confirmed",
+    })));
+    const secondSourceServices = [{
+      id: secondService.id,
+      name: secondService.name,
+      itemKey: secondService.itemKey,
+      category: secondService.category,
+      appliesTo: secondService.appliesTo,
+    }];
+    const secondComponents = await db.insert(jobProductionComponentsTable).values(
+      secondJobs.map((job, index) => ({
+        jobId: job.id,
+        businessId: secondBusiness.id,
+        componentKey: "siding",
+        componentInstanceKey: "siding:unspecified",
+        componentLabel: "Siding",
+        variant: null,
+        sourceServiceIds: [secondService.id],
+        sourceServices: secondSourceServices,
+        snapshotVersion: 1,
+        status: "completed",
+        expectedDurationDays: 2,
+        capturedAt: new Date(`2026-07-${String(index * 3 + 1).padStart(2, "0")}T12:00:00Z`),
+      })),
+    ).returning({ id: jobProductionComponentsTable.id, jobId: jobProductionComponentsTable.jobId });
+    partial.secondComponentIds = secondComponents.map(component => component.id);
+    const secondComponentByJobId = new Map(secondComponents.map(component => [component.jobId, component]));
+    const secondSessions = await db.insert(jobComponentWorkSessionsTable).values(
+      secondJobs.flatMap((job, index) => {
+        const component = secondComponentByJobId.get(job.id);
+        if (!component) throw new Error(`Missing second component fixture for job ${job.id}`);
+        const firstDay = index * 3 + 1;
+        return [0, 1].map(offset => ({
+          jobId: job.id,
+          productionComponentId: component.id,
+          workDate: `2026-07-${String(firstDay + offset).padStart(2, "0")}`,
+          workerName: "E2E Second Component Reviewer",
+          actualHours: "8.00",
+        }));
+      }),
+    ).returning({ id: jobComponentWorkSessionsTable.id });
+    partial.secondSessionIds = secondSessions.map(session => session.id);
+
     return {
       businessId: business.id,
+      secondBusinessId: secondBusiness.id,
+      secondBusinessName,
       modelId: model.id,
       modelName,
       serviceId: service.id,
+      secondServiceId: secondService.id,
       jobIds: jobs.map(job => job.id),
+      secondJobIds: secondJobs.map(job => job.id),
       componentIds: components.map(component => component.id),
+      secondComponentIds: secondComponents.map(component => component.id),
       sessionIds: sessions.map(session => session.id),
+      secondSessionIds: secondSessions.map(session => session.id),
     };
   } catch (error) {
     await cleanupFixture(partial);
@@ -237,14 +358,27 @@ async function cleanupFixture(fixture: Partial<Fixture>) {
     await db.delete(jobComponentWorkSessionsTable)
       .where(inArray(jobComponentWorkSessionsTable.id, fixture.sessionIds));
   }
+  if (fixture.secondSessionIds?.length) {
+    await db.delete(jobComponentWorkSessionsTable)
+      .where(inArray(jobComponentWorkSessionsTable.id, fixture.secondSessionIds));
+  }
   if (fixture.componentIds?.length) {
     await db.delete(jobProductionComponentsTable)
       .where(inArray(jobProductionComponentsTable.id, fixture.componentIds));
+  }
+  if (fixture.secondComponentIds?.length) {
+    await db.delete(jobProductionComponentsTable)
+      .where(inArray(jobProductionComponentsTable.id, fixture.secondComponentIds));
   }
   if (fixture.jobIds?.length) {
     await db.delete(jobDailyPresenceTable)
       .where(inArray(jobDailyPresenceTable.jobId, fixture.jobIds));
     await db.delete(jobsTable).where(inArray(jobsTable.id, fixture.jobIds));
+  }
+  if (fixture.secondJobIds?.length) {
+    await db.delete(jobDailyPresenceTable)
+      .where(inArray(jobDailyPresenceTable.jobId, fixture.secondJobIds));
+    await db.delete(jobsTable).where(inArray(jobsTable.id, fixture.secondJobIds));
   }
   if (fixture.modelId != null) {
     await db.delete(mfhModelsTable).where(eq(mfhModelsTable.id, fixture.modelId));
@@ -252,6 +386,13 @@ async function cleanupFixture(fixture: Partial<Fixture>) {
   if (fixture.serviceId != null) {
     await db.delete(productionServiceTypesTable)
       .where(eq(productionServiceTypesTable.id, fixture.serviceId));
+  }
+  if (fixture.secondServiceId != null) {
+    await db.delete(productionServiceTypesTable)
+      .where(eq(productionServiceTypesTable.id, fixture.secondServiceId));
+  }
+  if (fixture.secondBusinessId != null) {
+    await db.delete(businessesTable).where(eq(businessesTable.id, fixture.secondBusinessId));
   }
 }
 
@@ -333,15 +474,7 @@ async function main() {
     if (!sessionId) throw new Error("Development login did not create a session cookie");
 
     await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
-    await waitForText(page, completeFixture.modelName);
-    await page.evaluate((modelName) => {
-      const row = Array.from(document.querySelectorAll("tr"))
-        .find(candidate => candidate.textContent?.includes(modelName)) as HTMLTableRowElement | undefined;
-      if (!row) throw new Error(`Could not find model row: ${modelName}`);
-      row.click();
-    }, completeFixture.modelName);
-    await waitForText(page, "Component production-day learning");
-    await click(page, `[data-testid="mfh-component-learning-${LEARNING_KEY}"] > button`);
+    await openModelForCurrentBusiness(page, completeFixture);
 
     const rejected = await createReview(page, completeFixture, "2.5");
     recordResult(
@@ -423,10 +556,92 @@ async function main() {
       JSON.stringify(historyAfterStaleApproval),
     );
 
+    await switchModelBusiness(page, completeFixture, completeFixture.secondBusinessId);
+    await waitForText(page, `Scope: ${completeFixture.secondBusinessName}`);
+    const primaryRowsInSecondScope = await page.$$(
+      [
+        `[data-testid="mfh-component-baseline-history-${rejected.id}"]`,
+        `[data-testid="mfh-component-baseline-history-${firstApproved.id}"]`,
+        `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${stale.id}"]`,
+      ].join(","),
+    );
+    recordResult(
+      "Switching businesses hides the first business review history",
+      primaryRowsInSecondScope.length === 0
+        && !(await page.$eval("body", body => body.textContent?.includes("Current approved baseline: 3.0 production days") ?? false)),
+    );
+
+    const secondRejected = await createReview(page, completeFixture, "5.5");
+    await decideReview(page, completeFixture, secondRejected.id, "reject");
+    await waitForText(page, "Component baseline review rejected");
+    const secondFirstApproved = await createReview(page, completeFixture, "5.0");
+    await decideReview(page, completeFixture, secondFirstApproved.id, "approve");
+    await waitForText(page, "Current approved baseline: 5.0 production days");
+    const secondBusinessApproved = await createReview(page, completeFixture, "6.0");
+    await decideReview(page, completeFixture, secondBusinessApproved.id, "approve");
+    await waitForText(page, "Current approved baseline: 6.0 production days");
+    const secondPending = await createReview(page, completeFixture, "7.0");
+    await page.waitForSelector(
+      `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${secondPending.id}"]`,
+      { timeout: 30_000 },
+    );
+    recordResult(
+      "The second business keeps its own pending, rejected, approved, and superseded history",
+      secondRejected.sourceEvidence.businessId === completeFixture.secondBusinessId
+        && secondBusinessApproved.sourceEvidence.businessId === completeFixture.secondBusinessId
+        && secondPending.sourceEvidence.businessId === completeFixture.secondBusinessId
+        && (await page.$(`[data-testid="mfh-component-baseline-history-${secondRejected.id}"][data-review-status="rejected"]`)) != null
+        && (await page.$(`[data-testid="mfh-component-baseline-history-${secondFirstApproved.id}"][data-review-status="superseded"]`)) != null,
+    );
+
+    const crossBusinessMutation = await page.evaluate(async ({ modelId, reviewId, businessId }) => {
+      const response = await fetch(
+        `/api/mfh/knowledge-base/${modelId}/component-baseline-reviews/${reviewId}/reject?businessId=${businessId}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reviewerNote: "must not cross business scope" }),
+        },
+      );
+      return { status: response.status, body: await response.text() };
+    }, {
+      modelId: completeFixture.modelId,
+      reviewId: stale.id,
+      businessId: completeFixture.secondBusinessId,
+    });
+    const [primaryPendingAfterCrossMutation] = await db.select({
+      status: mfhComponentBaselineRevisionsTable.status,
+    }).from(mfhComponentBaselineRevisionsTable)
+      .where(eq(mfhComponentBaselineRevisionsTable.id, stale.id))
+      .limit(1);
+    recordResult(
+      "A review cannot be mutated through another business scope",
+      crossBusinessMutation.status === 404 && primaryPendingAfterCrossMutation?.status === "pending",
+      JSON.stringify(crossBusinessMutation),
+    );
+
+    await switchModelBusiness(page, completeFixture, completeFixture.businessId);
+    await waitForText(page, "Current approved baseline: 3.0 production days");
+    const secondRowsInPrimaryScope = await page.$$(
+      [
+        `[data-testid="mfh-component-baseline-history-${secondRejected.id}"]`,
+        `[data-testid="mfh-component-baseline-history-${secondFirstApproved.id}"]`,
+        `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${secondPending.id}"]`,
+      ].join(","),
+    );
+    recordResult(
+      "Switching back restores only the first business review history",
+      secondRowsInPrimaryScope.length === 0
+        && (await page.$(`[data-testid="mfh-component-baseline-history-${rejected.id}"]`)) != null
+        && (await page.$(`[data-testid="mfh-component-baseline-history-${firstApproved.id}"]`)) != null
+        && (await page.$(`[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${stale.id}"]`)) != null,
+    );
+
     recordResult(
       "Browser writes stayed inside the component-review allowlist",
       blockedWrites.length === 0
-        && browserWrites.length === 8
+        && browserWrites.length === 16
         && browserWrites.every(write => write.includes("/component-baseline-reviews")),
       blockedWrites.length ? blockedWrites.join(", ") : browserWrites.join(", "),
     );

@@ -342,6 +342,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                   )}
                   <button
                     type="button"
+                    data-testid={`business-select-${b.id}`}
                     onClick={() => handleSelect(b)}
                     className="flex items-center gap-4 flex-1 min-w-0 text-left"
                   >
