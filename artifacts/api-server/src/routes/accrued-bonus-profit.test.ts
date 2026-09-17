@@ -221,6 +221,7 @@ function pushProfitSelects(opts: {
   if (opts.fuelJob) {
     h.selectQueue.push((opts.fuelWorkDates ?? []).map(date => ({ date }))); // sub-hour dates
     h.selectQueue.push((opts.fuelDailyLogDates ?? []).map(date => ({ date }))); // daily-log dates
+    h.selectQueue.push([]); // component work-session dates
   }
   h.selectQueue.push([]); // financial settings
 }
@@ -915,13 +916,13 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     const res = await request(app).get("/jobs/profit-summary?jobIds=38,45");
 
     expect(res.status).toBe(200);
-    expect(res.body[38].responseVersion).toBe(5);
+    expect(res.body[38].responseVersion).toBe(6);
     expect(res.body[38].grossInvoiced).toBeCloseTo(1406.27);
     expect(res.body[38].jobExpenses).toBeCloseTo(387.57);
     expect(res.body[38].subLaborCost).toBeCloseTo(320);
     expect(res.body[38].totalSubHours).toBe(0);
     expect(res.body[38].netProfit).toBeCloseTo(698.70);
-    expect(res.body[45].responseVersion).toBe(5);
+    expect(res.body[45].responseVersion).toBe(6);
     expect(res.body[45].grossInvoiced).toBeCloseTo(182.27);
     expect(res.body[45].jobExpenses).toBe(0);
     expect(res.body[45].subLaborCost).toBe(0);

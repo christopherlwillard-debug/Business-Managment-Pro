@@ -130,7 +130,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("applies the complete payroll profit response after a successful refresh", () => {
     const refreshedProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 412.5,
       estimatedFuelCost: 63.25,
       growthReservePct: 5,
@@ -163,7 +163,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("clears an old payroll profit and exposes the actionable error state after failure", () => {
     const previousProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 300,
       estimatedFuelCost: 40,
       growthReservePct: 5,
@@ -190,7 +190,7 @@ describe("Jobs payment summary refresh", () => {
 
   it("clears every shared payroll field during an outage and restores them together after recovery", () => {
     const recoveredProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 487.5,
       estimatedFuelCost: 71.25,
       growthReservePct: 6,
@@ -249,14 +249,14 @@ describe("Jobs payment summary refresh", () => {
     const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(0);
     const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
     const newerProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 425,
       estimatedFuelCost: 64,
       growthReservePct: 6,
       netProfit: 1725,
     };
     const olderProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 300,
       estimatedFuelCost: 40,
       growthReservePct: 5,
@@ -298,7 +298,7 @@ describe("Jobs payment summary refresh", () => {
     const firstRequestKey = nextJobPaymentSummaryRefreshGeneration(10);
     const secondRequestKey = nextJobPaymentSummaryRefreshGeneration(firstRequestKey);
     const newerProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 450,
       estimatedFuelCost: 70,
       growthReservePct: 7,
@@ -333,14 +333,14 @@ describe("Jobs payment summary refresh", () => {
 
   it("ignores a refreshed response for a job that is no longer selected", () => {
     const selectedProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 275,
       estimatedFuelCost: 35,
       growthReservePct: 5,
       netProfit: 980,
     };
     const staleProfit: PayrollProfitSnapshot = {
-      responseVersion: 5,
+      responseVersion: 6,
       subLaborCost: 999,
       estimatedFuelCost: 88,
       growthReservePct: 10,

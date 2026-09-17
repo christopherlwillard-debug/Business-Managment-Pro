@@ -1367,17 +1367,21 @@ router.get("/:id/profit", async (req, res) => {
         } else if (route?.miles != null) {
           // Workdays come from actual work evidence, not the scheduled calendar span.
           // A skipped day between startDate and endDate must not create a round trip.
-          const [subHourDateRows, dailyLogDateRows] = await Promise.all([
+          const [subHourDateRows, dailyLogDateRows, componentSessionDateRows] = await Promise.all([
             db.select({ date: jobSubHoursTable.date })
               .from(jobSubHoursTable)
               .where(eq(jobSubHoursTable.jobId, id)),
             db.select({ date: dailyLogsTable.date })
               .from(dailyLogsTable)
               .where(eq(dailyLogsTable.jobId, id)),
+            db.select({ date: jobComponentWorkSessionsTable.workDate })
+              .from(jobComponentWorkSessionsTable)
+              .where(eq(jobComponentWorkSessionsTable.jobId, id)),
           ]);
           const daysOnJob = countActualWorkdays(
             subHourDateRows.map(row => row.date),
             dailyLogDateRows.map(row => row.date),
+            componentSessionDateRows.map(row => row.date),
           );
 
           if (daysOnJob == null) {
@@ -1641,6 +1645,10 @@ router.get("/profit-summary", async (req, res) => {
               SELECT DISTINCT d.date
               FROM daily_logs d
               WHERE d.job_id = ${jobsTable.id}
+               UNION
+               SELECT DISTINCT ws.work_date
+               FROM job_component_work_sessions ws
+               WHERE ws.job_id = ${jobsTable.id}
             ) AS work_dates
           )`,
         }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),

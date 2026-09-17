@@ -9,6 +9,14 @@ describe("countActualWorkdays", () => {
     )).toBe(3);
   });
 
+  it("includes component work-session dates in the worked-day union", () => {
+    expect(countActualWorkdays(
+      ["2026-09-02"],
+      ["2026-08-31"],
+      ["2026-09-01", "2026-09-02"],
+    )).toBe(3);
+  });
+
   it("uses three worked dates instead of a four-day scheduled span", () => {
     const scheduledSpan = ["2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"];
 
@@ -20,7 +28,7 @@ describe("countActualWorkdays", () => {
   });
 
   it("does not infer worked days when no work-date evidence exists", () => {
-    expect(countActualWorkdays([], [])).toBeNull();
+    expect(countActualWorkdays([], [], [])).toBeNull();
   });
 
   it("ignores blank dates and de-duplicates repeated entries", () => {
