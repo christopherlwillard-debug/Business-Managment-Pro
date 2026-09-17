@@ -1,7 +1,7 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { jobDailyPresenceTable, jobsTable } from "@workspace/db/schema";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import { belongsToBusiness, invalidBusinessScope, requestedBusiness } from "../lib/business-scope.js";
 import {
@@ -38,6 +38,8 @@ function responseRecord(record: typeof jobDailyPresenceTable.$inferSelect) {
     jobId: record.jobId,
     date: record.date,
     state: record.state as PresenceState,
+    workStartedAt: record.workStartedAt,
+    workEndedAt: record.workEndedAt,
     notHereReason: record.notHereReason as NotHereReason | null,
     notes: record.notes,
     source: record.source,
@@ -48,6 +50,25 @@ function responseRecord(record: typeof jobDailyPresenceTable.$inferSelect) {
     updatedAt: record.updatedAt,
     updatedByUserId: record.updatedByUserId,
     updatedByName: record.updatedByName,
+  };
+}
+
+async function loadWorkdaySnapshot(
+  query: any,
+  jobId: number,
+  job: typeof jobsTable.$inferSelect,
+  date: string,
+) {
+  const records: Array<typeof jobDailyPresenceTable.$inferSelect> = await query
+    .select()
+    .from(jobDailyPresenceTable)
+    .where(eq(jobDailyPresenceTable.jobId, jobId))
+    .orderBy(asc(jobDailyPresenceTable.date));
+  const record = records.find(row => row.date === date) ?? null;
+  return {
+    jobId,
+    record: record ? responseRecord(record) : null,
+    timing: timingFor(records, job),
   };
 }
 
@@ -111,6 +132,148 @@ router.get("/production-presence", async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to load production presence" });
+  }
+});
+
+router.post("/:jobId/workday/start", async (req, res) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    const date = req.body?.date;
+    if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "Invalid jobId" });
+    if (!isDateOnly(date)) return res.status(400).json({ error: "date must be a valid YYYY-MM-DD date" });
+
+    const { scope, jobs } = await scopedJobs(req, [jobId]);
+    if (invalidBusinessScope(res, scope)) return;
+    const job = jobs[0];
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
+      return res.status(409).json({ error: "Completed or closed jobs cannot be started" });
+    }
+
+    const user = getRequestUser(req);
+    const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || null;
+    const result = await db.transaction(async tx => {
+      const [existing] = await tx
+        .select()
+        .from(jobDailyPresenceTable)
+        .where(and(
+          eq(jobDailyPresenceTable.jobId, jobId),
+          eq(jobDailyPresenceTable.date, date),
+        ))
+        .limit(1);
+      if (existing?.state === "here" && existing.workStartedAt) {
+        const [activeJob] = await tx
+          .update(jobsTable)
+          .set({ status: "active" })
+          .where(eq(jobsTable.id, jobId))
+          .returning();
+        const snapshot = await loadWorkdaySnapshot(tx, jobId, activeJob ?? job, date);
+        return { job: activeJob ?? job, ...snapshot };
+      }
+      const startedAt = new Date();
+      const [record] = await tx
+        .insert(jobDailyPresenceTable)
+        .values({
+          jobId,
+          date,
+          state: "here",
+          workStartedAt: startedAt,
+          workEndedAt: null,
+          notHereReason: null,
+          notes: null,
+          source: "workday_action",
+          provenance: "confirmed",
+          createdByUserId: user?.id ?? null,
+          createdByName: userName,
+          updatedByUserId: user?.id ?? null,
+          updatedByName: userName,
+        })
+        .onConflictDoUpdate({
+          target: [jobDailyPresenceTable.jobId, jobDailyPresenceTable.date],
+          set: {
+            state: "here",
+            workStartedAt: startedAt,
+            workEndedAt: null,
+            notHereReason: null,
+            notes: null,
+            source: "workday_action",
+            provenance: "confirmed",
+            updatedAt: startedAt,
+            updatedByUserId: user?.id ?? null,
+            updatedByName: userName,
+          },
+        })
+        .returning();
+      const [updatedJob] = await tx
+        .update(jobsTable)
+        .set({ status: "active" })
+        .where(eq(jobsTable.id, jobId))
+        .returning();
+      if (!record || !updatedJob) throw new Error("Could not start workday");
+      const snapshot = await loadWorkdaySnapshot(tx, jobId, updatedJob, date);
+      return { job: updatedJob, ...snapshot };
+    });
+    return res.json(result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to start work today" });
+  }
+});
+
+router.post("/:jobId/workday/end", async (req, res) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    const date = req.body?.date;
+    if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "Invalid jobId" });
+    if (!isDateOnly(date)) return res.status(400).json({ error: "date must be a valid YYYY-MM-DD date" });
+
+    const { scope, jobs } = await scopedJobs(req, [jobId]);
+    if (invalidBusinessScope(res, scope)) return;
+    const job = jobs[0];
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
+      return res.status(409).json({ error: "Completed or closed jobs cannot be updated" });
+    }
+
+    const user = getRequestUser(req);
+    const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || null;
+    const result = await db.transaction(async tx => {
+      const [existing] = await tx
+        .select()
+        .from(jobDailyPresenceTable)
+        .where(and(
+          eq(jobDailyPresenceTable.jobId, jobId),
+          eq(jobDailyPresenceTable.date, date),
+        ))
+        .limit(1);
+      if (!existing || existing.state !== "here" || !existing.workStartedAt) {
+        return null;
+      }
+      if (existing.workEndedAt) {
+        const snapshot = await loadWorkdaySnapshot(tx, jobId, job, date);
+        return { job, ...snapshot };
+      }
+      const endedAt = new Date();
+      const [record] = await tx
+        .update(jobDailyPresenceTable)
+        .set({
+          workEndedAt: endedAt,
+          source: "workday_action",
+          provenance: "confirmed",
+          updatedAt: endedAt,
+          updatedByUserId: user?.id ?? null,
+          updatedByName: userName,
+        })
+        .where(eq(jobDailyPresenceTable.id, existing.id))
+        .returning();
+      const snapshot = await loadWorkdaySnapshot(tx, jobId, job, date);
+      return { job, ...snapshot, record: record ? responseRecord(record) : null };
+    });
+    if (!result) return res.status(409).json({ error: "Start work today before ending today's work" });
+    return res.json(result);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to finish today's work" });
   }
 });
 

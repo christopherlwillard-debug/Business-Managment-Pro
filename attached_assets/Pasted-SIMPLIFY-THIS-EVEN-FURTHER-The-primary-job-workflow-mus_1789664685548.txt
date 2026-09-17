@@ -1,0 +1,110 @@
+SIMPLIFY THIS EVEN FURTHER.
+
+The primary job workflow must be extremely simple.
+
+Do not make the user manage scheduling concepts manually.
+
+NORMAL WORKFLOW:
+
+PLANNED
+
+[ START WORK TODAY ]
+
+After tapping:
+
+ACTIVE
+
+🟢 WORKING TODAY
+
+[ DONE FOR TODAY ]
+
+After tapping:
+
+ACTIVE
+
+✓ DONE FOR TODAY
+
+The next day:
+
+[ START WORK TODAY ]
+
+Repeat.
+
+When the entire job is finished:
+
+[ FINISH JOB ]
+
+That's it.
+
+The user should NOT have to manually manage:
+
+- Here
+- Unrecorded
+- Production day
+- Calendar day
+- Actual production start
+- Last work date
+- Work session
+- Business context
+- Component status
+
+Those are system/data details that should be handled automatically.
+
+The only two daily buttons the user needs are:
+
+START WORK TODAY
+DONE FOR TODAY
+
+The only final job button is:
+
+FINISH JOB
+
+When START WORK TODAY is tapped:
+- Record today as Here automatically.
+- Record the start timestamp.
+- Set the job Active.
+- Create/update today's daily-presence record.
+- Automatically use the job's existing business context.
+- Do not ask the user anything else.
+
+When DONE FOR TODAY is tapped:
+- Record the finish timestamp.
+- Keep the job Active.
+- Do not mark the job Completed.
+- Do not calculate or create payroll hours.
+- Do not change any financial data.
+
+After refresh, the app must remember whether today is:
+- Not started
+- Working today
+- Done for today
+
+Component statuses remain available as optional detailed information, but they must NOT be required for the basic daily workflow.
+
+The date-by-date presence editor should remain available only under a secondary "Details" or "History" area.
+
+The primary job card should NOT show the complicated date-by-date editor.
+
+The user should be able to open a job and understand what to do immediately without training.
+
+GRANNY TEST:
+
+If someone opens the job while they are at the house, the answer should be obvious:
+
+START WORK TODAY
+
+If they are already working:
+
+DONE FOR TODAY
+
+If today's work is finished:
+
+START WORK TODAY
+
+If the entire job is complete:
+
+FINISH JOB
+
+Do not add additional choices to this primary workflow.
+
+Keep the underlying data model and accounting safeguards, but make the UI extremely simple.

@@ -1,0 +1,113 @@
+IMPORTANT IMPLEMENTATION CLARIFICATION
+
+The new daily-presence timestamps are NOT time tracking and must NOT be treated as billable/labor hours.
+
+They exist only to represent the state of the one-tap daily workflow.
+
+The intended state machine is:
+
+NOT STARTED TODAY
+- Here may be false/unrecorded
+- started_at = null
+- finished_at = null
+
+START WORK TODAY
+- Here = true
+- started_at = current timestamp
+- finished_at = null
+- Job status = Active
+- Create/update today's daily-presence record atomically
+
+STILL WORKING TODAY
+- Here = true
+- started_at exists
+- finished_at = null
+
+DONE FOR TODAY
+- Here = true
+- started_at exists
+- finished_at = current timestamp
+- Do NOT change the job to Completed
+- Do NOT affect payroll
+- Do NOT create labor expense
+- Do NOT calculate hours from these timestamps
+- Job remains Active
+
+NEXT WORK DAY
+- A new daily-presence record is created/reused for that date
+- The same workflow starts again
+
+FINISH JOB
+- Continue using the existing Mark Completed financial closeout flow
+- Rename the normal-path UI action to FINISH JOB
+- Do not create a second completion/closeout system
+
+IMPORTANT:
+
+The timestamps are operational state only.
+
+Do NOT:
+- calculate labor hours from them
+- create payroll entries from them
+- create worker payments from them
+- modify owner pay
+- modify subcontractor pay
+- modify job expenses
+- modify mileage
+- modify invoices
+- modify profit calculations
+
+The existing financial and accounting systems must remain untouched.
+
+UI REQUIREMENT:
+
+The normal job-card workflow should be extremely simple.
+
+If today's work has not started:
+
+[ START WORK TODAY ]
+
+After tapping:
+
+WORKING TODAY
+Started at [time]
+
+[ DONE FOR TODAY ]
+
+After tapping DONE FOR TODAY:
+
+DONE FOR TODAY
+Worked today
+Started [time]
+Finished [time]
+
+[ START WORK TODAY ] should NOT appear again for that same day unless the existing record is explicitly reset through an administrative/detail workflow.
+
+The UI should survive refresh/reload because the state is persisted in job_daily_presence.
+
+The action endpoints should be idempotent/safe against accidental double taps and refreshes. Do not create duplicate daily-presence records or duplicate work sessions when the same action is submitted twice.
+
+Use the job's existing business context automatically. Do not ask the user to select a business context again when the job already has one.
+
+Component statuses remain completely independent.
+
+Starting the job does NOT automatically change every component to In Progress.
+
+The overall hierarchy remains:
+
+JOB STATUS
+→ Are we actively working this job?
+
+TODAY'S WORK STATE
+→ Have we started/finished today's work?
+
+COMPONENT STATUS
+→ Which portions of the job are being worked?
+
+WORK SESSION
+→ Optional detailed evidence about component work.
+
+DAILY PRESENCE
+→ The source of truth for whether the crew was actually there on a given production day.
+
+Please preserve the existing date-by-date editor as an optional detailed/history view rather than the primary workflow.

@@ -12,6 +12,24 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-17
+
+### Simplified one-tap daily work state
+
+- Extended the existing `job_daily_presence` source with operational
+  start/finish timestamps and a `workday_action` provenance source.
+- Added atomic, idempotent start-work-today and done-for-today actions that
+  mark the job Active and Here without creating hours, payroll, expenses,
+  payments, profit, or component-status changes.
+- Simplified the normal Jobs card workflow to START WORK TODAY, DONE FOR TODAY,
+  and the existing financial FINISH JOB closeout; component detail is labeled
+  WORK BREAKDOWN and uses the job's assigned business context.
+- Preserved the existing date-by-date presence editor as optional detail/history.
+- Verified the development schema, API/frontend typechecks, production-presence
+  regression suite, and schema/API contract inventory.
+
+---
+
 ## 2026-09-11
 
 ### Production Intelligence Phase 4: job-specific production components

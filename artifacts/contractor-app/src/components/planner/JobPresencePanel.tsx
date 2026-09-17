@@ -21,6 +21,8 @@ export type JobPresenceRecord = {
   jobId: number;
   date: string;
   state: PresenceState;
+  workStartedAt: string | null;
+  workEndedAt: string | null;
   notHereReason: NotHereReason | null;
   notes: string | null;
   source: string;
@@ -79,6 +81,9 @@ function dateRange(start: string, end: string): string[] {
 function provenanceLabel(record: JobPresenceRecord): string {
   if (record.provenance === "confirmed" && record.source === "manual_presence") {
     return "Confirmed manually";
+  }
+  if (record.provenance === "confirmed" && record.source === "workday_action") {
+    return "Recorded from workday action";
   }
   return `${record.provenance.charAt(0).toUpperCase()}${record.provenance.slice(1)}`;
 }

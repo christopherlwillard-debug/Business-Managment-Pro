@@ -11,6 +11,8 @@ export const jobDailyPresenceTable = pgTable(
     jobId: integer("job_id").notNull().references(() => jobsTable.id, { onDelete: "cascade" }),
     date: date("date", { mode: "string" }).notNull(),
     state: text("state").notNull().default("unrecorded"),
+    workStartedAt: timestamp("work_started_at", { withTimezone: true }),
+    workEndedAt: timestamp("work_ended_at", { withTimezone: true }),
     notHereReason: text("not_here_reason"),
     notes: text("notes"),
     source: text("source").notNull().default("manual_presence"),
@@ -38,7 +40,7 @@ export const jobDailyPresenceTable = pgTable(
     ),
     check(
       "job_daily_presence_source_check",
-      sql`${table.source} IN ('manual_presence', 'job_schedule', 'job_sub_hours', 'daily_log', 'checklist_status', 'job_knowledge_record', 'production_plan_snapshot')`,
+      sql`${table.source} IN ('manual_presence', 'workday_action', 'job_schedule', 'job_sub_hours', 'daily_log', 'checklist_status', 'job_knowledge_record', 'production_plan_snapshot')`,
     ),
     check(
       "job_daily_presence_provenance_check",

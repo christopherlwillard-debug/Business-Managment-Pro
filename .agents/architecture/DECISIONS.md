@@ -486,6 +486,23 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 **Status:** Accepted
 **Date:** 2026-09-11
 
+## ADR-030
+
+**Title:** Daily workday actions extend daily presence without becoming time tracking
+
+**Decision:** Extend `job_daily_presence` with optional operational start and finish timestamps and a `workday_action` source. The start action atomically marks the day Here and the job Active; the finish action closes only that day and leaves the job Active. These timestamps never produce hours, payroll, expenses, payments, profit, or component status changes. Existing manual presence editing remains the detail/history reset path.
+
+**Reason:** The existing daily-presence row is already the source of truth for whether the crew was Here, but it could not persist the separate “working today” versus “done for today” state required by the simplified job-card workflow. Extending the existing row preserves the three-state presence model and avoids inventing component work sessions or financial records.
+
+**Rejected Alternatives:**
+- Creating a separate workday or time-tracking table
+- Treating component work sessions as a generic job start marker
+- Deriving labor hours from the operational timestamps
+- Changing every production component to In Progress when a job starts
+
+**Status:** Accepted
+**Date:** 2026-09-17
+
 ## ADR-028
 
 **Title:** Component work sessions are an operational evidence ledger
