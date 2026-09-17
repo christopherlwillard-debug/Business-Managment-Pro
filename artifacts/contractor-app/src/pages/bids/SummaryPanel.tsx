@@ -209,7 +209,7 @@ function DeepReadList({
   );
 }
 
-function DeepReadSection({
+export function DeepReadSection({
   deepRead,
   officialSourceUrl,
 }: {
