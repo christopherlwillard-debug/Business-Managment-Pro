@@ -1,0 +1,133 @@
+But the statuses can be changed if you actually care about tracking them separately.
+
+The important distinction:
+
+Job status ≠ component status.
+
+You can be working on the job without having to manually set every component.
+
+⸻
+
+4. The giant production-day section needs to go
+
+This part is where the UI really starts fighting you:
+
+Actual Production Start
+Last Work Date
+Expected Duration
+Sep 17 — Unrecorded / Here
+Sep 18 — Unrecorded / Here
+Sep 19 — Unrecorded / Here
+Sep 20 — Unrecorded / Here
+Sep 21 — Unrecorded / Here
+
+That’s basically exposing the database to the user.
+
+Instead, give the user a simple WORK DAYS card:
+
+WORK DAYS
+
+4 days worked
+
+Sep 17 ✓
+Sep 18 ✓
+Sep 19 ✓
+Sep 20 ✓
+
+And if today is Sep 17:
+
+Today
+
+🟢 Working here
+
+The app can calculate the production-day information in the background.
+
+⸻
+
+5. Most importantly: don’t make “Here” a scheduling concept
+
+The user shouldn’t have to think:
+
+“Was I supposed to be here?”
+“Is this an unrecorded day?”
+“Is this a calendar day or production day?”
+
+They know one thing:
+
+I worked today.
+
+So the app asks:
+
+Did you work today?
+
+YES — WE WORKED HERE
+
+That’s the granny test.
+
+⸻
+
+The whole workflow should basically be
+
+Before the job
+
+PLANNED
+
+Sep 17–21
+Expected: 4 production days
+
+When you arrive
+
+START WORK TODAY
+
+↓
+
+ACTIVE
+
+🟢 Working today
+Sep 17
+Here
+
+When you leave
+
+DONE FOR TODAY
+
+↓
+
+Sep 17 ✓
+
+Next morning
+
+START WORK TODAY
+
+↓
+
+Sep 18 ✓
+
+Repeat.
+
+When the job is finished
+
+FINISH JOB
+
+↓
+
+COMPLETED
+
+⸻
+
+And I would not automatically change every component to “In Progress” when you start the job. Keep component statuses independent because you may have a job where you’re working today but only one component is actually underway.
+
+The hierarchy should be:
+
+JOB
+→ Am I working this job today?
+
+COMPONENTS
+→ What parts of the job are being worked?
+
+WORK SESSION
+→ What actually happened today?
+
+The app handles the complicated accounting/scheduling logic underneath. You should only have to tell it what you actually did.
+
+That is the direction I’d take before adding another scheduling feature.

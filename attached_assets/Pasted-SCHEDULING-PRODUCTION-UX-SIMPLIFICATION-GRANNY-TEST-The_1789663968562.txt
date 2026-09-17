@@ -1,0 +1,571 @@
+SCHEDULING / PRODUCTION UX SIMPLIFICATION — GRANNY TEST
+
+The current scheduling and production tracking system is too complicated and difficult to use. It exposes too many underlying concepts to the user at once: job status, production-component status, work sessions, production days, calendar days, actual start date, last work date, expected duration, and manual Here/Unrecorded buttons.
+
+The goal is to simplify the normal workflow so that a user can manage a job without understanding the underlying scheduling system.
+
+IMPORTANT:
+Do not remove the underlying production/scheduling data or calculations. Simplify the user interface and make the system automatically handle the details in the background.
+
+CORE PRINCIPLE:
+
+The user should only need to answer simple questions:
+
+1. Am I working this job today?
+2. What parts of the job am I working on?
+3. What happened during today's work?
+
+The app should handle the production-day calculations, dates, work sessions, job status, and other bookkeeping automatically.
+
+-----------------------------------
+1. ADD A SIMPLE "START WORK TODAY" ACTION
+-----------------------------------
+
+At the top of an active/planned job, provide one obvious primary action:
+
+START WORK TODAY
+
+When the user taps START WORK TODAY:
+
+- Change the overall Job Status to ACTIVE.
+- Mark today as a work day / "Here".
+- Automatically set Actual Production Start if it has not already been set.
+- Automatically create the appropriate work session for today.
+- Do not require the user to separately change production components to "In Progress".
+- Do not require the user to manually mark today's date as "Here".
+- Do not require the user to navigate into a separate scheduling screen.
+
+The user should be able to start working with ONE TAP.
+
+After starting:
+
+JOB STATUS
+
+WORKING TODAY
+Today — Here
+
+And replace the Start Work Today button with:
+
+DONE FOR TODAY
+
+-----------------------------------
+2. "JOB STATUS" AND "COMPONENT STATUS" MUST BE SEPARATE
+-----------------------------------
+
+Do not make production component status the mechanism for starting the job.
+
+The overall job can be ACTIVE even if only one production component is currently being worked.
+
+Example:
+
+JOB STATUS
+Working Today
+Sep 17
+
+WORK BREAKDOWN
+
+Interior Finish · VOG
+In Progress
+
+Siding
+Planned
+
+The user can separately change component statuses if they want detailed production tracking.
+
+Starting the job should NOT automatically change every component to In Progress.
+
+This distinction is important:
+
+JOB STATUS = Are we working this job?
+
+COMPONENT STATUS = What part of the job is being worked?
+
+WORK SESSION = What actually happened during today's work?
+
+-----------------------------------
+3. SIMPLIFY THE PRODUCTION COMPONENT SECTION
+-----------------------------------
+
+Rename/structure the current Production Components area so it is easier to understand.
+
+Use:
+
+WORK BREAKDOWN
+
+Interior Finish · VOG
+In Progress
+
+Siding
+Planned
+
+Allow component statuses to remain available for detailed tracking, but do not force the user to interact with them just to indicate that they arrived and started working.
+
+The component controls should be secondary actions, not the primary workflow.
+
+-----------------------------------
+4. REMOVE THE COMPLICATED MANUAL PRODUCTION-DAY INTERFACE
+-----------------------------------
+
+The current interface exposes things such as:
+
+Actual Production Start
+Last Work Date
+Expected Duration
+Production Days
+Calendar Days
+Unrecorded
+Here
+Manual date-by-date tracking
+
+This is too complicated for normal use.
+
+Do not delete the underlying data or calculations.
+
+Instead, hide the complexity and present a simple WORK DAYS summary.
+
+Example:
+
+WORK DAYS
+
+Sep 17    ✓
+Sep 18    ✓
+Sep 19    ✓
+Sep 20    ✓
+
+4 DAYS WORKED
+
+If today is currently being worked:
+
+TODAY
+Working here
+
+The system should automatically determine the production-day count from actual recorded work.
+
+-----------------------------------
+5. "HERE" SHOULD NOT BE A COMPLICATED SCHEDULING CONCEPT
+-----------------------------------
+
+The user should not have to understand:
+
+- Unrecorded
+- Calendar day
+- Production day
+- Scheduled day
+- Actual day
+- Here status
+
+The normal question is simply:
+
+Did you work today?
+
+The primary action should effectively mean:
+
+YES — WE WORKED HERE
+
+The system then records the appropriate information automatically.
+
+Internally, the application can continue tracking all required scheduling and production data.
+
+-----------------------------------
+6. DAILY WORKFLOW
+-----------------------------------
+
+BEFORE THE JOB:
+
+JOB STATUS
+
+PLANNED
+
+Sep 17–21
+Expected: 4 production days
+
+Primary action:
+
+START WORK TODAY
+
+
+WHEN ARRIVING AT THE JOB:
+
+Tap:
+
+START WORK TODAY
+
+The system automatically:
+
+- Sets Job Status = ACTIVE
+- Records today as a work day
+- Sets Actual Production Start if needed
+- Creates today's work session
+- Records the location/work day
+- Updates the job's production tracking
+
+The screen then shows:
+
+WORKING TODAY
+
+Sep 17
+Here
+
+Primary action:
+
+DONE FOR TODAY
+
+
+WHEN LEAVING FOR THE DAY:
+
+Tap:
+
+DONE FOR TODAY
+
+The system records the completed work day/session.
+
+Do not make the user manually select "Here" or "Unrecorded".
+
+
+NEXT MORNING:
+
+Open the job.
+
+Primary action:
+
+START WORK TODAY
+
+Tap it.
+
+The system records the new work day automatically.
+
+Repeat until the job is complete.
+
+
+WHEN THE JOB IS FINISHED:
+
+Provide:
+
+FINISH JOB
+
+The job becomes:
+
+COMPLETED
+
+-----------------------------------
+7. HANDLE MULTI-DAY JOBS AUTOMATICALLY
+-----------------------------------
+
+For a job scheduled Sep 17–21, the user should NOT have to manually manipulate each date.
+
+If the user works:
+
+Sep 17
+Sep 18
+Sep 19
+Sep 20
+
+The system should automatically know:
+
+Actual Production Start = Sep 17
+Last Work Date = Sep 20
+Actual Production Days = 4
+
+The user should not need to manually maintain these fields.
+
+If the user does not work a scheduled day, simply do not record a work session for that day.
+
+Do not force the user to mark it "Unrecorded."
+
+Unrecorded should be an internal/default state, not something the user normally has to manage.
+
+-----------------------------------
+8. KEEP EXPECTED DURATION SEPARATE FROM ACTUAL DURATION
+-----------------------------------
+
+Expected Duration is a planning value.
+
+Actual Production Days are based on actual recorded work.
+
+Example:
+
+Expected:
+4 production days
+
+Actual:
+3 production days
+
+The system should preserve both values.
+
+Do not overwrite expected duration with actual duration.
+
+-----------------------------------
+9. WORK SESSION DATA SHOULD BE CREATED AUTOMATICALLY
+-----------------------------------
+
+When START WORK TODAY is pressed, automatically create today's work session.
+
+The user should not first have to:
+
+- Select a business context
+- Find a component
+- Create a session
+- Mark a day as Here
+- Change the job status
+- Change a component status
+
+The system should create the basic session automatically.
+
+If the user wants detailed tracking, they can add/edit details afterward.
+
+The normal path should be one tap.
+
+-----------------------------------
+10. BUSINESS CONTEXT MESSAGE NEEDS TO BE FIXED
+-----------------------------------
+
+The current screen says:
+
+"Select a business context to load and record work sessions."
+
+This is confusing because the user is already inside a job.
+
+If the job already has a business/business context assigned, automatically use that context.
+
+Do not make the user select the business context again.
+
+Only show a business-context selector if the job genuinely has no business context assigned.
+
+If a business context is missing, show a simple message such as:
+
+Business context needed
+Select the business for this job before recording work.
+
+Do not show this message on normal jobs that already have a business assigned.
+
+-----------------------------------
+11. PAYMENT SNAPSHOT SHOULD NOT BE AFFECTED
+-----------------------------------
+
+Do not break or remove the existing payment/accounting functionality.
+
+The scheduling/production UX changes should continue feeding the existing financial system.
+
+The job can continue showing:
+
+PAYMENT SNAPSHOT
+
+Customer
+$2,500 due
+
+Workers
+$0 owed
+
+Subcontractors
+$1,187.50 owed
+
+Owner Pay
+$890.63 earned
+$0 paid
+
+The scheduling simplification should not change the existing financial calculations unless a work session is specifically used by the financial logic.
+
+-----------------------------------
+12. COMPONENTS SHOULD SUPPORT DETAILED TRACKING
+-----------------------------------
+
+Keep production components because they are useful.
+
+For example:
+
+WORK BREAKDOWN
+
+Interior Finish · VOG
+In Progress
+
+Siding
+Planned
+
+Later:
+
+Interior Finish · VOG
+Completed
+
+Siding
+In Progress
+
+Then:
+
+Interior Finish · VOG
+Completed
+
+Siding
+Completed
+
+But the user should not have to manage these statuses just to start or stop a work day.
+
+-----------------------------------
+13. SIMPLE USER EXPERIENCE HIERARCHY
+-----------------------------------
+
+The job screen should follow this hierarchy:
+
+1. JOB STATUS
+2. START/STOP TODAY'S WORK
+3. WORK BREAKDOWN
+4. WORK DAYS
+5. PAYMENT/FINANCIAL INFORMATION
+6. OPTIONAL DETAILED PRODUCTION INFORMATION
+
+Do not put complicated scheduling controls above the primary action.
+
+-----------------------------------
+14. THE "GRANNY TEST"
+-----------------------------------
+
+The redesigned workflow must pass this test:
+
+A person who knows nothing about production scheduling should be able to open a job and immediately understand what to do.
+
+If they are at the job today, they should see:
+
+START WORK TODAY
+
+They tap it.
+
+The app should then show:
+
+WORKING TODAY
+Here
+
+When they leave:
+
+DONE FOR TODAY
+
+The next day:
+
+START WORK TODAY
+
+That is the normal workflow.
+
+No training should be required to perform these basic actions.
+
+-----------------------------------
+15. DO NOT DELETE THE UNDERLYING DATA MODEL
+-----------------------------------
+
+This is a UX simplification, not permission to throw away useful production data.
+
+Keep the underlying fields/data needed for:
+
+- Scheduled dates
+- Expected production days
+- Actual production days
+- Actual start date
+- Last work date
+- Component status
+- Work sessions
+- Business context
+- Production history
+- Job status
+- Financial calculations
+
+The UI should simply stop forcing the user to manually manage all of these concepts.
+
+Use the user's simple actions to automatically maintain the underlying records.
+
+-----------------------------------
+16. RECOMMENDED FINAL JOB CARD
+-----------------------------------
+
+A normal job should look more like:
+
+Clayton Homes Evansville
+
+Drake, Shelburn, IN
+
+Sep 17–21, 2026
+
+JOB STATUS
+
+ACTIVE
+
+WORKING TODAY
+Sep 17 · Here
+
+DONE FOR TODAY
+
+
+WORK BREAKDOWN
+
+Interior Finish · VOG
+In Progress
+
+Siding
+Planned
+
+
+WORK DAYS
+
+Sep 17 ✓
+
+1 DAY WORKED
+
+
+PAYMENT SNAPSHOT
+
+Customer
+$2,500 due
+
+Workers
+$0 owed
+
+Subcontractors
+$1,187.50 owed
+
+Owner Pay
+$890.63 earned
+$0 paid
+
+
+OPTIONAL:
+
+View Production Details
+View Work History
+
+The complicated production scheduling information can live inside those detailed views instead of occupying the primary workflow.
+
+-----------------------------------
+17. IMPORTANT IMPLEMENTATION RULE
+-----------------------------------
+
+Do NOT simply hide the existing controls while keeping the same complicated workflow underneath.
+
+The actual interaction logic should be simplified.
+
+The intended normal workflow is:
+
+PLANNED
+↓
+START WORK TODAY
+↓
+ACTIVE / WORKING TODAY / HERE
+↓
+DONE FOR TODAY
+↓
+START WORK TODAY
+↓
+ACTIVE / WORKING TODAY / HERE
+↓
+...
+↓
+FINISH JOB
+↓
+COMPLETED
+
+The application should automatically create/update the underlying production records as these actions occur.
+
+The user should never have to understand the database concepts in order to use the job scheduling system.
+
+The goal is:
+
+ONE TAP TO START WORK.
+ONE TAP TO END TODAY'S WORK.
+ONE TAP TO FINISH THE JOB.
+
+Everything else should happen automatically or be available as optional detail.
