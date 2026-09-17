@@ -28,6 +28,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 import { getJobProductionComponents } from "../lib/job-production-components.js";
+import { isChecklistPdfAssetError } from "../lib/generateChecklistPdf.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -882,6 +883,13 @@ router.post("/:jobId/checklist/email", async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
+    if (isChecklistPdfAssetError(err)) {
+      return res.status(422).json({
+        error: err.message,
+        code: err.code,
+        assets: err.issues,
+      });
+    }
     console.error(err);
     res.status(500).json({ error: "Failed to send email" });
   }
@@ -901,6 +909,13 @@ router.get("/:jobId/checklist/pdf", async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
     res.send(result.buffer);
   } catch (err) {
+    if (isChecklistPdfAssetError(err)) {
+      return res.status(422).json({
+        error: err.message,
+        code: err.code,
+        assets: err.issues,
+      });
+    }
     console.error(err);
     res.status(500).json({ error: "Failed to generate PDF" });
   }

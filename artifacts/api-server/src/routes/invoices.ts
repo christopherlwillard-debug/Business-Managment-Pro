@@ -5,7 +5,7 @@ import fs from "fs";
 import sharp from "sharp";
 import { launchBrowser } from "../lib/launchBrowser.js";
 import { sendInvoiceEmail, type ExtraAttachment } from "../lib/invoiceEmail";
-import { generateChecklistPdfBuffer } from "../lib/generateChecklistPdf.js";
+import { generateChecklistPdfBuffer, isChecklistPdfAssetError } from "../lib/generateChecklistPdf.js";
 import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import {
@@ -1182,6 +1182,13 @@ router.post("/:id/send", async (req, res) => {
           extraAttachments.push({ filename: checklistPdf.filename, mimeType: "application/pdf", buffer: checklistPdf.buffer });
         }
       } catch (checklistErr) {
+        if (isChecklistPdfAssetError(checklistErr)) {
+          return res.status(422).json({
+            error: "Invoice email blocked because the checklist PDF is missing one or more referenced image assets.",
+            code: checklistErr.code,
+            assets: checklistErr.issues,
+          });
+        }
         console.warn("[invoices/send] Could not generate checklist PDF — sending without it:", checklistErr);
       }
     }

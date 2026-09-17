@@ -321,6 +321,77 @@ describe("generateChecklistPdfBuffer", () => {
     expect(containsPdfText(text, "Date:")).toBe(true);
   });
 
+  it.each([
+    {
+      kind: "item",
+      path: "/objects/missing-item-photo",
+      configure: () => queueFixture({
+        itemPhotos: [{ id: 51, jobChecklistItemId: itemRow.id, objectPath: "/objects/missing-item-photo" }],
+      }),
+      id: 51,
+    },
+    {
+      kind: "start",
+      path: "/objects/missing-start-photo",
+      configure: () => queueFixture({
+        startPhotos: [{ id: 61, jobChecklistId: checklistRow.id, objectPath: "/objects/missing-start-photo" }],
+      }),
+      id: 61,
+    },
+    {
+      kind: "finished",
+      path: "/objects/missing-finished-photo",
+      configure: () => queueFixture({
+        finishedPhotos: [{ id: 71, jobChecklistId: checklistRow.id, objectPath: "/objects/missing-finished-photo" }],
+      }),
+      id: 71,
+    },
+    {
+      kind: "signature",
+      path: "/objects/missing-signature",
+      configure: () => queueFixture({ signatureImage: "/objects/missing-signature" }),
+      id: "signature",
+    },
+  ])("fails before delivery when a referenced $kind asset is missing", async ({ kind, path, configure, id }) => {
+    configure();
+
+    await expect(generateChecklistPdfBuffer(7)).rejects.toMatchObject({
+      code: "CHECKLIST_PDF_ASSET_ERROR",
+      issues: [
+        expect.objectContaining({
+          kind,
+          id,
+          objectPath: path,
+          reason: "download_failed",
+        }),
+      ],
+    });
+  });
+
+  it("fails before delivery when a referenced image buffer is unreadable", async () => {
+    const itemPhotoPath = "/objects/unreadable-item-photo";
+    queueFixture({
+      itemPhotos: [{
+        id: 81,
+        jobChecklistItemId: itemRow.id,
+        objectPath: itemPhotoPath,
+      }],
+    });
+    setObjectBuffer(itemPhotoPath, Buffer.from("not an image"));
+
+    await expect(generateChecklistPdfBuffer(7)).rejects.toMatchObject({
+      code: "CHECKLIST_PDF_ASSET_ERROR",
+      issues: [
+        expect.objectContaining({
+          kind: "item",
+          id: 81,
+          objectPath: itemPhotoPath,
+          reason: "unreadable",
+        }),
+      ],
+    });
+  });
+
   it("moves a near-bottom captioned image grid to a new page without dropping images", async () => {
     const fillerItems = Array.from({ length: 22 }, (_, index) => ({
       ...itemRow,

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
+import sharp from "sharp";
 import { db } from "@workspace/db";
 import {
   jobChecklistsTable,
@@ -23,6 +24,114 @@ const DARK   = "#1f2937";
 const GRAY   = "#6b7280";
 const LGRAY  = "#9ca3af";
 const BORDER = "#e5e7eb";
+
+export type ChecklistPdfAssetKind = "item" | "start" | "finished" | "signature";
+export type ChecklistPdfAssetIssueReason =
+  | "download_failed"
+  | "unreadable"
+  | "unsupported_format"
+  | "render_failed";
+
+export type ChecklistPdfAssetIssue = {
+  kind: ChecklistPdfAssetKind;
+  id: number | "signature";
+  objectPath: string;
+  reason: ChecklistPdfAssetIssueReason;
+  detail: string;
+};
+
+export class ChecklistPdfAssetError extends Error {
+  readonly code = "CHECKLIST_PDF_ASSET_ERROR";
+  constructor(readonly issues: ChecklistPdfAssetIssue[]) {
+    super(
+      `Checklist PDF cannot be generated because ${issues.length} referenced image ${
+        issues.length === 1 ? "asset is" : "assets are"
+      } unavailable or unreadable. Restore or remove the affected asset${issues.length === 1 ? "" : "s"} and try again.`,
+    );
+    this.name = "ChecklistPdfAssetError";
+  }
+}
+
+export function isChecklistPdfAssetError(error: unknown): error is ChecklistPdfAssetError {
+  return error instanceof ChecklistPdfAssetError;
+}
+
+type ChecklistPdfPhoto = {
+  buffer: Buffer;
+  asset: Omit<ChecklistPdfAssetIssue, "reason" | "detail">;
+  caption?: string | null;
+};
+
+async function readAssetBuffer(objectPath: string, objStorage: ObjectStorageService): Promise<Buffer> {
+  if (objectPath.startsWith("/objects/")) {
+    const file = await objStorage.getObjectEntityFile(objectPath);
+    const [rawBuffer] = await file.download();
+    if (!Buffer.isBuffer(rawBuffer) || rawBuffer.length === 0) {
+      throw new Error("Object storage returned an empty or invalid buffer");
+    }
+    return rawBuffer;
+  }
+
+  if (objectPath.startsWith("/uploads/") || objectPath.startsWith("/api/uploads/")) {
+    const relativePath = objectPath.startsWith("/api/uploads/")
+      ? objectPath.slice("/api/uploads/".length)
+      : objectPath.slice("/uploads/".length);
+    const uploadsRoot = path.resolve("uploads");
+    const filePath = path.resolve(uploadsRoot, relativePath);
+    if (!filePath.startsWith(uploadsRoot + path.sep) || !fs.existsSync(filePath)) {
+      throw new Error("Referenced upload was not found");
+    }
+    const buffer = fs.readFileSync(filePath);
+    if (buffer.length === 0) throw new Error("Referenced upload is empty");
+    return buffer;
+  }
+
+  throw new Error("Referenced asset uses an unsupported storage path");
+}
+
+async function resolveImageAsset(
+  asset: Omit<ChecklistPdfAssetIssue, "reason" | "detail">,
+  objStorage: ObjectStorageService,
+): Promise<{ buffer: Buffer; issue: null } | { buffer: null; issue: ChecklistPdfAssetIssue }> {
+  let buffer: Buffer;
+  try {
+    buffer = await readAssetBuffer(asset.objectPath, objStorage);
+  } catch (error) {
+    return {
+      buffer: null,
+      issue: {
+        ...asset,
+        reason: "download_failed",
+        detail: error instanceof Error ? error.message : "Asset could not be downloaded",
+      },
+    };
+  }
+
+  try {
+    const metadata = await sharp(buffer).metadata();
+    if (metadata.format !== "png" && metadata.format !== "jpeg") {
+      return {
+        buffer: null,
+        issue: {
+          ...asset,
+          reason: "unsupported_format",
+          detail: `PDF supports PNG and JPEG images, received ${metadata.format ?? "an unknown format"}`,
+        },
+      };
+    }
+  } catch (error) {
+    return {
+      buffer: null,
+      issue: {
+        ...asset,
+        reason: "unreadable",
+        detail: error instanceof Error ? error.message : "Image buffer could not be read",
+      },
+    };
+  }
+
+  return { buffer, issue: null };
+}
 
 async function buildChecklistData(checklistId: number) {
   const [checklist] = await db
@@ -128,32 +237,35 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     ...rawFinishedPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "finished" as const, itemId: -1 })),
     ...rawStartPhotos.map(p => ({ id: p.id, objectPath: p.objectPath, kind: "start" as const, itemId: -1 })),
   ];
-  const photoBufById = new Map<string, Buffer>();
-  await Promise.all(allPhotoRows.map(async (p) => {
-    try {
-      if (p.objectPath.startsWith("/objects/")) {
-        const file = await objStorage.getObjectEntityFile(p.objectPath);
-        const [buf] = await file.download();
-        photoBufById.set(`${p.kind}-${p.id}`, buf as Buffer);
-      }
-    } catch { /* skip failed photos */ }
+  const imageIssues: ChecklistPdfAssetIssue[] = [];
+  const photoBufById = new Map<string, ChecklistPdfPhoto>();
+  const resolvedPhotos = await Promise.all(allPhotoRows.map(async p => {
+    const asset = { id: p.id, objectPath: p.objectPath, kind: p.kind } satisfies Omit<ChecklistPdfAssetIssue, "reason" | "detail">;
+    return { p, asset, result: await resolveImageAsset(asset, objStorage) };
   }));
-
-  const photosByItemId = new Map<number, Array<{ buffer: Buffer; caption: string | null }>>();
-  for (const p of rawPhotos) {
-    const buf = photoBufById.get(`item-${p.id}`);
-    if (!buf) continue;
-    if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
-    photosByItemId.get(p.jobChecklistItemId)!.push({ buffer: buf, caption: p.caption ?? null });
+  for (const { p, asset, result } of resolvedPhotos) {
+    if (result.issue) {
+      imageIssues.push(result.issue);
+      continue;
+    }
+    photoBufById.set(`${p.kind}-${p.id}`, { buffer: result.buffer, asset });
   }
 
-  const finishedPhotoBufs: Buffer[] = rawFinishedPhotos
-    .map(p => photoBufById.get(`finished-${p.id}`))
-    .filter((b): b is Buffer => b !== undefined);
+  const photosByItemId = new Map<number, ChecklistPdfPhoto[]>();
+  for (const p of rawPhotos) {
+    const photo = photoBufById.get(`item-${p.id}`);
+    if (!photo) continue;
+    if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
+    photosByItemId.get(p.jobChecklistItemId)!.push({ ...photo, caption: p.caption ?? null });
+  }
 
-  const startPhotoBufs: Buffer[] = rawStartPhotos
+  const finishedPhotoBufs: ChecklistPdfPhoto[] = rawFinishedPhotos
+    .map(p => photoBufById.get(`finished-${p.id}`))
+    .filter((photo): photo is ChecklistPdfPhoto => photo !== undefined);
+
+  const startPhotoBufs: ChecklistPdfPhoto[] = rawStartPhotos
     .map(p => photoBufById.get(`start-${p.id}`))
-    .filter((b): b is Buffer => b !== undefined);
+    .filter((photo): photo is ChecklistPdfPhoto => photo !== undefined);
 
   const partsByItemId = new Map<number, Array<{ label: string; completed: boolean; completedByName: string | null }>>();
   for (const p of rawParts) {
@@ -184,21 +296,18 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   // ── Signature image ───────────────────────────────────────────────────────
   let sigBuf: Buffer | null = null;
   if (settings?.signatureImage) {
-    try {
-      const rawPath = settings.signatureImage;
-      if (rawPath.startsWith("/objects/")) {
-        const file = await objStorage.getObjectEntityFile(rawPath);
-        const [buf] = await file.download();
-        sigBuf = buf as Buffer;
-      } else if (rawPath.startsWith("/uploads/") || rawPath.startsWith("/api/uploads/")) {
-        const rel = rawPath.startsWith("/api/uploads/") ? rawPath.slice("/api/uploads/".length) : rawPath.slice("/uploads/".length);
-        const uploadsRoot = path.resolve("uploads");
-        const filePath   = path.resolve(uploadsRoot, rel);
-        if (filePath.startsWith(uploadsRoot + path.sep) && fs.existsSync(filePath)) {
-          sigBuf = fs.readFileSync(filePath);
-        }
-      }
-    } catch { /* skip invalid signature */ }
+    const asset = {
+      id: "signature" as const,
+      objectPath: settings.signatureImage,
+      kind: "signature" as const,
+    } satisfies Omit<ChecklistPdfAssetIssue, "reason" | "detail">;
+    const result = await resolveImageAsset(asset, objStorage);
+    if (result.issue) imageIssues.push(result.issue);
+    else sigBuf = result.buffer;
+  }
+
+  if (imageIssues.length > 0) {
+    throw new ChecklistPdfAssetError(imageIssues);
   }
 
   // ── Build PDF ─────────────────────────────────────────────────────────────
@@ -242,15 +351,15 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
    * Draw images in a grid. Handles page breaks by starting a fresh row
    * on a new page whenever a row would overflow the bottom margin.
    */
-  function drawPhotoGrid(bufs: Buffer[], startX: number, availW: number, photoW: number, photoH: number) {
-    if (bufs.length === 0) return;
+  function drawPhotoGrid(photos: ChecklistPdfPhoto[], startX: number, availW: number, photoW: number, photoH: number) {
+    if (photos.length === 0) return;
     const gap    = 6;
     const perRow = Math.max(1, Math.floor((availW + gap) / (photoW + gap)));
 
     let col = 0;
     let rowY = doc.y;
 
-    for (const buf of bufs) {
+    for (const photo of photos) {
       // Start a new row if needed
       if (col === 0) {
         ensureSpace(photoH + 6);
@@ -258,8 +367,14 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
       }
       const px = startX + col * (photoW + gap);
       try {
-        doc.image(buf, px, rowY, { fit: [photoW, photoH], align: "center", valign: "center" });
-      } catch { /* skip unreadable photo */ }
+        doc.image(photo.buffer, px, rowY, { fit: [photoW, photoH], align: "center", valign: "center" });
+      } catch (error) {
+        throw new ChecklistPdfAssetError([{
+          ...photo.asset,
+          reason: "render_failed",
+          detail: error instanceof Error ? error.message : "Image could not be rendered into the PDF",
+        }]);
+      }
 
       col++;
       if (col >= perRow) {
@@ -275,7 +390,7 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
   }
 
   function drawCaptionedPhotoGrid(
-    photos: Array<{ buffer: Buffer; caption: string | null }>,
+    photos: ChecklistPdfPhoto[],
     startX: number,
     availW: number,
     photoW: number,
@@ -306,7 +421,13 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
               lineBreak: false,
             });
         }
-      } catch { /* skip unreadable photo */ }
+      } catch (error) {
+        throw new ChecklistPdfAssetError([{
+          ...photo.asset,
+          reason: "render_failed",
+          detail: error instanceof Error ? error.message : "Image could not be rendered into the PDF",
+        }]);
+      }
 
       col++;
       if (col >= perRow) {
@@ -584,8 +705,14 @@ export async function generateChecklistPdfBuffer(jobId: number): Promise<{ buffe
     const sigH = 52;
     try {
       doc.image(sigBuf, L, sigAreaY, { fit: [sigW, sigH] });
-    } catch (err) {
-      console.error("Checklist PDF — signature render error:", err);
+    } catch (error) {
+      throw new ChecklistPdfAssetError([{
+        id: "signature",
+        objectPath: settings?.signatureImage ?? "configured signature",
+        kind: "signature",
+        reason: "render_failed",
+        detail: error instanceof Error ? error.message : "Signature could not be rendered into the PDF",
+      }]);
     }
     doc.y = sigAreaY + sigH + 6;
   } else {
