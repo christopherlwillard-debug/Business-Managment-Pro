@@ -1881,12 +1881,28 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
 type JobFinancialSummary = {
   job: { id: number; jobNumber?: number | null; title: string; status: string; clientName?: string | null };
   payment: { status: string; amountDue: number | null; invoiceId: number | null };
-  workers: { available: boolean; count: number | null; totalOwed: number | null; unavailableReason: string | null };
-  subcontractors: { available: boolean; count: number | null; totalOwed: number | null; unavailableReason: string | null };
+  workers: { available: boolean; count: number | null; totalOwed: number | null; details?: JobFinancialDetail[]; unavailableReason: string | null };
+  subcontractors: { available: boolean; count: number | null; totalOwed: number | null; details?: JobFinancialDetail[]; unavailableReason: string | null };
   ownerPay: { supported: boolean; earned: number | null; paid: number | null; remaining: number | null; overpaid: number; unavailableReason: string | null };
   state: "needs_action" | "waiting_on_payment" | "ready_to_close";
   blockers: string[];
   warnings: string[];
+};
+
+type JobFinancialDetail = {
+  id: number;
+  name: string;
+  compensationType: string;
+  amountOwed: number | null;
+  amountPaid: number;
+  balance: number | null;
+  status: string;
+  unavailableReason: string | null;
+};
+
+type JobPaymentFocus = {
+  subcontractorId: number;
+  field: "hourly" | "fixed" | "allocation";
 };
 
 type JobFinancialSummaryResponse = {
@@ -1914,9 +1930,11 @@ function paymentAmount(value: number | null | undefined) {
 function JobPaymentSummary({
   summary,
   status,
+  onAction,
 }: {
   summary?: JobFinancialSummary;
   status: "loading" | "ready" | "error";
+  onAction?: (area: "workers" | "subcontractors" | "owner", detail?: JobFinancialDetail) => void;
 }) {
   if (status === "loading") {
     return (
@@ -1938,7 +1956,21 @@ function JobPaymentSummary({
     );
   }
 
-  const metrics = [
+  const firstUnavailable = (details: JobFinancialDetail[]) =>
+    details.find(detail => detail.amountOwed == null && detail.unavailableReason != null);
+  const workersIssue = firstUnavailable(summary.workers.details ?? []);
+  const subcontractorsIssue = firstUnavailable(summary.subcontractors.details ?? []);
+  const ownerIssue = !summary.ownerPay.supported && summary.ownerPay.unavailableReason?.includes("Profit pool")
+    ? { id: 0, name: "Owner Pay", compensationType: "owner", amountOwed: null, amountPaid: 0, balance: null, status: "unavailable", unavailableReason: summary.ownerPay.unavailableReason }
+    : undefined;
+
+  const metrics: Array<{
+    label: string;
+    value: string;
+    detail: string | null;
+    tone: string;
+    action?: () => void;
+  }> = [
     {
       label: "Customer",
       value: paymentStatusLabel(summary.payment.status),
@@ -1952,12 +1984,14 @@ function JobPaymentSummary({
       value: summary.workers.totalOwed == null ? "Unavailable" : paymentAmount(summary.workers.totalOwed),
       detail: jobFinancialSummaryDetail(summary.workers.totalOwed, summary.workers.unavailableReason, "owed"),
       tone: "text-foreground",
+      action: workersIssue ? () => onAction?.("workers", workersIssue) : undefined,
     },
     {
       label: "Subcontractors",
       value: summary.subcontractors.totalOwed == null ? "Unavailable" : paymentAmount(summary.subcontractors.totalOwed),
       detail: jobFinancialSummaryDetail(summary.subcontractors.totalOwed, summary.subcontractors.unavailableReason, "owed"),
       tone: "text-foreground",
+      action: subcontractorsIssue ? () => onAction?.("subcontractors", subcontractorsIssue) : undefined,
     },
     {
       label: "Owner Pay",
@@ -1966,6 +2000,7 @@ function JobPaymentSummary({
         ? `${paymentAmount(summary.ownerPay.earned)} earned · ${paymentAmount(summary.ownerPay.paid)} paid`
         : summary.ownerPay.unavailableReason,
       tone: summary.ownerPay.overpaid > 0 ? "text-purple-700" : "text-foreground",
+      action: ownerIssue ? () => onAction?.("owner", ownerIssue) : undefined,
     },
   ];
 
@@ -1977,12 +2012,26 @@ function JobPaymentSummary({
       </div>
       <div className="grid grid-cols-2 gap-2">
         {metrics.map(metric => (
-          <div key={metric.label} className="min-w-0 rounded-lg bg-background/70 px-2.5 py-2">
+          <div
+            key={metric.label}
+            role={metric.action ? "button" : undefined}
+            tabIndex={metric.action ? 0 : undefined}
+            onClick={metric.action}
+            onKeyDown={metric.action ? event => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                metric.action?.();
+              }
+            } : undefined}
+            className={`min-w-0 rounded-lg bg-background/70 px-2.5 py-2 ${metric.action ? "cursor-pointer ring-1 ring-amber-200 hover:bg-amber-50/70 focus:outline-none focus:ring-2 focus:ring-amber-400" : ""}`}
+            title={metric.action ? metric.detail ?? "Open the missing payment information" : undefined}
+          >
             <span className="block truncate text-[10px] text-muted-foreground">{metric.label}</span>
             <span className={`block truncate text-xs font-bold ${metric.tone}`}>{metric.value}</span>
             {metric.detail && (
               <span className="block text-[10px] leading-tight text-muted-foreground" title={metric.detail}>{metric.detail}</span>
             )}
+            {metric.action && <span className="mt-1 block text-[10px] font-semibold text-amber-700">Fix this</span>}
           </div>
         ))}
       </div>
@@ -5903,7 +5952,7 @@ function JobCard({
   paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId,
 }: {
   job: Job;
-  onEdit: (job: Job) => void;
+  onEdit: (job: Job, focus?: JobPaymentFocus) => void;
   onDelete: (job: Job) => void;
   onReviewInvoice: (job: Job) => void;
   onMarkCompleted: (job: Job) => void;
@@ -5937,6 +5986,7 @@ function JobCard({
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [, navigate] = useLocation();
 
   const { data: routeDistData } = useQuery<{ miles: number | null }>({
     queryKey: ["route-distance", job.id],
@@ -5976,6 +6026,27 @@ function JobCard({
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
   const [displayProfitLoading, setDisplayProfitLoading] = useState(false);
   const [displayProfitError, setDisplayProfitError] = useState(false);
+
+  function openPaymentIssue(area: "workers" | "subcontractors" | "owner", detail?: JobFinancialDetail) {
+    if (area === "owner" || detail?.unavailableReason?.includes("Profit pool")) {
+      setFinancialsInitialTab("breakdown");
+      setFinancialsPanelOpen(true);
+      return;
+    }
+    if (!detail || detail.amountOwed != null || !detail.unavailableReason) return;
+    if (detail.compensationType === "hourly") {
+      const params = new URLSearchParams({
+        focusSubcontractorId: String(detail.id),
+        focus: "hourly",
+      });
+      navigate(`/jobs/${job.id}/payroll?${params.toString()}`);
+      return;
+    }
+    onEdit(job, {
+      subcontractorId: detail.id,
+      field: detail.compensationType === "allocation" ? "allocation" : "fixed",
+    });
+  }
   const displayProfitRequestKeyRef = useRef(0);
   const displayProfitAbortControllerRef = useRef<AbortController | null>(null);
   const currentDisplayProfitJobIdRef = useRef(job.id);
@@ -6545,8 +6616,12 @@ function JobCard({
           </div>
           )}
 
-          {!job.status.includes("closed") && (
-            <JobPaymentSummary summary={paymentSummary} status={paymentSummaryStatus} />
+           {!job.status.includes("closed") && (
+             <JobPaymentSummary
+               summary={paymentSummary}
+               status={paymentSummaryStatus}
+               onAction={openPaymentIssue}
+             />
           )}
 
         </div>
@@ -7163,7 +7238,7 @@ function HomeModelInput({ value, onChange }: { value: string; onChange: (v: stri
 
 // ─── Job Form Dialog ───────────────────────────────────────────────────────────
 function JobFormDialog({
-  open, onOpenChange, editJob, clients, subcontractors, onSaved,
+  open, onOpenChange, editJob, clients, subcontractors, onSaved, paymentFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -7171,6 +7246,7 @@ function JobFormDialog({
   clients: Client[];
   subcontractors: Subcontractor[];
   onSaved: () => void;
+  paymentFocus?: JobPaymentFocus | null;
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
@@ -7219,6 +7295,7 @@ function JobFormDialog({
   // (on mobile the keyboard can push them off-screen).
   const formScrollRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const paymentFocusInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
     editJob?.workflow ?? null
   );
@@ -7406,6 +7483,15 @@ function JobFormDialog({
     setShowAddService(false);
     setNewServiceName("");
   }, [open, editJob?.id]);
+
+  useEffect(() => {
+    if (!open || !paymentFocus || !editJob?.id || Object.keys(subCompDefaults).length === 0) return;
+    const input = paymentFocusInputRefs.current[paymentFocus.subcontractorId];
+    if (!input) return;
+    input.focus();
+    input.select();
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [open, editJob?.id, paymentFocus, subCompDefaults]);
 
   // Pre-populate compensation types/rates when opening an existing job for edit
   useEffect(() => {
@@ -8328,6 +8414,13 @@ function JobFormDialog({
                             placeholder={comp.compensationType === "allocation" ? "%" : comp.compensationType === "fixed" ? "amt" : "rate"}
                             value={comp.rate}
                             onChange={e => setComp({ rate: e.target.value })}
+                            ref={input => {
+                              if (paymentFocus?.subcontractorId === sid) {
+                                paymentFocusInputRefs.current[sid] = input;
+                              }
+                            }}
+                            aria-label={`${sub?.name ?? `Subcontractor #${sid}`} ${comp.compensationType} compensation`}
+                            data-payment-focus={paymentFocus?.subcontractorId === sid ? paymentFocus.field : undefined}
                             className="w-16 px-2 py-0.5 text-xs rounded-lg border border-border bg-background outline-none focus:ring-1 focus:ring-primary/20"
                           />
                         </div>
@@ -8614,6 +8707,7 @@ export default function Jobs() {
   const [csvBL, setCsvBL] = useState<string>(() => activeBusiness?.slug ?? "all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
   const [editJob, setEditJob]           = useState<Job | null>(null);
+  const [jobFormPaymentFocus, setJobFormPaymentFocus] = useState<JobPaymentFocus | null>(null);
   const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
   const [scheduleJobsById, setScheduleJobsById] = useState<Map<number, ScheduleJob>>(new Map());
   const [scheduleRefreshKey] = useState(0);
@@ -9123,8 +9217,13 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, jobs]);
 
-  function openNewJob() { setEditJob(null); setJobFormOpen(true); }
-  async function openEditJob(job: Job) {
+  function openNewJob() {
+    setEditJob(null);
+    setJobFormPaymentFocus(null);
+    setJobFormOpen(true);
+  }
+  async function openEditJob(job: Job, focus?: JobPaymentFocus) {
+    setJobFormPaymentFocus(focus ?? null);
     // The list can be briefly stale after an edit. Load the authoritative row
     // before opening the form so structured MFH fields repopulate reliably.
     try {
@@ -10210,6 +10309,7 @@ export default function Jobs() {
           open={jobFormOpen}
           onOpenChange={setJobFormOpen}
           editJob={editJob}
+          paymentFocus={jobFormPaymentFocus}
           clients={clients}
           subcontractors={subcontractors}
           onSaved={() => {

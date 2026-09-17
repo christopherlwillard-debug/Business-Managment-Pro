@@ -96,7 +96,7 @@ const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / B
 
 // ── Worker Card ──────────────────────────────────────────────────────────────────
 function WorkerPayCard({
-  p, jobId, splitPool, subHours, onRefresh, onDirtyChange,
+  p, jobId, splitPool, subHours, onRefresh, onDirtyChange, focusHourly,
 }: {
   p: SubPaymentRow;
   jobId: number;
@@ -104,6 +104,7 @@ function WorkerPayCard({
   subHours: SubHourEntry[];
   onRefresh: () => Promise<void>;
   onDirtyChange?: (isDirty: boolean) => void;
+  focusHourly?: boolean;
 }) {
   const { toast } = useToast();
   const isHourly = p.compensationType === "hourly";
@@ -140,6 +141,18 @@ function WorkerPayCard({
     if ((p.avgTravelRateSnapshot ?? 0) > 0) return String(p.avgTravelRateSnapshot);
     return "";
   });
+  const workHoursRef = useRef<HTMLInputElement>(null);
+  const workRateRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!focusHourly || !isHourly || isFullyPaid) return;
+    const target = workRate.trim() === "" ? workRateRef.current
+      : workHours.trim() === "" ? workHoursRef.current
+      : workRateRef.current;
+    target?.focus();
+    target?.select();
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusHourly, isHourly, isFullyPaid]);
 
   // Sync read-only hours from refreshed props
   useEffect(() => {
@@ -572,13 +585,13 @@ function WorkerPayCard({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Work Hours</label>
-                    <input type="number" value={workHours} onChange={e => setWorkHours(e.target.value)}
+                    <input ref={workHoursRef} type="number" value={workHours} onChange={e => setWorkHours(e.target.value)}
                       className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                       placeholder="0.0" step="0.25" min="0" />
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">Rate $/hr</label>
-                    <input type="number" value={workRate} onChange={e => setWorkRate(e.target.value)}
+                    <input ref={workRateRef} type="number" value={workRate} onChange={e => setWorkRate(e.target.value)}
                       className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                       placeholder="0.00" step="0.01" min="0" />
                   </div>
@@ -1177,6 +1190,11 @@ export default function JobPayroll() {
   const { toast } = useToast();
 
   const jobId = parseInt(id ?? "0");
+  const payrollSearchParams = new URLSearchParams(window.location.search);
+  const focusSubcontractorId = parseInt(payrollSearchParams.get("focusSubcontractorId") ?? "", 10);
+  const focusHourlyWorkerId = payrollSearchParams.get("focus") === "hourly" && Number.isFinite(focusSubcontractorId)
+    ? focusSubcontractorId
+    : null;
 
   const [job,      setJob]      = useState<Job | null>(null);
   const [profit,   setProfit]   = useState<JobProfitResponse | null>(null);
@@ -1491,6 +1509,7 @@ export default function JobPayroll() {
                 subHours={subHours.filter(h => h.subcontractorId === p.subcontractorId)}
                 onRefresh={refreshAll}
                 onDirtyChange={handleCardDirtyChange}
+                focusHourly={focusHourlyWorkerId === p.subcontractorId}
               />
             ))
           )}
