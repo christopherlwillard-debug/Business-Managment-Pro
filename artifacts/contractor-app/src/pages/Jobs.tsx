@@ -6536,67 +6536,279 @@ function JobCard({
 
     if (workspaceTab === "overview") {
       const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+      const statusValue = String(job.status);
+      const statusLabel = statusValue === "closed"
+        ? "Closed"
+        : isCompleted
+          ? "Completed"
+          : statusValue === "active" || statusValue === "in_progress"
+            ? "Active"
+            : "Scheduled";
+      const statusClass = statusValue === "closed" || isCompleted
+        ? "bg-slate-100 text-slate-700"
+        : statusValue === "active" || statusValue === "in_progress"
+          ? "bg-emerald-100 text-emerald-700"
+          : "bg-blue-100 text-blue-700";
+      const scopeParts = [
+        job.jobType,
+        jobWorkflow === "mh_production" ? (job as unknown as Record<string, unknown>).homeModel : null,
+        job.businessLine === "asphalt_sealing" && job.sqFt != null ? `${job.sqFt.toLocaleString()} sq ft` : null,
+        job.businessLine === "asphalt_sealing" && job.coats != null ? `${job.coats} coat${job.coats === 1 ? "" : "s"}` : null,
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+      const assignedCrew = job.subcontractorNames?.filter(Boolean) ?? [];
+      const scheduledCrew = nextScheduledItem?.assignedSubcontractorName
+        ? [nextScheduledItem.assignedSubcontractorName]
+        : assignedCrew;
+      const checklistPercent = checklistSummary?.overallPercent ?? null;
+      const contractValue = invoiceSummary?.total ?? displayProfit?.grossInvoiced ?? paymentSummary?.payment.amountDue ?? null;
+      const laborValue = displayProfit?.subLaborCost ?? null;
+      const financialUnavailable = displayProfitError || (!displayProfitLoading && displayProfit == null);
+      const detailCards = [
+        {
+          label: "Production components",
+          description: productionComponents.length > 0
+            ? `${productionComponents.filter(component => component.status === "completed").length}/${productionComponents.length} complete`
+            : "Review the production plan",
+          icon: <Layers className="h-4 w-4" />,
+          onClick: () => setPhasesPanelOpen(true),
+          visible: jobWorkflow === "mh_production",
+        },
+        {
+          label: "Materials",
+          description: materialListCount > 0 ? `${materialListCount} material list${materialListCount === 1 ? "" : "s"}` : "Review job materials",
+          icon: <Package className="h-4 w-4" />,
+          onClick: () => setMaterialsPanelOpen(true),
+          visible: true,
+        },
+        {
+          label: "Workers and subcontractors",
+          description: assignedCrew.length > 0 ? assignedCrew.join(", ") : "Review assigned crew",
+          icon: <HardHat className="h-4 w-4" />,
+          onClick: () => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); },
+          visible: true,
+        },
+        {
+          label: "Checklist",
+          description: checklistSummary
+            ? `${checklistSummary.completedItems}/${checklistSummary.totalItems} complete`
+            : "Review job checklist",
+          icon: <CheckSquare className="h-4 w-4" />,
+          onClick: () => setChecklistPanelOpen(true),
+          visible: true,
+        },
+        {
+          label: "Business trips",
+          description: businessMiles != null ? `${businessMiles} mi from shop` : "Review trips and mileage",
+          icon: <Truck className="h-4 w-4" />,
+          onClick: () => setTripsPanelOpen(true),
+          visible: true,
+        },
+        {
+          label: "Photos and notes",
+          description: job.notes ? "View saved job notes" : "Review job activity",
+          icon: <ImageIcon className="h-4 w-4" />,
+          onClick: () => setJobExpenseOpen(true),
+          visible: true,
+        },
+        {
+          label: "Other job details",
+          description: "Open the full job details",
+          icon: <Briefcase className="h-4 w-4" />,
+          onClick: () => setMfhPanelOpen(true),
+          visible: jobWorkflow === "mh_production",
+        },
+      ].filter(section => section.visible);
       return (
-        <div className="space-y-5" data-testid={`job-workspace-overview-${job.id}`}>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ["Customer", job.clientName ?? "Not assigned"],
-              ["Location", location || "Not recorded"],
-              ["Business", job.businessLine?.replace(/_/g, " ") || "Not assigned"],
-              ["Distance", businessMiles != null ? `${businessMiles} mi from shop` : "Not calculated"],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-2xl border border-border bg-card p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-                <p className="mt-2 truncate text-sm font-bold capitalize text-foreground" title={String(value)}>{String(value)}</p>
-              </div>
-            ))}
-          </section>
-
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[
-              { label: "Production components", icon: <Layers className="h-4 w-4" />, onClick: () => setPhasesPanelOpen(true), visible: jobWorkflow === "mh_production" },
-              { label: "Invoice and payment", icon: <Receipt className="h-4 w-4" />, onClick: () => setFinancialsPanelOpen(true), visible: true },
-              { label: "Workers and subcontractors", icon: <HardHat className="h-4 w-4" />, onClick: () => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); }, visible: true },
-              { label: "Materials", icon: <Package className="h-4 w-4" />, onClick: () => setMaterialsPanelOpen(true), visible: true },
-              { label: "Labor summary", icon: <BarChart2 className="h-4 w-4" />, onClick: () => setFinancialsPanelOpen(true), visible: true },
-              { label: "Checklist", icon: <CheckSquare className="h-4 w-4" />, onClick: () => setChecklistPanelOpen(true), visible: true },
-              { label: "Business trips", icon: <Truck className="h-4 w-4" />, onClick: () => setTripsPanelOpen(true), visible: true },
-              { label: "Photos and notes", icon: <ImageIcon className="h-4 w-4" />, onClick: () => setJobExpenseOpen(true), visible: true },
-              { label: "Other job details", icon: <Briefcase className="h-4 w-4" />, onClick: () => setMfhPanelOpen(true), visible: jobWorkflow === "mh_production" },
-            ].filter(section => section.visible).map(section => (
-              <button
-                key={section.label}
-                type="button"
-                onClick={section.onClick}
-                className="flex min-h-16 items-center gap-3 rounded-2xl border border-border bg-card px-4 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">{section.icon}</span>
-                <span className="text-sm font-semibold text-foreground">{section.label}</span>
-                <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-              </button>
-            ))}
-          </section>
-
-          <section className="grid gap-3 lg:grid-cols-2">
-            {invoiceSummary && (
-              <div className="rounded-2xl border border-border bg-card p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Invoice</p>
-                <p className="mt-2 text-base font-bold text-foreground">{invoiceSummary.invoiceNumber ?? "Invoice"}</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)}
-                  {invoiceSummary.total != null ? ` · ${formatCurrency(invoiceSummary.total)}` : ""}
-                </p>
-                {onGoToInvoices && (
-                  <button type="button" onClick={onGoToInvoices} className="mt-3 text-xs font-bold text-primary hover:underline">View invoice</button>
+        <div className="space-y-4 sm:space-y-5" data-testid={`job-workspace-overview-${job.id}`}>
+          <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass}`}>{statusLabel}</span>
+                    {job.businessLine && (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold capitalize text-muted-foreground">
+                        {job.businessLine.replace(/_/g, " ")}
+                      </span>
+                    )}
+                  </div>
+                  <h2 className="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">At a glance</h2>
+                </div>
+                {canEdit("jobs") && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(job)}
+                    className="min-h-11 shrink-0 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  >
+                    Edit job
+                  </button>
                 )}
               </div>
-            )}
-            {job.notes && (
-              <div className="rounded-2xl border border-border bg-card p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Notes</p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{job.notes}</p>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-muted/35 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Client / builder</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">{job.clientName ?? "Not assigned"}</p>
+                </div>
+                <div className="rounded-xl bg-muted/35 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job address</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">{location || job.address || "Not recorded"}</p>
+                  {businessMiles != null && <p className="mt-0.5 text-xs text-muted-foreground">{businessMiles} mi from shop</p>}
+                </div>
+                <div className="rounded-xl bg-muted/35 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Scheduled</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">
+                    {job.startDate ? `${formatDate(job.startDate)}${job.endDate ? ` – ${formatDate(job.endDate)}` : ""}` : "Dates not set"}
+                  </p>
+                  {scheduledCrew.length > 0 && <p className="mt-0.5 truncate text-xs text-muted-foreground">Crew: {scheduledCrew.join(", ")}</p>}
+                </div>
+                <div className="rounded-xl bg-muted/35 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Today</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">
+                    {isWorkingToday ? "Work in progress" : workedToday ? "Done for today" : "Not started"}
+                  </p>
+                  {todayWorkday?.workStartedAt && <p className="mt-0.5 text-xs text-muted-foreground">Started {formatWorkdayTime(todayWorkday.workStartedAt)}</p>}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Scope of work</p>
+                <h3 className="mt-1 text-base font-bold text-foreground">
+                  {job.title}
+                </h3>
+              </div>
+              {scopeParts.length > 0 && <span className="text-right text-xs font-semibold capitalize text-muted-foreground">{scopeParts.join(" · ")}</span>}
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/85">
+              {job.description?.trim() || "No scope description has been added yet."}
+            </p>
+            {jobWorkflow === "mh_production" && productionComponents.length > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Production progress</p>
+                  <button type="button" onClick={() => setPhasesPanelOpen(true)} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Details</button>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100">
+                  <div
+                    className="h-full rounded-full bg-amber-500 transition-all"
+                    style={{ width: `${Math.round((productionComponents.filter(component => component.status === "completed").length / productionComponents.length) * 100)}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-amber-900">
+                  {productionComponents.filter(component => component.status === "completed").length} of {productionComponents.length} components complete
+                </p>
               </div>
             )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job progress</p>
+                <h3 className="mt-1 text-base font-bold text-foreground">
+                  {checklistSummary ? `${checklistSummary.overallPercent}% complete` : "No checklist progress yet"}
+                </h3>
+              </div>
+              <button type="button" onClick={() => setChecklistPanelOpen(true)} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
+                Open checklist
+              </button>
+            </div>
+            {checklistSummary ? (
+              <>
+                <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${checklistSummary.overallPercent}%` }} />
+                </div>
+                <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                  <span>{checklistSummary.completedItems} of {checklistSummary.totalItems} items complete</span>
+                  {nextScheduledItem && <span className="font-semibold text-foreground">Next: {nextScheduledItem.title}</span>}
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">Add a checklist to track the work through completion.</p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Financial snapshot</p>
+                <h3 className="mt-1 text-base font-bold text-foreground">Current job economics</h3>
+              </div>
+              <button type="button" onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
+                Details
+              </button>
+            </div>
+            {displayProfitLoading ? (
+              <p className="mt-4 text-sm text-muted-foreground">Loading current financials…</p>
+            ) : financialUnavailable ? (
+              <p className="mt-4 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">Current financial values are unavailable. Open details to retry.</p>
+            ) : (
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  ["Contract / revenue", contractValue != null ? formatCurrency(contractValue) : "Unavailable", "text-foreground"],
+                  ["Expenses", displayProfit?.jobExpenses != null ? formatCurrency(displayProfit.jobExpenses) : "Unavailable", "text-foreground"],
+                  ["Labor", laborValue != null ? formatCurrency(laborValue) : "Unavailable", "text-foreground"],
+                  ["Profit", displayProfit?.netProfit != null ? formatCurrency(displayProfit.netProfit) : "Unavailable", displayProfit?.netProfit != null && displayProfit.netProfit < 0 ? "text-red-700" : "text-emerald-700"],
+                ].map(([label, value, valueClass]) => (
+                  <div key={label} className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                    <p className="text-[10px] font-bold uppercase leading-4 tracking-wide text-muted-foreground">{label}</p>
+                    <p className={`mt-2 text-base font-bold tabular-nums ${valueClass}`}>{value}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {invoiceSummary && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
+                <span>{invoiceSummary.invoiceNumber ?? "Invoice"} · {invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)}</span>
+                {onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="font-bold text-primary hover:underline">View invoice</button>}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Notes and issues</p>
+                <h3 className="mt-1 text-base font-bold text-foreground">{job.notes ? "Important job notes" : "No important notes"}</h3>
+              </div>
+              {hasSubExpenses && !localSubPaid && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-bold text-orange-700">Sub pay outstanding</span>}
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground/85">
+              {job.notes?.trim() || "No notes or issues have been recorded for this job."}
+            </p>
+            {Array.isArray(job.permitChecklist) && job.permitChecklist.some(item => !item.checked) && (
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                {job.permitChecklist.filter(item => !item.checked).length} permit item{job.permitChecklist.filter(item => !item.checked).length === 1 ? "" : "s"} still need attention.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <div className="mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">More job details</p>
+              <h3 className="mt-1 text-base font-bold text-foreground">Open a section when you need to edit or inspect it</h3>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {detailCards.map(section => (
+                <button
+                  key={section.label}
+                  type="button"
+                  onClick={section.onClick}
+                  className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">{section.icon}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">{section.label}</span>
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">{section.description}</span>
+                  </span>
+                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
+            </div>
           </section>
         </div>
       );
