@@ -1983,7 +1983,7 @@ function JobPaymentSummary({
     action?: () => void;
   }> = [
     {
-      label: "Customer",
+      label: "Invoice",
       value: paymentStatusLabel(summary.payment.status),
       detail: summary.payment.amountDue != null && summary.payment.amountDue > 0
         ? `${paymentAmount(summary.payment.amountDue)} due`

@@ -722,7 +722,10 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
       await tx.insert(jobProductionComponentsTable).values({
         ...plannedDraft,
         snapshotVersion,
-        status: "planned",
+        // Refreshing the source projection must not erase an independently
+        // recorded component status. A changed catalog/context snapshot is
+        // still the same work component unless the component disappeared.
+        status: current?.status === "not_applicable" ? "planned" : current?.status ?? "planned",
         capturedAt: now,
         createdAt: now,
         updatedAt: now,

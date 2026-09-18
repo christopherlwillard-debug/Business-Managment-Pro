@@ -75,3 +75,4 @@
 - [Production intelligence boundaries](production-intelligence-boundaries.md) — Scheduling owns presence/history; Knowledge Center learns from it; Willard has five production components and Service stays separate
 - [Production learning boundaries](production-learning-phase3.md) — Phase 6 observations stay read-only; Phase 7A adds only reviewed business/model/component baselines, never automatic labor-hour learning
 - [Ready-to-start scheduling boundary](ready-to-start-scheduling-boundary.md) — starting a no-date job only assigns its requested date/state; presence and readiness remain separate
+- [Workday source constraint](workday-source-constraint.md) — published presence constraints must allow workday_action before START WORK can persist

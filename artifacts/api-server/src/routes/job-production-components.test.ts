@@ -504,6 +504,44 @@ describe("authenticated production component Jobs API", () => {
     expect(h.components.find(row => row.componentInstanceKey === "interior_finish:vog")?.status).toBe("planned");
   });
 
+  it("preserves sibling status and duration when a source snapshot refreshes one component", async () => {
+    h.jobs.push(jobDefaults());
+    const snapshot = await request(app)
+      .post("/jobs/10/production-components/snapshot")
+      .send({ businessId: 1 });
+
+    expect(snapshot.status).toBe(201);
+    h.statusTarget = "siding:unspecified";
+    const sidingUpdate = await request(app)
+      .patch("/jobs/10/production-components/status")
+      .send({
+        businessId: 1,
+        componentInstanceKey: "siding:unspecified",
+        status: "in_progress",
+        expectedDurationDays: 3,
+      });
+    expect(sidingUpdate.status).toBe(200);
+
+    h.services.find(service => service.id === 101).name = "VOG Interior Finish — catalog label revised";
+    h.supersedeKey = "interior_finish:vog";
+    const refreshed = await request(app)
+      .post("/jobs/10/production-components/snapshot")
+      .send({ businessId: 1 });
+
+    expect(refreshed.status).toBe(201);
+    expect(refreshed.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        componentInstanceKey: "siding:unspecified",
+        status: "in_progress",
+        expectedDurationDays: 3,
+      }),
+      expect.objectContaining({
+        componentInstanceKey: "interior_finish:vog",
+        status: "planned",
+      }),
+    ]));
+  });
+
   it("serializes concurrent snapshots so one component instance has one deterministic current version", async () => {
     h.jobs.push(jobDefaults({ id: 15 }));
 
