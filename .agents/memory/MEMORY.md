@@ -1,6 +1,7 @@
 - [Sub-hours auto-expense pattern](sub-hours-auto-expense.md) — hours logged on job card auto-create a linked expense; jobSubHoursId column is the link; edit/delete are locked in UI
 - [P&L double-count root cause](pl-double-count.md) — dual expense paths; also job profit routes: subLaborCost = hourly+fixed only, allocation payouts live in separate allocPaid field
 - [Workflow aliases](workflow-aliases.md) — "Contractor App" workflow always fails (legacy); use "artifacts/contractor-app: web" and "artifacts/api-server: API Server"
+- [Contractor App production identity](contractor-app-production-identity.md) — validate the internal app at business-managment-pro.replit.app, never the public willardsgc.com website
 - [API publish health probe](deployment-health-probe-path.md) — autoscale promotion may probe the API service path (/api) despite the configured /api/healthz startup path
 - [Post-merge schema push behavior](post-merge-schema-push.md) — post-merge tolerates Drizzle push failures; always verify development metadata explicitly
 - [Business isolation architecture](business-isolation.md) — General Contracting is the permanent parent/default owner; Asphalt is a child DBA; workflows never determine financial ownership

@@ -55,7 +55,7 @@ The gas reimbursement remains separate from the profit split and must not be dup
 
 ## Overview
 
-This project is a full-stack Contractor Management App with Website Studio for general contractors. It provides comprehensive tools for managing multiple businesses from one application, including job tracking, invoicing, expense management, subcontractor coordination, financial reporting, and creating public websites for each managed business. The authenticated Contractor Management App is served at `business-managment-pro.replit.app`; connected public business domains such as `willardsgc.com` render the matching published Website Studio site. Website Studio is an internal module of this same application, not a separate project.
+This project is the internal Contractor Management App named **Willards General Contracting**. Its published Contractor App production deployment is `https://business-managment-pro.replit.app` and is the only production target for authenticated Contractor App features, including Jobs, Schedule, Work Breakdown, Start Work, invoices, and financials. `https://willardsgc.com` is the separate public-facing business website and must never be used to validate Contractor App behavior or production database state. When deployment metadata reports the public custom domain as the primary URL, explicitly use `https://business-managment-pro.replit.app` for Contractor App validation instead.
 
 Key capabilities include:
 - Unified Jobs and Invoicing workflow.

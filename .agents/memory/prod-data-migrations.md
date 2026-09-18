@@ -14,7 +14,7 @@ A data-migration task that is MERGED only means its *code* merged and the migrat
 **How to apply:** When a user reports the *published* app still shows bad data after a data-fix task merged, suspect that only dev was repaired. Verify by querying the production DB directly (`executeSql({ environment: "production" })`, read-only), then run the repair endpoint against the live production URL — not localhost/dev (which is already correct and would be a no-op). Note: production executeSql is read-only, so writes must go through the deployed HTTP endpoint, not SQL.
 
 ## How to call a prod admin endpoint
-- Get the live URL via `getDeploymentInfo().primaryUrl` (do NOT guess; `$REPLIT_DOMAINS` is the dev domain).
+- For this project, use the internal Contractor App deployment `https://business-managment-pro.replit.app` for production requests. Do not blindly use `getDeploymentInfo().primaryUrl`: it may report the public `willardsgc.com` custom domain, which is a separate website. `$REPLIT_DOMAINS` is still the dev domain in the workspace.
 - API is mounted at `/api` (see api-server artifact.toml). Admin migrations: `POST {primaryUrl}/api/admin/migrations/<name>` with header `x-migration-key: $MIGRATION_KEY`.
 - Right after a publish, `Unauthorized` can be transient: the autoscale instance may still be serving the OLD build (which lacks the new endpoint/intercept). Confirm the new build is up via `fetch_deployment_logs` (look for a fresh server start), then retry — don't assume a key mismatch on the first 401.
 - To tell whether a publish actually applied a new column before curling anything: `executeSql({ environment: "production" })` against `information_schema.columns` (read-only, always works).
