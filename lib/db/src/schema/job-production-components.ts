@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, jsonb, unique, index, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, jsonb, unique, index, check, boolean } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { jobsTable } from "./jobs";
 import { businessesTable } from "./businesses";
@@ -49,6 +49,7 @@ export const jobProductionComponentsTable = pgTable("job_production_components",
   status: text("status").notNull().default("planned"),
   expectedLaborHours: numeric("expected_labor_hours", { precision: 8, scale: 2 }),
   expectedDurationDays: integer("expected_duration_days"),
+  expectedDurationDaysExplicit: boolean("expected_duration_days_explicit").notNull().default(false),
   expectedCrewSize: integer("expected_crew_size"),
   checklistContext: jsonb("checklist_context").$type<ProductionComponentContext>(),
   materialContext: jsonb("material_context").$type<ProductionComponentContext>(),

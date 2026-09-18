@@ -1244,6 +1244,7 @@ export const GetJobProductionComponentsResponseItem = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
+  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1306,6 +1307,7 @@ export const GetJobProductionComponentHistoryResponseItem = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
+  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1343,7 +1345,8 @@ export const UpdateJobProductionComponentStatusBody = zod.object({
     "paused",
     "completed",
     "not_applicable",
-  ]),
+  ]).optional(),
+  expectedDurationDays: zod.number().int().min(1).max(365).nullable().optional(),
 });
 
 export const UpdateJobProductionComponentStatusResponse = zod.object({
@@ -1372,6 +1375,7 @@ export const UpdateJobProductionComponentStatusResponse = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
+  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),

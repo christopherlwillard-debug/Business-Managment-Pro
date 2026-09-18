@@ -948,14 +948,32 @@ router.patch("/:id/production-components/status", async (req, res) => {
     const componentInstanceKey = typeof req.body?.componentInstanceKey === "string"
       ? req.body.componentInstanceKey.trim()
       : "";
+    const hasStatus = Object.prototype.hasOwnProperty.call(req.body ?? {}, "status");
+    const hasExpectedDuration = Object.prototype.hasOwnProperty.call(req.body ?? {}, "expectedDurationDays");
     const status = req.body?.status;
-    if (!componentInstanceKey || !isProductionComponentStatus(status)) {
-      return res.status(400).json({ error: "componentInstanceKey and a valid status are required" });
+    const expectedDurationDays = req.body?.expectedDurationDays;
+    if (!componentInstanceKey || (!hasStatus && !hasExpectedDuration)) {
+      return res.status(400).json({ error: "componentInstanceKey and at least one component update are required" });
+    }
+    if (hasStatus && !isProductionComponentStatus(status)) {
+      return res.status(400).json({ error: "status must be a valid production component status" });
+    }
+    if (
+      hasExpectedDuration &&
+      expectedDurationDays !== null &&
+      (!Number.isInteger(expectedDurationDays) || expectedDurationDays < 1 || expectedDurationDays > 365)
+    ) {
+      return res.status(400).json({ error: "expectedDurationDays must be a positive integer from 1 to 365 or null" });
     }
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!job) return res.status(404).json({ error: "Job not found" });
     await syncJobProductionComponents(job);
-    const component = await setJobProductionComponentStatus(id, componentInstanceKey, status);
+    const component = await setJobProductionComponentStatus(
+      id,
+      componentInstanceKey,
+      hasStatus ? status : undefined,
+      hasExpectedDuration ? expectedDurationDays : undefined,
+    );
     if (!component) return res.status(404).json({ error: "Production component not found" });
     res.json(component);
   } catch (err) {
@@ -1638,15 +1656,15 @@ router.get("/profit-summary", async (req, res) => {
           workdayCount: sql<number>`(
             SELECT COUNT(*)::int
             FROM (
-              SELECT DISTINCT h.date
+               SELECT DISTINCT h.date::text
               FROM job_sub_hours h
               WHERE h.job_id = ${jobsTable.id}
               UNION
-              SELECT DISTINCT d.date
+               SELECT DISTINCT d.date::text
               FROM daily_logs d
               WHERE d.job_id = ${jobsTable.id}
                UNION
-               SELECT DISTINCT ws.work_date
+               SELECT DISTINCT ws.work_date::text
                FROM job_component_work_sessions ws
                WHERE ws.job_id = ${jobsTable.id}
             ) AS work_dates
@@ -2831,6 +2849,15 @@ router.put("/:id", async (req, res) => {
     if ("priority" in req.body && !["urgent", "high", "normal", "low"].includes(priority)) return res.status(400).json({ error: "Invalid priority" });
     if ("resourceDemand" in req.body && !["standard", "large_crew", "all_hands"].includes(resourceDemand)) return res.status(400).json({ error: "Invalid resourceDemand" });
     if ("queuePosition" in req.body && queuePosition != null && (!Number.isInteger(Number(queuePosition)) || Number(queuePosition) < 0)) return res.status(400).json({ error: "queuePosition must be a non-negative integer or null" });
+    if ("confirmIncompleteWork" in req.body && typeof req.body.confirmIncompleteWork !== "boolean") {
+      return res.status(400).json({ error: "confirmIncompleteWork must be a boolean" });
+    }
+    if ("daysOnJob" in req.body && daysOnJob !== null) {
+      const numericDays = typeof daysOnJob === "number" ? daysOnJob : Number(daysOnJob);
+      if (!Number.isInteger(numericDays) || numericDays < 1 || numericDays > 365) {
+        return res.status(400).json({ error: "daysOnJob must be a positive integer from 1 to 365 or null" });
+      }
+    }
 
     let mfhSelection: Awaited<ReturnType<typeof validateMfhSelection>> | null = null;
     if ("mfhManufacturerId" in req.body || "mfhModelId" in req.body) {
@@ -2896,11 +2923,74 @@ router.put("/:id", async (req, res) => {
     if ("mfhConstructionType" in req.body) updates.mfhConstructionType = mfhConstructionType || null;
     if ("mhProductionServices" in req.body) updates.mhProductionServices = Array.isArray(mhProductionServices) ? mhProductionServices : null;
     if ("manHours" in req.body) updates.manHours = manHours != null ? String(manHours) : null;
-    if ("daysOnJob" in req.body) updates.daysOnJob = daysOnJob != null ? Math.max(1, parseInt(String(daysOnJob)) || 1) : 1;
+    if ("daysOnJob" in req.body) {
+      if (daysOnJob === null) {
+        updates.daysOnJob = null;
+        updates.daysOnJobExplicit = false;
+      } else {
+        updates.daysOnJob = typeof daysOnJob === "number" ? daysOnJob : Number(daysOnJob);
+        updates.daysOnJobExplicit = true;
+      }
+    }
     if ("includeMileageInJobCosts" in req.body) updates.includeMileageInJobCosts = includeMileageInJobCosts;
 
-    const [job] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
-    if (!job) return res.status(404).json({ error: "Job not found" });
+    let job: typeof jobsTable.$inferSelect;
+    if (status === "completed" || status === "invoiced") {
+      const updateResult = await db.transaction(async tx => {
+        const jobLockQuery = tx
+          .select()
+          .from(jobsTable)
+          .where(eq(jobsTable.id, id));
+        const [lockedJob] = typeof (jobLockQuery as any).for === "function"
+          ? await (jobLockQuery as any).for("update")
+          : await jobLockQuery;
+        if (!lockedJob) return { kind: "missing" as const };
+
+        const currentRows = await tx
+          .select()
+          .from(jobProductionComponentsTable)
+          .where(and(
+            eq(jobProductionComponentsTable.jobId, id),
+            isNull(jobProductionComponentsTable.supersededAt),
+          ));
+        const components = currentRows.length
+          ? currentRows
+          : await getJobProductionComponents(lockedJob);
+        const incompleteWorkItems = components
+          .filter(component => component.status !== "completed" && component.status !== "not_applicable")
+          .map(component => ({
+            componentInstanceKey: component.componentInstanceKey,
+            componentLabel: component.componentLabel,
+            status: component.status,
+          }));
+        if (incompleteWorkItems.length > 0 && req.body.confirmIncompleteWork !== true) {
+          return { kind: "incomplete" as const, incompleteWorkItems };
+        }
+
+        const jobUpdateQuery = tx
+          .update(jobsTable)
+          .set(updates)
+          .where(eq(jobsTable.id, id));
+        const updatedRows = typeof (jobUpdateQuery as any).returning === "function"
+          ? await (jobUpdateQuery as any).returning()
+          : await jobUpdateQuery;
+        const [updated] = updatedRows?.length ? updatedRows : [lockedJob];
+        return updated ? { kind: "updated" as const, job: updated } : { kind: "missing" as const };
+      });
+      if (updateResult.kind === "missing") return res.status(404).json({ error: "Job not found" });
+      if (updateResult.kind === "incomplete") {
+        return res.status(409).json({
+          code: "INCOMPLETE_WORK_ITEMS",
+          error: "Required work items are incomplete",
+          incompleteWorkItems: updateResult.incompleteWorkItems,
+        });
+      }
+      job = updateResult.job;
+    } else {
+      const [updated] = await db.update(jobsTable).set(updates).where(eq(jobsTable.id, id)).returning();
+      if (!updated) return res.status(404).json({ error: "Job not found" });
+      job = updated;
+    }
 
     if (Array.isArray(subcontractorIds)) {
       await replaceSubcontractors(id, subcontractorIds);

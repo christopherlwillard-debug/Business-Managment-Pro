@@ -37,6 +37,7 @@ export type JobPresenceRecord = {
 
 export type JobPresenceTiming = {
   expectedDurationDays: number | null;
+  expectedDurationSource?: "job_override" | "component" | "unset";
   actualProductionStartDate: string | null;
   lastWorkDate: string | null;
   calendarSpanDays: number | null;
@@ -222,8 +223,13 @@ export function JobPresencePanel({
             </div>
             {snapshot.timing.expectedDurationDays != null && (
               <div className="rounded-xl border border-amber-200 bg-white/70 px-3 py-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-900/60">Expected duration</p>
-                <p className="mt-0.5 text-xs font-semibold text-amber-950">{snapshot.timing.expectedDurationDays} production days</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-900/60">
+                  {snapshot.timing.expectedDurationSource === "job_override" ? "Job expected days" : "Expected duration"}
+                </p>
+                <p className="mt-0.5 text-xs font-semibold text-amber-950">
+                  {snapshot.timing.expectedDurationDays} production days
+                  {snapshot.timing.expectedDurationSource === "component" ? " · longest component" : ""}
+                </p>
               </div>
             )}
           </div>

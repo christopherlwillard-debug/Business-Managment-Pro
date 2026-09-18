@@ -239,6 +239,7 @@ export interface ProductionComponent {
   status: ProductionComponentStatus;
   expectedLaborHours: number | null;
   expectedDurationDays: number | null;
+  expectedDurationDaysExplicit: boolean;
   expectedCrewSize: number | null;
   checklistContext: ProductionComponentChecklistContext;
   materialContext: ProductionComponentMaterialContext;
@@ -289,6 +290,8 @@ export interface Job {
   mfhModelYear?: number | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
+  daysOnJob?: number | null;
+  daysOnJobExplicit?: boolean;
   productionComponents?: ProductionComponent[];
   manHours?: number | null;
   homeModel?: string | null;
@@ -355,7 +358,8 @@ export const UpdateProductionComponentStatusRequestStatus = {
 
 export interface UpdateProductionComponentStatusRequest {
   componentInstanceKey: string;
-  status: UpdateProductionComponentStatusRequestStatus;
+  status?: UpdateProductionComponentStatusRequestStatus;
+  expectedDurationDays?: number | null;
 }
 
 export interface CreateComponentWorkSessionRequest {

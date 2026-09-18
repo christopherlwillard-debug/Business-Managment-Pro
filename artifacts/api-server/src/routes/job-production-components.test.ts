@@ -497,7 +497,10 @@ describe("authenticated production component Jobs API", () => {
     expect(response.status).toBe(200);
     expect(response.body.componentInstanceKey).toBe("siding:unspecified");
     expect(response.body.status).toBe("completed");
-    expect(h.components.find(row => row.componentInstanceKey === "siding:unspecified")?.status).toBe("completed");
+    expect(h.components
+      .filter(row => row.componentInstanceKey === "siding:unspecified")
+      .sort((a, b) => b.snapshotVersion - a.snapshotVersion)[0]?.status
+    ).toBe("completed");
     expect(h.components.find(row => row.componentInstanceKey === "interior_finish:vog")?.status).toBe("planned");
   });
 

@@ -93,7 +93,8 @@ export const jobsTable = pgTable(
     mfhConstructionType: text("mfh_construction_type"),
     mhProductionServices: jsonb("mh_production_services").$type<number[]>(),
     manHours: numeric("man_hours", { precision: 8, scale: 2 }),
-    daysOnJob: integer("days_on_job").default(1),
+    daysOnJob: integer("days_on_job"),
+    daysOnJobExplicit: boolean("days_on_job_explicit").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

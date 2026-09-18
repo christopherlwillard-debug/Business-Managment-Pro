@@ -10,7 +10,11 @@ import {
   type NotHereReason,
   type PresenceState,
 } from "../lib/production-intelligence-contract.js";
-import { calculateProductionTiming, type ProductionTiming } from "../lib/production-presence.js";
+import { applicationDate, calculateProductionTiming, type ProductionTiming } from "../lib/production-presence.js";
+import {
+  getJobProductionComponents,
+  resolveJobExpectedDuration,
+} from "../lib/job-production-components.js";
 
 const router = Router();
 
@@ -68,22 +72,46 @@ async function loadWorkdaySnapshot(
   return {
     jobId,
     record: record ? responseRecord(record) : null,
-    timing: timingFor(records, job),
+    timing: await timingFor(records, job),
   };
 }
 
-function expectedDurationDays(job: typeof jobsTable.$inferSelect): number | null {
-  return job.daysOnJob != null && job.daysOnJob > 0 ? job.daysOnJob : null;
-}
-
-function timingFor(
+async function timingFor(
   records: Array<typeof jobDailyPresenceTable.$inferSelect>,
   job: typeof jobsTable.$inferSelect,
-): ProductionTiming {
-  return calculateProductionTiming(
+): Promise<ProductionTiming> {
+  // Real rows always carry the provenance flag after the duration migration.
+  // Treat older lightweight test/mocked rows with a duration but no flag as
+  // already resolved so presence reads do not need an unrelated component query.
+  const components = job.daysOnJobExplicit === false
+    ? await getJobProductionComponents(job)
+    : [];
+  const durationJob = job.daysOnJobExplicit === undefined
+    ? { ...job, daysOnJobExplicit: job.daysOnJob != null }
+    : job;
+  const duration = resolveJobExpectedDuration(durationJob, components);
+  return {
+    ...calculateProductionTiming(
     records.map(record => ({ date: record.date, state: record.state as PresenceState })),
-    expectedDurationDays(job),
-  );
+    duration.expectedDurationDays,
+    ),
+    expectedDurationSource: duration.source,
+  };
+}
+
+function startMode(
+  records: Array<typeof jobDailyPresenceTable.$inferSelect>,
+  date: string,
+): "first_day" | "resume" | "additional_day" {
+  const prior = records
+    .filter(record =>
+      record.date < date &&
+      (record.state === "here" || (record.state === "not_here" && record.provenance === "confirmed")),
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const hasPriorHere = prior.some(record => record.state === "here");
+  if (!hasPriorHere) return "first_day";
+  return prior[0]?.state === "not_here" ? "resume" : "additional_day";
 }
 
 async function scopedJobs(req: Request, ids: number[]) {
@@ -120,14 +148,14 @@ router.get("/production-presence", async (req, res) => {
     }
 
     return res.json({
-      jobs: jobs.map(job => {
+      jobs: await Promise.all(jobs.map(async job => {
         const records = rowsByJob.get(job.id) ?? [];
         return {
           jobId: job.id,
           records: records.map(responseRecord),
-          timing: timingFor(records, job),
+          timing: await timingFor(records, job),
         };
-      }),
+      })),
     });
   } catch (err) {
     console.error(err);
@@ -141,6 +169,9 @@ router.post("/:jobId/workday/start", async (req, res) => {
     const date = req.body?.date;
     if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "Invalid jobId" });
     if (!isDateOnly(date)) return res.status(400).json({ error: "date must be a valid YYYY-MM-DD date" });
+    if (date > applicationDate()) {
+      return res.status(400).json({ error: "Future production dates are not allowed", code: "FUTURE_PRODUCTION_DATE" });
+    }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
     if (invalidBusinessScope(res, scope)) return;
@@ -153,6 +184,18 @@ router.post("/:jobId/workday/start", async (req, res) => {
     const user = getRequestUser(req);
     const userName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || null;
     const result = await db.transaction(async tx => {
+      const [lockedJob] = await tx
+        .select()
+        .from(jobsTable)
+        .where(eq(jobsTable.id, jobId))
+        .for("update");
+      if (!lockedJob) return null;
+      const priorRecords: Array<typeof jobDailyPresenceTable.$inferSelect> = await tx
+        .select()
+        .from(jobDailyPresenceTable)
+        .where(eq(jobDailyPresenceTable.jobId, jobId))
+        .orderBy(asc(jobDailyPresenceTable.date));
+      const mode = startMode(priorRecords, date);
       const [existing] = await tx
         .select()
         .from(jobDailyPresenceTable)
@@ -168,7 +211,7 @@ router.post("/:jobId/workday/start", async (req, res) => {
           .where(eq(jobsTable.id, jobId))
           .returning();
         const snapshot = await loadWorkdaySnapshot(tx, jobId, activeJob ?? job, date);
-        return { job: activeJob ?? job, ...snapshot };
+        return { job: activeJob ?? lockedJob, startMode: mode, alreadyStarted: true, ...snapshot };
       }
       const startedAt = new Date();
       const [record] = await tx
@@ -211,12 +254,13 @@ router.post("/:jobId/workday/start", async (req, res) => {
         .returning();
       if (!record || !updatedJob) throw new Error("Could not start workday");
       const snapshot = await loadWorkdaySnapshot(tx, jobId, updatedJob, date);
-      return { job: updatedJob, ...snapshot };
+      return { job: updatedJob, startMode: mode, alreadyStarted: false, ...snapshot };
     });
+    if (!result) return res.status(404).json({ error: "Job not found" });
     return res.json(result);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to start work today" });
+    return res.status(500).json({ error: "Failed to start work today", code: "WORKDAY_START_FAILED" });
   }
 });
 
@@ -226,6 +270,9 @@ router.post("/:jobId/workday/end", async (req, res) => {
     const date = req.body?.date;
     if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "Invalid jobId" });
     if (!isDateOnly(date)) return res.status(400).json({ error: "date must be a valid YYYY-MM-DD date" });
+    if (date > applicationDate()) {
+      return res.status(400).json({ error: "Future production dates are not allowed", code: "FUTURE_PRODUCTION_DATE" });
+    }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
     if (invalidBusinessScope(res, scope)) return;
@@ -283,6 +330,9 @@ router.put("/:jobId/production-presence/:date", async (req, res) => {
     const date = req.params.date;
     if (!Number.isInteger(jobId) || jobId <= 0) return res.status(400).json({ error: "Invalid jobId" });
     if (!isDateOnly(date)) return res.status(400).json({ error: "date must be a valid YYYY-MM-DD date" });
+    if (date > applicationDate()) {
+      return res.status(400).json({ error: "Future production dates are not allowed", code: "FUTURE_PRODUCTION_DATE" });
+    }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
     if (invalidBusinessScope(res, scope)) return;
@@ -346,7 +396,7 @@ router.put("/:jobId/production-presence/:date", async (req, res) => {
     return res.json({
       jobId,
       record: responseRecord(record),
-      timing: timingFor(rows, job),
+      timing: await timingFor(rows, job),
     });
   } catch (err) {
     console.error(err);

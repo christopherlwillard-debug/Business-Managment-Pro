@@ -48,6 +48,7 @@ export type ProductionComponentView = {
   status: ProductionComponentStatus;
   expectedLaborHours: number | null;
   expectedDurationDays: number | null;
+  expectedDurationDaysExplicit: boolean;
   expectedCrewSize: number | null;
   checklistContext: Record<string, unknown> | null;
   materialContext: Record<string, unknown> | null;
@@ -78,6 +79,7 @@ type ComponentDraft = {
   sourceServices: ProductionComponentSourceService[];
   expectedLaborHours: string | null;
   expectedDurationDays: number | null;
+  expectedDurationDaysExplicit: boolean;
   expectedCrewSize: number | null;
   checklistContext: Record<string, unknown> | null;
   materialContext: Record<string, unknown> | null;
@@ -104,6 +106,45 @@ function normalizedInteriorVariant(value: string | null | undefined): InteriorFi
 
 export function isProductionComponentStatus(value: unknown): value is ProductionComponentStatus {
   return typeof value === "string" && COMPONENT_STATUSES.has(value as ProductionComponentStatus);
+}
+
+export type JobExpectedDurationResolution = {
+  expectedDurationDays: number | null;
+  source: "job_override" | "component" | "unset";
+};
+
+export function resolveJobExpectedDuration(
+  job: Pick<Job, "daysOnJob" | "daysOnJobExplicit">,
+  components: Array<{
+    supersededAt: Date | string | null;
+    status: string;
+    expectedDurationDays: number | null;
+    expectedDurationDaysExplicit: boolean;
+  }>,
+): JobExpectedDurationResolution {
+  if (
+    job.daysOnJobExplicit &&
+    Number.isInteger(job.daysOnJob) &&
+    job.daysOnJob != null &&
+    job.daysOnJob > 0
+  ) {
+    return { expectedDurationDays: job.daysOnJob, source: "job_override" };
+  }
+
+  const durations = components
+    .filter(component =>
+      component.supersededAt == null &&
+      component.status !== "not_applicable" &&
+      component.expectedDurationDaysExplicit &&
+      Number.isInteger(component.expectedDurationDays) &&
+      component.expectedDurationDays != null &&
+      component.expectedDurationDays > 0,
+    )
+    .map(component => component.expectedDurationDays as number);
+  const longest = durations.length ? Math.max(...durations) : null;
+  return longest == null
+    ? { expectedDurationDays: null, source: "unset" }
+    : { expectedDurationDays: longest, source: "component" };
 }
 
 /**
@@ -299,6 +340,7 @@ function rowToView(
     status: row.status as ProductionComponentStatus,
     expectedLaborHours: row.expectedLaborHours == null ? null : Number(row.expectedLaborHours),
     expectedDurationDays: row.expectedDurationDays,
+    expectedDurationDaysExplicit: row.expectedDurationDaysExplicit,
     expectedCrewSize: row.expectedCrewSize,
     checklistContext: row.checklistContext ?? null,
     materialContext: row.materialContext ?? null,
@@ -323,6 +365,7 @@ function draftFingerprint(draft: ComponentDraft): string {
     sourceServices: draft.sourceServices,
     expectedLaborHours: draft.expectedLaborHours,
     expectedDurationDays: draft.expectedDurationDays,
+    expectedDurationDaysExplicit: draft.expectedDurationDaysExplicit,
     expectedCrewSize: draft.expectedCrewSize,
     checklistContext: draft.checklistContext,
     materialContext: draft.materialContext,
@@ -343,6 +386,7 @@ function rowFingerprint(row: JobProductionComponent): string {
     sourceServices: row.sourceServices ?? [],
     expectedLaborHours: row.expectedLaborHours == null ? null : String(row.expectedLaborHours),
     expectedDurationDays: row.expectedDurationDays,
+    expectedDurationDaysExplicit: row.expectedDurationDaysExplicit,
     expectedCrewSize: row.expectedCrewSize,
     checklistContext: row.checklistContext ?? null,
     materialContext: row.materialContext ?? null,
@@ -506,7 +550,8 @@ async function buildDrafts(job: Job): Promise<ComponentDraft[]> {
       sourceServiceIds: [service.id],
       sourceServices: [sourceServiceSnapshot(service)],
       expectedLaborHours: job.manHours == null ? null : String(job.manHours),
-      expectedDurationDays: job.daysOnJob ?? null,
+      expectedDurationDays: null,
+      expectedDurationDaysExplicit: false,
       expectedCrewSize: knowledgeRecord?.crewSize ?? null,
       checklistContext: {
         modelId: modelContext?.modelId ?? job.mfhModelId ?? null,
@@ -609,6 +654,7 @@ export async function getJobProductionComponents(job: Job): Promise<ProductionCo
     status: "planned",
     expectedLaborHours: draft.expectedLaborHours == null ? null : Number(draft.expectedLaborHours),
     expectedDurationDays: draft.expectedDurationDays,
+    expectedDurationDaysExplicit: draft.expectedDurationDaysExplicit,
     expectedCrewSize: draft.expectedCrewSize,
     checklistContext: draft.checklistContext,
     materialContext: draft.materialContext,
@@ -648,7 +694,14 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
     const now = new Date();
     for (const draft of drafts) {
       const current = currentByInstance.get(draft.componentInstanceKey);
-      if (current && rowFingerprint(current) === draftFingerprint(draft)) {
+      const plannedDraft: ComponentDraft = current
+        ? {
+          ...draft,
+          expectedDurationDays: current.expectedDurationDays,
+          expectedDurationDaysExplicit: current.expectedDurationDaysExplicit,
+        }
+        : draft;
+      if (current && rowFingerprint(current) === draftFingerprint(plannedDraft)) {
         if (current.status === "not_applicable") {
           await tx.update(jobProductionComponentsTable)
             .set({ status: "planned", updatedAt: now })
@@ -667,7 +720,7 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
         .map(row => row.snapshotVersion);
       const snapshotVersion = (priorVersions.length ? Math.max(...priorVersions) : 0) + 1;
       await tx.insert(jobProductionComponentsTable).values({
-        ...draft,
+        ...plannedDraft,
         snapshotVersion,
         status: "planned",
         capturedAt: now,
@@ -692,19 +745,70 @@ export async function syncJobProductionComponents(job: Job): Promise<ProductionC
 export async function setJobProductionComponentStatus(
   jobId: number,
   componentInstanceKey: string,
-  status: ProductionComponentStatus,
+  status: ProductionComponentStatus | undefined,
+  expectedDurationDays: number | null | undefined = undefined,
 ): Promise<ProductionComponentView | null> {
-  if (!isProductionComponentStatus(status)) return null;
-  const [row] = await db
-    .update(jobProductionComponentsTable)
-    .set({ status, updatedAt: new Date() })
-    .where(and(
-      eq(jobProductionComponentsTable.jobId, jobId),
-      eq(jobProductionComponentsTable.componentInstanceKey, componentInstanceKey),
-      isNull(jobProductionComponentsTable.supersededAt),
-    ))
-    .returning();
-  return row ? rowToView(row) : null;
+  if (status !== undefined && !isProductionComponentStatus(status)) return null;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('job-production-components'), ${jobId})`);
+    await tx.select({ id: jobsTable.id })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId))
+      .for("update");
+    const currentRows = await tx
+      .select()
+      .from(jobProductionComponentsTable)
+      .where(and(
+        eq(jobProductionComponentsTable.jobId, jobId),
+        isNull(jobProductionComponentsTable.supersededAt),
+      ))
+      .for("update");
+    const current = currentRows.find(row => row.componentInstanceKey === componentInstanceKey);
+    if (!current) return null;
+
+    const now = new Date();
+    if (status !== undefined || expectedDurationDays !== undefined) {
+      await tx.update(jobProductionComponentsTable)
+        .set({ supersededAt: now, updatedAt: now })
+        .where(eq(jobProductionComponentsTable.id, current.id));
+      const priorVersions = await tx
+        .select({ snapshotVersion: jobProductionComponentsTable.snapshotVersion })
+        .from(jobProductionComponentsTable)
+        .where(and(
+          eq(jobProductionComponentsTable.jobId, jobId),
+          eq(jobProductionComponentsTable.componentInstanceKey, componentInstanceKey),
+        ));
+      const snapshotVersion = Math.max(...priorVersions.map(row => row.snapshotVersion), 0) + 1;
+      const [next] = await tx.insert(jobProductionComponentsTable).values({
+        jobId: current.jobId,
+        businessId: current.businessId,
+        componentKey: current.componentKey,
+        componentInstanceKey: current.componentInstanceKey,
+        componentLabel: current.componentLabel,
+        variant: current.variant,
+        sourceServiceIds: current.sourceServiceIds ?? [],
+        sourceServices: current.sourceServices ?? [],
+        snapshotVersion,
+        status: status ?? current.status,
+        expectedLaborHours: current.expectedLaborHours,
+        expectedDurationDays: expectedDurationDays === undefined ? current.expectedDurationDays : expectedDurationDays,
+        expectedDurationDaysExplicit: expectedDurationDays === undefined
+          ? current.expectedDurationDaysExplicit
+          : expectedDurationDays != null,
+        expectedCrewSize: current.expectedCrewSize,
+        checklistContext: current.checklistContext,
+        materialContext: current.materialContext,
+        pricingContext: current.pricingContext,
+        knowledgeContext: current.knowledgeContext,
+        capturedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+      return next ? rowToView(next, current) : null;
+    }
+
+    return rowToView(current);
+  });
 }
 
 export { rowToView };

@@ -7,6 +7,7 @@ export type ProductionPresenceCalculationRecord = {
 
 export type ProductionTiming = {
   expectedDurationDays: number | null;
+  expectedDurationSource?: "job_override" | "component" | "unset";
   actualProductionStartDate: string | null;
   lastWorkDate: string | null;
   calendarSpanDays: number | null;
@@ -14,6 +15,17 @@ export type ProductionTiming = {
   pausedNotHereDays: number;
   productionDayVariance: number | null;
 };
+
+export function applicationDate(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = new Map(parts.map(part => [part.type, part.value]));
+  return `${values.get("year")}-${values.get("month")}-${values.get("day")}`;
+}
 
 function dateValue(value: string): number {
   const [year, month, day] = value.split("-").map(Number);
@@ -27,15 +39,17 @@ function dayDistance(start: string, end: string): number {
 export function calculateProductionTiming(
   records: ProductionPresenceCalculationRecord[],
   expectedDurationDays: number | null | undefined,
+  currentDate: string = applicationDate(),
 ): ProductionTiming {
-  const hereDates = records
+  const liveRecords = records.filter(record => record.date <= currentDate);
+  const hereDates = Array.from(new Set(liveRecords
     .filter(record => record.state === "here")
-    .map(record => record.date)
+    .map(record => record.date)))
     .sort();
   const actualProductionStartDate = hereDates[0] ?? null;
   const lastWorkDate = hereDates[hereDates.length - 1] ?? null;
   const pausedNotHereDays = actualProductionStartDate && lastWorkDate
-    ? records.filter(record =>
+    ? liveRecords.filter(record =>
       record.state === "not_here" &&
       record.date >= actualProductionStartDate &&
       record.date <= lastWorkDate,

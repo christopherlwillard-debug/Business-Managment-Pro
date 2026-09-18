@@ -5972,7 +5972,10 @@ function CompactJobRow({
   const statusValue = String(job.status);
   const isActive = statusValue === "active" || statusValue === "in_progress";
   const statusLabel = isClosed ? "Closed" : isCompleted ? "Completed" : isActive ? "Active" : "Scheduled";
-  const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+  const location = job.locationName
+    || job.address
+    || [job.city, job.state].filter(Boolean).join(", ")
+    || "Location not recorded";
   const amount = invoiceSummary?.total ?? paymentSummary?.payment.amountDue ?? null;
   const paymentLabel = invoiceSummary?.status
     ? invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)
@@ -6023,7 +6026,7 @@ function CompactJobRow({
             type="button"
             onClick={() => onOpen(job)}
             className="min-h-11 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
-            data-testid={`open-job-${job.id}`}
+            data-testid={`job-card-open-${job.id}`}
           >
             OPEN JOB
           </button>
@@ -6180,14 +6183,28 @@ function JobCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today }),
       });
-      const data = await response.json().catch(() => ({})) as { error?: string };
+      const data = await response.json().catch(() => ({})) as {
+        error?: string;
+        startMode?: "first_day" | "resume" | "additional_day";
+        alreadyStarted?: boolean;
+      };
       if (!response.ok) throw new Error(data.error ?? "Could not update today's work");
       await Promise.all([
         workdayQuery.refetch(),
         qc.invalidateQueries({ queryKey: ["/api/jobs"] }),
         qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] }),
       ]);
-      toast({ title: action === "start" ? "Work started" : "Work finished for today" });
+      const modeLabel = data.startMode === "resume"
+        ? "Resumed after a recorded interruption."
+        : data.startMode === "additional_day"
+          ? "Additional production day recorded."
+          : data.startMode === "first_day"
+            ? "First production day recorded."
+            : undefined;
+      toast({
+        title: action === "start" ? (data.alreadyStarted ? "Work was already started" : "Work started") : "Work finished for today",
+        description: action === "start" ? modeLabel : undefined,
+      });
     } catch (error) {
       toast({
         title: action === "start" ? "Could not start work" : "Could not finish today's work",
@@ -6361,13 +6378,13 @@ function JobCard({
 
   async function handleProductionComponentStatusChange(
     componentInstanceKey: string,
-    status: ProductionComponentStatus,
+    update: { status?: ProductionComponentStatus; expectedDurationDays?: number | null },
   ) {
     setUpdatingComponentKey(componentInstanceKey);
     try {
       await updateProductionComponentStatus.mutateAsync({
         id: job.id,
-        data: { componentInstanceKey, status },
+        data: { componentInstanceKey, ...update },
       });
       await qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}/production-components`] });
       await qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
@@ -6472,11 +6489,20 @@ function JobCard({
 
     if (workspaceTab === "schedule") {
       const records = workdayQuery.data?.records ?? [];
+      const locationLabel = job.locationName
+        || job.address
+        || [job.city, job.state].filter(Boolean).join(", ")
+        || "Location not recorded";
+      const expectedDaysLabel = workspaceTiming?.expectedDurationSource === "job_override"
+        ? "Job expected days · manual"
+        : workspaceTiming?.expectedDurationSource === "component"
+          ? "Job expected days · longest component"
+          : "Job expected days";
       return (
         <div className="space-y-5" data-testid={`job-workspace-schedule-${job.id}`}>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {([
-              ["Expected days", workspaceTiming?.expectedDurationDays ?? job.daysOnJob ?? "—"],
+              [expectedDaysLabel, workspaceTiming?.expectedDurationDays ?? "Not set"],
               ["Actual days", workspaceTiming?.actualProductionDays ?? 0],
               ["Actual start", workspaceTiming?.actualProductionStartDate ? formatDate(workspaceTiming.actualProductionStartDate) : "Not recorded"],
               ["Last work date", workspaceTiming?.lastWorkDate ? formatDate(workspaceTiming.lastWorkDate) : "Not recorded"],
@@ -6491,7 +6517,7 @@ function JobCard({
           <section className="rounded-2xl border border-border bg-card">
             <div className="border-b border-border px-4 py-3">
               <h3 className="font-bold text-foreground">Daily work history</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">The recorded production days for this job.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">The recorded production days for this job · {locationLabel}</p>
             </div>
             {workdayQuery.isLoading ? (
               <div className="p-5 text-sm text-muted-foreground">Loading recorded days…</div>
@@ -6535,7 +6561,10 @@ function JobCard({
     }
 
     if (workspaceTab === "overview") {
-      const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+      const location = job.locationName
+        || job.address
+        || [job.city, job.state].filter(Boolean).join(", ")
+        || "Location not recorded";
       const statusValue = String(job.status);
       const statusLabel = statusValue === "closed"
         ? "Closed"
@@ -6872,14 +6901,77 @@ function JobCard({
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Work breakdown</p>
               <h3 className="mt-1 text-base font-bold text-foreground">What is planned next</h3>
             </div>
-            {nextScheduledItem && <span className="text-xs font-semibold text-muted-foreground">{formatScheduleDate(nextScheduledItem.scheduledDate!)} next</span>}
+            <div className="flex items-center gap-2">
+              {nextScheduledItem && <span className="text-xs font-semibold text-muted-foreground">{formatScheduleDate(nextScheduledItem.scheduledDate!)} next</span>}
+              {productionComponents.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setProductionComponentHistoryOpen(open => !open)}
+                  aria-expanded={productionComponentHistoryOpen}
+                  data-testid={`production-component-history-toggle-${job.id}`}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-border px-2.5 text-[10px] font-bold text-muted-foreground hover:bg-muted/50"
+                >
+                  <History className="h-3 w-3" />
+                  {productionComponentHistoryOpen ? "Hide history" : "View history"}
+                </button>
+              )}
+            </div>
           </div>
           {productionComponents.length > 0 ? (
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {productionComponents.slice(0, 6).map(component => (
                 <div key={component.componentInstanceKey} className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2">
-                  <p className="text-sm font-semibold text-foreground">{component.componentLabel}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{component.status.replace(/_/g, " ")}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-foreground">{component.componentLabel}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{component.status.replace(/_/g, " ")}</p>
+                    </div>
+                    <select
+                      aria-label={`${component.componentLabel} status`}
+                      data-testid={`production-component-status-${job.id}-${component.componentInstanceKey}`}
+                      value={component.status}
+                      disabled={updatingComponentKey === component.componentInstanceKey}
+                      onChange={event => {
+                        void handleProductionComponentStatusChange(component.componentInstanceKey, {
+                          status: event.target.value as ProductionComponentStatus,
+                        });
+                      }}
+                      className="h-8 max-w-[130px] rounded-md border border-border bg-background px-1.5 text-[10px] text-foreground"
+                    >
+                      <option value="planned">Planned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="paused">Paused</option>
+                      <option value="completed">Completed</option>
+                      <option value="not_applicable">Not applicable</option>
+                    </select>
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    aria-label={`${component.componentLabel} expected days`}
+                    data-testid={`production-component-duration-${job.id}-${component.componentInstanceKey}`}
+                    defaultValue={component.expectedDurationDays ?? ""}
+                    placeholder="Component expected days"
+                    disabled={updatingComponentKey === component.componentInstanceKey}
+                    onBlur={event => {
+                      const raw = event.currentTarget.value.trim();
+                      const next = raw === "" ? null : Number(raw);
+                      if (
+                        (next === null && component.expectedDurationDays === null) ||
+                        (typeof next === "number" && Number.isInteger(next) && next === component.expectedDurationDays)
+                      ) return;
+                      if (next !== null && (!Number.isInteger(next) || next < 1 || next > 365)) {
+                        event.currentTarget.value = component.expectedDurationDays == null ? "" : String(component.expectedDurationDays);
+                        toast({ title: "Invalid component duration", description: "Enter a whole number from 1 to 365.", variant: "destructive" });
+                        return;
+                      }
+                      void handleProductionComponentStatusChange(component.componentInstanceKey, {
+                        expectedDurationDays: next,
+                      });
+                    }}
+                    className="mt-2 h-8 w-full rounded-md border border-border bg-background px-2 text-xs text-foreground"
+                  />
                 </div>
               ))}
             </div>
@@ -6887,6 +6979,60 @@ function JobCard({
             <p className="mt-4 rounded-xl bg-muted/30 px-3 py-3 text-sm text-foreground">{nextScheduledItem.title}</p>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">No work breakdown has been recorded yet.</p>
+          )}
+          {productionComponentHistoryOpen && productionComponents.length > 0 && (
+            <div
+              className="mt-4 border-t border-border pt-3"
+              data-testid={`production-component-snapshot-history-${job.id}`}
+            >
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                <History className="h-3 w-3" /> Snapshot history
+              </div>
+              {productionComponentHistoryQuery.isLoading ? (
+                <p className="mt-2 text-xs text-muted-foreground">Loading snapshot history…</p>
+              ) : productionComponentHistoryQuery.isError ? (
+                <p className="mt-2 text-xs text-red-600">Snapshot history could not be loaded.</p>
+              ) : productionComponentHistory.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">No captured snapshots yet.</p>
+              ) : (
+                <div className="mt-2 grid gap-2">
+                  {productionComponentHistory.map(component => {
+                    const isCurrent = component.supersededAt == null;
+                    return (
+                      <div
+                        key={`${component.componentInstanceKey}:${component.snapshotVersion}`}
+                        data-testid={`production-component-snapshot-row-${job.id}-${component.componentInstanceKey}-${component.snapshotVersion}`}
+                        data-component-instance-key={component.componentInstanceKey}
+                        data-snapshot-version={component.snapshotVersion}
+                        data-snapshot-state={isCurrent ? "current" : "superseded"}
+                        className="rounded-lg border border-border/70 bg-muted/10 px-3 py-2 text-xs"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-foreground">{component.componentLabel}</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                            {isCurrent ? "Current" : "Superseded"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Version {component.snapshotVersion} · Captured {formatProductionSnapshotDate(component.capturedAt)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Source services: {productionSourceLabel(component)}</p>
+                        {component.previousSnapshotVersion != null && component.changesFromPrevious.length > 0 && (
+                          <div className="mt-2 rounded border border-blue-200/80 bg-blue-50/50 px-2 py-1 text-[10px] text-blue-950">
+                            <div className="font-bold text-blue-800">Changed from version {component.previousSnapshotVersion}</div>
+                            {component.changesFromPrevious.map(change => (
+                              <div key={change.field}>
+                                <span className="font-semibold">{change.label}:</span> {change.before} → {change.after}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </section>
 
@@ -7179,7 +7325,7 @@ function JobCard({
                       onChange={event => {
                         void handleProductionComponentStatusChange(
                           component.componentInstanceKey,
-                          event.target.value as ProductionComponentStatus,
+                          { status: event.target.value as ProductionComponentStatus },
                         );
                       }}
                       className="h-7 max-w-[130px] rounded-md border border-amber-200 bg-background px-1.5 text-[10px] text-foreground"
@@ -7190,6 +7336,33 @@ function JobCard({
                       <option value="completed">Completed</option>
                       <option value="not_applicable">Not applicable</option>
                     </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      aria-label={`${component.componentLabel} expected days`}
+                      data-testid={`production-component-duration-${job.id}-${component.componentInstanceKey}`}
+                      defaultValue={component.expectedDurationDays ?? ""}
+                      placeholder="Days"
+                      disabled={updatingComponentKey === component.componentInstanceKey}
+                      onBlur={event => {
+                        const raw = event.currentTarget.value.trim();
+                        const next = raw === "" ? null : Number(raw);
+                        if (
+                          (next === null && component.expectedDurationDays === null) ||
+                          (typeof next === "number" && Number.isInteger(next) && next === component.expectedDurationDays)
+                        ) return;
+                        if (next !== null && (!Number.isInteger(next) || next < 1 || next > 365)) {
+                          event.currentTarget.value = component.expectedDurationDays == null ? "" : String(component.expectedDurationDays);
+                          toast({ title: "Invalid component duration", description: "Enter a whole number from 1 to 365.", variant: "destructive" });
+                          return;
+                        }
+                        void handleProductionComponentStatusChange(component.componentInstanceKey, {
+                          expectedDurationDays: next,
+                        });
+                      }}
+                      className="h-7 w-16 rounded-md border border-amber-200 bg-background px-1.5 text-center text-[10px] text-foreground"
+                    />
                   </div>
                 ))}
               </div>
@@ -9550,6 +9723,17 @@ export default function Jobs() {
   const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[]; toSplit: number } | null>(null);
   const [kbTrainingJob, setKbTrainingJob] = useState<Job | null>(null);
   const [closeJobBusy, setCloseJobBusy] = useState(false);
+  type IncompleteWorkItem = {
+    componentInstanceKey: string;
+    componentLabel: string;
+    status: string;
+  };
+  const [incompleteCompletion, setIncompleteCompletion] = useState<{
+    job: Job;
+    items: IncompleteWorkItem[];
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [incompleteCompletionBusy, setIncompleteCompletionBusy] = useState(false);
 
   function computeCloseJobSubAmount(sub: CloseJobDialogSub, toSplit: number): number {
     // Compute the total agreed owed amount
@@ -9560,6 +9744,57 @@ export default function Jobs() {
     // Subtract any partial payments already recorded to avoid double-billing
     const alreadyPaid = sub.amountPaid ?? 0;
     return Math.max(0, totalOwed - alreadyPaid);
+  }
+
+  async function completeJobStatus(
+    job: Job,
+    onSuccess: () => Promise<void> | void,
+    confirmIncompleteWork = false,
+  ): Promise<boolean> {
+    try {
+      const response = await fetch(`${BASE}/api/jobs/${job.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "completed",
+          ...(confirmIncompleteWork ? { confirmIncompleteWork: true } : {}),
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as {
+        error?: string;
+        code?: string;
+        incompleteWorkItems?: IncompleteWorkItem[];
+      };
+      if (response.status === 409 && payload.code === "INCOMPLETE_WORK_ITEMS") {
+        setIncompleteCompletion({
+          job,
+          items: payload.incompleteWorkItems ?? [],
+          onConfirm: async () => {
+            setIncompleteCompletionBusy(true);
+            try {
+              const completed = await completeJobStatus(job, onSuccess, true);
+              if (completed) setIncompleteCompletion(null);
+            } finally {
+              setIncompleteCompletionBusy(false);
+            }
+          },
+        });
+        return false;
+      }
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to complete job");
+      }
+      await onSuccess();
+      return true;
+    } catch (error) {
+      toast({
+        title: "Failed to complete job",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+      return false;
+    }
   }
 
   async function handleCloseJobMarkAllPaid() {
@@ -9583,10 +9818,11 @@ export default function Jobs() {
             : `Payment failed for ${sub.subName}`);
         }
       }));
-      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-      queryClient.invalidateQueries();
-      setCloseJobDialog(null);
-      toast({ title: "Job completed", description: "All sub payments have been recorded." });
+      await completeJobStatus(job, () => {
+        queryClient.invalidateQueries();
+        setCloseJobDialog(null);
+        toast({ title: "Job completed", description: "All sub payments have been recorded." });
+      });
     } catch (err) {
       toast({ title: "Failed to record payments", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
@@ -9609,10 +9845,11 @@ export default function Jobs() {
         const data = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error ?? "Failed to record sub expenses");
       }
-      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-      queryClient.invalidateQueries();
-      setCloseJobDialog(null);
-      toast({ title: "Job completed", description: "Sub payments remain outstanding and are tracked in the books." });
+      await completeJobStatus(job, () => {
+        queryClient.invalidateQueries();
+        setCloseJobDialog(null);
+        toast({ title: "Job completed", description: "Sub payments remain outstanding and are tracked in the books." });
+      });
     } catch (err) {
       toast({ title: "Failed to complete job", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
@@ -10122,8 +10359,10 @@ export default function Jobs() {
 
       if ((subsData as unknown[]).length === 0) {
         // No unpaid fixed/allocation subs — close immediately
-        await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-        queryClient.invalidateQueries();
+        await completeJobStatus(job, () => {
+          queryClient.invalidateQueries();
+          toast({ title: "Job completed", description: "The job has been marked complete." });
+        });
         return;
       }
 
@@ -11151,6 +11390,59 @@ export default function Jobs() {
             await proceedWithJobCompletion(job);
           }}
         />
+      )}
+
+      {incompleteCompletion && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="incomplete-work-title"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
+          >
+            <div className="h-1.5 bg-gradient-to-r from-amber-400 to-amber-500" />
+            <div className="space-y-4 p-6">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Work items need attention</p>
+                <h2 id="incomplete-work-title" className="mt-1 text-lg font-bold text-gray-900">Complete this job anyway?</h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  The following work items are not completed. You can finish the job now, but the incomplete statuses will remain in the production history.
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50">
+                <div className="divide-y divide-amber-100">
+                  {incompleteCompletion.items.map(item => (
+                    <div key={item.componentInstanceKey} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                      <span className="text-sm font-semibold text-amber-950">{item.componentLabel}</span>
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                        {item.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={() => void incompleteCompletion.onConfirm()}
+                  disabled={incompleteCompletionBusy}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {incompleteCompletionBusy && <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
+                  Complete Anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncompleteCompletion(null)}
+                  disabled={incompleteCompletionBusy}
+                  className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Go Back
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Close-Job Dialog — shown when unpaid fixed/allocation subs exist on job completion */}
