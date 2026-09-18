@@ -1,0 +1,226 @@
+<style>
+  .direction-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .direction-card {
+    min-width: 0;
+  }
+  .phone {
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+    overflow: hidden;
+    border: 8px solid #172033;
+    border-radius: 28px;
+    background: #f8fafc;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, .18);
+  }
+  .phone-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px 8px;
+    background: #172033;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .phone-body {
+    padding: 14px;
+  }
+  .eyebrow {
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .title {
+    margin: 3px 0 10px;
+    color: #172033;
+    font-size: 18px;
+    font-weight: 850;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .stat {
+    padding: 9px 7px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .stat strong {
+    display: block;
+    color: #172033;
+    font-size: 15px;
+  }
+  .stat span {
+    color: #64748b;
+    font-size: 8px;
+    line-height: 1.1;
+  }
+  .section {
+    margin: 10px 0;
+    padding: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+  }
+  .section-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: baseline;
+    margin-bottom: 7px;
+  }
+  .section-head strong {
+    color: #172033;
+    font-size: 11px;
+  }
+  .section-head span {
+    color: #64748b;
+    font-size: 8px;
+  }
+  .date-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 0;
+    border-top: 1px solid #f1f5f9;
+    color: #334155;
+    font-size: 10px;
+  }
+  .date-row:first-of-type { border-top: 0; }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #cbd5e1;
+  }
+  .dot.here { background: #16a34a; }
+  .dot.absent { background: #f59e0b; }
+  .pill {
+    margin-left: auto;
+    padding: 3px 6px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 8px;
+    font-weight: 800;
+  }
+  .pill.here { background: #dcfce7; color: #166534; }
+  .pill.absent { background: #fef3c7; color: #92400e; }
+  .component {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 0;
+    border-top: 1px solid #f1f5f9;
+    font-size: 10px;
+  }
+  .component:first-of-type { border-top: 0; }
+  .component strong { color: #172033; }
+  .component span { margin-left: auto; color: #64748b; }
+  .button {
+    display: block;
+    width: 100%;
+    margin-top: 9px;
+    padding: 10px;
+    border: 0;
+    border-radius: 9px;
+    background: #d97706;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    text-align: center;
+  }
+  @media (max-width: 780px) {
+    .direction-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<h2>Phone-first Schedule directions</h2>
+<p class="subtitle">Both options make planned dates, actual production, and presence entry separate. Select the direction that is closer to how the crew works.</p>
+
+<div class="direction-grid">
+  <div class="direction-card option" data-choice="actual-first" onclick="toggleSelect(this)">
+    <div class="mockup">
+      <div class="mockup-header">A · Actual-first timeline</div>
+      <div class="mockup-body">
+        <div class="phone">
+          <div class="phone-top"><span>JOB</span><span>Schedule</span></div>
+          <div class="phone-body">
+            <div class="eyebrow">Drake · MH Production</div>
+            <div class="title">Production days</div>
+            <div class="stats">
+              <div class="stat"><strong>Sep 17–21</strong><span>Planned window</span></div>
+              <div class="stat"><strong>2</strong><span>Actual days</span></div>
+              <div class="stat"><strong>Sep 18</strong><span>Last work date</span></div>
+            </div>
+            <div class="section">
+              <div class="section-head"><strong>Daily presence</strong><span>Tap a date to record</span></div>
+              <div class="date-row"><i class="dot here"></i>Sep 17 <span class="pill here">Here</span></div>
+              <div class="date-row"><i class="dot here"></i>Sep 18 <span class="pill here">Here</span></div>
+              <div class="date-row"><i class="dot"></i>Sep 19 <span class="pill">Unrecorded</span></div>
+              <div class="date-row"><i class="dot"></i>Sep 20 <span class="pill">Unrecorded</span></div>
+              <div class="date-row"><i class="dot"></i>Sep 21 <span class="pill">Unrecorded</span></div>
+              <div class="button">Record today</div>
+            </div>
+            <div class="section">
+              <div class="section-head"><strong>Work breakdown</strong><span>3 components</span></div>
+              <div class="component"><strong>Interior Finish</strong><span>Planned · 1 day</span></div>
+              <div class="component"><strong>Plumbing</strong><span>Planned · 1 day</span></div>
+              <div class="component"><strong>Siding</strong><span>Planned · 1 day</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="direction-card option" data-choice="action-first" onclick="toggleSelect(this)">
+    <div class="mockup">
+      <div class="mockup-header">B · Action-first today</div>
+      <div class="mockup-body">
+        <div class="phone">
+          <div class="phone-top"><span>JOB</span><span>Schedule</span></div>
+          <div class="phone-body">
+            <div class="eyebrow">Drake · Today · Sep 18</div>
+            <div class="title">What happened today?</div>
+            <div class="section">
+              <div class="section-head"><strong>Today’s production</strong><span>One clear action</span></div>
+              <div class="date-row"><i class="dot here"></i><strong>Here recorded</strong><span class="pill here">Actual day 2</span></div>
+              <div class="button" style="background:#475569">Change today’s state</div>
+            </div>
+            <div class="stats">
+              <div class="stat"><strong>2</strong><span>Actual days</span></div>
+              <div class="stat"><strong>Sep 17</strong><span>Actual start</span></div>
+              <div class="stat"><strong>Sep 18</strong><span>Last work date</span></div>
+            </div>
+            <div class="section">
+              <div class="section-head"><strong>Planned window</strong><span>Not actual work</span></div>
+              <div class="date-row"><i class="dot"></i>Sep 17–21 <span class="pill">Scheduled</span></div>
+            </div>
+            <div class="section">
+              <div class="section-head"><strong>Daily work history</strong><span>Recorded only</span></div>
+              <div class="date-row"><i class="dot here"></i>Sep 18 <span class="pill here">Here</span></div>
+              <div class="date-row"><i class="dot here"></i>Sep 17 <span class="pill here">Here</span></div>
+            </div>
+            <div class="section">
+              <div class="section-head"><strong>Work breakdown</strong><span>Tap to edit</span></div>
+              <div class="component"><strong>Interior Finish</strong><span>Planned · 1 day</span></div>
+              <div class="component"><strong>Plumbing</strong><span>Planned · 1 day</span></div>
+              <div class="component"><strong>Siding</strong><span>Planned · 1 day</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
