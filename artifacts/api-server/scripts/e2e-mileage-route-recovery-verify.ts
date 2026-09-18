@@ -5,7 +5,7 @@
  *
  * The development-only login creates a short-lived approved session. All
  * mileage reads and the expected manual-trip write are intercepted, while
- * address and routing requests are deliberately failed or held in-flight.
+ * address and routing requests are deliberately returned empty, failed, or held in-flight.
  * No real mileage records are read or written by this check.
  */
 import fs from "node:fs";
@@ -124,6 +124,7 @@ async function readForm(page: Page) {
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
 
+  let emptyAddressResultsRemaining = 0;
   let addressFailuresRemaining = 1;
   let routingFailuresRemaining = 0;
   let holdNextRoute = false;
@@ -143,7 +144,15 @@ async function main() {
       const method = request.method();
 
       if (url.hostname === "nominatim.openstreetmap.org" && url.pathname === "/search") {
-        if (addressFailuresRemaining > 0) {
+        if (emptyAddressResultsRemaining > 0) {
+          emptyAddressResultsRemaining -= 1;
+          void request.respond({
+            status: 200,
+            contentType: "application/json",
+            headers: { "Access-Control-Allow-Origin": "*" },
+            body: JSON.stringify([]),
+          });
+        } else if (addressFailuresRemaining > 0) {
           addressFailuresRemaining -= 1;
           void request.respond({
             status: 503,
@@ -335,6 +344,55 @@ async function main() {
     await page.waitForSelector('[data-testid="mileage-route-confirmation"]', { timeout: 15_000 });
     record(
       "Address lookup can be retried without losing the route confirmation",
+      await page.$eval('[data-testid="mileage-route-confirmation"]', element => element.textContent?.includes("14.2 mi via driving route") ?? false),
+    );
+
+    emptyAddressResultsRemaining = 1;
+    await page.click('[data-testid="mileage-start-address"]');
+    await page.keyboard.down("Control");
+    await page.keyboard.press("A");
+    await page.keyboard.up("Control");
+    await page.keyboard.type("Vague address");
+    await page.click('[data-testid="mileage-calculate"]');
+    await page.waitForSelector('[data-testid="mileage-route-error"]', { timeout: 15_000 });
+    const emptyAddressResult = await readForm(page);
+    const emptyAddressErrorText = await page.$eval(
+      '[data-testid="mileage-route-error"]',
+      element => element.textContent ?? "",
+    );
+    record(
+      "Empty address results explain that the address was not found and preserve trip details",
+      emptyAddressErrorText.includes('Address not found: "Vague address"')
+        && emptyAddressErrorText.includes("Try adding a city or state")
+        && emptyAddressResult.date === expectedForm.date
+        && emptyAddressResult.start === "Vague address"
+        && emptyAddressResult.end === expectedForm.end
+        && emptyAddressResult.purpose === expectedForm.purpose
+        && emptyAddressResult.classification.includes("border-primary")
+        && emptyAddressResult.job === expectedForm.job
+        && !emptyAddressResult.hasConfirmation,
+      JSON.stringify(emptyAddressResult),
+    );
+    record(
+      "Empty address results offer retry and manual miles actions",
+      await page.$('[data-testid="mileage-route-retry"]') !== null
+        && await page.$('[data-testid="mileage-enter-manually"]') !== null,
+    );
+    await page.click('[data-testid="mileage-enter-manually"]');
+    record(
+      "Empty address results can focus manual miles without changing the form",
+      await page.evaluate(() => document.activeElement?.getAttribute("data-testid") === "mileage-miles"),
+    );
+
+    await page.click('[data-testid="mileage-start-address"]');
+    await page.keyboard.down("Control");
+    await page.keyboard.press("A");
+    await page.keyboard.up("Control");
+    await page.keyboard.type(expectedForm.start);
+    await page.click('[data-testid="mileage-calculate"]');
+    await page.waitForSelector('[data-testid="mileage-route-confirmation"]', { timeout: 15_000 });
+    record(
+      "A not-found address can be corrected and retried without losing the route confirmation",
       await page.$eval('[data-testid="mileage-route-confirmation"]', element => element.textContent?.includes("14.2 mi via driving route") ?? false),
     );
 
