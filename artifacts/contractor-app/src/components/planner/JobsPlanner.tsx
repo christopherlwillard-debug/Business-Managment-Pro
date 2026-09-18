@@ -31,6 +31,7 @@ type PlannerEntry = {
   endDate: string;
   job: ScheduleJob;
   item?: ScheduleItem;
+  productionItem?: NonNullable<ScheduleJob["productionPlanItems"]>[number];
 };
 
 type ChecklistSummary = {
@@ -112,7 +113,7 @@ function dateRange(startDate: string, endDate: string): string[] {
   return dates;
 }
 
-function createPlannerEntries(jobs: ScheduleJob[]): PlannerEntry[] {
+export function createPlannerEntries(jobs: ScheduleJob[]): PlannerEntry[] {
   const entries: PlannerEntry[] = [];
 
   for (const job of jobs) {
@@ -135,6 +136,16 @@ function createPlannerEntries(jobs: ScheduleJob[]): PlannerEntry[] {
         endDate: item.scheduledDate,
         job,
         item,
+      });
+    }
+
+    for (const productionItem of job.productionPlanItems ?? []) {
+      entries.push({
+        key: productionItem.occurrenceKey,
+        startDate: productionItem.plannedDate,
+        endDate: productionItem.plannedDate,
+        job,
+        productionItem,
       });
     }
   }
@@ -491,6 +502,7 @@ export function JobsPlanner({
   onLoaded,
   refreshKey,
   simple = false,
+  focusRequest,
 }: {
   businessId?: number;
   allJobs: Job[];
@@ -501,6 +513,7 @@ export function JobsPlanner({
   onLoaded: (jobs: ScheduleJob[]) => void;
   refreshKey: number;
   simple?: boolean;
+  focusRequest?: { date: string; jobId: number; token: number } | null;
 }) {
   const today = localDateString();
   const [schedule, setSchedule] = useState<{ jobs: ScheduleJob[] } | null>(null);
@@ -521,6 +534,13 @@ export function JobsPlanner({
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [presenceError, setPresenceError] = useState(false);
   const requestEnd = addScheduleDays(today, 180);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    setView("week");
+    setCursor(focusRequest.date);
+    setSelectedDate(focusRequest.date);
+  }, [focusRequest?.token]);
   const updatePresenceSnapshot = useCallback((nextSnapshot: JobPresenceSnapshot) => {
     setPresenceSnapshots(current => ({
       ...current,
@@ -720,6 +740,18 @@ export function JobsPlanner({
     scheduleJobs.filter(job => job.planningState === "waiting"),
   [scheduleJobs]);
 
+  const productionPlanSummary = useMemo(() => {
+    let unscheduledComponents = 0;
+    let overflowWarnings = 0;
+    let unavailableJobs = 0;
+    for (const job of scheduleJobs) {
+      unscheduledComponents += job.unscheduledProductionComponents?.length ?? 0;
+      overflowWarnings += job.productionPlanWarnings?.length ?? 0;
+      if (job.productionPlanStatus === "unavailable") unavailableJobs += 1;
+    }
+    return { unscheduledComponents, overflowWarnings, unavailableJobs };
+  }, [scheduleJobs]);
+
   const workload = useMemo(() => {
     const weekStart = weekDates[0];
     const weekEnd = weekDates[6];
@@ -763,10 +795,13 @@ export function JobsPlanner({
 
   function renderEntry(entry: PlannerEntry, compact = false) {
     const isChecklist = Boolean(entry.item);
+    const isProduction = Boolean(entry.productionItem);
     const progress = checklistSummaries[entry.job.id]?.overallPercent;
     const stage = getPlannerStage(entry.job, entry.item);
     const jobType = formatLabel(entry.job.jobType);
-    const secondaryLabel = isChecklist
+    const secondaryLabel = isProduction
+      ? `Planned · ${entry.productionItem?.componentLabel}`
+      : isChecklist
       ? entry.item?.title
       : jobType && jobType !== stage
         ? `${jobType} · ${stage}`
@@ -776,13 +811,14 @@ export function JobsPlanner({
     const sourceJob = baseJobsById.get(entry.job.id) ?? entry.job;
     const blocker = getBlocker(sourceJob);
     const presenceSnapshot = presenceSnapshots[entry.job.id];
-    const presenceState = isChecklist ? null : todayPresenceState(presenceSnapshot, today);
+    const presenceState = isChecklist || isProduction ? null : todayPresenceState(presenceSnapshot, today);
+    const isFocused = focusRequest?.jobId === entry.job.id;
     return (
       <div key={entry.key} className="min-w-0">
         <div
           className={`group flex min-w-0 items-stretch overflow-hidden rounded-xl border bg-background shadow-sm transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md ${
-            isChecklist ? "border-blue-200" : "border-border"
-          } ${compact ? "rounded-lg" : ""}`}
+            isProduction ? "border-emerald-200 bg-emerald-50/30" : isChecklist ? "border-blue-200" : "border-border"
+          } ${isFocused ? "ring-2 ring-amber-400 ring-offset-1" : ""} ${compact ? "rounded-lg" : ""}`}
         >
           <button
             type="button"
@@ -790,7 +826,7 @@ export function JobsPlanner({
             className={`min-w-0 flex-1 text-left ${compact ? "px-2 py-1.5" : "px-3 py-2.5"}`}
           >
             <span className="flex min-w-0 items-center gap-2">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${isChecklist ? "bg-blue-500" : "bg-amber-500"}`} />
+              <span className={`h-2 w-2 shrink-0 rounded-full ${isProduction ? "bg-emerald-500" : isChecklist ? "bg-blue-500" : "bg-amber-500"}`} />
               <span className="min-w-0 truncate text-sm font-bold text-foreground">{entry.job.title}</span>
             </span>
             <span className={`mt-1 block truncate text-xs text-muted-foreground ${compact ? "text-[11px]" : ""}`}>
@@ -798,7 +834,10 @@ export function JobsPlanner({
             </span>
             {!compact && (
               <span className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-foreground/70">
-                {progress != null && <span>· {Math.round(progress)}% complete</span>}
+                {isProduction && entry.productionItem && <span>· {entry.productionItem.status.replace(/_/g, " ")}</span>}
+                {isProduction && entry.productionItem && <span>· {entry.productionItem.expectedDurationDays} day{entry.productionItem.expectedDurationDays === 1 ? "" : "s"}</span>}
+                {isProduction && entry.productionItem?.isOverflow && <span className="font-bold text-orange-700">· past job end</span>}
+                {!isProduction && progress != null && <span>· {Math.round(progress)}% complete</span>}
                 {entry.startDate !== entry.endDate && <span>· {rangeLabel(entry)}</span>}
               </span>
             )}
@@ -816,7 +855,7 @@ export function JobsPlanner({
               </span>
             )}
           </button>
-          {!isChecklist && (
+          {!isChecklist && !isProduction && (
             <div className="flex shrink-0 items-stretch">
               {presenceState && (
                 <span
@@ -853,7 +892,7 @@ export function JobsPlanner({
             </button>
           )}
         </div>
-        {!isChecklist && presenceJobId === entry.job.id && (
+        {!isChecklist && !isProduction && presenceJobId === entry.job.id && (
           <ActiveJobPresence
             job={entry.job}
             snapshot={presenceSnapshot ?? null}
@@ -1062,7 +1101,7 @@ export function JobsPlanner({
                       <span className={`text-xs font-bold ${date === today ? "text-amber-700" : "text-foreground"}`}>{scheduleDate(date).getDate()}</span>
                       {dateEntries.length > 0 && (
                         <span className="mt-3 flex flex-wrap gap-1">
-                          {dateEntries.slice(0, 5).map(entry => <span key={`${entry.key}-${date}`} className={`h-2 w-2 rounded-full ${entry.item ? "bg-blue-500" : "bg-amber-500"}`} title={entry.job.title} />)}
+                          {dateEntries.slice(0, 5).map(entry => <span key={`${entry.key}-${date}`} className={`h-2 w-2 rounded-full ${entry.productionItem ? "bg-emerald-500" : entry.item ? "bg-blue-500" : "bg-amber-500"}`} title={entry.productionItem ? `Planned: ${entry.productionItem.componentLabel}` : entry.job.title} />)}
                           {dateEntries.length > 5 && <span className="text-[10px] font-bold text-muted-foreground">+{dateEntries.length - 5}</span>}
                         </span>
                       )}
@@ -1088,6 +1127,32 @@ export function JobsPlanner({
           </>
         )}
       </div>
+
+      {!loading && !error && (
+        <div className="border-t border-border bg-emerald-50/40 px-4 py-3 text-xs sm:px-7" data-testid="production-plan-support">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="font-bold uppercase tracking-[0.12em] text-emerald-800">Planned production</span>
+            <span className="text-emerald-900">
+              Dates are derived from the job start date and component durations. They are not recorded work.
+            </span>
+            {productionPlanSummary.unscheduledComponents > 0 && (
+              <span className="font-semibold text-amber-800">
+                {productionPlanSummary.unscheduledComponents} component{productionPlanSummary.unscheduledComponents === 1 ? "" : "s"} need planning inputs
+              </span>
+            )}
+            {productionPlanSummary.overflowWarnings > 0 && (
+              <span className="font-semibold text-orange-800">
+                {productionPlanSummary.overflowWarnings} job date overflow warning{productionPlanSummary.overflowWarnings === 1 ? "" : "s"}
+              </span>
+            )}
+            {productionPlanSummary.unavailableJobs > 0 && (
+              <span className="font-semibold text-red-700">
+                Planning unavailable for {productionPlanSummary.unavailableJobs} job{productionPlanSummary.unavailableJobs === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {!simple && !loading && !error && (
         <ReadyToStartArea

@@ -146,10 +146,47 @@ type ScheduleItem = {
   sectionName: string | null;
 };
 
+type ScheduleProductionItem = {
+  occurrenceKey: string;
+  componentInstanceKey: string;
+  componentLabel: string;
+  componentKey: string;
+  variant: string | null;
+  status: ProductionComponentStatus;
+  expectedDurationDays: number;
+  plannedDate: string;
+  plannedStartDate: string;
+  plannedEndDate: string;
+  isOverflow: boolean;
+};
+
+type UnscheduledProductionComponent = {
+  componentInstanceKey: string;
+  componentLabel: string;
+  componentKey: string;
+  variant: string | null;
+  status: ProductionComponentStatus;
+  expectedDurationDays: number | null;
+  reason: "missing_job_start_date" | "missing_duration" | "invalid_duration";
+};
+
+type ProductionPlanWarning = {
+  type: "end_date_overflow";
+  componentInstanceKey: string;
+  plannedStartDate: string;
+  plannedEndDate: string;
+  jobEndDate: string;
+};
+
 export type ScheduleJob = Job & {
   checklistItems: ScheduleItem[];
   unscheduledChecklistItems: ScheduleItem[];
   productionComponents?: ProductionComponent[];
+  productionPlanStatus?: "ready" | "partial" | "unavailable";
+  productionPlanUnavailableReason?: "component_data_unavailable" | null;
+  productionPlanItems?: ScheduleProductionItem[];
+  unscheduledProductionComponents?: UnscheduledProductionComponent[];
+  productionPlanWarnings?: ProductionPlanWarning[];
   activeReadinessCondition?: ReadinessBlocker | null;
   queueOrder?: number;
 };
@@ -6055,6 +6092,7 @@ function JobCard({
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
   paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId, workspaceTab,
+  onViewSchedule,
 }: {
   job: Job;
   onEdit: (job: Job, focus?: JobPaymentFocus) => void;
@@ -6088,6 +6126,7 @@ function JobCard({
   onPaymentSummaryChanged?: () => void;
   businessId?: number;
   workspaceTab?: "job" | "schedule" | "overview";
+  onViewSchedule?: () => void;
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -6719,7 +6758,12 @@ function JobCard({
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Production progress</p>
-                  <button type="button" onClick={() => setPhasesPanelOpen(true)} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Details</button>
+                  <div className="flex items-center gap-1">
+                    {onViewSchedule && (
+                      <button type="button" onClick={onViewSchedule} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">View on Schedule</button>
+                    )}
+                    <button type="button" onClick={() => setPhasesPanelOpen(true)} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Details</button>
+                  </div>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-amber-100">
                   <div
@@ -6730,6 +6774,17 @@ function JobCard({
                 <p className="mt-2 text-xs text-amber-900">
                   {productionComponents.filter(component => component.status === "completed").length} of {productionComponents.length} components complete
                 </p>
+                {scheduleJob && (
+                  <p className="mt-1 text-xs text-amber-800">
+                    {scheduleJob.productionPlanStatus === "unavailable"
+                      ? "Planned dates are unavailable until component data loads."
+                      : scheduleJob.productionPlanStatus === "partial"
+                        ? "Some components need a start date or duration before they can be planned."
+                        : scheduleJob.productionPlanItems?.length
+                          ? "Planned component work is on the Schedule."
+                          : "No planned component dates yet."}
+                  </p>
+                )}
               </div>
             )}
           </section>
@@ -9697,6 +9752,7 @@ export default function Jobs() {
   const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
   const [scheduleJobsById, setScheduleJobsById] = useState<Map<number, ScheduleJob>>(new Map());
   const [scheduleRefreshKey] = useState(0);
+  const [scheduleFocus, setScheduleFocus] = useState<{ date: string; jobId: number; token: number } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number; invoices: number } | null>(null);
@@ -10275,7 +10331,8 @@ export default function Jobs() {
         checklistSummary={checklistSummaries[job.id] ?? null}
         subcontractorOptions={subcontractors}
         productionServiceTypes={allProductionServiceTypes}
-        scheduleJob={scheduleJobsById.get(job.id)}
+         scheduleJob={scheduleJobsById.get(job.id)}
+         onViewSchedule={() => openJobSchedule(job)}
         onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined}
       />
     );
@@ -10312,6 +10369,23 @@ export default function Jobs() {
   function closeJobWorkspace() {
     setSelectedJobId(null);
     setWorkspaceTab("job");
+  }
+
+  function openJobSchedule(job: Job) {
+    const scheduleJob = scheduleJobsById.get(job.id);
+    const plannedStartDate = scheduleJob?.productionPlanItems?.find(item =>
+      item.plannedDate === item.plannedStartDate
+    )?.plannedStartDate
+      ?? scheduleJob?.productionPlanItems?.[0]?.plannedStartDate
+      ?? localDateString();
+    setSelectedJobId(null);
+    setWorkspaceTab("job");
+    setScheduleFocus(current => ({
+      date: plannedStartDate,
+      jobId: job.id,
+      token: (current?.token ?? 0) + 1,
+    }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function openEditJob(job: Job, focus?: JobPaymentFocus) {
@@ -10741,6 +10815,7 @@ export default function Jobs() {
         onOpenChecklist={setScheduleChecklistJob}
          onOpenJob={openJobWorkspace}
          onOpenPlanning={job => setPlanningJob(job)}
+         focusRequest={scheduleFocus}
          checklistSummaries={checklistSummaries}
         onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
         refreshKey={scheduleRefreshKey}

@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   missingSlots: [] as number[],
   scope: { id: 1, slug: "general_contracting" } as { id: number; slug: string } | null,
   updatePayloads: [] as any[],
+  productionComponentsByJob: new Map<number, any[]>(),
+  productionComponentErrors: new Set<number>(),
 }));
 
 vi.mock("@workspace/db", () => {
@@ -53,11 +55,22 @@ vi.mock("../lib/business-scope.js", () => ({
 
 vi.mock("./guards", () => ({ getRequestUser: () => ({ id: "user_1", firstName: "Test", lastName: "User" }) }));
 vi.mock("../lib/job-production-components.js", () => ({
-  getJobProductionComponents: async (job: { id: number }) => [{
-    componentInstanceKey: `component:${job.id}`,
-    componentLabel: "Siding",
-    variant: null,
-  }],
+  getJobProductionComponents: async (job: { id: number }) => {
+    if (h.productionComponentErrors.has(job.id)) throw new Error("component reader failed");
+    return h.productionComponentsByJob.get(job.id) ?? [{
+      id: job.id * 10,
+      jobId: job.id,
+      businessId: 1,
+      componentKey: "siding",
+      componentInstanceKey: `component:${job.id}`,
+      componentLabel: "Siding",
+      variant: null,
+      status: "planned",
+      expectedDurationDays: 1,
+      supersededAt: null,
+      persisted: true,
+    }];
+  },
 }));
 vi.mock("../lib/objectStorage.js", () => ({ ObjectStorageService: class {} }));
 
@@ -72,6 +85,8 @@ beforeEach(() => {
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.updatePayloads.length = 0;
+  h.productionComponentsByJob.clear();
+  h.productionComponentErrors.clear();
   h.scope = { id: 1, slug: "general_contracting" };
 });
 
@@ -221,6 +236,104 @@ describe("GET /jobs/schedule-overview", () => {
     expect(response.body.jobs).toHaveLength(1);
     expect(response.body.jobs[0].checklistItems.map((item: any) => item.id)).toEqual([404]);
     expect(response.body.jobs[0].unscheduledChecklistItems).toEqual([]);
+  });
+
+  it("adds a sequential production plan without changing job dates or checklist events", async () => {
+    h.selectQueue.push([{
+      id: 9,
+      title: "Planned production",
+      status: "scheduled",
+      businessId: 1,
+      businessLine: "general_contracting",
+      startDate: "2026-08-27",
+      endDate: "2026-08-29",
+      closedAt: null,
+    }]);
+    h.selectQueue.push([]);
+    h.productionComponentsByJob.set(9, [
+      {
+        id: 91,
+        jobId: 9,
+        businessId: 1,
+        componentKey: "interior_finish",
+        componentInstanceKey: "interior",
+        componentLabel: "Interior Finish",
+        variant: "vog",
+        status: "in_progress",
+        expectedDurationDays: 2,
+        supersededAt: null,
+        persisted: true,
+      },
+      {
+        id: 92,
+        jobId: 9,
+        businessId: 1,
+        componentKey: "siding",
+        componentInstanceKey: "siding",
+        componentLabel: "Siding",
+        variant: null,
+        status: "in_progress",
+        expectedDurationDays: 2,
+        supersededAt: null,
+        persisted: true,
+      },
+    ]);
+
+    const response = await request(app)
+      .get("/jobs/schedule-overview?from=2026-08-28&to=2026-08-29");
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs[0].startDate).toBe("2026-08-27");
+    expect(response.body.jobs[0].endDate).toBe("2026-08-29");
+    expect(response.body.jobs[0].productionPlanStatus).toBe("ready");
+    expect(response.body.jobs[0].productionPlanItems.map((item: any) => [
+      item.componentInstanceKey,
+      item.plannedDate,
+      item.isOverflow,
+    ])).toEqual([
+      ["interior", "2026-08-28", false],
+      ["siding", "2026-08-29", false],
+    ]);
+    expect(response.body.jobs[0].checklistItems).toEqual([]);
+  });
+
+  it("keeps checklist scheduling available when production component data is unavailable", async () => {
+    h.selectQueue.push([{
+      id: 11,
+      title: "Checklist remains visible",
+      status: "scheduled",
+      businessId: 1,
+      businessLine: "general_contracting",
+      startDate: "2026-08-27",
+      endDate: "2026-08-29",
+      closedAt: null,
+    }]);
+    h.selectQueue.push([{ id: 110, jobId: 11 }]);
+    h.selectQueue.push([{
+      item: {
+        id: 111,
+        jobChecklistId: 110,
+        title: "Confirm access",
+        completed: false,
+        skipped: false,
+        scheduledDate: "2026-08-28",
+        assignedSubcontractorId: null,
+      },
+      sectionName: "Prep",
+      sectionActive: true,
+      assignedSubcontractorName: null,
+    }]);
+    h.productionComponentErrors.add(11);
+
+    const response = await request(app)
+      .get("/jobs/schedule-overview?from=2026-08-27&to=2026-08-29");
+
+    expect(response.status).toBe(200);
+    expect(response.body.jobs[0].checklistItems.map((item: any) => item.id)).toEqual([111]);
+    expect(response.body.jobs[0].productionPlanStatus).toBe("unavailable");
+    expect(response.body.jobs[0].productionPlanUnavailableReason).toBe("component_data_unavailable");
+    expect(response.body.jobs[0].productionPlanItems).toEqual([]);
+    expect(response.body.jobs[0].unscheduledProductionComponents).toEqual([]);
   });
 });
 

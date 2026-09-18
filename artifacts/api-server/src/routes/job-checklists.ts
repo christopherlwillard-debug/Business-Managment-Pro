@@ -28,6 +28,10 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 import { getJobProductionComponents } from "../lib/job-production-components.js";
+import {
+  deriveJobProductionPlan,
+  unavailableJobProductionPlan,
+} from "../lib/job-production-schedule.js";
 import { isChecklistPdfAssetError } from "../lib/generateChecklistPdf.js";
 
 const photoUpload = multer({
@@ -340,8 +344,7 @@ router.get("/ready-to-start", async (req, res) => {
 });
 
 // ── GET /schedule-overview?from=YYYY-MM-DD&to=YYYY-MM-DD ───────────────────────
-// One read for the Jobs schedule. It intentionally uses job dates and checklist
-// dates only; Route Planner stops are a separate system.
+// One read for the Jobs schedule. Route Planner stops are a separate system.
 router.get("/schedule-overview", async (req, res) => {
   try {
     const from = typeof req.query.from === "string" ? req.query.from : "";
@@ -398,12 +401,37 @@ router.get("/schedule-overview", async (req, res) => {
       target.set(jobId, list);
     }
 
+    const productionPlans = new Map<number, ReturnType<typeof deriveJobProductionPlan> | ReturnType<typeof unavailableJobProductionPlan>>();
+    await Promise.all(scopedJobs.map(async job => {
+      try {
+        const productionComponents = await getJobProductionComponents(job);
+        productionPlans.set(job.id, deriveJobProductionPlan({
+          startDate: job.startDate,
+          endDate: job.endDate,
+          from,
+          to,
+          components: productionComponents,
+        }));
+      } catch (error) {
+        console.error(`[schedule-overview] production plan unavailable for job ${job.id}:`, error);
+        productionPlans.set(job.id, unavailableJobProductionPlan());
+      }
+    }));
+
     const jobs = scopedJobs
-      .map(job => ({
-        ...job,
-        checklistItems: scheduleByJob.get(job.id) ?? [],
-        unscheduledChecklistItems: unscheduledByJob.get(job.id) ?? [],
-      }));
+      .map(job => {
+        const productionPlan = productionPlans.get(job.id) ?? unavailableJobProductionPlan();
+        return {
+          ...job,
+          checklistItems: scheduleByJob.get(job.id) ?? [],
+          unscheduledChecklistItems: unscheduledByJob.get(job.id) ?? [],
+          productionPlanStatus: productionPlan.status,
+          productionPlanUnavailableReason: productionPlan.unavailableReason,
+          productionPlanItems: productionPlan.items,
+          unscheduledProductionComponents: productionPlan.unscheduledComponents,
+          productionPlanWarnings: productionPlan.warnings,
+        };
+      });
 
     res.json({ from, to, jobs });
   } catch (err) {
