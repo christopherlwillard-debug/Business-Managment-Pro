@@ -1,7 +1,8 @@
 import { Router, Request, Response } from "express";
 import { db, mfhManufacturersTable, mfhModelsTable, jobsTable, clientsTable, subPaymentRecordsTable, productionServiceTypesTable, expensesTable } from "@workspace/db";
-import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, businessesTable } from "@workspace/db/schema";
+import { jobSubcontractorsTable, invoicesTable, clientBillingProfilesTable, businessesTable, jobDailyPresenceTable } from "@workspace/db/schema";
 import { isNull, and, inArray, sql, ilike, eq, ne } from "drizzle-orm";
+import { applicationDate } from "../lib/production-presence.js";
 
 const router = Router();
 
@@ -15,6 +16,129 @@ const router = Router();
 //   • Diagnostic tools with ongoing value
 //   • Bulk-cleanup tools with safety guards that may be needed again
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Clear future presence rows that were incorrectly recorded as Here.
+//
+// This is deliberately narrow and re-runnable: it only touches the explicitly
+// supplied future dates for one job, and only when each row is a plain manual
+// presence record with no work timestamps or not-here details. It never
+// changes a row that contains evidence of actual work.
+router.post("/clear-future-presence", async (req: Request, res: Response) => {
+  try {
+    const {
+      jobId,
+      dates,
+      dryRun = true,
+      confirm,
+    } = (req.body ?? {}) as {
+      jobId?: number;
+      dates?: string[];
+      dryRun?: boolean;
+      confirm?: string;
+    };
+
+    if (typeof jobId !== "number" || !Number.isInteger(jobId) || jobId <= 0) {
+      return res.status(400).json({ error: "jobId must be a positive integer" });
+    }
+    if (!Array.isArray(dates) || dates.length === 0 || dates.some(date =>
+      typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date),
+    )) {
+      return res.status(400).json({ error: "dates must be a non-empty array of YYYY-MM-DD values" });
+    }
+    const uniqueDates = [...new Set(dates)].sort();
+    const today = applicationDate();
+    if (uniqueDates.some(date => date <= today)) {
+      return res.status(400).json({ error: `All dates must be after the application date (${today})` });
+    }
+    if (dryRun === false && confirm !== "CLEAR_FUTURE_PRESENCE") {
+      return res.status(400).json({ error: "Execution requires confirm: CLEAR_FUTURE_PRESENCE" });
+    }
+
+    const [job] = await db
+      .select({ id: jobsTable.id, title: jobsTable.title })
+      .from(jobsTable)
+      .where(eq(jobsTable.id, jobId))
+      .limit(1);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const rows = await db
+      .select({
+        id: jobDailyPresenceTable.id,
+        jobId: jobDailyPresenceTable.jobId,
+        date: jobDailyPresenceTable.date,
+        state: jobDailyPresenceTable.state,
+        source: jobDailyPresenceTable.source,
+        provenance: jobDailyPresenceTable.provenance,
+        workStartedAt: jobDailyPresenceTable.workStartedAt,
+        workEndedAt: jobDailyPresenceTable.workEndedAt,
+        notHereReason: jobDailyPresenceTable.notHereReason,
+        notes: jobDailyPresenceTable.notes,
+      })
+      .from(jobDailyPresenceTable)
+      .where(and(
+        eq(jobDailyPresenceTable.jobId, jobId),
+        inArray(jobDailyPresenceTable.date, uniqueDates),
+      ));
+
+    const eligible = rows.filter(row =>
+      row.state === "here" &&
+      row.source === "manual_presence" &&
+      row.provenance === "confirmed" &&
+      row.workStartedAt == null &&
+      row.workEndedAt == null &&
+      row.notHereReason == null &&
+      row.notes == null,
+    );
+    const blocked = rows
+      .filter(row => !eligible.some(candidate => candidate.id === row.id))
+      .map(row => ({
+        id: row.id,
+        date: row.date,
+        state: row.state,
+        source: row.source,
+        provenance: row.provenance,
+        hasWorkTimestamps: row.workStartedAt != null || row.workEndedAt != null,
+        hasDetails: row.notHereReason != null || row.notes != null,
+      }));
+    const missingDates = uniqueDates.filter(date => !rows.some(row => row.date === date));
+    const plan = {
+      job,
+      today,
+      requestedDates: uniqueDates,
+      eligible: eligible.map(row => ({ id: row.id, date: row.date })),
+      blocked,
+      missingDates,
+    };
+
+    if (dryRun !== false) {
+      return res.json({ ok: true, dryRun: true, plan });
+    }
+
+    await db.transaction(async tx => {
+      if (eligible.length === 0) return;
+      await tx.update(jobDailyPresenceTable)
+        .set({
+          state: "unrecorded",
+          notHereReason: null,
+          notes: null,
+          updatedAt: new Date(),
+          updatedByUserId: null,
+          updatedByName: "Production repair: future presence cleared",
+        })
+        .where(inArray(jobDailyPresenceTable.id, eligible.map(row => row.id)));
+    });
+
+    res.json({
+      ok: true,
+      dryRun: false,
+      updated: eligible.map(row => ({ id: row.id, date: row.date })),
+      plan,
+    });
+  } catch (err) {
+    console.error("[admin/migrations] clear-future-presence failed:", err);
+    res.status(500).json({ error: "Migration failed", detail: String(err) });
+  }
+});
 
 // Audit legacy ownership before making any changes. Execution is deliberately
 // opt-in and may only normalize records deterministically owned by the
