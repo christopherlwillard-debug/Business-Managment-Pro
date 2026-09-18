@@ -60,11 +60,13 @@ interface TextStyleToolbarProps {
   dark?: boolean;
 }
 
-function Btn({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title?: string }) {
+function Btn({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title: string }) {
   return (
     <button
       type="button"
       title={title}
+      aria-label={title}
+      aria-pressed={active}
       onClick={onClick}
       className={`px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors ${
         active
@@ -85,9 +87,16 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
   const bg = dark ? "bg-black/50 backdrop-blur-sm border-white/10" : "bg-gray-800/90 border-gray-700";
 
   return (
-    <div className={`flex flex-wrap items-center gap-1 px-2 py-1.5 rounded-lg border text-white ${bg}`} onClick={e => e.stopPropagation()}>
+    <div
+      className={`flex flex-wrap items-center gap-1 px-2 py-1.5 rounded-lg border text-white ${bg}`}
+      role="toolbar"
+      aria-label="Text style formatting"
+      aria-orientation="horizontal"
+      onClick={e => e.stopPropagation()}
+    >
       <select
         value={style.fontFamily ?? ""}
+        aria-label="Font family"
         onChange={e => patch({ fontFamily: e.target.value || undefined })}
         className="text-[10px] bg-gray-800 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[90px]"
       >
@@ -101,6 +110,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
 
       <select
         value={style.fontSize ?? ""}
+        aria-label="Font size"
         onChange={e => patch({ fontSize: e.target.value || undefined })}
         className="text-[10px] bg-gray-800 text-white border-0 rounded px-1 py-0.5 outline-none cursor-pointer max-w-[60px]"
       >
@@ -114,7 +124,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
 
       <div className="flex gap-0.5">
         {WEIGHT_OPTIONS.map(w => (
-          <Btn key={w.value} active={style.fontWeight === w.value} onClick={() => patch({ fontWeight: w.value === style.fontWeight ? undefined : w.value })}>
+          <Btn key={w.value} title={w.label} active={style.fontWeight === w.value} onClick={() => patch({ fontWeight: w.value === style.fontWeight ? undefined : w.value })}>
             {w.label}
           </Btn>
         ))}
@@ -127,6 +137,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
         <input
           type="color"
           value={style.color ?? "#ffffff"}
+          aria-label="Text color"
           onChange={e => patch({ color: e.target.value })}
           className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent p-0"
         />
@@ -136,6 +147,7 @@ export function TextStyleToolbar({ style = {}, onChange, dark = true }: TextStyl
             onClick={() => patch({ color: undefined })}
             className="text-[9px] text-white/50 hover:text-white/90"
             title="Reset color"
+            aria-label="Reset text color"
           >✕</button>
         )}
       </label>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { Bold, Italic, Link2, List, ListOrdered, Underline } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 
@@ -139,6 +139,7 @@ function editableHtml(value: string): string {
 interface RichTextFieldProps {
   value: string;
   onChange: (value: string) => void;
+  fieldId: string;
   placeholder: string;
   className: string;
   style?: CSSProperties;
@@ -149,6 +150,7 @@ interface RichTextFieldProps {
 function RichTextField({
   value,
   onChange,
+  fieldId,
   placeholder,
   className,
   style,
@@ -156,10 +158,27 @@ function RichTextField({
   singleLine = false,
 }: RichTextFieldProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const savedRangeRef = useRef<Range | null>(null);
   const [hasSelection, setHasSelection] = useState(false);
   const [linkMode, setLinkMode] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [activeCommands, setActiveCommands] = useState<Record<string, boolean>>({});
+  const instructionId = `${fieldId}-instructions`;
+
+  function readCommandState() {
+    const commands = ["bold", "italic", "underline", "insertUnorderedList", "insertOrderedList"];
+    const next: Record<string, boolean> = {};
+    for (const command of commands) {
+      try {
+        next[command] = typeof document.queryCommandState === "function"
+          && document.queryCommandState(command);
+      } catch {
+        next[command] = false;
+      }
+    }
+    return next;
+  }
 
   function selectionBelongsToEditor(selection: Selection | null): boolean {
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed || !editorRef.current) {
@@ -174,7 +193,8 @@ function RichTextField({
     if (selectionBelongsToEditor(selection)) {
       savedRangeRef.current = selection!.getRangeAt(0).cloneRange();
       setHasSelection(true);
-    } else if (!linkMode) {
+      setActiveCommands(readCommandState());
+    } else if (!linkMode && !toolbarRef.current?.contains(document.activeElement)) {
       setHasSelection(false);
     }
   }
@@ -220,6 +240,17 @@ function RichTextField({
     setLinkUrl("");
   }
 
+  function cancelLinkEditor() {
+    restoreSelection();
+    setLinkMode(false);
+    setLinkUrl("");
+  }
+
+  function focusLastToolbarControl() {
+    const controls = toolbarRef.current?.querySelectorAll<HTMLElement>("[data-rich-text-control]");
+    controls?.[controls.length - 1]?.focus();
+  }
+
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -247,6 +278,11 @@ function RichTextField({
   function handleKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (singleLine && event.key === "Enter") {
       event.preventDefault();
+      return;
+    }
+    if (event.key === "Tab" && event.shiftKey && hasSelection && toolbarRef.current) {
+      event.preventDefault();
+      focusLastToolbarControl();
     }
   }
 
@@ -259,9 +295,13 @@ function RichTextField({
     <div className="relative">
       {hasSelection && (
         <div
+          ref={toolbarRef}
           className="absolute bottom-full left-0 z-30 mb-1 flex items-center gap-0.5 rounded-lg border border-border bg-card/95 p-1 shadow-lg backdrop-blur-sm"
           role="toolbar"
-          aria-label="Text formatting"
+          aria-label={`${placeholder} formatting toolbar`}
+          aria-controls={fieldId}
+          aria-describedby={instructionId}
+          aria-orientation="horizontal"
           data-rich-text-toolbar
           onMouseDown={event => {
             // Buttons prevent their own default action so the selection stays
@@ -288,22 +328,22 @@ function RichTextField({
                 onKeyDown={event => {
                   if (event.key === "Escape") {
                     event.preventDefault();
-                    setLinkMode(false);
+                    cancelLinkEditor();
                   }
                 }}
                 placeholder="https://example.com"
                 aria-label="Link URL"
+                data-rich-text-control
                 className="h-6 w-44 rounded border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
               />
-              <button type="submit" className="rounded px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/10">
+              <button type="submit" aria-label="Apply link" data-rich-text-control className="rounded px-2 py-1 text-[10px] font-semibold text-primary hover:bg-primary/10">
                 Apply
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setLinkMode(false);
-                  setLinkUrl("");
-                }}
+                onClick={cancelLinkEditor}
+                aria-label="Cancel link"
+                data-rich-text-control
                 className="rounded px-1.5 py-1 text-[10px] text-muted-foreground hover:bg-muted"
               >
                 Cancel
@@ -311,19 +351,19 @@ function RichTextField({
             </form>
           ) : (
             <>
-              <button type="button" title="Bold" aria-label="Bold" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("bold"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Bold" aria-label="Bold" aria-pressed={activeCommands.bold} data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={() => runCommand("bold")} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <Bold className="h-3.5 w-3.5" />
               </button>
-              <button type="button" title="Italic" aria-label="Italic" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("italic"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Italic" aria-label="Italic" aria-pressed={activeCommands.italic} data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={() => runCommand("italic")} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <Italic className="h-3.5 w-3.5" />
               </button>
-              <button type="button" title="Underline" aria-label="Underline" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("underline"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Underline" aria-label="Underline" aria-pressed={activeCommands.underline} data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={() => runCommand("underline")} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <Underline className="h-3.5 w-3.5" />
               </button>
-              <button type="button" title="Bulleted list" aria-label="Bulleted list" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("insertUnorderedList"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Bulleted list" aria-label="Bulleted list" aria-pressed={activeCommands.insertUnorderedList} data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={() => runCommand("insertUnorderedList")} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <List className="h-3.5 w-3.5" />
               </button>
-              <button type="button" title="Numbered list" aria-label="Numbered list" onMouseDown={event => { handleToolbarMouseDown(event); runCommand("insertOrderedList"); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Numbered list" aria-label="Numbered list" aria-pressed={activeCommands.insertOrderedList} data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={() => runCommand("insertOrderedList")} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <ListOrdered className="h-3.5 w-3.5" />
               </button>
               <label title="Text color" aria-label="Text color" className="relative cursor-pointer rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -331,24 +371,32 @@ function RichTextField({
                 <input
                   type="color"
                   defaultValue="#111827"
+                  aria-label="Text color"
+                  data-rich-text-control
                   className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                   onChange={event => runCommand("foreColor", event.target.value)}
                 />
               </label>
-              <button type="button" title="Add link" aria-label="Add link" onMouseDown={event => { handleToolbarMouseDown(event); openLinkEditor(); }} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <button type="button" title="Add link" aria-label="Add link" data-rich-text-control onMouseDown={handleToolbarMouseDown} onClick={openLinkEditor} className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground">
                 <Link2 className="h-3.5 w-3.5" />
               </button>
             </>
           )}
         </div>
       )}
+      <span id={instructionId} className="sr-only">
+        {singleLine ? `${placeholder}. Single-line editable text.` : `${placeholder}. Multi-line editable text.`}
+        {" "}Select text to show formatting controls. Press Shift+Tab to move to the formatting toolbar, then use Tab to move between controls.
+      </span>
       <div
         ref={editorRef}
+        id={fieldId}
         contentEditable
         suppressContentEditableWarning
         role="textbox"
         aria-multiline={!singleLine}
         aria-label={placeholder}
+        aria-describedby={instructionId}
         data-rich-text-field
         className={`${className} ${!value ? "empty:before:text-muted-foreground" : ""}`}
         style={{ ...style, minHeight, whiteSpace: "pre-wrap" }}
@@ -469,6 +517,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
         <RichTextField
           value={content.heading ?? ""}
           onChange={heading => update({ heading })}
+          fieldId="text-block-heading"
           placeholder="Heading (optional)"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xl font-bold text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
           singleLine
@@ -477,6 +526,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
         <RichTextField
           value={content.subheading ?? ""}
           onChange={subheading => update({ subheading })}
+          fieldId="text-block-subheading"
           placeholder="Subheading (optional)"
           className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
           minHeight="36px"
@@ -486,6 +536,7 @@ export function TextSection({ content, settings, isEditing, onChange, blockStyle
         <RichTextField
           value={content.body}
           onChange={body => update({ body })}
+          fieldId="text-block-body"
           placeholder="Write your content here…"
           className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
           minHeight="144px"
