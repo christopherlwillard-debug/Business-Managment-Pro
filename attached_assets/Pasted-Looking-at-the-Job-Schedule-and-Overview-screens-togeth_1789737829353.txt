@@ -1,0 +1,50 @@
+Looking at the Job, Schedule, and Overview screens together, I see several underlying workflow/data issues that need to be addressed.
+
+Please audit these before making further visual changes:
+
+1. EXPECTED VS ACTUAL DAYS
+    Expected Days is showing 1 while the job contains multiple work items and has 5 recorded production days. Expected Days should come from the planned production/work breakdown or an explicit user-entered expected duration. It should not default to 1.
+2. WORK ITEM STATUS
+    Each work item needs its own independent status:
+    Planned / In Progress / Complete / Not Applicable.
+
+Multiple work items must be allowed to be In Progress at the same time.
+
+3. WORK STATUS VS PRODUCTION HISTORY
+    This job has recorded production days, but Interior Finish, Plumbing, and Siding are all showing Planned. Make sure production history and work-item progress aren’t disconnected.
+4. FINISH JOB
+    The Finish Job action is available while the work breakdown still shows everything as Planned. Make sure finishing a job respects the work-item state. If required work remains incomplete, either prevent completion or clearly warn the user and require confirmation.
+5. START WORK
+    The screen says “Ready to work” and allows START WORK TODAY, but the action returns:
+    “Could not start work — Failed to start work today.”
+
+Trace the actual underlying action/state/database error. Do not just change the error message.
+
+6. RESUME VS START
+    The system needs to distinguish:
+
+* First day of a job
+* Resuming an existing job
+* Recording another production day
+
+A job with existing production history should not behave exactly like a brand-new job.
+
+7. DATE VALIDATION
+    Validate production dates so actual work history represents actual recorded work. Do not allow projected/future dates to appear as “Last Work Date” unless that is explicitly intended and labeled differently.
+8. DAILY WORK HISTORY
+    The location currently displays “Here.” Replace placeholder location text with the actual job/location label when available. If GPS/location isn’t available, show a useful fallback instead of “Here.”
+9. PAYMENT SNAPSHOT
+    Audit the Customer Due, Workers Owed, Subcontractors Owed, and Owner Pay numbers to make sure they are pulling from the same authoritative job financial records and calculation logic as the financial details.
+10. OWNER PAY LABEL
+    Verify exactly what “Owner Pay” represents. It needs to remain consistent with the existing owner compensation/distribution and profit-split accounting logic. Don’t introduce a second or conflicting owner-pay calculation.
+
+MOST IMPORTANT ARCHITECTURE POINT:
+
+The JOB should be the parent record, but WORK ITEMS should have their own independent status and expected duration.
+
+The schedule should summarize:
+PLANNED → ACTUAL → CURRENT → REMAINING
+
+Please fix the underlying state/data relationships rather than creating display-only fixes.
+
+Do not redesign the whole page. Fix the behavior and data model first.
