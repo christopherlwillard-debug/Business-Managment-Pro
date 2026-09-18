@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type ScheduleItem = ScheduleJob["checklistItems"][number];
-type PlannerView = "week" | "month" | "agenda";
+type PlannerView = "today" | "week" | "month" | "agenda";
 
 type PlannerEntry = {
   key: string;
@@ -490,6 +490,7 @@ export function JobsPlanner({
   checklistSummaries,
   onLoaded,
   refreshKey,
+  simple = false,
 }: {
   businessId?: number;
   allJobs: Job[];
@@ -499,6 +500,7 @@ export function JobsPlanner({
   checklistSummaries: Record<number, ChecklistSummary>;
   onLoaded: (jobs: ScheduleJob[]) => void;
   refreshKey: number;
+  simple?: boolean;
 }) {
   const today = localDateString();
   const [schedule, setSchedule] = useState<{ jobs: ScheduleJob[] } | null>(null);
@@ -870,17 +872,17 @@ export function JobsPlanner({
       data-testid="jobs-planner"
       data-planner-view={view}
     >
-      <div className="border-b border-border bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-5 py-5 text-white sm:px-7">
+      <div className={`border-b border-border px-5 py-5 text-white sm:px-7 ${simple ? "bg-slate-900" : "bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800"}`}>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/20">
               <CalendarDays className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300">Operations planner</p>
-              <h2 className="mt-1 text-2xl font-display font-bold tracking-tight !text-white">Plan the week with confidence</h2>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-300">Schedule</p>
+              <h2 className="mt-1 text-2xl font-display font-bold tracking-tight !text-white">{simple ? "See when work is happening" : "Plan the week with confidence"}</h2>
               <p className="mt-1 max-w-xl text-sm text-slate-300">
-                {loading ? "Loading live schedule…" : error ? "Schedule unavailable" : "Real job dates and checklist work, in one clear view."}
+                {loading ? "Loading live schedule…" : error ? "Schedule unavailable" : simple ? "Open any job to work in its dedicated workspace." : "Real job dates and checklist work, in one clear view."}
               </p>
             </div>
           </div>
@@ -907,7 +909,7 @@ export function JobsPlanner({
               </button>
             </div>
             <div className="flex items-center rounded-xl border border-white/15 bg-white/10 p-1">
-              {(["week", "month", "agenda"] as const).map(option => (
+              {(["today", "week", "month", "agenda"] as const).map(option => (
                 <button
                   key={option}
                   type="button"
@@ -917,7 +919,7 @@ export function JobsPlanner({
                     view === option ? "bg-white text-slate-950 shadow-sm" : "text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  {option}
+                  {option === "today" ? "Today" : option}
                 </button>
               ))}
             </div>
@@ -938,10 +940,12 @@ export function JobsPlanner({
         </button>
         <div className="text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
-            {view === "week" ? "Week at a glance" : view === "month" ? "Monthly view" : "Upcoming agenda"}
+            {view === "today" ? "Today" : view === "week" ? "Week at a glance" : view === "month" ? "Monthly view" : "Upcoming agenda"}
           </p>
           <p className="mt-0.5 text-base font-bold text-foreground">
-            {view === "month"
+            {view === "today"
+              ? formatScheduleDate(today)
+              : view === "month"
               ? formatScheduleMonth(cursor)
               : view === "week"
                 ? `${formatScheduleDate(weekDates[0])} – ${formatScheduleDate(weekDates[6])}`
@@ -1010,14 +1014,14 @@ export function JobsPlanner({
               </div>
             </div>
           </div>
-        ) : view === "agenda" ? (
+        ) : view === "agenda" || view === "today" ? (
           agendaDates.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center rounded-2xl border border-dashed border-border bg-muted/10 px-6 text-center text-sm text-muted-foreground">
               No dated work from this point forward.
             </div>
           ) : (
             <div className="space-y-4">
-              {agendaDates.map(date => (
+              {(view === "today" ? [today] : agendaDates).map(date => (
                 <div key={date} className="grid gap-3 sm:grid-cols-[110px_minmax(0,1fr)]">
                   <div className="rounded-xl bg-muted/50 px-3 py-2 sm:bg-transparent sm:px-0">
                     <p className={`text-[11px] font-bold uppercase tracking-[0.12em] ${date === today ? "text-amber-700" : "text-muted-foreground"}`}>
@@ -1085,7 +1089,7 @@ export function JobsPlanner({
         )}
       </div>
 
-      {!loading && !error && (
+      {!simple && !loading && !error && (
         <ReadyToStartArea
           readyJobs={readyToStartJobs}
           waitingJobs={waitingToStartJobs}
@@ -1095,7 +1099,7 @@ export function JobsPlanner({
         />
       )}
 
-      {!loading && !error && (
+      {!simple && !loading && !error && (
         <div className="grid gap-3 border-t border-border bg-muted/10 p-4 sm:grid-cols-3 sm:p-5">
           <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4" data-testid="planner-unscheduled">
             <div className="flex items-start justify-between gap-3">

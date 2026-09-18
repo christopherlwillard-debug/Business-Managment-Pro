@@ -100,6 +100,7 @@ import { JobMarginCard } from "@/components/JobMarginCard";
 import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
 import { JobsPlanner } from "@/components/planner/JobsPlanner";
+import { JobPresencePanel, type JobPresenceSnapshot } from "@/components/planner/JobPresencePanel";
 import type { ReadinessBlocker } from "@/components/planner/types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -124,17 +125,7 @@ function displayStatus(status: string): "scheduled" | "completed" {
   return "scheduled";
 }
 
-type WorkdayPresenceRecord = {
-  date: string;
-  state: "unrecorded" | "here" | "not_here";
-  workStartedAt: string | null;
-  workEndedAt: string | null;
-};
-
-type WorkdaySnapshot = {
-  jobId: number;
-  records: WorkdayPresenceRecord[];
-};
+type WorkdaySnapshot = JobPresenceSnapshot;
 
 function formatWorkdayTime(value: string | null): string {
   if (!value) return "";
@@ -5961,7 +5952,98 @@ function JobAllocationDialog({ job, open, onClose, onSaved }: {
   );
 }
 
-// ─── Job Card ──────────────────────────────────────────────────────────────────
+function CompactJobRow({
+  job,
+  invoiceSummary,
+  paymentSummary,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  job: Job;
+  invoiceSummary?: (Invoice & { squarePaidAt?: string | null }) | null;
+  paymentSummary?: JobFinancialSummary;
+  onOpen: (job: Job) => void;
+  onEdit?: (job: Job) => void;
+  onDelete?: (job: Job) => void;
+}) {
+  const isClosed = job.status === "closed";
+  const isCompleted = displayStatus(job.status) === "completed";
+  const statusValue = String(job.status);
+  const isActive = statusValue === "active" || statusValue === "in_progress";
+  const statusLabel = isClosed ? "Closed" : isCompleted ? "Completed" : isActive ? "Active" : "Scheduled";
+  const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+  const amount = invoiceSummary?.total ?? paymentSummary?.payment.amountDue ?? null;
+  const paymentLabel = invoiceSummary?.status
+    ? invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)
+    : paymentSummary?.payment.status
+      ? paymentStatusLabel(paymentSummary.payment.status)
+      : "Financial status unavailable";
+
+  return (
+    <article
+      className="rounded-2xl border border-border bg-card px-4 py-4 shadow-sm transition-colors hover:border-amber-300 hover:shadow-md sm:px-5"
+      data-testid={`compact-job-row-${job.id}`}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+        <button type="button" onClick={() => onOpen(job)} className="min-w-0 flex-1 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-base font-bold text-foreground">{job.title}</h3>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+              isClosed ? "bg-slate-100 text-slate-600" : isCompleted ? "bg-emerald-100 text-emerald-700" : isActive ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
+            }`}>
+              {statusLabel}
+            </span>
+            {job.businessLine && (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold capitalize text-muted-foreground">
+                {job.businessLine.replace(/_/g, " ")}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3 sm:gap-3">
+            <span className="truncate">{job.clientName ?? "No customer assigned"}</span>
+            <span className="truncate">{location || "No location recorded"}</span>
+            <span>
+              {job.startDate
+                ? `${formatDate(job.startDate)}${job.endDate ? ` – ${formatDate(job.endDate)}` : ""}`
+                : "Dates not set"}
+            </span>
+          </div>
+        </button>
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-3 lg:border-t-0 lg:pt-0">
+          <div className="min-w-[120px]">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Amount / status</p>
+            <p className="mt-1 text-sm font-bold text-foreground">
+              {amount != null ? formatCurrency(amount) : "Unavailable"}
+            </p>
+            <p className="text-[11px] text-muted-foreground">{paymentLabel}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpen(job)}
+            className="min-h-11 rounded-xl bg-slate-900 px-4 text-xs font-bold text-white transition-colors hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+            data-testid={`open-job-${job.id}`}
+          >
+            OPEN JOB
+          </button>
+          {onEdit && (
+            <button type="button" onClick={() => onEdit(job)} className="min-h-11 rounded-xl border border-border px-3 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground" aria-label={`Edit ${job.title}`}>
+              Edit
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" onClick={() => onDelete(job)} className="min-h-11 rounded-xl border border-border px-3 text-xs font-semibold text-muted-foreground hover:border-red-200 hover:bg-red-50 hover:text-red-700" aria-label={`Delete ${job.title}`}>
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ─── Legacy detail card / workspace content ─────────────────────────────────────
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
 function JobCard({
@@ -5969,7 +6051,7 @@ function JobCard({
   invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
-  paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId,
+  paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId, workspaceTab,
 }: {
   job: Job;
   onEdit: (job: Job, focus?: JobPaymentFocus) => void;
@@ -6002,6 +6084,7 @@ function JobCard({
   paymentSummaryStatus?: "loading" | "ready" | "error";
   onPaymentSummaryChanged?: () => void;
   businessId?: number;
+  workspaceTab?: "job" | "schedule" | "overview";
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -6080,7 +6163,7 @@ function JobCard({
     queryFn: () => fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, { credentials: "include" })
       .then(response => response.ok ? response.json() as Promise<{ jobs: WorkdaySnapshot[] }> : Promise.reject(new Error("Workday state unavailable")))
       .then(data => data.jobs[0] ?? { jobId: job.id, records: [] }),
-    enabled: !isCompleted && hasJobBusinessContext,
+    enabled: hasJobBusinessContext,
     staleTime: 15_000,
   });
   const todayWorkday = workdayQuery.data?.records.find(record => record.date === today) ?? null;
@@ -6298,6 +6381,323 @@ function JobCard({
     } finally {
       setUpdatingComponentKey(null);
     }
+  }
+
+  const workspaceScheduleJob = scheduleJob ?? {
+    ...job,
+    checklistItems: [],
+    unscheduledChecklistItems: [],
+  } as ScheduleJob;
+  const workspaceTiming = workdayQuery.data?.timing;
+
+  function renderWorkspacePanels() {
+    return (
+      <>
+        {materialsPanelOpen && (
+          <JobMaterialsPanel job={job} onClose={() => setMaterialsPanelOpen(false)} />
+        )}
+        {estimatesPanelOpen && (
+          <JobEstimatesPanel
+            job={job}
+            onClose={() => setEstimatesPanelOpen(false)}
+            onLoadAllIntoInvoice={onLoadEstimateIntoInvoice
+              ? (ests) => onLoadEstimateIntoInvoice(job, ests)
+              : undefined}
+          />
+        )}
+        {financialsPanelOpen && (
+          <JobFinancialsPanel
+            key={job.id}
+            job={job}
+            profitData={displayProfit}
+            initialTab={financialsInitialTab}
+            onClose={() => setFinancialsPanelOpen(false)}
+            onProfitUpdated={updatedProfit => {
+              setDisplayProfit(updatedProfit);
+              onPaymentSummaryChanged?.();
+            }}
+            onSubsPaidChanged={allPaid => {
+              setLocalSubPaid(allPaid);
+              onPaymentSummaryChanged?.();
+            }}
+          />
+        )}
+        <JobAllocationDialog
+          job={job}
+          open={jobExpenseOpen}
+          onClose={() => setJobExpenseOpen(false)}
+          onSaved={() => {
+            void refreshDisplayProfit();
+            onPaymentSummaryChanged?.();
+          }}
+        />
+        {phasesPanelOpen && <JobPhasePanel job={job} onClose={() => setPhasesPanelOpen(false)} />}
+        {checklistPanelOpen && (
+          <JobChecklistPanel
+            job={job}
+            subcontractors={subcontractorOptions.filter(sub => (job.subcontractorIds as number[] | null | undefined)?.includes(sub.id))}
+            onClose={() => {
+              setChecklistPanelOpen(false);
+              qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
+            }}
+          />
+        )}
+        {mfhPanelOpen && (
+          <MfhPanel
+            job={job as Parameters<typeof MfhPanel>[0]["job"]}
+            onClose={() => {
+              setMfhPanelOpen(false);
+              qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+              qc.invalidateQueries({ queryKey: ["checklist-summaries"] });
+            }}
+            onViewEstimates={() => setEstimatesPanelOpen(true)}
+          />
+        )}
+        {serviceBillingOpen && (
+          <ServiceBillingPanel
+            job={job as Parameters<typeof ServiceBillingPanel>[0]["job"]}
+            onClose={() => {
+              setServiceBillingOpen(false);
+              qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+            }}
+          />
+        )}
+        {tripsPanelOpen && <JobTripsPanel job={job} onClose={() => setTripsPanelOpen(false)} />}
+      </>
+    );
+  }
+
+  function renderWorkspaceTab() {
+    if (!workspaceTab) return null;
+
+    if (workspaceTab === "schedule") {
+      const records = workdayQuery.data?.records ?? [];
+      return (
+        <div className="space-y-5" data-testid={`job-workspace-schedule-${job.id}`}>
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {([
+              ["Expected days", workspaceTiming?.expectedDurationDays ?? job.daysOnJob ?? "—"],
+              ["Actual days", workspaceTiming?.actualProductionDays ?? 0],
+              ["Actual start", workspaceTiming?.actualProductionStartDate ? formatDate(workspaceTiming.actualProductionStartDate) : "Not recorded"],
+              ["Last work date", workspaceTiming?.lastWorkDate ? formatDate(workspaceTiming.lastWorkDate) : "Not recorded"],
+            ] as Array<[string, string | number]>).map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="mt-2 text-lg font-bold text-foreground">{String(value)}</p>
+              </div>
+            ))}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="font-bold text-foreground">Daily work history</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">The recorded production days for this job.</p>
+            </div>
+            {workdayQuery.isLoading ? (
+              <div className="p-5 text-sm text-muted-foreground">Loading recorded days…</div>
+            ) : workdayQuery.isError ? (
+              <div className="p-5 text-sm text-red-700">Schedule history is unavailable right now. Try again in a moment.</div>
+            ) : records.length === 0 ? (
+              <div className="p-5 text-sm text-muted-foreground">No daily work has been recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-border">
+                {[...records].reverse().map(record => (
+                  <div key={record.date} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{formatDate(record.date)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {record.state === "here" ? "Here" : record.state === "not_here" ? "Not here" : "Unrecorded"}
+                        {record.notHereReason ? ` · ${record.notHereReason.replace(/_/g, " ")}` : ""}
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {record.workStartedAt ? `Started ${formatWorkdayTime(record.workStartedAt)}` : "No start time"}
+                      {record.workEndedAt ? ` · Finished ${formatWorkdayTime(record.workEndedAt)}` : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <JobPresencePanel
+            job={workspaceScheduleJob}
+            snapshot={workdayQuery.data ?? null}
+            loading={workdayQuery.isLoading}
+            error={workdayQuery.isError}
+            onSnapshotChange={next => {
+              qc.setQueryData(["job-workday", job.id], next);
+              void qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
+            }}
+          />
+        </div>
+      );
+    }
+
+    if (workspaceTab === "overview") {
+      const location = [job.locationName, job.city, job.state].filter(Boolean).join(", ");
+      return (
+        <div className="space-y-5" data-testid={`job-workspace-overview-${job.id}`}>
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Customer", job.clientName ?? "Not assigned"],
+              ["Location", location || "Not recorded"],
+              ["Business", job.businessLine?.replace(/_/g, " ") || "Not assigned"],
+              ["Distance", businessMiles != null ? `${businessMiles} mi from shop` : "Not calculated"],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="mt-2 truncate text-sm font-bold capitalize text-foreground" title={String(value)}>{String(value)}</p>
+              </div>
+            ))}
+          </section>
+
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              { label: "Production components", icon: <Layers className="h-4 w-4" />, onClick: () => setPhasesPanelOpen(true), visible: jobWorkflow === "mh_production" },
+              { label: "Invoice and payment", icon: <Receipt className="h-4 w-4" />, onClick: () => setFinancialsPanelOpen(true), visible: true },
+              { label: "Workers and subcontractors", icon: <HardHat className="h-4 w-4" />, onClick: () => { setFinancialsInitialTab("hours"); setFinancialsPanelOpen(true); }, visible: true },
+              { label: "Materials", icon: <Package className="h-4 w-4" />, onClick: () => setMaterialsPanelOpen(true), visible: true },
+              { label: "Labor summary", icon: <BarChart2 className="h-4 w-4" />, onClick: () => setFinancialsPanelOpen(true), visible: true },
+              { label: "Checklist", icon: <CheckSquare className="h-4 w-4" />, onClick: () => setChecklistPanelOpen(true), visible: true },
+              { label: "Business trips", icon: <Truck className="h-4 w-4" />, onClick: () => setTripsPanelOpen(true), visible: true },
+              { label: "Photos and notes", icon: <ImageIcon className="h-4 w-4" />, onClick: () => setJobExpenseOpen(true), visible: true },
+              { label: "Other job details", icon: <Briefcase className="h-4 w-4" />, onClick: () => setMfhPanelOpen(true), visible: jobWorkflow === "mh_production" },
+            ].filter(section => section.visible).map(section => (
+              <button
+                key={section.label}
+                type="button"
+                onClick={section.onClick}
+                className="flex min-h-16 items-center gap-3 rounded-2xl border border-border bg-card px-4 text-left transition-colors hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">{section.icon}</span>
+                <span className="text-sm font-semibold text-foreground">{section.label}</span>
+                <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+              </button>
+            ))}
+          </section>
+
+          <section className="grid gap-3 lg:grid-cols-2">
+            {invoiceSummary && (
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Invoice</p>
+                <p className="mt-2 text-base font-bold text-foreground">{invoiceSummary.invoiceNumber ?? "Invoice"}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)}
+                  {invoiceSummary.total != null ? ` · ${formatCurrency(invoiceSummary.total)}` : ""}
+                </p>
+                {onGoToInvoices && (
+                  <button type="button" onClick={onGoToInvoices} className="mt-3 text-xs font-bold text-primary hover:underline">View invoice</button>
+                )}
+              </div>
+            )}
+            {job.notes && (
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{job.notes}</p>
+              </div>
+            )}
+          </section>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-5" data-testid={`job-workspace-job-${job.id}`}>
+        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Today&apos;s work</p>
+                <h3 className="mt-1 text-xl font-bold text-foreground">
+                  {isCompleted ? "This job is completed" : isWorkingToday ? "Work is in progress" : workedToday ? "Done for today" : "Ready to work"}
+                </h3>
+              </div>
+              {!isCompleted && hasJobBusinessContext && !workdayQuery.isError && (
+                <button
+                  type="button"
+                  onClick={() => void updateWorkday(isWorkingToday ? "end" : "start")}
+                  disabled={workdayBusy || workdayQuery.isLoading || workedToday}
+                  className={`min-h-11 rounded-xl px-4 text-xs font-bold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isWorkingToday ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"}`}
+                >
+                  {workdayBusy ? "Saving…" : isWorkingToday ? "DONE FOR TODAY" : workedToday ? "DONE FOR TODAY" : "START WORK TODAY"}
+                </button>
+              )}
+            </div>
+            {!hasJobBusinessContext && !isCompleted && (
+              <p className="mt-3 text-sm text-amber-800">This job needs a business context before work can start.</p>
+            )}
+            {workdayQuery.isError && !isCompleted && (
+              <p className="mt-3 text-sm text-red-700">Today&apos;s work state is unavailable right now. Try again in a moment.</p>
+            )}
+            {(isWorkingToday || workedToday) && todayWorkday?.workStartedAt && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Started at {formatWorkdayTime(todayWorkday.workStartedAt)}
+                {todayWorkday.workEndedAt ? ` · Finished at ${formatWorkdayTime(todayWorkday.workEndedAt)}` : ""}
+              </p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Schedule summary</p>
+            <p className="mt-2 text-base font-bold text-foreground">
+              {job.startDate ? `${formatDate(job.startDate)}${job.endDate ? ` – ${formatDate(job.endDate)}` : ""}` : "Dates not set"}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {workspaceTiming?.actualProductionDays ?? 0} actual production day{workspaceTiming?.actualProductionDays === 1 ? "" : "s"}
+            </p>
+          </div>
+        </section>
+
+        <JobPaymentSummary
+          summary={paymentSummary}
+          status={paymentSummaryStatus}
+          onAction={openPaymentIssue}
+        />
+
+        <section className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Work breakdown</p>
+              <h3 className="mt-1 text-base font-bold text-foreground">What is planned next</h3>
+            </div>
+            {nextScheduledItem && <span className="text-xs font-semibold text-muted-foreground">{formatScheduleDate(nextScheduledItem.scheduledDate!)} next</span>}
+          </div>
+          {productionComponents.length > 0 ? (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {productionComponents.slice(0, 6).map(component => (
+                <div key={component.componentInstanceKey} className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2">
+                  <p className="text-sm font-semibold text-foreground">{component.componentLabel}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{component.status.replace(/_/g, " ")}</p>
+                </div>
+              ))}
+            </div>
+          ) : nextScheduledItem ? (
+            <p className="mt-4 rounded-xl bg-muted/30 px-3 py-3 text-sm text-foreground">{nextScheduledItem.title}</p>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">No work breakdown has been recorded yet.</p>
+          )}
+        </section>
+
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setFinancialsPanelOpen(true)} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">Open financial details</button>
+          {invoiceSummary && onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">View invoice</button>}
+          {!isCompleted && canEdit("jobs") && (
+            <button type="button" onClick={() => onMarkCompleted(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700">
+              <CheckCircle className="h-4 w-4" /> FINISH JOB
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (workspaceTab) {
+    return (
+      <>
+        {renderWorkspaceTab()}
+        {renderWorkspacePanels()}
+      </>
+    );
   }
 
   return (
@@ -7280,6 +7680,98 @@ function JobCard({
         <JobTripsPanel job={job} onClose={() => setTripsPanelOpen(false)} />
       )}
     </>
+  );
+}
+
+function JobWorkspaceShell({
+  job,
+  tab,
+  onTabChange,
+  onClose,
+  onEdit,
+  children,
+}: {
+  job: Job;
+  tab: "job" | "schedule" | "overview";
+  onTabChange: (tab: "job" | "schedule" | "overview") => void;
+  onClose: () => void;
+  onEdit: () => void;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  const status = job.status === "closed"
+    ? "Closed"
+    : displayStatus(job.status) === "completed"
+      ? "Completed"
+      : String(job.status) === "active" || String(job.status) === "in_progress"
+        ? "Active"
+        : "Scheduled";
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60]">
+      <button type="button" aria-label="Close job workspace" onClick={onClose} className="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]" />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`job-workspace-title-${job.id}`}
+        className="absolute inset-0 flex flex-col overflow-hidden bg-background shadow-2xl sm:inset-y-4 sm:left-auto sm:right-4 sm:w-[min(960px,calc(100vw-2rem))] sm:rounded-3xl sm:border sm:border-border"
+        data-testid={`job-workspace-${job.id}`}
+      >
+        <header className="shrink-0 border-b border-border bg-card">
+          <div className="flex items-start gap-3 px-4 py-4 sm:px-6">
+            <button type="button" onClick={onClose} className="mt-0.5 inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-border text-muted-foreground hover:bg-muted/50 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-amber-400" aria-label="Close job workspace">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 id={`job-workspace-title-${job.id}`} className="truncate text-lg font-bold text-foreground sm:text-xl">{job.title}</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{status}</span>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {[job.clientName, job.locationName || job.city].filter(Boolean).join(" · ") || "Job details"}
+              </p>
+            </div>
+            <button type="button" onClick={onEdit} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">Edit job</button>
+          </div>
+          <nav className="flex gap-1 overflow-x-auto px-4 sm:px-6" role="tablist" aria-label="Job workspace">
+            {([
+              ["job", "JOB"],
+              ["schedule", "SCHEDULE"],
+              ["overview", "OVERVIEW"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => onTabChange(value)}
+                className={`min-h-12 shrink-0 border-b-2 px-4 text-xs font-bold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-400 ${
+                  tab === value ? "border-amber-500 text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6 sm:py-6">
+          {children}
+        </div>
+      </section>
+    </div>,
+    document.body,
   );
 }
 
@@ -8808,8 +9300,6 @@ export default function Jobs() {
   const [closedExpanded, setClosedExpanded] = useState(false);
   const [archiveSearch, setArchiveSearch] = useState("");
   const [archiveSort, setArchiveSort] = useState<"newest" | "oldest" | "revenue" | "profit" | "hours">("newest");
-  const [archiveExpandedId, setArchiveExpandedId] = useState<number | null>(null);
-  const [closedFinancialsJob, setClosedFinancialsJob] = useState<Job | null>(null);
   const [csvPopoverOpen, setCsvPopoverOpen] = useState(false);
   const [csvExporting, setCsvExporting] = useState(false);
   const [csvPreset, setCsvPreset] = useState<"month" | "quarter" | "year" | "custom">("year");
@@ -8835,6 +9325,8 @@ export default function Jobs() {
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
 
   const [planningJob, setPlanningJob] = useState<ExtendedJob | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<"job" | "schedule" | "overview">("job");
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
   const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
@@ -9212,24 +9704,7 @@ export default function Jobs() {
   }, [profitSummaryRequestKey, profitSummaryRetryKey]);
 
 
-  // Photo counts for closed jobs — single batch fetch
-  const [photoCountMap, setPhotoCountMap] = useState<Map<number, number>>(new Map());
-  useEffect(() => {
-    if (allClosedBase.length === 0) { setPhotoCountMap(new Map()); return; }
-    const ids = allClosedBase.map(j => j.id);
-    const controller = new AbortController();
-    fetch(`${BASE}/api/jobs/photo-counts?jobIds=${ids.join(",")}`, { credentials: "include", signal: controller.signal })
-      .then(r => r.ok ? r.json() as Promise<Record<string, number>> : Promise.reject())
-      .then(obj => {
-        if (controller.signal.aborted) return;
-        setPhotoCountMap(new Map(Object.entries(obj).map(([id, n]) => [parseInt(id, 10), n])));
-      })
-      .catch(() => { if (!controller.signal.aborted) setPhotoCountMap(new Map()); });
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allClosedBase.map(j => j.id).join(",")]);
-
-  // Sorted/filtered closed jobs for the archive table (uses profitMap for sort)
+  // Sorted/filtered closed jobs for the compact archive (uses profitMap for sort)
   const archiveSearchLower = archiveSearch.toLowerCase().trim();
   const canSortClosedJobsByCanonicalSummary = canSortProfitSummaries(
     allClosedBase.map(job => job.id),
@@ -9311,6 +9786,52 @@ export default function Jobs() {
       }
     });
 
+  const selectedWorkspaceJob = selectedJobId == null
+    ? null
+    : jobs.find(job => job.id === selectedJobId) ?? null;
+
+  function renderWorkspaceJob(job: Job) {
+    return (
+      <JobCard
+        key={`${job.id}-${workspaceTab}`}
+        job={job}
+        workspaceTab={workspaceTab}
+        onEdit={openEditJob}
+        onDelete={openDeleteTarget}
+        onReviewInvoice={handleReviewInvoice}
+        onMarkCompleted={handleMarkCompleted}
+        materialListCount={materialListCountByJob[job.id] ?? 0}
+        estimateTotal={estimateTotalByJob[job.id]}
+        estimatesLoading={estimatesLoading}
+        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+        invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+        onCreateInvoice={() => handleReviewInvoice(job)}
+        onClientClick={job.clientId ? id => setProfileClientId(id) : undefined}
+        hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
+        profitData={profitMap.get(job.id) ?? null}
+        paymentSummary={jobFinancialSummaryMap.get(job.id)}
+        paymentSummaryStatus={jobFinancialSummaryStatus}
+        businessId={activeBusiness?.id}
+        onPaymentSummaryChanged={refreshJobFinancialSummary}
+        onSendPaymentLink={handleGetPaymentLink}
+        onGoToInvoices={() => {
+          const inv = invoiceSummaryMap.get(job.id);
+          navigate(inv ? `/invoices?open=${inv.id}` : "/invoices");
+        }}
+        onAcceptInvoice={handleAcceptInvoice}
+        generatingLinkId={generatingLinkId}
+        onSmartEstimate={nextJob => setGcWizardJob(nextJob)}
+        onArchiveJob={handleArchiveJob}
+        subsSettled={subPayoutStatusLoaded ? !jobsWithOutstandingSubs.has(job.id) : undefined}
+        checklistSummary={checklistSummaries[job.id] ?? null}
+        subcontractorOptions={subcontractors}
+        productionServiceTypes={allProductionServiceTypes}
+        scheduleJob={scheduleJobsById.get(job.id)}
+        onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined}
+      />
+    );
+  }
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Deep-link: ?openJob=<id> → open that job's edit form
@@ -9333,6 +9854,17 @@ export default function Jobs() {
     setJobFormPaymentFocus(null);
     setJobFormOpen(true);
   }
+
+  function openJobWorkspace(job: Job) {
+    setSelectedJobId(job.id);
+    setWorkspaceTab("job");
+  }
+
+  function closeJobWorkspace() {
+    setSelectedJobId(null);
+    setWorkspaceTab("job");
+  }
+
   async function openEditJob(job: Job, focus?: JobPaymentFocus) {
     setJobFormPaymentFocus(focus ?? null);
     // The list can be briefly stale after an edit. Load the authoritative row
@@ -9756,11 +10288,12 @@ export default function Jobs() {
         businessId={activeBusiness?.id}
          allJobs={jobs}
         onOpenChecklist={setScheduleChecklistJob}
-        onOpenJob={openEditJob}
+         onOpenJob={openJobWorkspace}
          onOpenPlanning={job => setPlanningJob(job)}
          checklistSummaries={checklistSummaries}
         onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
         refreshKey={scheduleRefreshKey}
+         simple
       />
 
        <div className="flex items-center justify-between gap-3 pt-1" data-testid="job-records-heading">
@@ -9876,38 +10409,18 @@ export default function Jobs() {
                 <h2 className="font-semibold text-foreground">Scheduled</h2>
                 <span className="text-sm text-muted-foreground">({scheduledJobs.length})</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {scheduledJobs.map(job => {
-                  return (
-                    <JobCard key={job.id} job={job} onEdit={openEditJob}
-                      scheduleJob={scheduleJobsById.get(job.id)}
-                      onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
-                      onMarkCompleted={handleMarkCompleted}
-                      materialListCount={materialListCountByJob[job.id] ?? 0}
-                      estimateTotal={estimateTotalByJob[job.id]}
-                      estimatesLoading={estimatesLoading}
-                      onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
-                      invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
-                      onCreateInvoice={() => handleReviewInvoice(job)}
-                      onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                      hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
-                      profitData={profitMap.get(job.id) ?? null}
-                      paymentSummary={jobFinancialSummaryMap.get(job.id)}
-                      paymentSummaryStatus={jobFinancialSummaryStatus}
-                      businessId={activeBusiness?.id}
-                      onPaymentSummaryChanged={refreshJobFinancialSummary}
-                      onSendPaymentLink={handleGetPaymentLink}
-                      onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
-                      onAcceptInvoice={handleAcceptInvoice}
-                      generatingLinkId={generatingLinkId}
-                      onSmartEstimate={j => setGcWizardJob(j)}
-                      checklistSummary={checklistSummaries[job.id] ?? null}
-                       subcontractorOptions={subcontractors}
-                      productionServiceTypes={allProductionServiceTypes}
-                       onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined}
-                       compact />
-                  );
-                })}
+              <div className="space-y-3">
+                {scheduledJobs.map(job => (
+                  <CompactJobRow
+                    key={job.id}
+                    job={job}
+                    invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                    paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                    onOpen={openJobWorkspace}
+                    onEdit={openEditJob}
+                    onDelete={openDeleteTarget}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -9927,37 +10440,21 @@ export default function Jobs() {
                 </span>
               </button>
               {completedExpanded && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-3">
                   {completedJobs.length > 0 ? completedJobs.map(job => {
                     return (
-                      <JobCard key={job.id} job={job} onEdit={openEditJob}
-                        onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
-                        onMarkCompleted={handleMarkCompleted}
-                        materialListCount={materialListCountByJob[job.id] ?? 0}
-                        estimateTotal={estimateTotalByJob[job.id]}
-                        estimatesLoading={estimatesLoading}
-                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+                      <CompactJobRow
+                        key={job.id}
+                        job={job}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
-                        onCreateInvoice={() => handleReviewInvoice(job)}
-                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                        hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
-                        profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
-                        paymentSummaryStatus={jobFinancialSummaryStatus}
-                        businessId={activeBusiness?.id}
-                        onPaymentSummaryChanged={refreshJobFinancialSummary}
-                        onSendPaymentLink={handleGetPaymentLink}
-                        onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
-                        onAcceptInvoice={handleAcceptInvoice}
-                        generatingLinkId={generatingLinkId}
-                        onSmartEstimate={j => setGcWizardJob(j)}
-                        checklistSummary={checklistSummaries[job.id] ?? null}
-                        subcontractorOptions={subcontractors}
-                        productionServiceTypes={allProductionServiceTypes}
-                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
+                        onOpen={openJobWorkspace}
+                        onEdit={openEditJob}
+                        onDelete={openDeleteTarget}
+                      />
                     );
                   }) : (
-                    <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
+                    <p className="py-4 text-sm text-muted-foreground text-center">
                       No completed jobs match "{jobSearch}".
                     </p>
                   )}
@@ -9981,39 +10478,21 @@ export default function Jobs() {
                 </span>
               </button>
               {paidExpanded && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="space-y-3">
                   {paidJobs.length > 0 ? paidJobs.map(job => {
                     return (
-                      <JobCard key={job.id} job={job} onEdit={openEditJob}
-                        onDelete={openDeleteTarget} onReviewInvoice={handleReviewInvoice}
-                        onMarkCompleted={handleMarkCompleted}
-                        materialListCount={materialListCountByJob[job.id] ?? 0}
-                        estimateTotal={estimateTotalByJob[job.id]}
-                        estimatesLoading={estimatesLoading}
-                        onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
+                      <CompactJobRow
+                        key={job.id}
+                        job={job}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
-                        onCreateInvoice={() => handleReviewInvoice(job)}
-                        onClientClick={job.clientId ? (id) => setProfileClientId(id) : undefined}
-                        hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
-                        profitData={profitMap.get(job.id) ?? null}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
-                        paymentSummaryStatus={jobFinancialSummaryStatus}
-                        businessId={activeBusiness?.id}
-                        onPaymentSummaryChanged={refreshJobFinancialSummary}
-                        onSendPaymentLink={handleGetPaymentLink}
-                        onGoToInvoices={() => { const inv = invoiceSummaryMap.get(job.id); navigate(inv ? `/invoices?open=${inv.id}` : "/invoices"); }}
-                        onAcceptInvoice={handleAcceptInvoice}
-                        generatingLinkId={generatingLinkId}
-                        onSmartEstimate={j => setGcWizardJob(j)}
-                        onArchiveJob={handleArchiveJob}
-                        subsSettled={subPayoutStatusLoaded ? !jobsWithOutstandingSubs.has(job.id) : undefined}
-                        checklistSummary={checklistSummaries[job.id] ?? null}
-                        subcontractorOptions={subcontractors}
-                        productionServiceTypes={allProductionServiceTypes}
-                      onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined} />
+                        onOpen={openJobWorkspace}
+                        onEdit={openEditJob}
+                        onDelete={openDeleteTarget}
+                      />
                     );
                   }) : (
-                    <p className="col-span-3 py-4 text-sm text-muted-foreground text-center">
+                    <p className="py-4 text-sm text-muted-foreground text-center">
                       No paid jobs match "{jobSearch}".
                     </p>
                   )}
@@ -10251,144 +10730,29 @@ export default function Jobs() {
                       No closed jobs match "{archiveSearch}".
                     </p>
                   ) : (
-                    <div className="rounded-xl border border-border overflow-hidden">
-                      <table className="w-full text-sm min-w-[680px]">
-                        <thead className="bg-muted/40 border-b border-border">
-                          <tr>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-24">Date Closed</th>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground w-14">Job #</th>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Job</th>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Customer</th>
-                            <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground hidden lg:table-cell">Location</th>
-                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Revenue</th>
-                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground">Profit</th>
-                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground hidden md:table-cell">Man-hrs</th>
-                            <th className="text-right px-3 py-2 text-xs font-semibold text-muted-foreground hidden sm:table-cell">Photos</th>
-                            <th className="w-8"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {closedJobs.map(job => {
-                            const profit = profitMap.get(job.id);
-                            const profitAvailable = (profitSummaryStatus === "ready" || profitSummaryStatus === "partial")
-                              && profit != null;
-                            const netProfit = profitAvailable ? profit.netProfit : null;
-                            const grossInvoiced = profitAvailable ? profit.grossInvoiced : null;
-                            const photoCount = photoCountMap.get(job.id) ?? 0;
-                            const isExpanded = archiveExpandedId === job.id;
-                            const locationParts = [job.locationName, job.city, job.state].filter(Boolean);
-                            const closedDateStr = job.closedAt
-                              ? formatDate(job.closedAt)
-                              : job.endDate ? formatDate(job.endDate) : "—";
-                            // Man-hours: prefer tracked sub hours, fall back to manually entered field
-                            const trackedHrs = profit?.totalSubHours ?? 0;
-                            const manualHrs = profit?.manHours ?? ((job as unknown as Record<string, unknown>).manHours != null ? parseFloat(String((job as unknown as Record<string, unknown>).manHours)) : 0);
-                            const displayHrs = trackedHrs > 0 ? trackedHrs : manualHrs;
-                            const revenuePerHr = displayHrs > 0 && grossInvoiced != null && grossInvoiced > 0
-                              ? grossInvoiced / displayHrs
-                              : null;
-                            return (
-                              <Fragment key={job.id}>
-                                <tr
-                                  className="border-t border-border/60 hover:bg-muted/30 cursor-pointer transition-colors"
-                                  onClick={() => setArchiveExpandedId(isExpanded ? null : job.id)}
-                                >
-                                  <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{closedDateStr}</td>
-                                  <td className="px-3 py-2.5 text-xs font-mono text-muted-foreground">#{job.jobNumber ?? job.id}</td>
-                                  <td className="px-3 py-2.5 font-medium text-foreground truncate max-w-[160px]">{job.title}</td>
-                                  <td className="px-3 py-2.5 text-muted-foreground hidden md:table-cell truncate max-w-[120px]">{job.clientName ?? "—"}</td>
-                                  <td className="px-3 py-2.5 text-muted-foreground hidden lg:table-cell truncate max-w-[120px]">{locationParts.join(", ") || "—"}</td>
-                                  <td className="px-3 py-2.5 text-right font-semibold">
-                                    {grossInvoiced == null ? "Unavailable" : formatCurrency(grossInvoiced)}
-                                  </td>
-                                  <td className={`px-3 py-2.5 text-right font-semibold ${
-                                    netProfit == null ? "text-amber-700" :
-                                    netProfit >= 0 ? "text-emerald-600" : "text-red-500"
-                                  }`}>
-                                    <div className="flex flex-col items-end gap-0.5">
-                                      {netProfit == null ? "Unavailable" : formatCurrency(netProfit)}
-                                      {netProfit != null && grossInvoiced != null && grossInvoiced > 0 && (() => {
-                                        const pct = netProfit / grossInvoiced * 100;
-                                        const cls = pct >= 30 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                                    pct >= 15 ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                                                                "bg-red-50 text-red-600 border-red-200";
-                                        return (
-                                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${cls}`}>
-                                            {pct.toFixed(1)}%
-                                          </span>
-                                        );
-                                      })()}
-                                    </div>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right hidden md:table-cell">
-                                    {displayHrs > 0 ? (
-                                      <div className="flex flex-col items-end">
-                                        <span className="font-semibold text-orange-700 text-xs">{displayHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })} hrs</span>
-                                        {revenuePerHr != null && (
-                                          <span className="text-[10px] text-blue-600">{formatCurrency(revenuePerHr)}/hr</span>
-                                        )}
-                                      </div>
-                                    ) : <span className="text-muted-foreground text-xs">—</span>}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right hidden sm:table-cell">
-                                    {photoCount > 0 ? (
-                                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
-                                        <ImageIcon className="w-2.5 h-2.5" />{photoCount}
-                                      </span>
-                                    ) : <span className="text-muted-foreground text-xs">—</span>}
-                                  </td>
-                                  <td className="px-2 py-2.5 text-muted-foreground">
-                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                  </td>
-                                </tr>
-                                {isExpanded && (
-                                  <tr className="border-t border-border/40 bg-muted/20">
-                                    <td colSpan={10} className="px-4 py-3">
-                                      <div className="flex flex-wrap items-center gap-3 mb-3">
-                                        {[
-                                          { icon: <ImageIcon className="w-3 h-3" />, label: "Photos", value: photoCount },
-                                          { icon: <Package className="w-3 h-3" />, label: "Materials", value: materialListCountByJob[job.id] ?? 0 },
-                                          { icon: <ClipboardList className="w-3 h-3" />, label: "Logs", value: (logsByJob[job.id] ?? []).length },
-                                          { icon: <Calculator className="w-3 h-3" />, label: "Est.", value: estimateTotalByJob[job.id] != null ? formatCurrency(estimateTotalByJob[job.id]) : "—" },
-                                          { icon: <DollarSign className="w-3 h-3" />, label: "Invoice", value: invoiceSummaryMap.get(job.id)?.status === "paid" ? "Paid ✓" : invoiceSummaryMap.get(job.id)?.status ?? "—" },
-                                          { icon: <HardHat className="w-3 h-3" />, label: "Subs", value: job.subPaid ? "Settled ✓" : "Outstanding" },
-                                          ...(displayHrs > 0 ? [{ icon: <Clock className="w-3 h-3" />, label: "Man-hrs", value: `${displayHrs.toLocaleString(undefined, { maximumFractionDigits: 1 })}${revenuePerHr != null ? ` · ${formatCurrency(revenuePerHr)}/hr` : ""}` }] : []),
-                                        ].map(({ icon, label, value }) => (
-                                          <span key={label} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-background border border-border/60 text-xs text-muted-foreground">
-                                            {icon}
-                                            <span className="font-medium text-foreground">{label}:</span>
-                                            {String(value)}
-                                          </span>
-                                        ))}
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={e => { e.stopPropagation(); setClosedFinancialsJob(job); }}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold hover:bg-violet-100 transition-colors">
-                                          <TrendingUp className="w-3 h-3" /> Job P&amp;L
-                                        </button>
-                                        <button
-                                          onClick={e => { e.stopPropagation(); openEditJob(job); }}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors">
-                                          <Eye className="w-3 h-3" /> Open Full Job
-                                        </button>
-                                        {canEditJobs && (
-                                          <button
-                                            onClick={e => { e.stopPropagation(); handleReopenJob(job); }}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition-colors">
-                                            <RotateCcw className="w-3 h-3" /> Reopen Job
-                                          </button>
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                )}
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    <div className="space-y-3">
+                      {closedJobs.map(job => (
+                        <div key={job.id} className="space-y-2">
+                          <CompactJobRow
+                            job={job}
+                            invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                            paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                            onOpen={openJobWorkspace}
+                            onEdit={canEditJobs ? openEditJob : undefined}
+                          />
+                          {canEditJobs && (
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleReopenJob(job)}
+                                className="min-h-11 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                              >
+                                <RotateCcw className="mr-1 inline h-3.5 w-3.5" /> Reopen Job
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
@@ -10410,6 +10774,18 @@ export default function Jobs() {
        )}
       </>
 
+      {selectedWorkspaceJob && (
+        <JobWorkspaceShell
+          job={selectedWorkspaceJob}
+          tab={workspaceTab}
+          onTabChange={setWorkspaceTab}
+          onClose={closeJobWorkspace}
+          onEdit={() => void openEditJob(selectedWorkspaceJob)}
+        >
+          {renderWorkspaceJob(selectedWorkspaceJob)}
+        </JobWorkspaceShell>
+      )}
+
       {/* Dialogs */}
       {planningJob && (
         <JobPlanningDialog job={planningJob} onClose={() => setPlanningJob(null)} />
@@ -10427,15 +10803,6 @@ export default function Jobs() {
             queryClient.invalidateQueries();
             refreshJobFinancialSummary();
           }}
-        />
-      )}
-
-      {closedFinancialsJob && (
-        <JobFinancialsPanel
-          key={closedFinancialsJob.id}
-          job={closedFinancialsJob}
-          onClose={() => setClosedFinancialsJob(null)}
-          onProfitUpdated={() => refreshJobFinancialSummary()}
         />
       )}
 
