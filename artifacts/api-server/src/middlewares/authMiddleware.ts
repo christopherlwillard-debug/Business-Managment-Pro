@@ -18,6 +18,13 @@ declare global {
       isAuthenticated(): this is AuthedRequest;
 
       user?: User | undefined;
+      authSessionState?: {
+        hasSessionCookie: boolean;
+        sessionFound: boolean;
+        sessionHadUser: boolean;
+        refreshAttempted: boolean;
+        refreshSucceeded: boolean;
+      };
     }
 
     export interface AuthedRequest {
@@ -63,19 +70,31 @@ export async function authMiddleware(
   } as Request["isAuthenticated"];
 
   const sid = getSessionId(req);
+  req.authSessionState = {
+    hasSessionCookie: Boolean(sid),
+    sessionFound: false,
+    sessionHadUser: false,
+    refreshAttempted: false,
+    refreshSucceeded: false,
+  };
   if (!sid) {
     next();
     return;
   }
 
   const session = await getSession(sid);
+  req.authSessionState.sessionFound = Boolean(session);
+  req.authSessionState.sessionHadUser = Boolean(session?.user?.id);
   if (!session?.user?.id) {
     await clearSession(res, sid);
     next();
     return;
   }
 
+  const now = Math.floor(Date.now() / 1000);
+  req.authSessionState.refreshAttempted = Boolean(session.expires_at && now > session.expires_at);
   const refreshed = await refreshIfExpired(sid, session);
+  req.authSessionState.refreshSucceeded = Boolean(refreshed);
   if (!refreshed) {
     await clearSession(res, sid);
     next();

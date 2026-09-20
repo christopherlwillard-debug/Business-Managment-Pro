@@ -243,7 +243,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **UI:** `artifacts/contractor-app/src/pages/Banking.tsx`
 - **Reports:** Not directly queried in reports.ts
 - **Source of truth:** `bank_transactions`. Plaid-synced transaction feed. Reconciliation links connect bank rows to invoices and expenses.
-- **Rule:** Bank transactions are informational and reconciliation anchors — they do not create expenses or income directly.
+- **Rule:** Bank transactions are informational reconciliation anchors. An explicit owner filing action may atomically create the canonical `expenses` or `other_income` row and mark the bank transaction matched; background sync never creates ledger rows directly.
 
 ---
 

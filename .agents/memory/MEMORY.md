@@ -77,3 +77,4 @@
 - [Production learning boundaries](production-learning-phase3.md) — Phase 6 observations stay read-only; Phase 7A adds only reviewed business/model/component baselines, never automatic labor-hour learning
 - [Ready-to-start scheduling boundary](ready-to-start-scheduling-boundary.md) — starting a no-date job only assigns its requested date/state; presence and readiness remain separate
 - [Workday source constraint](workday-source-constraint.md) — published presence constraints must allow workday_action before START WORK can persist
+- [Banking auth recovery](banking-auth-recovery.md) — never auto-replay a financial POST after re-auth; preserve its draft and serialize expense filing on the bank row

@@ -12,6 +12,25 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-19
+
+### Banking file-as-expense authentication and concurrency repair
+
+- Kept owner-only authorization while making stale-session recovery explicit:
+  Banking preserves the pending expense draft, checks authentication without
+  cache, and returns through login without automatically replaying a financial
+  write.
+- Serialized file-as-expense writes by locking the bank transaction inside the
+  existing database transaction before inserting the canonical expense and
+  marking the bank row matched.
+- Added non-sensitive session-state diagnostics plus focused coverage for
+  cookie-backed authentication, authorization, validation, business isolation,
+  exact bank values, conflicts, draft restoration, and no automatic replay.
+- Preserved `expenses` as the accounting source of truth and `bank_transactions`
+  as the reconciliation source; no calculation, report, or ledger was added.
+
+---
+
 ## 2026-09-17
 
 ### Simplified one-tap daily work state

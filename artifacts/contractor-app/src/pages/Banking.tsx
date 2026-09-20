@@ -32,8 +32,25 @@ import { Link } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
+import {
+  loadFileExpenseDrafts,
+  recoverFileExpenseAuthentication,
+  removeFileExpenseDraft,
+} from "@/lib/bankingExpenseAuth";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+class BankingApiError extends Error {
+  status: number;
+  plaid_error_code?: string;
+
+  constructor(message: string, status: number, plaidErrorCode?: string) {
+    super(message);
+    this.name = "BankingApiError";
+    this.status = status;
+    this.plaid_error_code = plaidErrorCode;
+  }
+}
 
 // Travel-related categories — kept in sync with the API's trip packet logic.
 const TRAVEL_CATEGORIES_LC = ["fuel/travel", "travel/lodging", "meals", "parking/tolls"];
@@ -50,11 +67,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const error = new Error((data as { error?: string }).error ?? `Request failed: ${res.status}`) as Error & {
-      plaid_error_code?: string;
-    };
-    error.plaid_error_code = (data as { plaid_error_code?: string }).plaid_error_code;
-    throw error;
+    throw new BankingApiError(
+      (data as { error?: string }).error ?? `Request failed: ${res.status}`,
+      res.status,
+      (data as { plaid_error_code?: string }).plaid_error_code,
+    );
   }
   return res.json() as Promise<T>;
 }
@@ -412,6 +429,20 @@ export default function Banking() {
     enabled: !!connection?.lastSyncedAt,
   });
 
+  useEffect(() => {
+    if (!transactions || filingTxn) return;
+    const draft = loadFileExpenseDrafts()[0];
+    if (!draft) return;
+    const txn = transactions.find(row => row.id === draft.txnId && row.status === "unmatched");
+    if (!txn) {
+      removeFileExpenseDraft(draft.txnId);
+      return;
+    }
+    setFilingTxn(txn);
+    setForm(draft.form);
+    setFileExpenseCountsTowardJobProfit(draft.countsTowardJobProfit);
+  }, [transactions, filingTxn]);
+
   const { data: vendors } = useQuery<Vendor[]>({
     queryKey: ["vendors"],
     queryFn: () => apiFetch("/api/vendors"),
@@ -552,17 +583,49 @@ export default function Banking() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["plaid-transactions"] });
       qc.invalidateQueries({ queryKey: ["expenses"] });
       // #1322: learn vendor→category from manual filing
       if (filingTxn && form.category) {
         learnVendorRule(filingTxn.description, form.category);
       }
+      removeFileExpenseDraft(variables.txnId);
       setFilingTxn(null);
       toast({ title: "Expense filed", description: "Transaction has been recorded as an expense." });
     },
-    onError: (err: Error) => toast({ title: "Failed to file expense", description: err.message, variant: "destructive" }),
+    onError: (err: Error, variables) => {
+      if (!(err instanceof BankingApiError) || err.status !== 401) {
+        toast({ title: "Failed to file expense", description: err.message, variant: "destructive" });
+        return;
+      }
+
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      void recoverFileExpenseAuthentication({
+        base: BASE,
+        returnTo,
+        draft: {
+          txnId: variables.txnId,
+          form,
+          countsTowardJobProfit: fileExpenseCountsTowardJobProfit,
+          savedAt: Date.now(),
+        },
+      }).then(result => {
+        if (result === "authenticated-mismatch") {
+          toast({
+            title: "Could not verify Banking access",
+            description: "Your login is active, but Banking could not verify it. Your expense form is saved; please try again.",
+            variant: "destructive",
+          });
+        } else if (result === "auth-check-failed") {
+          toast({
+            title: "Could not check your login",
+            description: "Your expense form is saved. Check your connection and try again.",
+            variant: "destructive",
+          });
+        }
+      });
+    },
   });
 
   const fileAsInvestmentMutation = useMutation({
@@ -761,6 +824,11 @@ export default function Banking() {
       businessLine: activeBusiness?.slug ?? "",
       notes: "",
     });
+  }
+
+  function closeFilingSheet() {
+    if (filingTxn) removeFileExpenseDraft(filingTxn.id);
+    setFilingTxn(null);
   }
 
   function openIncomeFilingSheet(txn: PlaidTransaction) {
@@ -1474,7 +1542,7 @@ export default function Banking() {
       )}
 
       {/* ── File as Expense Sheet ─────────────────────────────────────────────── */}
-      <Sheet open={!!filingTxn} onOpenChange={(open) => { if (!open) setFilingTxn(null); }}>
+      <Sheet open={!!filingTxn} onOpenChange={(open) => { if (!open) closeFilingSheet(); }}>
         <SheetContent className="w-full sm:max-w-md overflow-y-auto">
           <SheetHeader>
             <SheetTitle>File as Expense</SheetTitle>
@@ -1632,7 +1700,7 @@ export default function Banking() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setFilingTxn(null)}
+                onClick={closeFilingSheet}
                 disabled={fileAsExpenseMutation.isPending}
               >
                 Cancel

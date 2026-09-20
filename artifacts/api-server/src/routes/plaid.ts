@@ -34,8 +34,33 @@ const router = Router();
 function requireOwnerMiddleware() {
   return wrapAsync(async (req, res, next) => {
     const userId = getRequestUserId(req);
-    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
     const ownerId = await getOwnerId();
+    if (!userId) {
+      const origin = req.get("origin");
+      const host = req.get("host");
+      let expectedOrigin = true;
+      if (origin && host) {
+        try {
+          expectedOrigin = new URL(origin).host === host;
+        } catch {
+          expectedOrigin = false;
+        }
+      }
+      console.warn("[plaid-auth] Unauthorized request", {
+        hasCookieHeader: Boolean(req.headers.cookie),
+        hasParsedCookies: Boolean(req.cookies && Object.keys(req.cookies).length > 0),
+        hasSessionCookie: req.authSessionState?.hasSessionCookie ?? false,
+        sessionFound: req.authSessionState?.sessionFound ?? false,
+        sessionHadUser: req.authSessionState?.sessionHadUser ?? false,
+        refreshAttempted: req.authSessionState?.refreshAttempted ?? false,
+        refreshSucceeded: req.authSessionState?.refreshSucceeded ?? false,
+        hasAuthenticatedUser: false,
+        hasConfiguredOwner: Boolean(ownerId),
+        expectedOrigin,
+      });
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     if (ownerId !== userId) { res.status(403).json({ error: "Owner access required" }); return; }
     next();
   });
@@ -589,21 +614,22 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
 
   const result = await db.transaction(async (tx) => {
     const [fresh] = await tx
-      .select({ status: bankTransactionsTable.status })
+      .select()
       .from(bankTransactionsTable)
-      .where(eq(bankTransactionsTable.id, txnId));
+      .where(eq(bankTransactionsTable.id, txnId))
+      .for("update");
 
-    if (fresh?.status === "matched" || fresh?.status === "investment_transfer") {
+    if (!fresh || fresh.status === "matched" || fresh.status === "investment_transfer") {
       return { conflict: true } as const;
     }
 
     const [newExpense] = await tx
       .insert(expensesTable)
       .values({
-        description: description?.trim() || txn.description,
-        amount: txn.amount,
+        description: description?.trim() || fresh.description,
+        amount: fresh.amount,
         category,
-        date: txn.date,
+        date: fresh.date,
         vendor: vendor?.trim() || null,
         jobId: jobId || null,
         businessLine: owner.slug,
