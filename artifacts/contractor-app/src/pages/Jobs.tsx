@@ -6950,6 +6950,51 @@ function JobCard({
           onAction={openPaymentIssue}
         />
 
+        {jobWorkflow === "mh_service" && (
+          <section
+            className="rounded-2xl border border-blue-200 bg-blue-50/40 p-5"
+            data-testid={`service-billing-workflow-${job.id}`}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-blue-600" />
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-blue-700">Service call invoicing</p>
+                </div>
+                <h3 className="mt-1 text-base font-bold text-foreground">
+                  {job.serviceBilling ? "Billing worksheet ready" : "Build the service billing worksheet"}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {job.serviceBilling
+                    ? `${job.serviceBilling.techCount} technician${job.serviceBilling.techCount === 1 ? "" : "s"} · ${job.serviceBilling.repairHours || 0} repair hr · ${job.serviceBilling.driveHours || 0} drive hr · ${job.serviceBilling.mileage || 0} mi`
+                    : "Choose 1 or 2 technicians, then enter repair time, drive time, mileage, and billable parts."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setServiceBillingOpen(true)}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                  data-testid={`open-service-billing-${job.id}`}
+                >
+                  <Wrench className="h-4 w-4" />
+                  {job.serviceBilling ? "EDIT WORKSHEET" : "BUILD WORKSHEET"}
+                </button>
+                {job.serviceBilling && onCreateInvoice && (
+                  <button
+                    type="button"
+                    onClick={onCreateInvoice}
+                    className="min-h-11 rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-50"
+                    data-testid={`service-billing-invoice-${job.id}`}
+                  >
+                    {invoiceSummary ? "REVIEW INVOICE" : "CREATE INVOICE"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
