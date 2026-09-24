@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
   updates:     [] as any[],
   inserts:     [] as any[],
   allocationPools: new Map<number, number>(),
+  computeSubOwed: vi.fn(),
   consumedSlots: 0,
   missingSlots: [] as number[],
   scenario: "no request",
@@ -136,7 +137,7 @@ vi.mock("../lib/allocation.js",        () => ({
     splitPool: h.allocationPools.get(jobId) ?? 0,
   })),
   computeAllocationSplitPools: vi.fn().mockResolvedValue(new Map()),
-  computeSubOwed: vi.fn(),
+  computeSubOwed: h.computeSubOwed,
 }));
 vi.mock("./invoices",                  () => ({ calcInvoice: vi.fn(), buildInvoiceQuery: vi.fn(), fmt: (v: any) => String(v) }));
 vi.mock("../lib/productionBilling.js", () => ({ buildProductionLineItems: vi.fn(), ensureProductionBillingSeed: vi.fn() }));
@@ -162,6 +163,7 @@ beforeEach(() => {
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.scenario = "no request";
+  h.computeSubOwed.mockReset();
 });
 
 afterEach(() => {
@@ -821,6 +823,120 @@ describe("GET /jobs/:id/profit — accrued bonus included in subLaborCost", () =
     expect(res.body.jobExpenses).toBeCloseTo(80);
     expect(res.body.netProfit).toBeCloseTo(920);
     expect(res.body.mileageReimbursementApplied).toBe(false);
+  });
+});
+
+describe("subcontractor settlement checks — ledger beats stale cached status", () => {
+  it("returns the ledger-derived paid status to Job Financials", async () => {
+    h.computeSubOwed.mockImplementation((row: any) =>
+      Number(row.amountOwed ?? row.fixedAmount ?? 0),
+    );
+    h.selectQueue.push(
+      [{
+        subcontractorId: 9,
+        subName: "James Willard",
+        amountOwedOverride: "100.00",
+        amountPaid: "100.00",
+        paidDate: "2026-09-23",
+        paidNotes: null,
+        payRate: null,
+        travelPayRate: null,
+        payType: "fixed",
+        role: "fixed",
+        growthPct: "0",
+        compensationType: "fixed",
+        hourlyRate: null,
+        travelRate: null,
+        fixedAmount: "100.00",
+        allocationPct: null,
+        paymentStatus: "partial",
+        paidAt: null,
+        lastPaidAt: null,
+        accruedBonus: null,
+        accruedBonusNote: null,
+        accruedAdvancement: null,
+        paymentMethodDraft: null,
+        paymentReferenceDraft: null,
+        computedOwed: "0.00",
+        totalHours: "0.00",
+        totalWorkHours: "0.00",
+        totalTravelHours: "0.00",
+        avgTravelRateSnapshot: "0.00",
+      }], // Job Financials rows
+      [{
+        subcontractorId: 9,
+        subName: "James Willard",
+        compensationType: "fixed",
+        fixedAmount: "100.00",
+        allocationPct: null,
+        amountOwed: "100.00",
+        amountPaid: "100.00",
+        paymentStatus: "partial",
+        ledgerPaid: "100.00",
+      }], // shared evaluator fixed/allocation rows
+      [], // shared evaluator hourly rows
+      [], // payment history
+      [], // background recomputeSubPaid repair
+    );
+
+    const res = await request(app).get("/jobs/41/sub-payments");
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].paymentStatus).toBe("paid");
+    expect(res.body[0].amountPaid).toBe(100);
+    await new Promise<void>(resolve => setImmediate(resolve));
+  });
+
+  it("reports a fully covered fixed subcontractor as settled through the batch close gate", async () => {
+    h.computeSubOwed.mockImplementation((row: any) =>
+      Number(row.amountOwed ?? row.fixedAmount ?? 0),
+    );
+    h.selectQueue.push(
+      [{
+        subcontractorId: 7,
+        subName: "James Willard",
+        compensationType: "fixed",
+        fixedAmount: "100.00",
+        allocationPct: null,
+        amountOwed: null,
+        amountPaid: null,
+        paymentStatus: "partial",
+        ledgerPaid: "100.00",
+      }],
+      [], // no hourly subcontractors
+      [], // background recomputeSubPaid repair
+    );
+
+    const res = await request(app).get("/jobs/outstanding-sub-balances?jobIds=41");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ "41": false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+  });
+
+  it("keeps a genuinely unpaid fixed subcontractor in the outstanding result", async () => {
+    h.computeSubOwed.mockImplementation((row: any) =>
+      Number(row.amountOwed ?? row.fixedAmount ?? 0),
+    );
+    h.selectQueue.push(
+      [{
+        subcontractorId: 8,
+        subName: "Unpaid Worker",
+        compensationType: "fixed",
+        fixedAmount: "100.00",
+        allocationPct: null,
+        amountOwed: null,
+        amountPaid: null,
+        paymentStatus: "unpaid",
+        ledgerPaid: "0.00",
+      }],
+      [], // no hourly subcontractors
+    );
+
+    const res = await request(app).get("/jobs/outstanding-sub-balances?jobIds=42");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ "42": true });
   });
 });
 

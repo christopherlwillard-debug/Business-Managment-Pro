@@ -2321,6 +2321,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
   onSubsPaidChanged?: (allPaid: boolean) => void;
   onProfitUpdated?: (profit: JobProfitResponse) => void;
 }) {
+  const qc = useQueryClient();
   const [tab, setTab] = useState<"breakdown" | "hours">(initialTab);
   const [profit, setProfit] = useState<JobProfitClientData | null>(initialProfit ?? null);
   const detailedProfitLoaded = useRef(false);
@@ -2599,6 +2600,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       if (!r.ok) throw new Error(await r.text());
       await refreshPayments();
       await refreshJobProfitAfterMutation();
+      qc.invalidateQueries({ queryKey: ["sub-payout-status"] });
       toast({ title: "Payment deleted", description: "Balance has been recalculated." });
     } catch {
       toast({ title: "Failed to delete payment", variant: "destructive" });
@@ -4364,6 +4366,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       await loadData();
       setEditPayId(null);
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      qc.invalidateQueries({ queryKey: ["sub-payout-status"] });
       toast({ title: "Payment updated" });
     } catch {
       toast({ title: "Failed to save payment", variant: "destructive" });
@@ -4379,6 +4382,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       });
       await loadData();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      qc.invalidateQueries({ queryKey: ["sub-payout-status"] });
       toast({ title: "Payment record reset", description: "Status set back to unpaid" });
     } catch {
       toast({ title: "Failed to reset payment", variant: "destructive" });
@@ -4397,6 +4401,7 @@ function JobSubHoursPanel({ job, onClose, initialTab = "hours" }: { job: Job; on
       await requireSuccessfulPaymentResponse(response);
       await loadData();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
+      qc.invalidateQueries({ queryKey: ["sub-payout-status"] });
       toast({ title: "Marked as paid", description: `${formatCurrency(amount)} recorded` });
     } catch (err) {
       toast({
@@ -6403,6 +6408,7 @@ function JobCard({
         .then(r => r.ok ? r.json() : []).catch(() => []);
       setUnpaidSubs(updated);
       if (updated.length === 0) setLocalSubPaid(true);
+      qc.invalidateQueries({ queryKey: ["sub-payout-status"] });
       onPaymentSummaryChanged?.();
     } catch (err) {
       toast({

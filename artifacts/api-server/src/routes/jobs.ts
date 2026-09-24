@@ -2528,7 +2528,8 @@ router.get("/distinct-home-models", async (_req, res) => {
 });
 
 // Batch outstanding-sub check: GET /outstanding-sub-balances?jobIds=1,2,3
-// Returns Record<jobId, boolean> — true means job has outstanding fixed/allocation sub balance
+// Returns Record<jobId, boolean> — true means the shared ledger-aware evaluator
+// found at least one outstanding subcontractor balance.
 router.get("/outstanding-sub-balances", async (req, res) => {
   try {
     const { jobIds: jobIdsParam } = req.query;
@@ -2536,18 +2537,11 @@ router.get("/outstanding-sub-balances", async (req, res) => {
     const jobIds = jobIdsParam.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
 
-    const rows = await db.select({ jobId: jobSubcontractorsTable.jobId })
-      .from(jobSubcontractorsTable)
-      .where(and(
-        inArray(jobSubcontractorsTable.jobId, jobIds),
-        inArray(jobSubcontractorsTable.paymentStatus, ["unpaid", "partial"]),
-        inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
-      ))
-      .groupBy(jobSubcontractorsTable.jobId);
-
-    const hasOutstanding = new Set(rows.map(r => r.jobId).filter((id): id is number => id != null));
-    const result: Record<number, boolean> = {};
-    for (const id of jobIds) result[id] = hasOutstanding.has(id);
+    const evaluated = await Promise.all(jobIds.map(async id => {
+      const outstanding = await getOutstandingSubPaymentsForJob(id);
+      return [id, outstanding.length > 0] as const;
+    }));
+    const result = Object.fromEntries(evaluated) as Record<number, boolean>;
     res.json(result);
   } catch (err) {
     console.error(err);
@@ -3190,6 +3184,12 @@ router.get("/:id/sub-payments", async (req, res) => {
       .from(jobSubcontractorsTable)
       .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
       .where(eq(jobSubcontractorsTable.jobId, id));
+    const outstandingRows = await getOutstandingSubPaymentsForJob(id);
+    const outstandingSubcontractorIds = new Set(
+      outstandingRows
+        .map(row => row.subcontractorId)
+        .filter((subcontractorId): subcontractorId is number => subcontractorId != null),
+    );
     // Fetch all individual payment records for this job in one query,
     // newest first. Grouped by sub so each row can include its history.
     const paymentRecords = await db
@@ -3280,6 +3280,12 @@ router.get("/:id/sub-payments", async (req, res) => {
       const percentComplete = amountOwed != null && amountOwed > 0 && amountPaid != null
         ? Math.min(100, Math.round((amountPaid / amountOwed) * 100))
         : null;
+      const hasRecordedPayment = amountPaid != null && amountPaid > 0;
+      const derivedPaymentStatus = outstandingSubcontractorIds.has(r.subcontractorId)
+        ? (r.paymentStatus ?? "unpaid")
+        : hasRecordedPayment
+          ? "paid"
+          : (r.paymentStatus ?? "unpaid");
       return {
         subcontractorId: r.subcontractorId,
         subName: r.subName,
@@ -3301,7 +3307,7 @@ router.get("/:id/sub-payments", async (req, res) => {
         travelRate: r.travelRate != null ? parseFloat(r.travelRate) : null,
         fixedAmount: r.fixedAmount != null ? parseFloat(r.fixedAmount) : null,
         allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
-        paymentStatus: r.paymentStatus ?? "unpaid",
+        paymentStatus: derivedPaymentStatus,
         paidAt: r.paidAt ?? null,
         lastPaidAt: r.lastPaidAt ?? null,
         totalHours: parseFloat(r.totalHours ?? "0"),
@@ -3938,12 +3944,10 @@ router.patch("/:jobId/sub-payment-draft/:subId", async (req, res) => {
   }
 });
 
-// Outstanding unpaid fixed/allocation subs for a single job — used by the job card banner
-router.get("/:id/outstanding-sub-payments", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-
+// Shared ledger-aware evaluator for close-job and job-card outstanding checks.
+// Callers must not infer outstanding balances from job_subcontractors.payment_status;
+// that field is a derived cache and can lag the payroll ledger.
+async function getOutstandingSubPaymentsForJob(id: number) {
     // Ledger subquery — authoritative total paid per sub from sub_payment_records
     const ledgerSubquery = (jobId: number) => sql<string>`COALESCE((
       SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0)) FROM sub_payment_records spr
@@ -4137,7 +4141,15 @@ router.get("/:id/outstanding-sub-payments", async (req, res) => {
       });
     }
 
-    res.json([...fixedAllocResult, ...hourlyResult]);
+    return [...fixedAllocResult, ...hourlyResult];
+}
+
+// Outstanding unpaid subs for a single job — used by the job card banner.
+router.get("/:id/outstanding-sub-payments", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    res.json(await getOutstandingSubPaymentsForJob(id));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch outstanding sub payments" });
