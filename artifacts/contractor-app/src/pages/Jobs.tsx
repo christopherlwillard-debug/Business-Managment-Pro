@@ -7145,6 +7145,11 @@ function JobCard({
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setFinancialsPanelOpen(true)} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">Open financial details</button>
           {invoiceSummary && onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">View invoice</button>}
+          {isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
+            <button type="button" onClick={() => onArchiveJob(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-700 hover:bg-slate-100">
+              <Archive className="h-4 w-4" /> Close Job
+            </button>
+          )}
           {!isCompleted && canEdit("jobs") && (
             <button type="button" onClick={() => onMarkCompleted(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700">
               <CheckCircle className="h-4 w-4" /> FINISH JOB

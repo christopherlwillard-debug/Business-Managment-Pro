@@ -10,6 +10,7 @@
     "pretest": "tsx ./scripts/check-development-schema.ts",
     "test": "vitest run",
     "verify:close-job": "tsx ./scripts/e2e-close-job-verify.ts",
+    "verify:paid-subs-close": "tsx ./scripts/e2e-paid-subs-close-verify.ts",
     "verify:invoice-delivery": "tsx ./scripts/e2e-invoice-delivery-verify.ts",
     "verify:job-financials": "tsx ./scripts/e2e-job-financials-verify.ts",
     "verify:production-presence": "tsx ./scripts/e2e-production-presence-verify.ts",
