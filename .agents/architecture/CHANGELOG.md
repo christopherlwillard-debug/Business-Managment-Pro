@@ -12,6 +12,16 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-25
+
+### Confirmed daily presence as fuel workday evidence
+
+- Job Financials and batch profit summaries count confirmed Here dates together with Daily Logs, Sub Hours, and component work sessions, deduplicating dates before estimating fuel through the existing route and vehicle engines.
+- Unrecorded, Not Here, and inferred presence do not contribute; start/end timestamps remain operational state, not time tracking.
+- No ledger, accounting report, mileage, reimbursement, or payroll records are created from presence. Focused workday and profit-route regression tests and API/frontend typechecks passed.
+
+---
+
 ## 2026-09-19
 
 ### Banking file-as-expense authentication and concurrency repair

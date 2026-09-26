@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -1385,7 +1385,7 @@ router.get("/:id/profit", async (req, res) => {
         } else if (route?.miles != null) {
           // Workdays come from actual work evidence, not the scheduled calendar span.
           // A skipped day between startDate and endDate must not create a round trip.
-          const [subHourDateRows, dailyLogDateRows, componentSessionDateRows] = await Promise.all([
+          const [subHourDateRows, dailyLogDateRows, componentSessionDateRows, hereDateRows] = await Promise.all([
             db.select({ date: jobSubHoursTable.date })
               .from(jobSubHoursTable)
               .where(eq(jobSubHoursTable.jobId, id)),
@@ -1395,11 +1395,19 @@ router.get("/:id/profit", async (req, res) => {
             db.select({ date: jobComponentWorkSessionsTable.workDate })
               .from(jobComponentWorkSessionsTable)
               .where(eq(jobComponentWorkSessionsTable.jobId, id)),
+            db.select({
+              date: jobDailyPresenceTable.date,
+              state: jobDailyPresenceTable.state,
+              provenance: jobDailyPresenceTable.provenance,
+            })
+              .from(jobDailyPresenceTable)
+              .where(eq(jobDailyPresenceTable.jobId, id)),
           ]);
           const daysOnJob = countActualWorkdays(
             subHourDateRows.map(row => row.date),
             dailyLogDateRows.map(row => row.date),
             componentSessionDateRows.map(row => row.date),
+            hereDateRows,
           );
 
           if (daysOnJob == null) {
@@ -1667,6 +1675,12 @@ router.get("/profit-summary", async (req, res) => {
                SELECT DISTINCT ws.work_date::text
                FROM job_component_work_sessions ws
                WHERE ws.job_id = ${jobsTable.id}
+               UNION
+                SELECT DISTINCT p.date::text
+                FROM job_daily_presence p
+                WHERE p.job_id = ${jobsTable.id}
+                  AND p.state = 'here'
+                  AND p.provenance = 'confirmed'
             ) AS work_dates
           )`,
         }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),

@@ -3210,7 +3210,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                         ? "Add a shop address in Settings to estimate fuel cost"
                         : profit.fuelStatus === "geocoding_failed"
                           ? "Couldn't look up this address — check job city/state to see fuel estimate"
-                          : "Record actual worked dates in Daily Logs or Sub Hours — start and end dates do not count as workdays"}
+                            : "Mark Here in Daily Presence or record Daily Logs, Sub Hours, or component work sessions to establish worked dates. Scheduled start and end dates do not count."}
                     </p>
                   </div>
                 )}
@@ -6238,6 +6238,8 @@ function JobCard({
         qc.invalidateQueries({ queryKey: ["/api/jobs"] }),
         qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] }),
       ]);
+      void refreshDisplayProfit();
+      onPaymentSummaryChanged?.();
       const modeLabel = data.startMode === "resume"
         ? "Resumed after a recorded interruption."
         : data.startMode === "additional_day"
@@ -6599,6 +6601,8 @@ function JobCard({
             onSnapshotChange={next => {
               qc.setQueryData(["job-workday", job.id], next);
               void qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
+              void refreshDisplayProfit();
+              onPaymentSummaryChanged?.();
             }}
           />
         </div>

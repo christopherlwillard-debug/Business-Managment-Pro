@@ -18,6 +18,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { calculateJobProfit } from "../lib/job-profit.js";
 import { CANONICAL_JOB_PROFIT_RESPONSE_VERSION } from "../lib/job-profit.js";
 import { RoutingEngine } from "../lib/routing-engine.js";
@@ -32,6 +33,7 @@ const h = vi.hoisted(() => ({
   consumedSlots: 0,
   missingSlots: [] as number[],
   scenario: "no request",
+  selectedFields: [] as any[],
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
@@ -64,7 +66,10 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: {
-      select: () => makeChain(),
+      select: (fields: any) => {
+        h.selectedFields.push(fields);
+        return makeChain();
+      },
       delete: () => ({ where: () => Promise.resolve() }),
       transaction: async (callback: (tx: any) => Promise<void>) => callback({
         select: () => makeChain(),
@@ -163,6 +168,7 @@ beforeEach(() => {
   h.consumedSlots = 0;
   h.missingSlots.length = 0;
   h.scenario = "no request";
+  h.selectedFields.length = 0;
   h.computeSubOwed.mockReset();
 });
 
@@ -200,6 +206,7 @@ function pushProfitSelects(opts: {
   fuelJob?:        { address: string; city: string; state: string; includeMileageInJobCosts?: boolean };
   fuelWorkDates?:  string[];
   fuelDailyLogDates?: string[];
+  fuelPresence?: { date: string; state: string; provenance: string }[];
 }) {
   h.selectQueue.push(opts.invoices ?? []);
   h.selectQueue.push(opts.otherIncome ?? []);
@@ -224,6 +231,7 @@ function pushProfitSelects(opts: {
     h.selectQueue.push((opts.fuelWorkDates ?? []).map(date => ({ date }))); // sub-hour dates
     h.selectQueue.push((opts.fuelDailyLogDates ?? []).map(date => ({ date }))); // daily-log dates
     h.selectQueue.push([]); // component work-session dates
+    h.selectQueue.push(opts.fuelPresence ?? []); // daily presence for this job
   }
   h.selectQueue.push([]); // financial settings
 }
@@ -1233,6 +1241,56 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(detail.profitBreakdown.excludedFromProfit.reversedFixedPayouts).toBeCloseTo(900);
     expect(detail.profitBreakdown.excludedFromProfit.reversedAllocationPayouts).toBeCloseTo(750);
     expect(detail.netProfit).toBeCloseTo(342);
+  });
+
+  it("estimates fuel for distinct confirmed Here days without creating hours or expenses", async () => {
+    const route = {
+      miles: 10, durationMinutes: 20, routeStatus: "ok" as const,
+      provider: "haversine" as const, cached: true,
+    };
+    vi.spyOn(RoutingEngine, "calculate").mockResolvedValue(route);
+    vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
+    const fuelSettings = { companyAddress: "100 Main St", companyCity: "Evansville", companyState: "IN" };
+    const fuelVehicle = { avgMpg: 20, fuelPricePerGallon: "4.00" };
+    const fuelJob = { address: "200 Oak St", city: "Evansville", state: "IN" };
+
+    pushProfitSelects({
+      invoices: [{ total: "100.00", status: "paid" }],
+      fuelSettings, fuelVehicle, fuelJob,
+      fuelPresence: [
+        ...["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-05"]
+          .map(date => ({ date, state: "here", provenance: "confirmed" })),
+        { date: "2026-01-08", state: "not_here", provenance: "confirmed" },
+        { date: "2026-01-09", state: "unrecorded", provenance: "confirmed" },
+        { date: "2026-01-10", state: "here", provenance: "inferred" },
+      ],
+    });
+    const detail = await request(app).get("/jobs/5/profit");
+    expect(detail.status).toBe(200);
+    expect(detail.body.fuelBreakdown.daysOnJob).toBe(3);
+    expect(detail.body.estimatedFuelCost).toBeCloseTo(12);
+    expect(detail.body.totalSubHours).toBe(0);
+    expect(detail.body.actualFuelCost).toBeNull();
+    expect(detail.body.jobExpenses).toBeCloseTo(12);
+
+    pushBatchSummarySelects({
+      invoices: [{ jobId: 5, total: "100.00", status: "paid" }],
+      manHoursRows: [{ id: 5, manHours: null }],
+      fuelSettings, fuelVehicle,
+      fuelJobs: [{ id: 5, ...fuelJob, workdayCount: 3 }],
+    });
+    const batch = await request(app).get("/jobs/profit-summary?jobIds=5");
+    expect(batch.status).toBe(200);
+    expect(batch.body[5].estimatedFuelCost).toBeCloseTo(detail.body.estimatedFuelCost);
+    expect(batch.body[5].jobExpenses).toBeCloseTo(detail.body.jobExpenses);
+    expect(batch.body[5].netProfit).toBeCloseTo(detail.body.netProfit);
+    expect(batch.body[5].totalSubHours).toBe(0);
+    const workdaySelect = h.selectedFields.find(fields => fields?.workdayCount);
+    expect(workdaySelect).toBeDefined();
+    const workdaySql = new PgDialect().sqlToQuery(workdaySelect.workdayCount).sql;
+    expect(workdaySql).toContain("p.state = 'here'");
+    expect(workdaySql).toContain("p.provenance = 'confirmed'");
+    expect(workdaySql).toContain("p.job_id =");
   });
 
   it("keeps fixed-sub advances when cached fuel re-projects the batch response", async () => {

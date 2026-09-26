@@ -37,4 +37,24 @@ describe("countActualWorkdays", () => {
       [null, "2026-08-31"],
     )).toBe(1);
   });
+
+  it("counts distinct confirmed Here dates alongside other work evidence", () => {
+    expect(countActualWorkdays(
+      ["2026-09-02"],
+      ["2026-09-03"],
+      ["2026-09-04"],
+      ["2026-09-01", "2026-09-02", "2026-09-01"].map(date => ({ date, state: "here", provenance: "confirmed" })),
+    )).toBe(4);
+    expect(countActualWorkdays([], [], [], ["2026-09-01", "2026-09-02", "2026-09-03"]
+      .map(date => ({ date, state: "here", provenance: "confirmed" })))).toBe(3);
+    expect(countActualWorkdays([], [], [], [])).toBeNull();
+  });
+
+  it("does not treat unrecorded, not_here, or inferred presence as work", () => {
+    expect(countActualWorkdays([], [], [], [
+      { date: "2026-09-01", state: "not_here", provenance: "confirmed" },
+      { date: "2026-09-02", state: "unrecorded", provenance: "confirmed" },
+      { date: "2026-09-03", state: "here", provenance: "inferred" },
+    ])).toBeNull();
+  });
 });
