@@ -53,7 +53,37 @@ export interface GmailSendResult {
   threadId?: string | null;
 }
 
+export class GmailSendUncertainError extends Error {
+  constructor() {
+    super("The connection dropped before Gmail confirmed the result. Check Gmail Sent and repair this delivery attempt before sending again.");
+    this.name = "GmailSendUncertainError";
+  }
+}
+
+// Gmail limits the MIME message, not just the original file bytes. Reserve
+// headroom below its 25 MB limit for MIME headers and transfer encoding.
+export const GMAIL_MAX_MESSAGE_BYTES = 24 * 1024 * 1024;
+
+export function assertGmailMessageFits(opts: GmailSendOptions): void {
+  const encodedParts = [
+    ...(opts.pdfBase64 ? [opts.pdfBase64] : []),
+    ...(opts.extraAttachments ?? []).map(file => file.base64),
+    ...(opts.inlineImages ?? []).map(image => image.base64),
+  ];
+  const wrappedBytes = encodedParts.reduce(
+    (sum, part) => sum + part.length + Math.ceil(part.length / 76) * 2,
+    0,
+  );
+  const bodyBytes = Math.ceil(new TextEncoder().encode(opts.html).length * 4 / 3)
+    + new TextEncoder().encode(opts.text ?? "").length;
+  // Conservatively allow space for multipart headers, boundaries, and filenames.
+  if (wrappedBytes + bodyBytes + 64 * 1024 > GMAIL_MAX_MESSAGE_BYTES) {
+    throw new Error("Email attachments are too large for Gmail. Uncheck job photos or remove extra files, then try again. Nothing was sent.");
+  }
+}
+
 export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendResult> {
+  assertGmailMessageFits(opts);
   const {
     token, to, subject, deliveryId, html, text, pdfBase64, pdfFilename,
     extraAttachments = [], inlineImages = [],
@@ -167,16 +197,26 @@ export async function sendViaGmail(opts: GmailSendOptions): Promise<GmailSendRes
     ];
   }
 
-  const raw = base64UrlEncode(rfcLines.join("\r\n"));
+  const mime = rfcLines.join("\r\n");
+  if (new TextEncoder().encode(mime).length > GMAIL_MAX_MESSAGE_BYTES) {
+    throw new Error("Email attachments are too large for Gmail. Uncheck job photos or remove extra files, then try again. Nothing was sent.");
+  }
+  const raw = base64UrlEncode(mime);
 
-  const resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ raw }),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ raw }),
+    });
+  } catch {
+    // A network failure after POST cannot establish whether Gmail accepted it.
+    throw new GmailSendUncertainError();
+  }
 
   if (!resp.ok) {
     const errBody = await resp.json().catch(() => ({}));

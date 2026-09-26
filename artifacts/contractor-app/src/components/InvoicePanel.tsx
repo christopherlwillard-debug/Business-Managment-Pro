@@ -21,7 +21,7 @@ import {
   resizeInvoiceLogoLayout,
   shouldEnterInvoiceLogoLayoutMode,
 } from "@/lib/invoiceLogoConstants";
-import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage } from "@/lib/gmailSend";
+import { sendViaGmail, buildInvoiceEmailHtml, dataUriToInlineImage, assertGmailMessageFits, GMAIL_MAX_MESSAGE_BYTES, GmailSendUncertainError } from "@/lib/gmailSend";
 import {
   readStoredInvoiceGmailRecovery,
   reconnectAndRepairInvoiceGmail,
@@ -40,6 +40,15 @@ import {
 
 interface LineItem { description: string; quantity: number; unitPrice: number; }
 function emptyLine(): LineItem { return { description: "", quantity: 1, unitPrice: 0 }; }
+const isEmailPhoto = (name: string) => /\.(jpg|jpeg|png|gif|webp)$/i.test(name);
+function includePhotosByDefault(files: InvoiceAttachment[]): boolean {
+  const photos = files.filter(file => isEmailPhoto(file.name));
+  // Keep the previous behavior for modest photo sets, but leave room for the
+  // invoice PDF and other attachments. Unknown sizes require an explicit choice.
+  return photos.length > 0
+    && photos.every(file => typeof file.size === "number" && file.size > 0)
+    && photos.reduce((sum, file) => sum + (file.size ?? 0), 0) <= 12 * 1024 * 1024;
+}
 interface FormState {
   clientId: string;
   jobId: string;
@@ -241,6 +250,9 @@ export function InvoicePanel({
   const [jobHasChecklist, setJobHasChecklist] = useState(false);
   const [attachMaterials, setAttachMaterials] = useState(true);
   const [jobHasMaterials, setJobHasMaterials] = useState(false);
+  const [attachPhotosToEmail, setAttachPhotosToEmail] = useState(() =>
+    includePhotosByDefault(effectiveExistingInvoice?.attachments ?? [])
+  );
   const [extraEmailFiles, setExtraEmailFiles] = useState<{ filename: string; base64: string }[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
@@ -301,6 +313,7 @@ export function InvoicePanel({
       setGmailSent(false);
       setGmailPreview(false);
       setGmailMessage("");
+      setAttachPhotosToEmail(includePhotosByDefault(effectiveExistingInvoice?.attachments ?? []));
       setGmailDeliveryBlocked(null);
       setGmailPendingEventId(null);
       setGmailReconnectRequired(false);
@@ -939,7 +952,7 @@ export function InvoicePanel({
             pdfFilename = `Invoice-${effectiveExistingInvoice.invoiceNumber}.pdf`;
           }
         }
-      } catch { /* non-fatal — send without PDF if rendering fails */ }
+      } catch { /* non-fatal — send the complete invoice HTML if PDF rendering fails */ }
 
       let checklistBase64: string | undefined;
       let checklistFilename: string | undefined;
@@ -979,17 +992,23 @@ export function InvoicePanel({
 
       const photoAttachments: { base64: string; filename: string }[] = [];
       const photoCounters: Record<"before" | "after" | "general", number> = { before: 0, after: 0, general: 0 };
-      for (const att of attachments) {
+      const emailAttachments = attachments.filter(att =>
+        attachPhotosToEmail || !isEmailPhoto(att.name)
+      );
+      if (emailAttachments.reduce((sum, att) => sum + (att.size ?? 0), 0) > GMAIL_MAX_MESSAGE_BYTES * 0.75) {
+        throw new Error("Invoice attachments are too large for Gmail. Uncheck job photos or remove extra files, then try again. Nothing was sent.");
+      }
+      for (const att of emailAttachments) {
         try {
           const fetchUrl = att.url.startsWith("http") ? att.url : `${base}${att.url}`;
           const attResp = await fetch(fetchUrl, { credentials: "include" });
-          if (!attResp.ok) continue;
+          if (!attResp.ok) throw new Error(`Attachment could not be loaded (${attResp.status}).`);
           const attBuffer = await attResp.arrayBuffer();
           let binary = "";
           const bytes = new Uint8Array(attBuffer);
           bytes.forEach(b => { binary += String.fromCharCode(b); });
           const attBase64 = btoa(binary);
-          const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name);
+          const isImage = isEmailPhoto(att.name);
           let filename: string;
           if (isImage) {
             const photoType: "before" | "after" | "general" =
@@ -1003,10 +1022,31 @@ export function InvoicePanel({
             filename = att.name;
           }
           photoAttachments.push({ base64: attBase64, filename });
-        } catch { /* non-fatal — skip attachment if fetch fails */ }
+        } catch {
+          throw new Error(`Could not attach ${att.name}. Nothing was sent. Remove or replace the attachment, then try again.`);
+        }
       }
 
       const gmailSubjectLine = gmailSubject.trim() || `Invoice ${effectiveExistingInvoice.invoiceNumber}`;
+      const gmailOptions = {
+        token,
+        to: gmailTo.trim(),
+        subject: gmailSubjectLine,
+        html,
+        text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
+        pdfBase64,
+        pdfFilename,
+        extraAttachments: [
+          ...(checklistBase64 && checklistFilename ? [{ base64: checklistBase64, filename: checklistFilename }] : []),
+          ...(materialsBase64 && materialsFilename ? [{ base64: materialsBase64, filename: materialsFilename }] : []),
+          ...photoAttachments,
+          ...extraEmailFiles,
+        ],
+        inlineImages: inlineLogo ? [inlineLogo] : [],
+      };
+      // Validate before preparing a delivery event so an oversized message
+      // cannot leave a pending attempt or require Gmail history repair.
+      assertGmailMessageFits(gmailOptions);
       const eventType = effectiveExistingInvoice.sentAt ? "resend_invoice" : "initial_invoice";
       const prepareResponse = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/prepare`, {
         method: "POST",
@@ -1039,37 +1079,34 @@ export function InvoicePanel({
       const pendingEvent = await prepareResponse.json() as { id: number };
       let gmailResult: { provider: "gmail"; messageId?: string | null; threadId?: string | null };
       try {
-        gmailResult = await sendViaGmail({
-        token,
-        to: gmailTo.trim(),
-        subject: gmailSubjectLine,
-        deliveryId: String(pendingEvent.id),
-        html,
-        text: gmailMessage.trim() || `Please see invoice ${effectiveExistingInvoice.invoiceNumber} attached. Total due: $${total.toFixed(2)}`,
-        pdfBase64,
-        pdfFilename,
-        extraAttachments: [
-          ...(checklistBase64 && checklistFilename ? [{ base64: checklistBase64, filename: checklistFilename }] : []),
-          ...(materialsBase64 && materialsFilename ? [{ base64: materialsBase64, filename: materialsFilename }] : []),
-          ...photoAttachments,
-          ...extraEmailFiles,
-        ],
-        inlineImages: inlineLogo ? [inlineLogo] : [],
-        });
+        gmailResult = await sendViaGmail({ ...gmailOptions, deliveryId: String(pendingEvent.id) });
       } catch (sendError) {
-        await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            status: "failed",
-            errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
-          }),
-        }).catch(() => {});
+        if (sendError instanceof GmailSendUncertainError) {
+          setGmailDeliveryBlocked(sendError.message);
+          setGmailPendingEventId(pendingEvent.id);
+        } else {
+          const failureResponse = await fetch(`${base}/api/invoices/${effectiveExistingInvoice.id}/communications/${pendingEvent.id}/finalize`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              status: "failed",
+              errorMessage: sendError instanceof Error ? sendError.message : String(sendError),
+            }),
+          }).catch(() => null);
+          if (!failureResponse?.ok) {
+            setGmailDeliveryBlocked("Could not confirm the failed attempt in delivery history. Repair it before sending again.");
+            setGmailPendingEventId(pendingEvent.id);
+          }
+        }
+        await communicationHistory.refetch();
         throw sendError;
       }
 
       if (!gmailResult.messageId) {
+        setGmailDeliveryBlocked("Gmail responded without a message ID. Check Gmail Sent and repair this delivery attempt before sending again.");
+        setGmailPendingEventId(pendingEvent.id);
+        await communicationHistory.refetch();
         throw new Error("Gmail did not return a message ID, so delivery could not be verified.");
       }
       const recovery: InvoiceGmailFinalizationRecovery = {
@@ -1959,13 +1996,26 @@ export function InvoicePanel({
                         )}
                       </div>
                     )}
+                    {attachments.some(att => isEmailPhoto(att.name)) && (
+                      <div className="pt-0.5">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input type="checkbox" checked={attachPhotosToEmail}
+                            onChange={e => setAttachPhotosToEmail(e.target.checked)}
+                            className="w-3.5 h-3.5 accent-blue-600 cursor-pointer" />
+                          <span className="text-[10px] text-blue-700 font-medium">
+                            Attach job photos ({attachments.filter(att => isEmailPhoto(att.name)).length}; Gmail has a 25 MB message limit)
+                          </span>
+                        </label>
+                        <p className="ml-5 text-[10px] text-blue-600">Large photo sets are off by default. Your invoice PDF is included separately.</p>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 pt-0.5">
                       <button onClick={handleGmailSend} disabled={gmailSending || !gmailTo.trim() || Boolean(gmailFinalizationRecovery) || Boolean(gmailDeliveryBlocked)}
                         className="flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50">
                         {gmailSending ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-3 h-3" />}
                         {gmailSending ? "Sending…" : "Send Invoice"}
                       </button>
-                      <p className="text-[10px] text-blue-500">Sends from your Gmail with PDF attached</p>
+                      <p className="text-[10px] text-blue-500">Sends from your Gmail; PDF attached when available</p>
                     </div>
                                     {/* Extra file attachments */}
                     <div className="pt-0.5">
@@ -2010,7 +2060,7 @@ export function InvoicePanel({
                       />
                     </div>
                     <p className="text-[10px] text-blue-400">
-                      📎 {["Invoice PDF", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : []), ...(jobHasMaterials && attachMaterials ? ["Materials PDF"] : []), ...extraEmailFiles.map(f => f.filename)].join(" · ")}
+                      📎 {["Invoice PDF (when available)", ...(jobHasChecklist && attachChecklist ? ["Checklist PDF"] : []), ...(jobHasMaterials && attachMaterials ? ["Materials PDF"] : []), ...(attachPhotosToEmail ? [`${attachments.filter(att => isEmailPhoto(att.name)).length} job photos`] : []), ...extraEmailFiles.map(f => f.filename)].join(" · ")}
                     </p>
                   </div>
                 )}
