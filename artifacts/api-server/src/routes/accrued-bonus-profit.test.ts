@@ -1867,6 +1867,38 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     cachedRoute.mockRestore();
   });
 
+  it("keeps the batch Overview and detail profit values aligned for an $8,680 sub-labor cost", async () => {
+    pushProfitSelects({
+      invoices: [],
+      sprRows: [{ compType: "fixed", total: "8680.00" }],
+    });
+    const detailRes = await request(app).get("/jobs/42/profit");
+
+    pushBatchSummarySelects({
+      manHoursRows: [{ id: 42, manHours: null }],
+      invoices: [],
+      sprRows: [{ jobId: 42, compType: "fixed", total: "8680.00" }],
+    });
+    const batchRes = await request(app).get("/jobs/profit-summary?jobIds=42");
+
+    expect(detailRes.status).toBe(200);
+    expect(batchRes.status).toBe(200);
+
+    const detailProfit = detailRes.body;
+    const batchProfit = batchRes.body[42];
+    for (const profit of [detailProfit, batchProfit]) {
+      expect(profit.grossInvoiced).toBeCloseTo(0);
+      expect(profit.jobExpenses).toBeCloseTo(0);
+      expect(profit.subLaborCost).toBeCloseTo(8680);
+      expect(profit.profitBreakdown.includedCosts.subLabor).toBeCloseTo(8680);
+      expect(profit.netProfit).toBeCloseTo(-8680);
+    }
+
+    for (const field of ["grossInvoiced", "jobExpenses", "subLaborCost", "includedCostTotal", "netProfit"] as const) {
+      expect(batchProfit[field], `${field} should match both profit views`).toBeCloseTo(detailProfit[field]);
+    }
+  });
+
   it("includes accrued_bonus per job in the batch result", async () => {
     pushSummarySelects({
       jobId:          5,

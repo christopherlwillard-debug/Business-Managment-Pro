@@ -62,11 +62,16 @@ import {
 import {
   applyJobProfitRefresh,
   canApplyJobResponse,
+  getJobProfitDisplayState,
   getSavedMileageReimbursement,
   isCurrentJobProfitResponse,
   isAbortError,
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
+import {
+  getJobInvoiceStatusPresentation,
+  type JobInvoiceSummaryLoadStatus,
+} from "@/lib/jobInvoiceStatus";
 import { autoAttachMaterialsPdf } from "@/lib/autoAttachMaterialsPdf";
 import { requireSuccessfulPaymentResponse } from "@/lib/paymentResponse";
 import { ClientProfileDrawer } from "@/components/ClientProfileDrawer";
@@ -2056,7 +2061,7 @@ function JobPaymentSummary({
     <div className="mt-3 rounded-xl border border-border/60 bg-muted/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payment snapshot</span>
-        <span className="text-[10px] text-muted-foreground">Open job for full details</span>
+        <span className="text-[10px] text-muted-foreground">Amounts still owed · separate from Job Financials</span>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {metrics.map(metric => (
@@ -5994,17 +5999,77 @@ function JobAllocationDialog({ job, open, onClose, onSaved }: {
   );
 }
 
+function JobInvoiceStatusAction({
+  jobId,
+  summary,
+  loadStatus,
+  canEditInvoice,
+  onAction,
+  compact = false,
+}: {
+  jobId: number;
+  summary?: Invoice | null;
+  loadStatus: JobInvoiceSummaryLoadStatus;
+  canEditInvoice: boolean;
+  onAction?: (action: Exclude<ReturnType<typeof getJobInvoiceStatusPresentation>["action"], "none">) => void;
+  compact?: boolean;
+}) {
+  const currentSummary = loadStatus === "ready" ? summary : null;
+  const presentation = getJobInvoiceStatusPresentation(loadStatus, currentSummary?.status);
+  const canAct = presentation.action === "retry"
+    || presentation.action === "view"
+    || (canEditInvoice && (presentation.action === "create" || presentation.action === "edit"));
+  const hasAction = canAct && presentation.actionLabel != null && onAction != null;
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-2"
+      data-testid={`job-invoice-status-${jobId}`}
+      aria-live={loadStatus === "loading" ? "polite" : undefined}
+    >
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Invoice</p>
+        <p className="mt-0.5 text-sm font-semibold text-foreground">{presentation.label}</p>
+        {(currentSummary?.invoiceNumber || currentSummary?.total != null) && (
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {[currentSummary.invoiceNumber, currentSummary.total != null ? formatCurrency(currentSummary.total) : null].filter(Boolean).join(" · ")}
+          </p>
+        )}
+      </div>
+      {hasAction && (
+        <button
+          type="button"
+          onClick={() => onAction?.(presentation.action as Exclude<ReturnType<typeof getJobInvoiceStatusPresentation>["action"], "none">)}
+          data-testid={`job-invoice-action-${jobId}`}
+          aria-label={`${presentation.actionLabel} for job invoice`}
+          className={`min-h-11 shrink-0 rounded-xl border border-border bg-background px-3 font-bold text-primary hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+            compact ? "text-[11px]" : "text-xs"
+          }`}
+        >
+          {presentation.actionLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CompactJobRow({
   job,
   invoiceSummary,
+  invoiceSummaryStatus,
   paymentSummary,
+  paymentSummaryStatus,
+  onInvoiceAction,
   onOpen,
   onEdit,
   onDelete,
 }: {
   job: Job;
   invoiceSummary?: (Invoice & { squarePaidAt?: string | null }) | null;
+  invoiceSummaryStatus: JobInvoiceSummaryLoadStatus;
   paymentSummary?: JobFinancialSummary;
+  paymentSummaryStatus: "loading" | "ready" | "error";
+  onInvoiceAction: (job: Job, action: Exclude<ReturnType<typeof getJobInvoiceStatusPresentation>["action"], "none">) => void;
   onOpen: (job: Job) => void;
   onEdit?: (job: Job) => void;
   onDelete?: (job: Job) => void;
@@ -6018,12 +6083,15 @@ function CompactJobRow({
     || job.address
     || [job.city, job.state].filter(Boolean).join(", ")
     || "Location not recorded";
-  const amount = invoiceSummary?.total ?? paymentSummary?.payment.amountDue ?? null;
-  const paymentLabel = invoiceSummary?.status
-    ? invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)
-    : paymentSummary?.payment.status
-      ? paymentStatusLabel(paymentSummary.payment.status)
-      : "Financial status unavailable";
+  const paymentAmountDue = paymentSummaryStatus === "ready"
+    ? paymentSummary?.payment.amountDue
+    : null;
+  const paymentLabel = paymentSummaryStatus === "loading"
+    ? "Checking payment status…"
+    : paymentSummaryStatus === "error" || !paymentSummary
+      ? "Payment information unavailable"
+      : paymentStatusLabel(paymentSummary.payment.status);
+  const { canEdit } = useUserPermissions();
 
   return (
     <article
@@ -6057,10 +6125,20 @@ function CompactJobRow({
         </button>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-3 lg:border-t-0 lg:pt-0">
-          <div className="min-w-[120px]">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Amount / status</p>
+          <div className="min-w-[150px] flex-1 lg:flex-none">
+            <JobInvoiceStatusAction
+              jobId={job.id}
+              summary={invoiceSummary}
+              loadStatus={invoiceSummaryStatus}
+              canEditInvoice={canEdit("invoices")}
+              onAction={action => onInvoiceAction(job, action)}
+              compact
+            />
+          </div>
+          <div className="min-w-[125px]">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payment · still owed</p>
             <p className="mt-1 text-sm font-bold text-foreground">
-              {amount != null ? formatCurrency(amount) : "Unavailable"}
+              {paymentSummaryStatus === "loading" ? "Checking…" : paymentSummaryStatus === "error" ? "Unavailable" : paymentAmountDue != null ? formatCurrency(paymentAmountDue) : "Unavailable"}
             </p>
             <p className="text-[11px] text-muted-foreground">{paymentLabel}</p>
           </div>
@@ -6093,7 +6171,7 @@ type ChecklistSummary = { completedItems: number; totalItems: number; overallPer
 
 function JobCard({
   job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
-  invoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses, profitData,
+  invoiceSummary, invoiceSummaryStatus, onRetryInvoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
   paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId, workspaceTab,
@@ -6109,10 +6187,11 @@ function JobCard({
   estimatesLoading?: boolean;
   onLoadEstimateIntoInvoice?: (job: Job, estimates: Estimate[]) => void;
   invoiceSummary?: Invoice | null;
+  invoiceSummaryStatus: JobInvoiceSummaryLoadStatus;
+  onRetryInvoiceSummary: () => void;
   onCreateInvoice?: () => void;
   onClientClick?: (clientId: number) => void;
   hasSubExpenses?: boolean;
-  profitData?: JobProfitClientData | null;
   onSendPaymentLink?: (invoiceId: number, invoiceNumber: string, currentTotal: number, jobId: number) => void;
   onGoToInvoices?: () => void;
   generatingLinkId?: number | null;
@@ -6166,7 +6245,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
   const [jobExpenseOpen, setJobExpenseOpen] = useState(false);
-  const [displayProfit, setDisplayProfit] = useState<JobProfitClientData | null | undefined>(profitData);
+  const [displayProfit, setDisplayProfit] = useState<JobProfitClientData | null>(null);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
   const [mfhPanelOpen, setMfhPanelOpen] = useState(false);
@@ -6174,7 +6253,7 @@ function JobCard({
   const [tripsPanelOpen, setTripsPanelOpen] = useState(false);
   const [compactExpanded, setCompactExpanded] = useState(false);
   const [localSubPaid, setLocalSubPaid] = useState(job.subPaid);
-  const [displayProfitLoading, setDisplayProfitLoading] = useState(false);
+  const [displayProfitLoading, setDisplayProfitLoading] = useState(true);
   const [displayProfitError, setDisplayProfitError] = useState(false);
 
   function openPaymentIssue(area: "workers" | "subcontractors" | "owner", detail?: JobFinancialDetail) {
@@ -6290,12 +6369,21 @@ function JobCard({
     productionComponentsQuery.data ?? job.productionComponents ?? [];
   const productionComponentHistory: ProductionComponent[] =
     productionComponentHistoryQuery.data ?? [];
-  const inv = invoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
+  const currentInvoiceSummary = invoiceSummaryStatus === "ready" ? invoiceSummary : null;
+  const inv = currentInvoiceSummary as (Invoice & { squarePaidAt?: string | null }) | null | undefined;
   const squarePaid = !!inv?.squarePaidAt;
-  useEffect(() => {
-    setDisplayProfit(profitData);
-    setDisplayProfitError(false);
-  }, [profitData]);
+  const invoiceStatusPresentation = getJobInvoiceStatusPresentation(invoiceSummaryStatus, currentInvoiceSummary?.status);
+  const canShowServiceInvoiceAction = invoiceSummaryStatus === "loading"
+    || invoiceStatusPresentation.action === "retry"
+    || invoiceStatusPresentation.action === "view"
+    || (canEdit("invoices") && (invoiceStatusPresentation.action === "create" || invoiceStatusPresentation.action === "edit"));
+
+  function handleInvoiceStatusAction(action: ReturnType<typeof getJobInvoiceStatusPresentation>["action"]) {
+    if (action === "create") onCreateInvoice?.();
+    else if (action === "edit") onReviewInvoice(job);
+    else if (action === "view") onGoToInvoices?.();
+    else if (action === "retry") onRetryInvoiceSummary();
+  }
 
   async function refreshDisplayProfit() {
     const requestedJobId = job.id;
@@ -6350,9 +6438,20 @@ function JobCard({
     }
   }
 
-  useEffect(() => () => {
+  function applyDetailJobProfit(updatedProfit: JobProfitClientData) {
     displayProfitAbortControllerRef.current?.abort();
     displayProfitRequestKeyRef.current += 1;
+    setDisplayProfit(updatedProfit);
+    setDisplayProfitLoading(false);
+    setDisplayProfitError(false);
+  }
+
+  useEffect(() => {
+    void refreshDisplayProfit();
+    return () => {
+      displayProfitAbortControllerRef.current?.abort();
+      displayProfitRequestKeyRef.current += 1;
+    };
   }, [job.id]);
 
   type OutstandingSubRow = { subcontractorId: number; subName: string; compensationType: string; fixedAmount: number | null; allocationPct: number | null; amountOwed: number | null; computedOwed?: number; amountPaid?: number; paymentStatus?: string; totalHours?: number | null; accruedBonus?: number | null };
@@ -6369,7 +6468,7 @@ function JobCard({
   }, [job.id, hasSubs, localSubPaid]);
 
   // The server's job-scoped pool is authoritative for allocation workers.
-  const toSplit = profitData?.splitPool ?? 0;
+  const toSplit = displayProfit?.splitPool ?? 0;
 
   function outstandingAmount(sub: OutstandingSubRow): number {
     const fullOwed = sub.amountOwed != null ? sub.amountOwed
@@ -6477,7 +6576,7 @@ function JobCard({
             initialTab={financialsInitialTab}
             onClose={() => setFinancialsPanelOpen(false)}
             onProfitUpdated={updatedProfit => {
-              setDisplayProfit(updatedProfit);
+              applyDetailJobProfit(updatedProfit);
               onPaymentSummaryChanged?.();
             }}
             onSubsPaidChanged={allPaid => {
@@ -6638,9 +6737,13 @@ function JobCard({
         ? [nextScheduledItem.assignedSubcontractorName]
         : assignedCrew;
       const checklistPercent = checklistSummary?.overallPercent ?? null;
-      const contractValue = invoiceSummary?.total ?? displayProfit?.grossInvoiced ?? paymentSummary?.payment.amountDue ?? null;
+      const contractValue = displayProfit?.grossInvoiced ?? null;
       const laborValue = displayProfit?.subLaborCost ?? null;
-      const financialUnavailable = displayProfitError || (!displayProfitLoading && displayProfit == null);
+      const profitDisplayState = getJobProfitDisplayState({
+        loading: displayProfitLoading,
+        profit: displayProfit,
+        profitError: displayProfitError,
+      });
       const detailCards = [
         {
           label: "Production components",
@@ -6829,21 +6932,21 @@ function JobCard({
           <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Financial snapshot</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job Financials</p>
                 <h3 className="mt-1 text-base font-bold text-foreground">Current job economics</h3>
               </div>
               <button type="button" onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
                 Details
               </button>
             </div>
-            {displayProfitLoading ? (
+            {profitDisplayState === "loading" ? (
               <p className="mt-4 text-sm text-muted-foreground">Loading current financials…</p>
-            ) : financialUnavailable ? (
+            ) : profitDisplayState === "unavailable" ? (
               <p className="mt-4 rounded-xl bg-muted/40 p-3 text-sm text-muted-foreground">Current financial values are unavailable. Open details to retry.</p>
             ) : (
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
-                  ["Contract / revenue", contractValue != null ? formatCurrency(contractValue) : "Unavailable", "text-foreground"],
+                  ["Job revenue", contractValue != null ? formatCurrency(contractValue) : "Unavailable", "text-foreground"],
                   ["Expenses", displayProfit?.jobExpenses != null ? formatCurrency(displayProfit.jobExpenses) : "Unavailable", "text-foreground"],
                   ["Labor", laborValue != null ? formatCurrency(laborValue) : "Unavailable", "text-foreground"],
                   ["Profit", displayProfit?.netProfit != null ? formatCurrency(displayProfit.netProfit) : "Unavailable", displayProfit?.netProfit != null && displayProfit.netProfit < 0 ? "text-red-700" : "text-emerald-700"],
@@ -6855,12 +6958,15 @@ function JobCard({
                 ))}
               </div>
             )}
-            {invoiceSummary && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
-                <span>{invoiceSummary.invoiceNumber ?? "Invoice"} · {invoiceSummary.status === "partiallyPaid" ? "Partially paid" : paymentStatusLabel(invoiceSummary.status)}</span>
-                {onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="font-bold text-primary hover:underline">View invoice</button>}
-              </div>
-            )}
+            <div className="mt-3 border-t border-border/70 pt-3">
+              <JobInvoiceStatusAction
+                jobId={job.id}
+                summary={currentInvoiceSummary}
+                loadStatus={invoiceSummaryStatus}
+                canEditInvoice={canEdit("invoices")}
+                onAction={handleInvoiceStatusAction}
+              />
+            </div>
           </section>
 
           <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
@@ -6990,14 +7096,17 @@ function JobCard({
                   <Wrench className="h-4 w-4" />
                   {job.serviceBilling ? "EDIT WORKSHEET" : "BUILD WORKSHEET"}
                 </button>
-                {job.serviceBilling && onCreateInvoice && (
+                {job.serviceBilling && canShowServiceInvoiceAction && (
                   <button
                     type="button"
-                    onClick={onCreateInvoice}
+                    onClick={() => handleInvoiceStatusAction(invoiceStatusPresentation.action)}
+                    disabled={invoiceSummaryStatus === "loading"}
                     className="min-h-11 rounded-xl border border-blue-300 bg-white px-4 text-xs font-bold text-blue-800 hover:bg-blue-50"
                     data-testid={`service-billing-invoice-${job.id}`}
                   >
-                    {invoiceSummary ? "REVIEW INVOICE" : "CREATE INVOICE"}
+                    {invoiceSummaryStatus === "loading"
+                      ? "CHECKING INVOICE STATUS…"
+                      : invoiceStatusPresentation.actionLabel}
                   </button>
                 )}
               </div>
@@ -7148,7 +7257,7 @@ function JobCard({
 
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setFinancialsPanelOpen(true)} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">Open financial details</button>
-          {invoiceSummary && onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">View invoice</button>}
+          {invoiceSummaryStatus === "ready" && currentInvoiceSummary && onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">View invoice</button>}
           {isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
             <button type="button" onClick={() => onArchiveJob(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-700 hover:bg-slate-100">
               <Archive className="h-4 w-4" /> Close Job
@@ -7584,7 +7693,7 @@ function JobCard({
             </div>
           )}
 
-          {!overviewOnly && (job as unknown as Record<string, unknown>).manHours != null && (profitData == null || (profitData.totalSubHours ?? 0) === 0) && (
+           {!overviewOnly && (job as unknown as Record<string, unknown>).manHours != null && (displayProfit == null || (displayProfit.totalSubHours ?? 0) === 0) && (
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Timer className="w-3 h-3 flex-shrink-0" />
               <span className="font-medium">{parseFloat(String((job as unknown as Record<string, unknown>).manHours)).toLocaleString(undefined, { maximumFractionDigits: 1 })} man-hrs</span>
@@ -7593,36 +7702,34 @@ function JobCard({
 
           {/* Invoice status indicator */}
           {!overviewOnly && (
-          <div className="flex items-center gap-1.5 pt-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5" aria-live={invoiceSummaryStatus === "loading" ? "polite" : undefined}>
             <Receipt className="w-3 h-3 flex-shrink-0" />
-            {invoiceSummary ? (
-              <span className={`inline-flex items-center gap-1 font-medium ${
-                invoiceSummary.status === "paid"
-                  ? "text-emerald-600"
-                  : invoiceSummary.status === "partiallyPaid"
-                  ? "text-emerald-500"
-                  : invoiceSummary.status === "sent"
-                  ? "text-amber-600"
-                  : invoiceSummary.status === "approved"
-                  ? "text-blue-600"
-                  : "text-muted-foreground"
-              }`}>
-                {invoiceSummary.status === "paid" ? "Paid"
-                  : invoiceSummary.status === "partiallyPaid" ? "Partially Paid"
-                  : invoiceSummary.status === "sent" ? "Invoice Sent"
-                  : invoiceSummary.status === "approved" ? "Approved"
-                  : "Draft"}
-                {invoiceSummary.status === "partiallyPaid" && (invoiceSummary as any).amountPaid != null && invoiceSummary.total != null
-                  ? ` · ${formatCurrency(Math.max(0, invoiceSummary.total - (invoiceSummary as any).amountPaid))} remaining`
-                  : invoiceSummary.total != null ? ` · ${formatCurrency(invoiceSummary.total)}` : ""}
-                {squarePaid && (
-                  <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
-                    Paid via Square
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="text-muted-foreground/60 italic">Not Invoiced</span>
+            <span className={`font-medium ${
+              currentInvoiceSummary?.status === "paid" ? "text-emerald-600"
+                : currentInvoiceSummary?.status === "partiallyPaid" ? "text-emerald-500"
+                  : currentInvoiceSummary?.status === "sent" ? "text-amber-600"
+                    : currentInvoiceSummary?.status === "approved" ? "text-blue-600"
+                      : "text-muted-foreground"
+            }`}>
+              {invoiceStatusPresentation.label}
+              {currentInvoiceSummary?.status === "partiallyPaid" && (currentInvoiceSummary as any).amountPaid != null && currentInvoiceSummary.total != null
+                ? ` · ${formatCurrency(Math.max(0, currentInvoiceSummary.total - (currentInvoiceSummary as any).amountPaid))} remaining`
+                : currentInvoiceSummary?.total != null ? ` · ${formatCurrency(currentInvoiceSummary.total)}` : ""}
+              {squarePaid && (
+                <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700">
+                  Paid via Square
+                </span>
+              )}
+            </span>
+            {invoiceSummaryStatus === "error" && (
+              <button
+                type="button"
+                onClick={onRetryInvoiceSummary}
+                className="min-h-11 rounded-lg border border-border px-2 text-xs font-semibold text-primary hover:bg-primary/5"
+                aria-label="Retry invoice status"
+              >
+                Retry
+              </button>
             )}
           </div>
           )}
@@ -7876,7 +7983,7 @@ function JobCard({
         </button>
 
         {/* Create Invoice — no invoice exists yet. MH Production uses the Production Pricing engine. */}
-        {!invoiceSummary && canEdit("invoices") && (
+        {invoiceSummaryStatus === "ready" && !currentInvoiceSummary && canEdit("invoices") && (
           jobWorkflow === "mh_production" && onApplyProductionPricing ? (
             <button
               onClick={onApplyProductionPricing}
@@ -7893,13 +8000,13 @@ function JobCard({
         )}
 
         {/* Draft invoice panel — Edit + Accept Invoice actions */}
-        {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && (
+        {invoiceSummaryStatus === "ready" && currentInvoiceSummary && currentInvoiceSummary.status === "draft" && canEdit("invoices") && (
           <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-amber-200/60">
               <FileText className="w-3 h-3 text-amber-600 flex-shrink-0" />
               <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">Draft Invoice</span>
-              {invoiceSummary.total != null && (
-                <span className="ml-auto text-[11px] font-semibold text-amber-700">{formatCurrency(invoiceSummary.total)}</span>
+              {currentInvoiceSummary.total != null && (
+                <span className="ml-auto text-[11px] font-semibold text-amber-700">{formatCurrency(currentInvoiceSummary.total)}</span>
               )}
             </div>
             <div className="flex gap-1.5 p-2">
@@ -7910,7 +8017,7 @@ function JobCard({
               </button>
               {onAcceptInvoice && (
                 <button
-                  onClick={() => onAcceptInvoice(job, invoiceSummary)}
+                  onClick={() => onAcceptInvoice(job, currentInvoiceSummary)}
                   className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 transition-colors shadow-sm">
                   <Check className="w-3 h-3" /> Accept Invoice
                 </button>
@@ -7920,7 +8027,7 @@ function JobCard({
         )}
 
         {/* Re-apply Production Pricing — rebuild the draft from checked items (MH Production) */}
-        {invoiceSummary && invoiceSummary.status === "draft" && canEdit("invoices") && jobWorkflow === "mh_production" && onApplyProductionPricing && (
+        {invoiceSummaryStatus === "ready" && currentInvoiceSummary && currentInvoiceSummary.status === "draft" && canEdit("invoices") && jobWorkflow === "mh_production" && onApplyProductionPricing && (
           <button
             onClick={onApplyProductionPricing}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-amber-300 bg-amber-50 text-amber-700 text-xs font-semibold hover:bg-amber-100 transition-colors">
@@ -7929,30 +8036,30 @@ function JobCard({
         )}
 
         {/* Approved / Sent / Partially Paid / Paid — compact read-only summary */}
-        {invoiceSummary && invoiceSummary.status !== "draft" && invoiceSummary.status !== "cancelled" && (
+        {invoiceSummaryStatus === "ready" && currentInvoiceSummary && currentInvoiceSummary.status !== "draft" && currentInvoiceSummary.status !== "cancelled" && (
           <div className="mt-1 rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/40">
               <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
               <span className="text-[11px] font-semibold text-foreground">
-                {invoiceSummary.invoiceNumber ?? "—"}
+                {currentInvoiceSummary.invoiceNumber ?? "—"}
               </span>
               <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
-                invoiceSummary.status === "paid" ? "bg-emerald-100 text-emerald-700"
-                : invoiceSummary.status === "partiallyPaid" ? "bg-emerald-50 text-emerald-600"
-                : invoiceSummary.status === "sent" ? "bg-blue-100 text-blue-700"
-                : invoiceSummary.status === "approved" ? "bg-indigo-100 text-indigo-700"
-                : invoiceSummary.status === "overdue" ? "bg-red-100 text-red-700"
+                currentInvoiceSummary.status === "paid" ? "bg-emerald-100 text-emerald-700"
+                : currentInvoiceSummary.status === "partiallyPaid" ? "bg-emerald-50 text-emerald-600"
+                : currentInvoiceSummary.status === "sent" ? "bg-blue-100 text-blue-700"
+                : currentInvoiceSummary.status === "approved" ? "bg-indigo-100 text-indigo-700"
+                : currentInvoiceSummary.status === "overdue" ? "bg-red-100 text-red-700"
                 : "bg-gray-100 text-gray-600"
               }`}>
-                {invoiceSummary.status === "partiallyPaid" ? "Partial" : invoiceSummary.status}
+                {currentInvoiceSummary.status === "partiallyPaid" ? "Partial" : currentInvoiceSummary.status}
               </span>
-              {invoiceSummary.total != null && (
-                <span className="ml-auto text-[11px] font-semibold text-foreground">{formatCurrency(invoiceSummary.total)}</span>
+              {currentInvoiceSummary.total != null && (
+                <span className="ml-auto text-[11px] font-semibold text-foreground">{formatCurrency(currentInvoiceSummary.total)}</span>
               )}
             </div>
-            {(invoiceSummary as any).acceptedAt && (
+            {(currentInvoiceSummary as any).acceptedAt && (
               <div className="px-3 py-1 text-[10px] text-muted-foreground">
-                Accepted {formatDate((invoiceSummary as any).acceptedAt)}
+                Accepted {formatDate((currentInvoiceSummary as any).acceptedAt)}
               </div>
             )}
             {onGoToInvoices && (
@@ -8123,7 +8230,7 @@ function JobCard({
           initialTab={financialsInitialTab}
           onClose={() => setFinancialsPanelOpen(false)}
           onProfitUpdated={updatedProfit => {
-            setDisplayProfit(updatedProfit);
+            applyDetailJobProfit(updatedProfit);
             onPaymentSummaryChanged?.();
           }}
           onSubsPaidChanged={allPaid => {
@@ -10010,6 +10117,9 @@ export default function Jobs() {
 
   type InvoiceWithSquare = Invoice & { squarePaidAt?: string | null };
   const [invoiceSummaryMap, setInvoiceSummaryMap] = useState<Map<number, InvoiceWithSquare | null>>(new Map());
+  const [invoiceSummaryLoadStatus, setInvoiceSummaryLoadStatus] = useState<JobInvoiceSummaryLoadStatus>("loading");
+  const [invoiceSummaryLoadedRequestKey, setInvoiceSummaryLoadedRequestKey] = useState<string | null>(null);
+  const [invoiceSummaryRetryKey, setInvoiceSummaryRetryKey] = useState(0);
   const [paymentSummaryRefresh, dispatchPaymentSummaryRefresh] = useReducer(
     jobPaymentSummaryRefreshReducer,
     initialJobPaymentSummaryRefreshState,
@@ -10058,6 +10168,24 @@ export default function Jobs() {
 
   function refreshJobPaymentSummaries(type: Exclude<JobPaymentSummaryRefreshAction["type"], "worker-payment-recorded">) {
     dispatchPaymentSummaryRefresh({ type });
+  }
+
+  function retryInvoiceSummaryRequest() {
+    setInvoiceSummaryRetryKey(key => key + 1);
+  }
+
+  function handleCompactInvoiceAction(
+    job: Job,
+    action: Exclude<ReturnType<typeof getJobInvoiceStatusPresentation>["action"], "none">,
+  ) {
+    if (action === "retry") {
+      retryInvoiceSummaryRequest();
+    } else if (action === "create" || action === "edit") {
+      void handleReviewInvoice(job);
+    } else {
+      const invoice = invoiceSummaryMap.get(job.id);
+      navigate(invoice ? `/invoices?open=${invoice.id}` : "/invoices");
+    }
   }
 
   function refreshJobFinancialSummary() {
@@ -10174,27 +10302,45 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [scheduledJobs.map(j => j.id).join(","), allCompletedBase.map(j => j.id).join(","), allClosedBase.map(j => j.id).join(",")]
   );
+  const invoiceSummaryRequestKey = `${visibleJobIds.join(",")}:${invoiceSummaryRefreshKey}:${invoiceSummaryRetryKey}`;
+  const invoiceSummaryStatus = invoiceSummaryLoadedRequestKey === invoiceSummaryRequestKey
+    ? invoiceSummaryLoadStatus
+    : "loading";
 
   useEffect(() => {
-    if (visibleJobIds.length === 0) { setInvoiceSummaryMap(new Map()); return; }
+    const requestKey = invoiceSummaryRequestKey;
+    if (visibleJobIds.length === 0) {
+      setInvoiceSummaryMap(new Map());
+      setInvoiceSummaryLoadStatus("ready");
+      setInvoiceSummaryLoadedRequestKey(requestKey);
+      return;
+    }
     const controller = new AbortController();
+    setInvoiceSummaryLoadStatus("loading");
     fetch(`${BASE}/api/invoices/summaries?jobIds=${visibleJobIds.join(",")}`, { signal: controller.signal, credentials: "include" })
       .then(r => r.ok ? r.json() as Promise<Record<string, InvoiceWithSquare | null>> : Promise.reject())
       .then(summaryObj => {
         if (controller.signal.aborted) return;
+        if (!visibleJobIds.every(id => Object.prototype.hasOwnProperty.call(summaryObj, String(id)))) {
+          throw new Error("Invoice summary response is incomplete.");
+        }
         const entries = Object.entries(summaryObj).map(
           ([id, inv]) => [parseInt(id, 10), inv] as [number, InvoiceWithSquare | null]
         );
         setInvoiceSummaryMap(new Map(entries));
+        setInvoiceSummaryLoadStatus("ready");
+        setInvoiceSummaryLoadedRequestKey(requestKey);
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setInvoiceSummaryMap(new Map(visibleJobIds.map(id => [id, null])));
+          setInvoiceSummaryMap(new Map());
+          setInvoiceSummaryLoadStatus("error");
+          setInvoiceSummaryLoadedRequestKey(requestKey);
         }
       });
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleJobIds.join(","), invoiceSummaryRefreshKey]);
+  }, [invoiceSummaryRequestKey]);
 
   // Fetch the full visible set initially, then retry only missing closed jobs.
   const [profitMap, setProfitMap] = useState<Map<number, JobProfitSummaryResponse | null>>(new Map());
@@ -10370,10 +10516,11 @@ export default function Jobs() {
         estimatesLoading={estimatesLoading}
         onLoadEstimateIntoInvoice={handleLoadAllEstimatesIntoInvoice}
         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+        invoiceSummaryStatus={invoiceSummaryStatus}
+        onRetryInvoiceSummary={retryInvoiceSummaryRequest}
         onCreateInvoice={() => handleReviewInvoice(job)}
         onClientClick={job.clientId ? id => setProfileClientId(id) : undefined}
         hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
-        profitData={profitMap.get(job.id) ?? null}
         paymentSummary={jobFinancialSummaryMap.get(job.id)}
         paymentSummaryStatus={jobFinancialSummaryStatus}
         businessId={activeBusiness?.id}
@@ -10814,6 +10961,15 @@ export default function Jobs() {
         return;
       }
 
+      if (invoiceSummaryStatus !== "ready") {
+        toast({
+          title: "Invoice status unavailable",
+          description: "Check the invoice status before creating a new invoice.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Truly no invoice yet — open the editor using job draft data (creates new invoice on save)
       if (jobDraft) {
         setInvoiceDraftData({ ...jobDraft, lineItems: withSurcharge(Array.isArray(jobDraft.lineItems) ? jobDraft.lineItems : []) });
@@ -11001,7 +11157,10 @@ export default function Jobs() {
                     key={job.id}
                     job={job}
                     invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                    invoiceSummaryStatus={invoiceSummaryStatus}
                     paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                    paymentSummaryStatus={jobFinancialSummaryStatus}
+                    onInvoiceAction={handleCompactInvoiceAction}
                     onOpen={openJobWorkspace}
                     onEdit={openEditJob}
                     onDelete={openDeleteTarget}
@@ -11033,7 +11192,10 @@ export default function Jobs() {
                         key={job.id}
                         job={job}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                        invoiceSummaryStatus={invoiceSummaryStatus}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                        paymentSummaryStatus={jobFinancialSummaryStatus}
+                        onInvoiceAction={handleCompactInvoiceAction}
                         onOpen={openJobWorkspace}
                         onEdit={openEditJob}
                         onDelete={openDeleteTarget}
@@ -11071,7 +11233,10 @@ export default function Jobs() {
                         key={job.id}
                         job={job}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                        invoiceSummaryStatus={invoiceSummaryStatus}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                        paymentSummaryStatus={jobFinancialSummaryStatus}
+                        onInvoiceAction={handleCompactInvoiceAction}
                         onOpen={openJobWorkspace}
                         onEdit={openEditJob}
                         onDelete={openDeleteTarget}
@@ -11322,7 +11487,10 @@ export default function Jobs() {
                           <CompactJobRow
                             job={job}
                             invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
+                            invoiceSummaryStatus={invoiceSummaryStatus}
                             paymentSummary={jobFinancialSummaryMap.get(job.id)}
+                            paymentSummaryStatus={jobFinancialSummaryStatus}
+                            onInvoiceAction={handleCompactInvoiceAction}
                             onOpen={openJobWorkspace}
                             onEdit={canEditJobs ? openEditJob : undefined}
                           />
