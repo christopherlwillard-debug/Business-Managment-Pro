@@ -69,6 +69,7 @@ import {
   startJobProfitRefresh,
 } from "@/lib/jobProfitRequests";
 import {
+  getJobInvoiceActionDestination,
   getJobInvoiceStatusPresentation,
   type JobInvoiceSummaryLoadStatus,
 } from "@/lib/jobInvoiceStatus";
@@ -10178,9 +10179,12 @@ export default function Jobs() {
     job: Job,
     action: Exclude<ReturnType<typeof getJobInvoiceStatusPresentation>["action"], "none">,
   ) {
-    if (action === "retry") {
+    const destination = getJobInvoiceActionDestination(getJobWorkflow(job), action);
+    if (destination === "retry") {
       retryInvoiceSummaryRequest();
-    } else if (action === "create" || action === "edit") {
+    } else if (destination === "apply-production-pricing") {
+      setProductionPricingJob(job);
+    } else if (destination === "review") {
       void handleReviewInvoice(job);
     } else {
       const invoice = invoiceSummaryMap.get(job.id);

@@ -1,5 +1,6 @@
 export type JobInvoiceSummaryLoadStatus = "loading" | "ready" | "error";
 export type JobInvoiceAction = "none" | "create" | "edit" | "view" | "retry";
+export type JobInvoiceActionDestination = "retry" | "apply-production-pricing" | "review" | "navigate";
 
 export type JobInvoiceStatusPresentation = {
   label: string;
@@ -45,4 +46,14 @@ export function getJobInvoiceStatusPresentation(
       .replace(/^./, first => first.toUpperCase());
 
   return { label, action: "view", actionLabel: "View" };
+}
+
+export function getJobInvoiceActionDestination(
+  workflow: string | null | undefined,
+  action: Exclude<JobInvoiceAction, "none">,
+): JobInvoiceActionDestination {
+  if (action === "retry") return "retry";
+  if (action === "create" && workflow === "mh_production") return "apply-production-pricing";
+  if (action === "create" || action === "edit") return "review";
+  return "navigate";
 }
