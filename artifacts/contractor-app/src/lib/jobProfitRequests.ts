@@ -37,6 +37,16 @@ export type JobProfitRefreshState<T> = {
   profitError: boolean;
 };
 
+export type JobProfitDisplayState = "loading" | "unavailable" | "ready";
+
+export function getJobProfitDisplayState<T>(
+  state: JobProfitRefreshState<T>,
+): JobProfitDisplayState {
+  if (state.loading) return "loading";
+  if (state.profitError || state.profit == null) return "unavailable";
+  return "ready";
+}
+
 export function startJobProfitRefresh<T>(): JobProfitRefreshState<T> {
   return {
     loading: true,

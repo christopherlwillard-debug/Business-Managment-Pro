@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   canApplyJobResponse,
+  getJobProfitDisplayState,
   getSavedMileageReimbursement,
   isAbortError,
+  startJobProfitRefresh,
 } from "./jobProfitRequests";
 import type {
   JobProfitResponse,
@@ -26,6 +28,28 @@ describe("canApplyJobResponse", () => {
 
   it("accepts the latest response for the current job", () => {
     expect(canApplyJobResponse(4, 4, 202, 202)).toBe(true);
+  });
+});
+
+describe("getJobProfitDisplayState", () => {
+  it("keeps a pending request in the loading state", () => {
+    expect(getJobProfitDisplayState(startJobProfitRefresh())).toBe("loading");
+  });
+
+  it("shows an unavailable state after an error instead of treating it as zero", () => {
+    expect(getJobProfitDisplayState({
+      loading: false,
+      profit: null,
+      profitError: true,
+    })).toBe("unavailable");
+  });
+
+  it("accepts a legitimate zero-valued profit response as ready data", () => {
+    expect(getJobProfitDisplayState({
+      loading: false,
+      profit: { netProfit: 0 },
+      profitError: false,
+    })).toBe("ready");
   });
 });
 
