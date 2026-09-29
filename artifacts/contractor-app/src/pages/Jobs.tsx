@@ -3059,6 +3059,9 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                       {fuelExpanded && fb && (
                         <div className="border-t border-amber-200/60 bg-amber-50/70 px-4 py-3 space-y-1.5">
                           <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-2">How it's calculated</p>
+                          <p className="text-[10px] text-amber-600/80">
+                            Fuel days count distinct dates explicitly confirmed as Here in Daily Presence.
+                          </p>
                           <div className="flex justify-between text-xs text-amber-800">
                             <span className="text-amber-600">One-way distance</span>
                             <span className="font-medium">{fb.onewayMiles.toFixed(1)} mi</span>
@@ -3216,7 +3219,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
                         ? "Add a shop address in Settings to estimate fuel cost"
                         : profit.fuelStatus === "geocoding_failed"
                           ? "Couldn't look up this address — check job city/state to see fuel estimate"
-                            : "Mark Here in Daily Presence or record Daily Logs, Sub Hours, or component work sessions to establish worked dates. Scheduled start and end dates do not count."}
+                            : "Mark actual workdays as confirmed Here in Daily Presence. Not Here, unrecorded, inferred, and scheduled dates do not count."}
                     </p>
                   </div>
                 )}

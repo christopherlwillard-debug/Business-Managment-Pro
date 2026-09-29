@@ -1,10 +1,10 @@
 ---
-name: Actual workday fuel estimates
-description: Fuel estimates must use recorded work dates rather than scheduled job spans
+name: Confirmed Here fuel estimates
+description: Route-based estimated gas days use only distinct confirmed Here presence dates
 ---
 
-Fuel estimates use the distinct union of daily-log dates, subcontractor-hour dates, component work-session dates, and confirmed Here presence dates. A job's start and end dates are scheduling bounds only; when no work-date evidence exists, the estimate is unavailable instead of guessed.
+Estimated gas days use only distinct `job_daily_presence.date` values with `state = here` and `provenance = confirmed`. Three confirmed Here dates mean three fuel days regardless of a longer scheduled span; Expected Days remains separate. With no confirmed Here dates, the estimate is unavailable. Scheduled dates, Daily Logs, Sub Hours, component sessions, inferred presence, and unrecorded presence are not fallbacks.
 
-**Why:** Contractors may skip days within a job's scheduled span, and treating every calendar day as worked overstates both fuel and job costs.
+**Why:** Expected duration is a planning estimate, not evidence of fuel usage. Counting planned days or unrelated work-date records can overstate gas and mix operational planning with cost tracking.
 
-**How to apply:** Mark Here in Daily Presence or add actual work dates through Daily Logs, Sub Hours, or component sessions before expecting a per-job fuel estimate. Not Here, unrecorded, and inferred presence do not establish fuel workdays. Keep route distance and fuel arithmetic inside RoutingEngine and VehicleEngine; do not convert presence timestamps into hours or payroll.
+**How to apply:** Keep the detail and batch fuel estimates on the same distinct confirmed-Here date set; represent no eligible dates as an unavailable estimate. Keep route distance and fuel arithmetic inside RoutingEngine and VehicleEngine. The estimate is informational and must not create or alter actual expenses, mileage, reimbursements, payroll, or other ledger records.

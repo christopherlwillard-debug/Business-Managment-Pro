@@ -19,6 +19,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import express from "express";
 import { PgDialect } from "drizzle-orm/pg-core";
+import {
+  dailyLogsTable,
+  jobComponentWorkSessionsTable,
+  jobDailyPresenceTable,
+  jobSubHoursTable,
+} from "@workspace/db/schema";
 import { calculateJobProfit } from "../lib/job-profit.js";
 import { CANONICAL_JOB_PROFIT_RESPONSE_VERSION } from "../lib/job-profit.js";
 import { RoutingEngine } from "../lib/routing-engine.js";
@@ -204,8 +210,6 @@ function pushProfitSelects(opts: {
   fuelSettings?:   { companyAddress?: string | null; companyCity?: string | null; companyState?: string | null };
   fuelVehicle?:    { avgMpg: number; fuelPricePerGallon: string };
   fuelJob?:        { address: string; city: string; state: string; includeMileageInJobCosts?: boolean };
-  fuelWorkDates?:  string[];
-  fuelDailyLogDates?: string[];
   fuelPresence?: { date: string; state: string; provenance: string }[];
 }) {
   h.selectQueue.push(opts.invoices ?? []);
@@ -221,16 +225,12 @@ function pushProfitSelects(opts: {
     ? [{ total: opts.hourlyPaymentFallback }]
     : []);
   h.selectQueue.push([{ total: opts.accruedBonus   ?? "0" }]);
-  // Fuel estimation performs settings, vehicle, and job selects after the
-  // profit waterfall. When the job has addresses and a vehicle, it also reads
-  // actual work dates before the financial-settings select.
+  // Fuel estimation reads settings, vehicle, job address, and confirmed
+  // presence dates before the financial-settings select.
   h.selectQueue.push(opts.fuelSettings ? [opts.fuelSettings] : []); // [9] settings
   h.selectQueue.push(opts.fuelVehicle ? [opts.fuelVehicle] : []); // [10] default vehicle
   h.selectQueue.push(opts.fuelJob ? [opts.fuelJob] : []); // [11] job address
   if (opts.fuelJob) {
-    h.selectQueue.push((opts.fuelWorkDates ?? []).map(date => ({ date }))); // sub-hour dates
-    h.selectQueue.push((opts.fuelDailyLogDates ?? []).map(date => ({ date }))); // daily-log dates
-    h.selectQueue.push([]); // component work-session dates
     h.selectQueue.push(opts.fuelPresence ?? []); // daily presence for this job
   }
   h.selectQueue.push([]); // financial settings
@@ -1178,7 +1178,8 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
         city: "Evansville",
         state: "IN",
       },
-      fuelWorkDates: ["2026-01-05", "2026-01-06"],
+      fuelPresence: ["2026-01-05", "2026-01-06"]
+        .map(date => ({ date, state: "here", provenance: "confirmed" })),
     });
 
     const detailRes = await request(app).get("/jobs/5/profit");
@@ -1243,7 +1244,7 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(detail.netProfit).toBeCloseTo(342);
   });
 
-  it("estimates fuel for distinct confirmed Here days without creating hours or expenses", async () => {
+  it("estimates fuel from distinct confirmed Here dates without changing actual fuel records", async () => {
     const route = {
       miles: 10, durationMinutes: 20, routeStatus: "ok" as const,
       provider: "haversine" as const, cached: true,
@@ -1272,6 +1273,11 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     expect(detail.body.totalSubHours).toBe(0);
     expect(detail.body.actualFuelCost).toBeNull();
     expect(detail.body.jobExpenses).toBeCloseTo(12);
+    const selectedDateFields = h.selectedFields.flatMap(fields => Object.values(fields ?? {}));
+    expect(selectedDateFields).toContain(jobDailyPresenceTable.date);
+    expect(selectedDateFields).not.toContain(jobSubHoursTable.date);
+    expect(selectedDateFields).not.toContain(dailyLogsTable.date);
+    expect(selectedDateFields).not.toContain(jobComponentWorkSessionsTable.workDate);
 
     pushBatchSummarySelects({
       invoices: [{ jobId: 5, total: "100.00", status: "paid" }],
@@ -1288,9 +1294,57 @@ describe("GET /jobs/profit-summary — accrued bonus in batch subLaborCost", () 
     const workdaySelect = h.selectedFields.find(fields => fields?.workdayCount);
     expect(workdaySelect).toBeDefined();
     const workdaySql = new PgDialect().sqlToQuery(workdaySelect.workdayCount).sql;
+    expect(workdaySql).toContain("FROM job_daily_presence p");
     expect(workdaySql).toContain("p.state = 'here'");
     expect(workdaySql).toContain("p.provenance = 'confirmed'");
     expect(workdaySql).toContain("p.job_id =");
+    expect(workdaySql).not.toContain("UNION");
+    expect(workdaySql).not.toContain("job_sub_hours");
+    expect(workdaySql).not.toContain("daily_logs");
+    expect(workdaySql).not.toContain("job_component_work_sessions");
+  });
+
+  it("keeps estimated fuel unavailable when no confirmed Here dates exist", async () => {
+    const route = {
+      miles: 10, durationMinutes: 20, routeStatus: "ok" as const,
+      provider: "haversine" as const, cached: true,
+    };
+    vi.spyOn(RoutingEngine, "calculate").mockResolvedValue(route);
+    vi.spyOn(RoutingEngine, "getCachedRoute").mockReturnValue(route);
+    const fuelSettings = { companyAddress: "100 Main St", companyCity: "Evansville", companyState: "IN" };
+    const fuelVehicle = { avgMpg: 20, fuelPricePerGallon: "4.00" };
+    const fuelJob = { address: "200 Oak St", city: "Evansville", state: "IN" };
+
+    pushProfitSelects({
+      fuelSettings, fuelVehicle, fuelJob,
+      fuelPresence: [
+        { date: "2026-01-05", state: "not_here", provenance: "confirmed" },
+        { date: "2026-01-06", state: "unrecorded", provenance: "confirmed" },
+        { date: "2026-01-07", state: "here", provenance: "inferred" },
+      ],
+    });
+    const detail = await request(app).get("/jobs/5/profit");
+    expect(detail.status).toBe(200);
+    expect(detail.body.estimatedFuelCost).toBeNull();
+    expect(detail.body.fuelStatus).toBe("workdays_missing");
+
+    pushBatchSummarySelects({
+      manHoursRows: [{ id: 5, manHours: null }],
+      fuelSettings, fuelVehicle,
+      fuelJobs: [{ id: 5, ...fuelJob, workdayCount: 0 }],
+    });
+    const batch = await request(app).get("/jobs/profit-summary?jobIds=5");
+    expect(batch.status).toBe(200);
+    expect(batch.body[5].estimatedFuelCost).toBeNull();
+
+    pushBatchSummarySelects({
+      manHoursRows: [{ id: 5, manHours: null }],
+      // No shop address or default vehicle should not turn missing Here days into $0.
+      fuelJobs: [{ id: 5, ...fuelJob, workdayCount: 0 }],
+    });
+    const noSettingsBatch = await request(app).get("/jobs/profit-summary?jobIds=5");
+    expect(noSettingsBatch.status).toBe(200);
+    expect(noSettingsBatch.body[5].estimatedFuelCost).toBeNull();
   });
 
   it("keeps fixed-sub advances when cached fuel re-projects the batch response", async () => {

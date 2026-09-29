@@ -12,6 +12,17 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-09-29
+
+### Use confirmed Here dates as the sole source of estimated gas days
+
+- Job Financials and batch profit summaries now estimate fuel using only distinct dates explicitly confirmed as Here. Scheduled duration and Expected Days remain separate.
+- When no confirmed Here dates exist, the route estimate is unavailable. Daily Logs, Sub Hours, component sessions, inferred presence, and scheduled dates are not fallback fuel days.
+- Kept route distance and fuel arithmetic in RoutingEngine and VehicleEngine; no actual expense, mileage, reimbursement, payroll, or ledger record is created or changed.
+- Verified with the full API suite, focused fuel regressions, API/frontend typechecks, and the profit-client guard. The separate job-profit contract guard still reports unrelated generated production-component schema drift.
+
+---
+
 ## 2026-09-25
 
 ### Confirmed daily presence as fuel workday evidence

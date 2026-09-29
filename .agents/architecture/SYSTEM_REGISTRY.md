@@ -178,9 +178,9 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Schema:** `lib/db/src/schema/job-daily-presence.ts`
 - **API:** `artifacts/api-server/src/routes/job-presence.ts`
 - **UI:** `artifacts/contractor-app/src/components/planner/JobPresencePanel.tsx` within Active Schedule and Schedule History
-- **Reports:** No independent presence report; confirmed Here dates also provide actual-workday evidence for operational job fuel estimates in the detail and batch profit views.
+- **Reports:** No independent presence report; distinct confirmed Here dates are the sole workday input for the informational route-based estimated fuel cost in Job Financials and batch profit summaries.
 - **Source of truth:** `job_daily_presence` owns explicitly recorded per-job/per-day presence state, not-here reason, optional notes, source, and provenance. Timing concepts are calculated live from this table plus existing job dates and expected-duration input.
-- **Rule:** `unrecorded`, `here`, and `not_here` remain distinct. Only confirmed `here` dates contribute to the existing actual-workday union for fuel estimates. Presence never creates or updates payroll, expenses, mileage, invoices, payments, stored profit, checklists, daily logs, or labor-hour rows; its timestamps are operational state, not hours.
+- **Rule:** `unrecorded`, `here`, and `not_here` remain distinct. Only distinct dates with state `here` and provenance `confirmed` contribute to estimated fuel days; no confirmed Here dates means the estimate is unavailable. Scheduled dates, Expected Days, Daily Logs, Sub Hours, component sessions, inferred presence, and unrecorded presence are not fallbacks. This informational estimate never creates or updates actual expenses, reimbursements, payroll, mileage, invoices, payments, stored profit, checklists, daily logs, or labor-hour rows; presence timestamps are operational state, not hours.
 
 ## Production Intelligence / Benchmark Review
 

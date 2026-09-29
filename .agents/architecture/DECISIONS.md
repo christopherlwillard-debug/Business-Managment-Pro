@@ -437,7 +437,7 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 
 **Title:** Persistent daily production presence is a Jobs-owned operational fact
 
-**Decision:** Store one raw `job_daily_presence` row per job/date when presence is explicitly recorded. The row supports exactly `unrecorded`, `here`, and `not_here`; not-here reasons and notes are allowed only as operational detail, and every stored fact carries source and provenance. Missing rows and explicit `unrecorded` rows both remain distinct from `not_here`; neither is inferred as absence. Production timing is calculated live from presence rows and existing job dates. The existing `jobs.days_on_job` value may be exposed as an expected-duration input when present, but no financial or vehicle calculation may consume presence data.
+**Decision:** Store one raw `job_daily_presence` row per job/date when presence is explicitly recorded. The row supports exactly `unrecorded`, `here`, and `not_here`; not-here reasons and notes are allowed only as operational detail, and every stored fact carries source and provenance. Missing rows and explicit `unrecorded` rows both remain distinct from `not_here`; neither is inferred as absence. Production timing is calculated live from presence rows and existing job dates. The existing `jobs.days_on_job` value may be exposed as a separate expected-duration input. The sole financial-adjacent exception is the informational route-based estimated fuel cost in Job Financials and batch profit summaries, which uses only distinct dates whose presence state is `here` and provenance is `confirmed`. With no such dates, the estimate is unavailable; scheduled dates, Expected Days, Daily Logs, Sub Hours, component sessions, and inferred or unrecorded presence are not fallbacks. This read-only estimate must not create or alter actual expenses, mileage, reimbursements, payroll, invoices, payments, or stored profit.
 
 **Reason:** Daily presence is a new raw operational fact that cannot be represented safely in daily narrative logs, labor-hour rows, checklists, or the jobs date span. A unique job/date row provides persistence and idempotent edits without creating a duplicate labor, payroll, schedule, or financial source of truth. Live timing derivation prevents stale calculated values.
 
@@ -447,10 +447,12 @@ For a chronological list of what changed, see `CHANGELOG.md`.
 - Using `job_sub_hours` or worker hours to infer presence
 - Writing presence into checklist scheduling or status history
 - Persisting derived timing values
+- Using scheduled dates, Daily Logs, Sub Hours, component sessions, inferred presence, or unrecorded presence as fuel-day evidence
 - Creating payroll, expense, mileage, invoice, payment, or profit records from presence
 
 **Status:** Accepted
 **Date:** 2026-09-10
+**Amended:** 2026-09-29 — Allow the narrow, read-only route-based fuel estimate above; no other financial or vehicle calculations may consume presence.
 
 ## ADR-025
 

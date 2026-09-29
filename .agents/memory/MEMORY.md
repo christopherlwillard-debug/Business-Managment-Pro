@@ -53,7 +53,7 @@
 - [Schedule C wage advances](schedule-c-wage-advances.md) — exclude flagged hourly advances from tax expense totals; retain the source row and include accrual expenses once
 - [Job-only expense allocations](job-expense-allocations.md) — split job costs belong in a derived allocation table; the original expense remains the sole accounting ledger row
 - [Job mileage reimbursement](job-mileage-reimbursement.md) — reduces the split pool once, then an owner-directed gas amount is returned after tax-adjusted take-home
-- [Actual workday fuel estimates](job-workday-estimates.md) — fuel uses recorded work dates, never the full scheduled calendar span; no evidence means unavailable
+- [Confirmed Here fuel estimates](job-workday-estimates.md) — estimated gas days use only distinct confirmed Here dates; no Here dates means unavailable
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls
 - [Jobs scheduling boundary](jobs-scheduling-boundary.md) — planning is compact and Jobs-first; only open jobs and actionable incomplete checklist work participate
 - [Orval js-yaml compatibility](orval-js-yaml-compatibility.md) — keep the workspace js-yaml override on secure 4.x; forcing 5.x breaks Orval’s default import

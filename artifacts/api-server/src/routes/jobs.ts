@@ -4,7 +4,7 @@ import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, d
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
-import { countActualWorkdays } from "../lib/job-workdays.js";
+import { countConfirmedHereWorkdays } from "../lib/job-workdays.js";
 import { resolveJobFuelReconciliation, type JobFuelReconciliation } from "../lib/job-fuel-reconciliation.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
@@ -1383,32 +1383,19 @@ router.get("/:id/profit", async (req, res) => {
         } else if (route?.routeStatus === "geocoding_failed") {
           fuelStatus = "geocoding_failed";
         } else if (route?.miles != null) {
-          // Workdays come from actual work evidence, not the scheduled calendar span.
-          // A skipped day between startDate and endDate must not create a round trip.
-          const [subHourDateRows, dailyLogDateRows, componentSessionDateRows, hereDateRows] = await Promise.all([
-            db.select({ date: jobSubHoursTable.date })
-              .from(jobSubHoursTable)
-              .where(eq(jobSubHoursTable.jobId, id)),
-            db.select({ date: dailyLogsTable.date })
-              .from(dailyLogsTable)
-              .where(eq(dailyLogsTable.jobId, id)),
-            db.select({ date: jobComponentWorkSessionsTable.workDate })
-              .from(jobComponentWorkSessionsTable)
-              .where(eq(jobComponentWorkSessionsTable.jobId, id)),
-            db.select({
-              date: jobDailyPresenceTable.date,
-              state: jobDailyPresenceTable.state,
-              provenance: jobDailyPresenceTable.provenance,
-            })
-              .from(jobDailyPresenceTable)
-              .where(eq(jobDailyPresenceTable.jobId, id)),
-          ]);
-          const daysOnJob = countActualWorkdays(
-            subHourDateRows.map(row => row.date),
-            dailyLogDateRows.map(row => row.date),
-            componentSessionDateRows.map(row => row.date),
-            hereDateRows,
-          );
+          // Estimated fuel uses only dates explicitly confirmed Here in Daily Presence.
+          const presenceRows = await db.select({
+            date: jobDailyPresenceTable.date,
+            state: jobDailyPresenceTable.state,
+            provenance: jobDailyPresenceTable.provenance,
+          })
+            .from(jobDailyPresenceTable)
+            .where(and(
+              eq(jobDailyPresenceTable.jobId, id),
+              eq(jobDailyPresenceTable.state, "here"),
+              eq(jobDailyPresenceTable.provenance, "confirmed"),
+            ));
+          const daysOnJob = countConfirmedHereWorkdays(presenceRows);
 
           if (daysOnJob == null) {
             fuelStatus = "workdays_missing";
@@ -1662,26 +1649,11 @@ router.get("/profit-summary", async (req, res) => {
           state: jobsTable.state,
           includeMileageInJobCosts: jobsTable.includeMileageInJobCosts,
           workdayCount: sql<number>`(
-            SELECT COUNT(*)::int
-            FROM (
-               SELECT DISTINCT h.date::text
-              FROM job_sub_hours h
-              WHERE h.job_id = ${jobsTable.id}
-              UNION
-               SELECT DISTINCT d.date::text
-              FROM daily_logs d
-              WHERE d.job_id = ${jobsTable.id}
-               UNION
-               SELECT DISTINCT ws.work_date::text
-               FROM job_component_work_sessions ws
-               WHERE ws.job_id = ${jobsTable.id}
-               UNION
-                SELECT DISTINCT p.date::text
-                FROM job_daily_presence p
-                WHERE p.job_id = ${jobsTable.id}
-                  AND p.state = 'here'
-                  AND p.provenance = 'confirmed'
-            ) AS work_dates
+            SELECT COUNT(DISTINCT p.date)::int
+            FROM job_daily_presence p
+            WHERE p.job_id = ${jobsTable.id}
+              AND p.state = 'here'
+              AND p.provenance = 'confirmed'
           )`,
         }).from(jobsTable).where(inArray(jobsTable.id, jobIds)),
       ]);
@@ -1695,37 +1667,41 @@ router.get("/profit-summary", async (req, res) => {
       const fuelPrice = rawFuelPrice != null ? parseFloat(String(rawFuelPrice)) : DEFAULT_FUEL_PRICE;
       const mpg: number = defaultVehicle?.avgMpg ?? 17;
 
-      if (businessAddr && fuelPrice > 0) {
-        for (const jobRow of jobAddressRows) {
-          const jobAddr = [jobRow.address, jobRow.city, jobRow.state].filter(Boolean).join(", ");
-          if (!jobAddr) continue;
-
-          const cached = RoutingEngine.getCachedRoute({ origin: businessAddr, destination: jobAddr });
-          if (!cached || cached.miles == null) continue;
-
-          const daysOnJob = Number(jobRow.workdayCount ?? 0);
-          if (daysOnJob <= 0) continue;
-          const vehicleCost = VehicleEngine.operatingCost({
-            onewayMiles: cached.miles,
-            daysOnJob,
-            vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
-          });
-           const loaded = profitByJob.get(jobRow.id);
-           if (!loaded) continue;
-           const calculation = calculateJobProfit({
-             ...loaded.input,
-             estimatedFuelCost: vehicleCost.fuelCost,
-           });
-            const existing = result[jobRow.id];
-            if (!existing) continue;
-            result[jobRow.id] = buildJobProfitSummaryResponse(calculation, {
-              manHours: existing.manHours,
-              splitPool: existing.splitPool,
-               includeMileageInJobCosts: loaded.includeMileageInJobCosts,
-               estimatedFuelCost: loaded.input.hasActualFuelExpense ? null : calculation.estimatedFuelCost,
-               mileageReimbursementApplied: loaded.includeMileageInJobCosts && !loaded.input.hasActualFuelExpense,
-            });
+      for (const jobRow of jobAddressRows) {
+        const daysOnJob = Number(jobRow.workdayCount ?? 0);
+        if (daysOnJob <= 0) {
+          const existing = result[jobRow.id];
+          if (existing) result[jobRow.id] = { ...existing, estimatedFuelCost: null };
+          continue;
         }
+
+        if (!businessAddr || fuelPrice <= 0) continue;
+        const jobAddr = [jobRow.address, jobRow.city, jobRow.state].filter(Boolean).join(", ");
+        if (!jobAddr) continue;
+
+        const cached = RoutingEngine.getCachedRoute({ origin: businessAddr, destination: jobAddr });
+        if (!cached || cached.miles == null) continue;
+
+        const vehicleCost = VehicleEngine.operatingCost({
+          onewayMiles: cached.miles,
+          daysOnJob,
+          vehicleProfile: { avgMpg: mpg, fuelPricePerGallon: fuelPrice },
+        });
+        const loaded = profitByJob.get(jobRow.id);
+        if (!loaded) continue;
+        const calculation = calculateJobProfit({
+          ...loaded.input,
+          estimatedFuelCost: vehicleCost.fuelCost,
+        });
+        const existing = result[jobRow.id];
+        if (!existing) continue;
+        result[jobRow.id] = buildJobProfitSummaryResponse(calculation, {
+          manHours: existing.manHours,
+          splitPool: existing.splitPool,
+          includeMileageInJobCosts: loaded.includeMileageInJobCosts,
+          estimatedFuelCost: loaded.input.hasActualFuelExpense ? null : calculation.estimatedFuelCost,
+          mileageReimbursementApplied: loaded.includeMileageInJobCosts && !loaded.input.hasActualFuelExpense,
+        });
       }
     } catch (fuelErr) {
       // Fuel enrichment is best-effort — never fail the bulk endpoint

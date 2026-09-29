@@ -1,23 +1,17 @@
 /**
- * Count the distinct dates on which work is evidenced for a job.
+ * Count distinct dates explicitly confirmed as Here in Daily Presence.
  *
- * Calendar start/end dates describe a scheduled span, not attendance. Daily
- * logs, subcontractor hour entries, component work sessions, and confirmed
- * Here presence are raw work-day evidence. A job may have any combination
- * of them, so the count is the union of all recorded date sets.
+ * Estimated fuel days use attendance, not the scheduled span or other dated
+ * work records. Missing or non-confirmed presence is not inferred as Here.
  */
-export function countActualWorkdays(
-  subHoursDates: unknown[],
-  dailyLogDates: unknown[],
-  componentSessionDates: unknown[] = [],
+export function countConfirmedHereWorkdays(
   presence: { date: unknown; state: string; provenance: string }[] = [],
 ): number | null {
   const dates = new Set<string>();
 
-  for (const value of [
-    ...subHoursDates, ...dailyLogDates, ...componentSessionDates,
-    ...presence.filter(row => row.state === "here" && row.provenance === "confirmed").map(row => row.date),
-  ]) {
+  for (const { date: value, state, provenance } of presence) {
+    if (state !== "here" || provenance !== "confirmed") continue;
+
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
       dates.add(value.toISOString().slice(0, 10));
     } else if (typeof value === "string" && value.trim()) {
