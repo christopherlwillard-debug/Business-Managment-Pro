@@ -13,7 +13,7 @@ export default defineConfig({
       override: { transformer: titleTransformer },
     },
     output: {
-      workspace: "/tmp/buildpro-job-profit-contract-VJXpW6/api-client-react/src",
+      workspace: "/tmp/buildpro-job-profit-contract-vddypk/api-client-react/src",
       target: "generated",
       client: "react-query",
       mode: "split",
@@ -23,7 +23,7 @@ export default defineConfig({
       override: {
         fetch: { includeHttpResponseReturnType: false },
         mutator: {
-          path: "/tmp/buildpro-job-profit-contract-VJXpW6/api-client-react/src/custom-fetch.ts",
+          path: "/tmp/buildpro-job-profit-contract-vddypk/api-client-react/src/custom-fetch.ts",
           name: "customFetch",
         },
       },
@@ -35,7 +35,7 @@ export default defineConfig({
       override: { transformer: titleTransformer },
     },
     output: {
-      workspace: "/tmp/buildpro-job-profit-contract-VJXpW6/api-zod/src",
+      workspace: "/tmp/buildpro-job-profit-contract-vddypk/api-zod/src",
       client: "zod",
       target: "generated",
       schemas: { path: "generated/types", type: "typescript" },
