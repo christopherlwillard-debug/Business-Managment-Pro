@@ -1,6 +1,7 @@
-/* Authenticated development-only check: paid invoice + settled subs exposes Close Job.
+/* Authenticated development-only check: paid invoice + settled subs can be closed.
  * Run: pnpm --filter @workspace/api-server run verify:paid-subs-close
- * All browser API writes are denied; fixtures and session are created and removed directly.
+ * Browser API writes are denied except for the one exact close request on the settled fixture.
+ * Fixtures and the test session are created and removed directly.
  */
 import { launchBrowser } from "../src/lib/launchBrowser";
 import { db } from "@workspace/db";
@@ -23,9 +24,9 @@ const sid = `e2e-paid-subs-close-${crypto.randomUUID()}`;
 type Fixture = { jobId: number; subId: number; invoiceId?: number; title: string; subName: string };
 const targets: Partial<Fixture>[] = [];
 const checks: { label: string; passed: boolean }[] = [];
-function check(label: string, passed: boolean) {
+function check(label: string, passed: boolean, detail?: string) {
   checks.push({ label, passed });
-  console.log(`${passed ? "PASS" : "FAIL"}: ${label}`);
+  console.log(`${passed ? "PASS" : "FAIL"}: ${label}${detail ? ` — ${detail}` : ""}`);
   if (!passed) throw new Error(label);
 }
 
@@ -143,17 +144,42 @@ async function main() {
     });
     const settled = await createFixture(business, true);
     const outstanding = await createFixture(business, false);
+    let closeRequestAllowed = false;
+    let closeRequestInfo: string | null = null;
+    const blockedWrites: string[] = [];
     browser = await launchBrowser();
     page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
     await page.setCookie({ name: "sid", value: sid, url: BASE, path: "/" });
     await page.setRequestInterception(true);
     page.on("request", request => {
-      if (new URL(request.url()).pathname.startsWith("/api/") && !["GET", "HEAD"].includes(request.method())) {
-        void request.abort("blockedbyclient");
-      } else {
+      const requestPath = new URL(request.url()).pathname;
+      const isMutatingApi = requestPath.startsWith("/api/") && !["GET", "HEAD"].includes(request.method());
+      if (!isMutatingApi) {
         void request.continue();
+        return;
       }
+
+      let body: unknown = null;
+      try { body = JSON.parse(request.postData() ?? ""); } catch {}
+      const isExactCloseBody = body != null
+        && typeof body === "object"
+        && !Array.isArray(body)
+        && Object.keys(body).length === 1
+        && (body as Record<string, unknown>).status === "closed";
+      const isAllowedClose = !closeRequestAllowed
+        && request.method() === "PUT"
+        && requestPath === `/api/jobs/${settled.jobId}`
+        && isExactCloseBody;
+      if (isAllowedClose) {
+        closeRequestAllowed = true;
+        closeRequestInfo = `${request.method()} ${requestPath} ${request.postData() ?? ""}`;
+        void request.continue();
+        return;
+      }
+
+      blockedWrites.push(`${request.method()} ${requestPath} body=${request.postData() ?? ""}`);
+      void request.abort("blockedbyclient");
     });
     await page.goto(`${BASE}/jobs`, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector("h2", { timeout: 30_000 });
@@ -193,25 +219,95 @@ async function main() {
           return !!root && root.textContent?.includes(name) && root.textContent?.includes("✓ Settled");
         }, { timeout: 30_000 }, fixture.subName);
         check("Job Financials shows settled subcontractor", true);
+        await page.evaluate(() => document.querySelector('[data-testid="job-financials-panel"] button')?.click());
+        await page.waitForFunction(() => !document.querySelector('[data-testid="job-financials-panel"]'), { timeout: 10_000 });
+
+        const readiness = await page.evaluate(async (id) => {
+          const response = await fetch(`/api/jobs/${id}/outstanding-sub-payments`, { credentials: "include" });
+          return { status: response.status, body: await response.text() };
+        }, fixture.jobId);
+        let readinessRows: unknown = null;
+        try { readinessRows = JSON.parse(readiness.body); } catch {}
+        check(
+          "Settled job close preflight is clear",
+          readiness.status === 200 && Array.isArray(readinessRows) && readinessRows.length === 0,
+          `HTTP ${readiness.status}; response=${readiness.body}`,
+        );
+
+        const invoiceBefore = await db.select().from(invoicesTable).where(eq(invoicesTable.jobId, fixture.jobId));
+        const paymentsBefore = await db.select().from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, fixture.jobId));
+        const closeResponsePromise = page.waitForResponse(response =>
+          response.request().method() === "PUT"
+          && new URL(response.url()).pathname === `/api/jobs/${fixture.jobId}`,
+        { timeout: 30_000 });
+        await page.evaluate((id) => {
+          const root = document.querySelector(`[data-testid="job-workspace-${id}"]`);
+          const button = Array.from(root?.querySelectorAll("button") ?? []).find(b => b.textContent?.trim() === "Close Job");
+          if (!button) throw new Error("Close Job button disappeared before the click");
+          button.click();
+        }, fixture.jobId);
+        const closeResponse = await closeResponsePromise;
+        const closeResponseBody = await closeResponse.text();
+        check(
+          "Settled job close request succeeds",
+          closeResponse.status() === 200,
+          `HTTP ${closeResponse.status()}; response=${closeResponseBody.slice(0, 500)}`,
+        );
+
+        const [closedJob] = await db.select({
+          status: jobsTable.status,
+          closedAt: jobsTable.closedAt,
+          businessId: jobsTable.businessId,
+          businessLine: jobsTable.businessLine,
+        }).from(jobsTable).where(eq(jobsTable.id, fixture.jobId)).limit(1);
+        check(
+          "Close request persists Closed status and preserves business ownership",
+          closedJob?.status === "closed" && closedJob.closedAt != null
+            && closedJob.businessId === business.id && closedJob.businessLine === business.slug,
+          `status=${closedJob?.status}; closedAt=${closedJob?.closedAt}; businessId=${closedJob?.businessId}; businessLine=${closedJob?.businessLine}`,
+        );
+
+        const [invoiceAfter, paymentsAfter] = await Promise.all([
+          db.select().from(invoicesTable).where(eq(invoicesTable.jobId, fixture.jobId)),
+          db.select().from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, fixture.jobId)),
+        ]);
+        check(
+          "Close leaves invoice rows unchanged",
+          JSON.stringify(invoiceAfter) === JSON.stringify(invoiceBefore),
+          `invoice rows before=${invoiceBefore.length}, after=${invoiceAfter.length}`,
+        );
+        check(
+          "Close leaves subcontractor payment ledger rows unchanged",
+          JSON.stringify(paymentsAfter) === JSON.stringify(paymentsBefore),
+          `payment rows before=${paymentsBefore.length}, after=${paymentsAfter.length}`,
+        );
+
         await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-        await page.waitForFunction(() => Array.from(document.querySelectorAll("h2")).some(h => h.textContent?.trim() === "Paid"), { timeout: 30_000 });
+        await page.waitForFunction(() => Array.from(document.querySelectorAll("h2")).some(h => h.textContent?.trim() === "Closed Jobs"), { timeout: 30_000 });
+        await page.evaluate(() => {
+          Array.from(document.querySelectorAll("h2")).find(h => h.textContent?.trim() === "Closed Jobs")?.closest("button")?.click();
+        });
+        const archiveRow = `[data-testid="compact-job-row-${fixture.jobId}"]`;
+        await page.waitForSelector(archiveRow, { timeout: 30_000 });
+        const archivedTitleVisible = await page.$eval(
+          archiveRow,
+          (row, title) => row.textContent?.includes(title) ?? false,
+          fixture.title,
+        );
+        check("Settled job appears in Closed Jobs after reload", archivedTitleVisible);
+
         await page.evaluate(() => {
           Array.from(document.querySelectorAll("h2")).find(h => h.textContent?.trim() === "Paid")?.closest("button")?.click();
         });
-        await page.waitForSelector(`[data-testid="job-card-open-${fixture.jobId}"]`, { timeout: 30_000 });
-        await page.click(`[data-testid="job-card-open-${fixture.jobId}"]`);
-        await page.waitForSelector(workspace, { timeout: 30_000 });
-        await page.click(`${workspace} [role="tab"]:first-child`);
-        await page.waitForFunction((id) => {
-          const root = document.querySelector(`[data-testid="job-workspace-${id}"]`);
-          return !!Array.from(root?.querySelectorAll("button") ?? []).find(b => b.textContent?.trim() === "Close Job");
-        }, { timeout: 30_000 }, fixture.jobId);
-        check("Close Job remains visible after reload", true);
-        await page.click(`${workspace} header button[aria-label="Close job workspace"]`);
       } else {
         await page.click(`${workspace} header button[aria-label="Close job workspace"]`);
       }
     }
+    check(
+      "Browser writes were limited to one exact settled-job close",
+      closeRequestAllowed && blockedWrites.length === 0,
+      `allowed=${closeRequestInfo ?? "none"}; blocked=${blockedWrites.join("; ") || "none"}`,
+    );
     const statuses = await page.evaluate(async (ids) => {
       const response = await fetch(`/api/jobs/outstanding-sub-balances?jobIds=${ids.join(",")}`);
       if (!response.ok) throw new Error(`Batch close gate returned ${response.status}`);
@@ -233,6 +329,11 @@ async function main() {
       })).catch(() => null);
       console.error("Verifier page state:", state);
     }
+    console.error("Verifier write state:", {
+      closeRequestAllowed,
+      closeRequestInfo,
+      blockedWrites,
+    });
   } finally {
     try { await browser?.close(); } catch (error) { failure ??= error; }
     const leftovers = await cleanup();
