@@ -103,6 +103,151 @@ router.post("/audit-repair-business-ownership", async (req: Request, res: Respon
   }
 });
 
+// One-time repair for the published Cavco Owensboro client. This is deliberately
+// limited to the exact legacy row and verifies all linked jobs/invoices already
+// belong to General Contracting before setting the client's canonical owner.
+router.post("/repair-cavco-owensboro-client-owner", async (req: Request, res: Response) => {
+  const targetName = "Cavco Owensboro";
+  const legacyBusinessLine = "contracting";
+  const confirmToken = "REPAIR_CAVCO_OWENSBORO_CLIENT_OWNER";
+
+  try {
+    const { dryRun = true, confirm } = (req.body ?? {}) as { dryRun?: boolean; confirm?: string };
+    if (dryRun !== true && dryRun !== false) {
+      return res.status(400).json({ error: "dryRun must be a boolean" });
+    }
+    if (dryRun === false && confirm !== confirmToken) {
+      return res.status(400).json({ error: `Execution requires confirm: ${confirmToken}` });
+    }
+
+    const [business] = await db.select({
+      id: businessesTable.id,
+      slug: businessesTable.slug,
+      name: businessesTable.name,
+    }).from(businessesTable).where(eq(businessesTable.slug, "general_contracting")).limit(1);
+    if (!business) return res.status(409).json({ error: "General Contracting business was not found." });
+
+    const targets = await db.select({
+      id: clientsTable.id,
+      name: clientsTable.name,
+      businessId: clientsTable.businessId,
+      businessLine: clientsTable.businessLine,
+    }).from(clientsTable).where(eq(clientsTable.name, targetName)).limit(2);
+    if (targets.length !== 1) {
+      return res.status(409).json({
+        error: `Expected exactly one "${targetName}" client; found ${targets.length}. No data changed.`,
+      });
+    }
+    const target = targets[0];
+
+    const [linkedJobs, linkedInvoices] = await Promise.all([
+      db.select({
+        id: jobsTable.id,
+        businessId: jobsTable.businessId,
+        businessLine: jobsTable.businessLine,
+      }).from(jobsTable).where(eq(jobsTable.clientId, target.id)),
+      db.select({
+        id: invoicesTable.id,
+        businessId: invoicesTable.businessId,
+        businessLine: invoicesTable.businessLine,
+      }).from(invoicesTable).where(eq(invoicesTable.clientId, target.id)),
+    ]);
+    const linkedRowsMatchBusiness = [...linkedJobs, ...linkedInvoices].every(row =>
+      row.businessId === business.id && row.businessLine === business.slug
+    );
+    if (!linkedRowsMatchBusiness) {
+      return res.status(409).json({
+        error: "Linked jobs or invoices do not all belong to General Contracting. No data changed.",
+        linkedJobs: linkedJobs.length,
+        linkedInvoices: linkedInvoices.length,
+      });
+    }
+
+    const plan = {
+      business,
+      client: target,
+      linkedJobs: linkedJobs.length,
+      linkedInvoices: linkedInvoices.length,
+      action: target.businessId === business.id
+        ? "already_correct"
+        : target.businessId == null && target.businessLine === legacyBusinessLine
+          ? "set_canonical_business_id"
+          : "ownership_precondition_failed",
+      businessIdAfterRepair: business.id,
+    };
+
+    if (target.businessId === business.id) {
+      return res.json({ ok: true, dryRun, alreadyCorrect: true, plan });
+    }
+    if (target.businessId != null || target.businessLine !== legacyBusinessLine) {
+      return res.status(409).json({ error: "Client no longer matches the expected legacy ownership. No data changed.", plan });
+    }
+    if (dryRun) {
+      return res.json({ ok: true, dryRun: true, plan });
+    }
+
+    const result = await db.transaction(async tx => {
+      const [lockedTarget] = await tx.select({
+        id: clientsTable.id,
+        name: clientsTable.name,
+        businessId: clientsTable.businessId,
+        businessLine: clientsTable.businessLine,
+      }).from(clientsTable).where(eq(clientsTable.id, target.id)).for("update");
+      if (!lockedTarget || lockedTarget.name !== targetName) {
+        return { conflict: "Client identity changed before repair. No data changed." } as const;
+      }
+      if (lockedTarget.businessId === business.id) {
+        return { client: lockedTarget, alreadyCorrect: true } as const;
+      }
+      if (lockedTarget.businessId != null || lockedTarget.businessLine !== legacyBusinessLine) {
+        return { conflict: "Client ownership changed before repair. No data changed." } as const;
+      }
+
+      const [currentJobs, currentInvoices] = await Promise.all([
+        tx.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+          .from(jobsTable).where(eq(jobsTable.clientId, target.id)),
+        tx.select({ businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine })
+          .from(invoicesTable).where(eq(invoicesTable.clientId, target.id)),
+      ]);
+      if (![...currentJobs, ...currentInvoices].every(row =>
+        row.businessId === business.id && row.businessLine === business.slug
+      )) {
+        return { conflict: "Linked job or invoice ownership changed before repair. No data changed." } as const;
+      }
+
+      const [updated] = await tx.update(clientsTable)
+        .set({ businessId: business.id })
+        .where(and(
+          eq(clientsTable.id, target.id),
+          eq(clientsTable.name, targetName),
+          isNull(clientsTable.businessId),
+          eq(clientsTable.businessLine, legacyBusinessLine),
+        ))
+        .returning({
+          id: clientsTable.id,
+          name: clientsTable.name,
+          businessId: clientsTable.businessId,
+          businessLine: clientsTable.businessLine,
+        });
+      if (!updated) return { conflict: "Client changed before the guarded update. No data changed." } as const;
+      return { client: updated, alreadyCorrect: false } as const;
+    });
+
+    if ("conflict" in result) return res.status(409).json({ error: result.conflict });
+    res.json({
+      ok: true,
+      dryRun: false,
+      alreadyCorrect: result.alreadyCorrect,
+      client: result.client,
+      linkedJobs: linkedJobs.length,
+      linkedInvoices: linkedInvoices.length,
+    });
+  } catch (err) {
+    console.error("[admin/migrations] repair-cavco-owensboro-client-owner failed:", err);
+    res.status(500).json({ error: "Client ownership repair failed" });
+  }
+});
+
 /* Legacy endpoint retained only as a deliberately disabled compatibility
  * response; the generalized audit route above supersedes the exact repair. */
 router.post("/repair-wil-1047-1049-ownership", async (_req: Request, res: Response) => {
