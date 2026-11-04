@@ -225,7 +225,6 @@ export async function syncMaterialsToInvoice(invoiceId: number, executor: any = 
 
 /** Existing job hooks now sync only invoices to which that job's lists are assigned. */
 export async function syncMaterialsToJobInvoice(jobId: number) {
-  await initializeLegacyMaterialAssignments(jobId);
   const lists = await db.select({ invoiceId: materialListsTable.invoiceId })
     .from(materialListsTable).where(eq(materialListsTable.jobId, jobId));
   const invoiceIds = [...new Set(lists.map(list => list.invoiceId).filter((id): id is number => id != null))];
@@ -394,6 +393,7 @@ router.put("/:id", async (req, res) => {
     if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
 
     const userId = req.user?.id;
+    await initializeLegacyMaterialAssignments(undefined, userId);
 
     // Verify ownership before making any changes
     const ownerCheck = await db
@@ -557,6 +557,7 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const userId = req.user?.id;
+    await initializeLegacyMaterialAssignments(undefined, userId);
 
     // Scope the prefetch by owner to prevent cross-user info leakage
     const ownerConditions: SQL[] = [eq(materialListsTable.id, id)];

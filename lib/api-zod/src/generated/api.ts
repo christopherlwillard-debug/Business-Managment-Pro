@@ -1337,13 +1337,10 @@ export const UpdateJobProductionComponentStatusParams = zod.object({
 
 export const UpdateJobProductionComponentStatusBody = zod.object({
   componentInstanceKey: zod.string(),
-  status: zod.enum([
-    "planned",
-    "in_progress",
-    "paused",
-    "completed",
-    "not_applicable",
-  ]),
+  status: zod
+    .enum(["planned", "in_progress", "paused", "completed", "not_applicable"])
+    .optional(),
+  expectedDurationDays: zod.number().min(1).nullish(),
 });
 
 export const UpdateJobProductionComponentStatusResponse = zod.object({

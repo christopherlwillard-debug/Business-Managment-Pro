@@ -355,7 +355,9 @@ export const UpdateProductionComponentStatusRequestStatus = {
 
 export interface UpdateProductionComponentStatusRequest {
   componentInstanceKey: string;
-  status: UpdateProductionComponentStatusRequestStatus;
+  status?: UpdateProductionComponentStatusRequestStatus;
+  /** @minimum 1 */
+  expectedDurationDays?: number | null;
 }
 
 export interface CreateComponentWorkSessionRequest {

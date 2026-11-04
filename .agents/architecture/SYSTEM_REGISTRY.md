@@ -152,12 +152,14 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Materials / Inventory
 
-- **Tables:** `materials` (catalog), `material_lists` (per-job lists), `material_list_items` (line items)
-- **Schemas:** `lib/db/src/schema/materials.ts`, `lib/db/src/schema/material-lists.ts`
+- **Tables:** `materials` (catalog), `material_lists` (per-job lists and current invoice assignment), `material_list_items` (line items), `material_list_invoice_events` (append-only assignment history)
+- **Schemas:** `lib/db/src/schema/materials.ts`, `lib/db/src/schema/material-lists.ts`, `lib/db/src/schema/material-list-invoice-events.ts`
 - **API:** `artifacts/api-server/src/routes/materials.ts`, `artifacts/api-server/src/routes/material-lists.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Materials.tsx`
 - **Reports:** Not directly in reports.ts
-- **Source of truth:** `materials` for the catalog; `material_list_items` for job-level material consumption.
+- **Source of truth:** `materials` for the catalog; `material_list_items` for job-level material consumption; invoice line items for billed revenue.
+- **Invoice assignment rule:** One material list is assigned to one invoice at a time. Any draft for the same client and business is eligible, including a different job. Reassignment from a sent/paid invoice requires explicit confirmation; finalized invoices are never rewritten. The list and its expense rows remain on their original job.
+- **Audit rule:** `material_list_invoice_events` records assignment transitions and confirmation state only; it is not an accounting or payment ledger.
 
 ---
 

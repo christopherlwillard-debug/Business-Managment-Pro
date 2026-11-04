@@ -9,5 +9,7 @@ import type { UpdateProductionComponentStatusRequestStatus } from "./updateProdu
 
 export interface UpdateProductionComponentStatusRequest {
   componentInstanceKey: string;
-  status: UpdateProductionComponentStatusRequestStatus;
+  status?: UpdateProductionComponentStatusRequestStatus;
+  /** @minimum 1 */
+  expectedDurationDays?: number | null;
 }

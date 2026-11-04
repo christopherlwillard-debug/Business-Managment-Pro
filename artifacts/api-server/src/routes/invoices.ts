@@ -10,6 +10,7 @@ import { generateMaterialsPdfBuffer } from "../lib/generateMaterialsPdf.js";
 import { db } from "@workspace/db";
 import {
   invoicesTable,
+  materialListsTable,
   clientsTable,
   jobsTable,
   settingsTable,
@@ -348,7 +349,7 @@ router.post("/", async (req, res) => {
       owner = jobOwner;
     }
 
-    if (jobId) await initializeLegacyMaterialAssignments(jobId);
+    if (jobId) await initializeLegacyMaterialAssignments(jobId, req.user?.id);
     const [invoice] = await db.insert(invoicesTable).values({
       invoiceNumber: null,
       clientId: clientId || null,
@@ -450,7 +451,14 @@ router.put("/:id", async (req, res) => {
 
     // Guard: cancelled (voided) invoices are read-only
     const [currentInv] = await db
-      .select({ status: invoicesTable.status, invoiceNumber: invoicesTable.invoiceNumber, jobId: invoicesTable.jobId, businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine })
+      .select({
+        status: invoicesTable.status,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        jobId: invoicesTable.jobId,
+        clientId: invoicesTable.clientId,
+        businessId: invoicesTable.businessId,
+        businessLine: invoicesTable.businessLine,
+      })
       .from(invoicesTable)
       .where(eq(invoicesTable.id, id));
     if (!currentInv) return res.status(404).json({ error: "Invoice not found" });
@@ -495,6 +503,22 @@ router.put("/:id", async (req, res) => {
       owner = requestedOwner.business;
     } else if (currentOwnership.state === "invalid") {
       return res.status(409).json({ error: "Invoice has invalid business ownership" });
+    }
+
+    if (clientId !== undefined && clientId !== currentInv.clientId) {
+      const assignedLists = await db.select({ jobId: materialListsTable.jobId })
+        .from(materialListsTable)
+        .where(eq(materialListsTable.invoiceId, id));
+      for (const list of assignedLists) {
+        if (!list.jobId) {
+          return res.status(409).json({ error: "Unassign material lists before changing this invoice's client." });
+        }
+        const [sourceJob] = await db.select({ clientId: jobsTable.clientId })
+          .from(jobsTable).where(eq(jobsTable.id, list.jobId)).limit(1);
+        if (!sourceJob || sourceJob.clientId !== (clientId || null)) {
+          return res.status(409).json({ error: "This invoice has material lists assigned from a different client." });
+        }
+      }
     }
 
     await db.update(invoicesTable).set({

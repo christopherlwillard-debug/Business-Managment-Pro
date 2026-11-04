@@ -99,6 +99,8 @@ vi.mock("@replit/connectors-sdk", () => ({
   },
 }));
 vi.mock("./material-lists", () => ({
+  initializeLegacyMaterialAssignments: vi.fn(),
+  syncMaterialsToInvoice: vi.fn(),
   syncMaterialsToJobInvoice: vi.fn(),
 }));
 vi.mock("../lib/business-scope.js", () => ({
@@ -1661,6 +1663,7 @@ describe("PUT /:id — field preservation guards", () => {
   it("writes clientId when explicitly provided as a positive integer", async () => {
     h.selectQueue.push(
       [{ status: "draft", invoiceNumber: null }],
+      [],
       [fakeInvoice({ status: "draft", clientId: 5 })],
     );
 
@@ -1678,6 +1681,7 @@ describe("PUT /:id — field preservation guards", () => {
   it("sets clientId to null when explicitly sent as null (intentional detach)", async () => {
     h.selectQueue.push(
       [{ status: "draft", invoiceNumber: null }],
+      [],
       [fakeInvoice({ status: "draft", clientId: null })],
     );
 

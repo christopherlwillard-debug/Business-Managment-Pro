@@ -770,3 +770,11 @@ Created the four-document architecture governance system:
   resolved profile in evidence.
 - Added profile creation/listing API operations with business ownership
   validation; unmapped custom services remain excluded.
+
+### Explicit material-list invoice assignment
+
+- Material lists now have one current invoice assignment that can target any
+  draft invoice for the same client and business, including another job.
+- Reassignment from a sent or paid invoice requires confirmation and never
+  rewrites the finalized invoice or moves the list's expense records.
+- Added append-only assignment history and invoice-specific material-line sync.

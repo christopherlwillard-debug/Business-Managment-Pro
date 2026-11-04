@@ -568,3 +568,30 @@ businesses from changing historical meaning or merging unrelated evidence.
 
 **Status:** Accepted
 **Date:** 2026-09-11
+
+## ADR-031
+
+**Title:** Material-list invoice assignment is explicit and preserves source records
+
+**Decision:** Each material list has at most one current invoice assignment. A list
+may be assigned to any draft invoice for the same client and business, including
+an invoice for a different job. Reassignment away from a sent or paid invoice
+requires explicit confirmation; finalized invoices are not changed. Material
+lists and linked expense rows remain attributed to their source job, while the
+invoice remains the source of billed revenue. Append-only assignment events
+record old/new invoice snapshots and confirmation state.
+
+**Reason:** Contractors need to decide whether materials are billed with the
+original work or separately without moving underlying cost records or silently
+editing an issued invoice. A separate event ledger preserves an audit trail
+without overloading invoice-delivery communication history.
+
+**Rejected Alternatives:**
+
+- Moving a material list or its expenses to the destination job
+- Silently reassigning lists when a new draft invoice is created
+- Rewriting sent or paid invoices during reassignment
+- Reusing invoice communication events as assignment history
+
+**Status:** Accepted
+**Date:** 2026-11-04
