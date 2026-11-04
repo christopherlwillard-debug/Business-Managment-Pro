@@ -106,14 +106,15 @@ invoice must not move the list, linked material expenses, or other job records.
 ## Verification plan
 
 - Route tests: valid same-client cross-job assignment; reject another client,
-  another business, sent/paid invoices, and unauthorized lists.
+  another business, sent/paid target invoices, and unauthorized lists.
 - Reassignment tests: old draft recalculates from remaining lists, target draft
   receives the selected list, and other invoice lines remain unchanged.
 - Data-integrity tests: list `job_id`, material expense IDs, and expense
   `job_id` remain unchanged after assignment.
 - Lifecycle tests: creating another draft does not move existing assignments;
   sending an invoice prevents future synchronization into it; reassignment
-  after sending leaves the issued invoice unchanged and requires confirmation.
+  from a sent/paid invoice to a draft requires explicit confirmation and leaves
+  the issued invoice unchanged.
 - UI checks: distinguish duplicate job names in the picker, show current
   assignment, allow change/detach while draft, and display cross-job
   attribution context.
