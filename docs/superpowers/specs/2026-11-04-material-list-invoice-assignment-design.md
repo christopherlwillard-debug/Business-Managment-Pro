@@ -105,8 +105,11 @@ invoice must not move the list, linked material expenses, or other job records.
 
 ## Verification plan
 
-- Route tests: valid same-client cross-job assignment; reject another client,
-  another business, sent/paid target invoices, and unauthorized lists.
+- Route tests: allow valid same-client cross-job assignment; reject another
+  client, another business, sent/paid target invoices (even with confirmation),
+  and unauthorized lists. Reject reassignment from a sent/paid prior invoice
+  without confirmation; allow it with confirmation and assert the issued
+  invoice line remains unchanged.
 - Reassignment tests: old draft recalculates from remaining lists, target draft
   receives the selected list, and other invoice lines remain unchanged.
 - Data-integrity tests: list `job_id`, material expense IDs, and expense
