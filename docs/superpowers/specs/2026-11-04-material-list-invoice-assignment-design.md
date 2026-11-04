@@ -31,8 +31,8 @@ invoice must not move the list, linked material expenses, or other job records.
 
 - Add a nullable invoice reference to the existing material-list record; do not
   introduce a second ledger or join table.
-- A material list can be assigned to one draft invoice at a time. Multiple
-  lists may be assigned to one invoice.
+- A material list can be assigned to one invoice at a time. Multiple lists may
+  be assigned to one invoice.
 - The picker shows all draft invoices for the same client and business, even
   when their jobs differ. Each option includes enough context to distinguish
   invoices (invoice date/number, client, job, and location where available).
@@ -51,9 +51,12 @@ invoice must not move the list, linked material expenses, or other job records.
   the previous draft (if any) and the newly selected draft.
 - When no assigned lists remain on a draft, remove only its generated material
   line. Preserve labor, service, tax, and other invoice lines.
-- A sent or paid invoice is immutable to this feature. Assignment changes are
-  available only while the assigned invoice remains a draft. Sending finalizes
-  its current material line; later list edits do not rewrite that invoice.
+- A sent or paid invoice is immutable to this feature. Sending finalizes its
+  current material line; later list edits or detachment do not rewrite that
+  invoice.
+- Reassignment from a sent or paid invoice to a new draft is allowed only after
+  an explicit warning and confirmation. The issued invoice remains unchanged,
+  so the new draft may bill the same materials again.
 - Creating a later draft does not silently move lists already assigned to an
   invoice. New lists retain the current behavior of attaching to the latest
   same-job draft when one exists; otherwise they remain unassigned until the
@@ -65,9 +68,11 @@ invoice must not move the list, linked material expenses, or other job records.
 
 - The API verifies list ownership, business scope, same-client relationship,
   and that the target invoice is still a draft.
-- Reject assignment to another client's invoice, another business, or any
-  non-draft invoice; return a clear conflict/error message and preserve the
-  previous assignment.
+- Reject assignment to another client's invoice, another business, or a
+  non-draft target invoice; return a clear conflict/error message and preserve
+  the previous assignment.
+- Require an explicit confirmation flag when detaching or reassigning a list
+  whose previous invoice is sent or paid.
 - On synchronization failure, preserve the previous assignment and invoice
   line state through a transaction or equivalent atomic update.
 - Do not create invoices as a side effect of material-list activity.
@@ -107,7 +112,8 @@ invoice must not move the list, linked material expenses, or other job records.
 - Data-integrity tests: list `job_id`, material expense IDs, and expense
   `job_id` remain unchanged after assignment.
 - Lifecycle tests: creating another draft does not move existing assignments;
-  sending an invoice prevents future synchronization into it.
+  sending an invoice prevents future synchronization into it; reassignment
+  after sending leaves the issued invoice unchanged and requires confirmation.
 - UI checks: distinguish duplicate job names in the picker, show current
   assignment, allow change/detach while draft, and display cross-job
   attribution context.
@@ -118,6 +124,8 @@ invoice must not move the list, linked material expenses, or other job records.
 
 - Splitting one material list across multiple invoices.
 - Automatically moving job costs when invoice assignment changes.
-- Editing sent or paid invoice totals.
+- Editing sent or paid invoice totals. Reassignment after sending leaves the
+  issued invoice intact and can result in the same materials appearing on a
+  later draft.
 - Creating a draft invoice automatically.
 - Changing the existing material markup or expense-entry rules.
