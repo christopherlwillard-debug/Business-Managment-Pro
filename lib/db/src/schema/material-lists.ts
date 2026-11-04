@@ -2,12 +2,15 @@ import { pgTable, serial, text, timestamp, integer, numeric, boolean } from "dri
 import { jobsTable } from "./jobs";
 import { materialsTable } from "./materials";
 import { expensesTable } from "./expenses";
+import { invoicesTable } from "./invoices";
 
 export const materialListsTable = pgTable("material_lists", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   userId: text("user_id"),
   jobId: integer("job_id").references(() => jobsTable.id, { onDelete: "set null" }),
+  invoiceId: integer("invoice_id").references(() => invoicesTable.id, { onDelete: "set null" }),
+  invoiceAssignmentInitialized: boolean("invoice_assignment_initialized").notNull().default(false),
   markup: numeric("markup", { precision: 5, scale: 2 }).notNull().default("40"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -13,6 +13,8 @@ tags:
     description: Job management
   - name: invoices
     description: Invoice management
+  - name: material-lists
+    description: Job material lists and invoice assignments
   - name: expenses
     description: Expense management
   - name: mileage
@@ -753,6 +755,60 @@ paths:
       responses:
         "204":
           description: Deleted
+
+  # MATERIAL LIST INVOICE ASSIGNMENT
+  /material-lists/{id}/attach-to-invoice:
+    post:
+      operationId: updateMaterialListInvoiceAssignment
+      tags: [material-lists]
+      summary: Attach, reassign, or detach a material list from an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MaterialListInvoiceAssignmentInput"
+      responses:
+        "200":
+          description: Material list invoice assignment result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaterialListInvoiceAssignmentResult"
+        "400":
+          description: Invalid assignment request
+        "404":
+          description: Material list or invoice not found
+        "409":
+          description: Invoice status, client, or business does not allow assignment
+  /material-lists/{id}/invoice-assignment-history:
+    get:
+      operationId: getMaterialListInvoiceAssignmentHistory
+      tags: [material-lists]
+      summary: Get assignment history for a material list
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Material list invoice assignment history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MaterialListInvoiceAssignmentHistoryEvent"
+        "404":
+          description: Material list not found
 
   # INVOICES
   /invoices:
@@ -2423,7 +2479,11 @@ components:
         status:
           type: string
           enum: [planned, in_progress, paused, completed, not_applicable]
-      required: [componentInstanceKey, status]
+        expectedDurationDays:
+          type: integer
+          nullable: true
+          minimum: 1
+      required: [componentInstanceKey]
 
     CreateComponentWorkSessionRequest:
       type: object
@@ -3128,6 +3188,42 @@ components:
         createdAt:
           type: string
       required: [id, invoiceNumber, status, issueDate, subtotal, total, createdAt]
+
+    MaterialListInvoiceAssignmentInput:
+      type: object
+      required: [invoiceId, confirmAfterFinalized]
+      properties:
+        invoiceId:
+          type: [integer, 'null']
+          description: Draft invoice ID, or null to detach the list.
+        confirmAfterFinalized:
+          type: boolean
+          description: Confirms reassignment from a sent or paid invoice.
+
+    MaterialListInvoiceAssignmentResult:
+      type: object
+      required: [materialListId, invoiceId, previousInvoiceId, changed]
+      properties:
+        materialListId: { type: integer }
+        invoiceId: { type: [integer, 'null'] }
+        previousInvoiceId: { type: [integer, 'null'] }
+        changed: { type: boolean }
+        historyEventId: { type: [integer, 'null'] }
+
+    MaterialListInvoiceAssignmentHistoryEvent:
+      type: object
+      required: [id, materialListNameSnapshot, action, confirmedAfterFinalized, createdAt]
+      properties:
+        id: { type: integer }
+        materialListNameSnapshot: { type: string }
+        action: { type: string, enum: [attach, reassign, detach] }
+        previousInvoiceId: { type: [integer, 'null'] }
+        previousInvoiceLabel: { type: [string, 'null'] }
+        destinationInvoiceId: { type: [integer, 'null'] }
+        destinationInvoiceLabel: { type: [string, 'null'] }
+        actorUserId: { type: [string, 'null'] }
+        confirmedAfterFinalized: { type: boolean }
+        createdAt: { type: string, format: date-time }
 
     InvoiceCommunicationEvent:
       type: object

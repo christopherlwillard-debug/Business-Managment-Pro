@@ -19,7 +19,11 @@ import {
 import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { syncMaterialsToJobInvoice } from "./material-lists.js";
+import {
+  initializeLegacyMaterialAssignments,
+  syncMaterialsToInvoice,
+  syncMaterialsToJobInvoice,
+} from "./material-lists.js";
 import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
@@ -344,6 +348,7 @@ router.post("/", async (req, res) => {
       owner = jobOwner;
     }
 
+    if (jobId) await initializeLegacyMaterialAssignments(jobId);
     const [invoice] = await db.insert(invoicesTable).values({
       invoiceNumber: null,
       clientId: clientId || null,
@@ -515,9 +520,7 @@ router.put("/:id", async (req, res) => {
 
     // Keep material lists in sync whenever a draft invoice is saved.
     // Resolve the effective jobId: prefer body value (if explicitly sent), else the pre-existing one.
-    if (currentInv.status === "draft" && effectiveJobId) {
-      await syncMaterialsToJobInvoice(effectiveJobId);
-    }
+    if (currentInv.status === "draft") await syncMaterialsToInvoice(id);
 
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!withJoins) return res.status(404).json({ error: "Invoice not found" });

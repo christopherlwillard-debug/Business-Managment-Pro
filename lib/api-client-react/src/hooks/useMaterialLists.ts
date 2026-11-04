@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "../custom-fetch";
+import { updateMaterialListInvoiceAssignment } from "../generated/api";
+import type { MaterialListInvoiceAssignmentHistoryEvent } from "../generated/api.schemas";
 
 export interface MaterialListItem {
   id: number;
@@ -18,6 +20,8 @@ export interface MaterialList {
   name: string;
   jobId?: number | null;
   jobTitle?: string | null;
+  clientId?: number | null;
+  invoiceId?: number | null;
   markup: number;
   createdAt: string;
   items: MaterialListItem[];
@@ -98,26 +102,29 @@ export function useDeleteMaterialList() {
 
 export interface AttachToInvoiceRequest {
   id: number;
-  invoiceId?: number;
-  attachmentUrl?: string;
-  attachmentName?: string;
-  attachmentSize?: number;
+  invoiceId: number | null;
+  confirmAfterFinalized: boolean;
 }
 
 export function useAttachMaterialListToInvoice() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...body }: AttachToInvoiceRequest) =>
-      customFetch<{ invoiceId: number | null; created: boolean }>(
-        `/api/material-lists/${id}/attach-to-invoice`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      ),
+    mutationFn: ({ id, invoiceId, confirmAfterFinalized }: AttachToInvoiceRequest) =>
+      updateMaterialListInvoiceAssignment(id, { invoiceId, confirmAfterFinalized }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/invoices"] });
+      qc.invalidateQueries({ queryKey: [QK] });
     },
+  });
+}
+
+export function useMaterialListInvoiceAssignmentHistory(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: [QK, id, "invoice-assignment-history"],
+    enabled,
+    queryFn: () => customFetch<MaterialListInvoiceAssignmentHistoryEvent[]>(
+      `/api/material-lists/${id}/invoice-assignment-history`,
+      { method: "GET" },
+    ),
   });
 }

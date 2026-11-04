@@ -69,6 +69,9 @@ import type {
   ListJobsParams,
   ListMileageLogsParams,
   LogoutSuccess,
+  MaterialListInvoiceAssignmentHistoryEvent,
+  MaterialListInvoiceAssignmentInput,
+  MaterialListInvoiceAssignmentResult,
   MileageLog,
   MileageSummary,
   MobileTokenExchangeRequest,
@@ -3286,6 +3289,197 @@ export const useDeleteJob = <
 > => {
   return useMutation(getDeleteJobMutationOptions(options));
 };
+
+/**
+ * @summary Attach, reassign, or detach a material list from an invoice
+ */
+export const getUpdateMaterialListInvoiceAssignmentUrl = (id: number) => {
+  return `/api/material-lists/${id}/attach-to-invoice`;
+};
+
+export const updateMaterialListInvoiceAssignment = async (
+  id: number,
+  materialListInvoiceAssignmentInput: MaterialListInvoiceAssignmentInput,
+  options?: RequestInit,
+): Promise<MaterialListInvoiceAssignmentResult> => {
+  return customFetch<MaterialListInvoiceAssignmentResult>(
+    getUpdateMaterialListInvoiceAssignmentUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(materialListInvoiceAssignmentInput),
+    },
+  );
+};
+
+export const getUpdateMaterialListInvoiceAssignmentMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>,
+    TError,
+    { id: number; data: BodyType<MaterialListInvoiceAssignmentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>,
+  TError,
+  { id: number; data: BodyType<MaterialListInvoiceAssignmentInput> },
+  TContext
+> => {
+  const mutationKey = ["updateMaterialListInvoiceAssignment"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>,
+    { id: number; data: BodyType<MaterialListInvoiceAssignmentInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateMaterialListInvoiceAssignment(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateMaterialListInvoiceAssignmentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>
+>;
+export type UpdateMaterialListInvoiceAssignmentMutationBody =
+  BodyType<MaterialListInvoiceAssignmentInput>;
+export type UpdateMaterialListInvoiceAssignmentMutationError = ErrorType<void>;
+
+/**
+ * @summary Attach, reassign, or detach a material list from an invoice
+ */
+export const useUpdateMaterialListInvoiceAssignment = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>,
+    TError,
+    { id: number; data: BodyType<MaterialListInvoiceAssignmentInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateMaterialListInvoiceAssignment>>,
+  TError,
+  { id: number; data: BodyType<MaterialListInvoiceAssignmentInput> },
+  TContext
+> => {
+  return useMutation(
+    getUpdateMaterialListInvoiceAssignmentMutationOptions(options),
+  );
+};
+
+/**
+ * @summary Get assignment history for a material list
+ */
+export const getGetMaterialListInvoiceAssignmentHistoryUrl = (id: number) => {
+  return `/api/material-lists/${id}/invoice-assignment-history`;
+};
+
+export const getMaterialListInvoiceAssignmentHistory = async (
+  id: number,
+  options?: RequestInit,
+): Promise<MaterialListInvoiceAssignmentHistoryEvent[]> => {
+  return customFetch<MaterialListInvoiceAssignmentHistoryEvent[]>(
+    getGetMaterialListInvoiceAssignmentHistoryUrl(id),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetMaterialListInvoiceAssignmentHistoryQueryKey = (
+  id: number,
+) => {
+  return [`/api/material-lists/${id}/invoice-assignment-history`] as const;
+};
+
+export const getGetMaterialListInvoiceAssignmentHistoryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetMaterialListInvoiceAssignmentHistoryQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>
+  > = ({ signal }) =>
+    getMaterialListInvoiceAssignmentHistory(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetMaterialListInvoiceAssignmentHistoryQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>
+>;
+export type GetMaterialListInvoiceAssignmentHistoryQueryError = ErrorType<void>;
+
+/**
+ * @summary Get assignment history for a material list
+ */
+
+export function useGetMaterialListInvoiceAssignmentHistory<
+  TData = Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getMaterialListInvoiceAssignmentHistory>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetMaterialListInvoiceAssignmentHistoryQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List all invoices

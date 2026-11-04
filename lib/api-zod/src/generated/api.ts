@@ -1244,7 +1244,6 @@ export const GetJobProductionComponentsResponseItem = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
-  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1307,7 +1306,6 @@ export const GetJobProductionComponentHistoryResponseItem = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
-  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
@@ -1345,8 +1343,7 @@ export const UpdateJobProductionComponentStatusBody = zod.object({
     "paused",
     "completed",
     "not_applicable",
-  ]).optional(),
-  expectedDurationDays: zod.number().int().min(1).max(365).nullable().optional(),
+  ]),
 });
 
 export const UpdateJobProductionComponentStatusResponse = zod.object({
@@ -1375,7 +1372,6 @@ export const UpdateJobProductionComponentStatusResponse = zod.object({
   ]),
   expectedLaborHours: zod.number().nullable(),
   expectedDurationDays: zod.number().nullable(),
-  expectedDurationDaysExplicit: zod.boolean(),
   expectedCrewSize: zod.number().nullable(),
   checklistContext: zod.record(zod.string(), zod.unknown()).nullable(),
   materialContext: zod.record(zod.string(), zod.unknown()).nullable(),
@@ -2231,6 +2227,54 @@ export const UpdateJobResponse = zod.object({
 export const DeleteJobParams = zod.object({
   id: zod.coerce.number(),
 });
+
+/**
+ * @summary Attach, reassign, or detach a material list from an invoice
+ */
+export const UpdateMaterialListInvoiceAssignmentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateMaterialListInvoiceAssignmentBody = zod.object({
+  invoiceId: zod
+    .number()
+    .nullable()
+    .describe("Draft invoice ID, or null to detach the list."),
+  confirmAfterFinalized: zod
+    .boolean()
+    .describe("Confirms reassignment from a sent or paid invoice."),
+});
+
+export const UpdateMaterialListInvoiceAssignmentResponse = zod.object({
+  materialListId: zod.number(),
+  invoiceId: zod.number().nullable(),
+  previousInvoiceId: zod.number().nullable(),
+  changed: zod.boolean(),
+  historyEventId: zod.number().nullish(),
+});
+
+/**
+ * @summary Get assignment history for a material list
+ */
+export const GetMaterialListInvoiceAssignmentHistoryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetMaterialListInvoiceAssignmentHistoryResponseItem = zod.object({
+  id: zod.number(),
+  materialListNameSnapshot: zod.string(),
+  action: zod.enum(["attach", "reassign", "detach"]),
+  previousInvoiceId: zod.number().nullish(),
+  previousInvoiceLabel: zod.string().nullish(),
+  destinationInvoiceId: zod.number().nullish(),
+  destinationInvoiceLabel: zod.string().nullish(),
+  actorUserId: zod.string().nullish(),
+  confirmedAfterFinalized: zod.boolean(),
+  createdAt: zod.date(),
+});
+export const GetMaterialListInvoiceAssignmentHistoryResponse = zod.array(
+  GetMaterialListInvoiceAssignmentHistoryResponseItem,
+);
 
 /**
  * @summary List all invoices

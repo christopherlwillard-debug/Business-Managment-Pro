@@ -6,6 +6,7 @@ import {
   jobsTable,
   invoicesTable,
   expensesTable,
+  materialListInvoiceEventsTable,
 } from "@workspace/db/schema";
 import { eq, and, inArray, isNotNull, desc, SQL } from "drizzle-orm";
 
@@ -120,6 +121,8 @@ async function getListWithItems(id: number, userId?: string) {
       name: materialListsTable.name,
       jobId: materialListsTable.jobId,
       jobTitle: jobsTable.title,
+      clientId: jobsTable.clientId,
+      invoiceId: materialListsTable.invoiceId,
       markup: materialListsTable.markup,
       createdAt: materialListsTable.createdAt,
     })
@@ -143,151 +146,95 @@ async function getListWithItems(id: number, userId?: string) {
 }
 
 
-/**
- * Exported so other route handlers (e.g. jobs.ts) can trigger a sync
- * when job-level events occur (e.g. status → completed).
- *
- * Expands all material list items for a job into individual invoice line items,
- * each priced at unitCostSnapshot × qty × (1 + markup%). Each line carries
- * source: "material" so subsequent syncs can cleanly replace them without
- * touching labor/service lines.
- *
- * IMPORTANT: This function never creates a new invoice. It only updates an
- * existing draft invoice that was already created by the user on the job card.
- * If no draft invoice exists, the sync returns silently. This prevents ghost
- * (orphaned) draft invoices from being auto-created by material list activity.
- */
-export async function syncMaterialsToJobInvoice(jobId: number) {
-  // Fetch all material lists for this job
-  const lists = await db
-    .select()
-    .from(materialListsTable)
-    .where(eq(materialListsTable.jobId, jobId));
-
-  if (lists.length === 0) {
-    // No lists — remove all material-sourced lines from the draft invoice if it exists
-    const [existing] = await db
-      .select()
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.jobId, jobId), eq(invoicesTable.status, "draft")))
-      .orderBy(desc(invoicesTable.id))
-      .limit(1);
-
-    if (existing) {
-      const rawItems = Array.isArray(existing.lineItems) ? existing.lineItems : [];
-      const lineItems = rawItems as LineItem[];
-      const filtered = lineItems.filter(li => !isMaterialLine(li));
-      if (filtered.length !== lineItems.length) {
-        const subtotal = filtered.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
-        const taxRate = existing.taxRate ? parseFloat(existing.taxRate) : 0;
-        const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
-        await db.update(invoicesTable).set({
-          lineItems: filtered,
-          subtotal: subtotal.toFixed(2),
-          taxAmount: taxAmount.toFixed(2),
-          total: (subtotal + taxAmount).toFixed(2),
-        }).where(eq(invoicesTable.id, existing.id));
-      }
-    }
-    return;
+/** Assign old lists once, before a new draft can become their accidental destination. */
+export async function initializeLegacyMaterialAssignments(jobId?: number, userId?: string) {
+  const conditions = [eq(materialListsTable.invoiceAssignmentInitialized, false)];
+  if (jobId !== undefined) conditions.push(eq(materialListsTable.jobId, jobId) as any);
+  if (userId) conditions.push(eq(materialListsTable.userId, userId) as any);
+  const legacy = await db.select().from(materialListsTable).where(and(...conditions));
+  for (const list of legacy) {
+    const [job] = list.jobId
+      ? await db.select({ clientId: jobsTable.clientId, businessId: jobsTable.businessId })
+          .from(jobsTable).where(eq(jobsTable.id, list.jobId)).limit(1)
+      : [];
+    const [draft] = list.jobId && job?.clientId && job.businessId
+      ? await db.select({ id: invoicesTable.id }).from(invoicesTable)
+          .where(and(
+            eq(invoicesTable.jobId, list.jobId),
+            eq(invoicesTable.clientId, job.clientId),
+            eq(invoicesTable.businessId, job.businessId),
+            eq(invoicesTable.status, "draft"),
+          )).orderBy(desc(invoicesTable.id)).limit(1)
+      : [];
+    await db.update(materialListsTable).set({
+      invoiceId: draft?.id ?? null,
+      invoiceAssignmentInitialized: true,
+    }).where(and(
+      eq(materialListsTable.id, list.id),
+      eq(materialListsTable.invoiceAssignmentInitialized, false),
+    ));
   }
+}
 
-  // Gather all items across all lists for this job
-  const listIds = lists.map(l => l.id);
-  const allItems = await db
-    .select()
-    .from(materialListItemsTable)
-    .where(inArray(materialListItemsTable.listId, listIds));
+/** Rebuild only the material line on one draft; source list and expense rows stay untouched. */
+export async function syncMaterialsToInvoice(invoiceId: number, executor: any = db) {
+  const [invoice] = await executor.select().from(invoicesTable)
+    .where(eq(invoicesTable.id, invoiceId)).limit(1);
+  if (!invoice || invoice.status !== "draft") return;
 
-  // Group items by list to apply per-list markup
-  const itemsByList: Record<number, typeof allItems> = {};
-  for (const item of allItems) {
-    if (!itemsByList[item.listId]) itemsByList[item.listId] = [];
-    itemsByList[item.listId].push(item);
-  }
+  const lists = await executor.select().from(materialListsTable)
+    .where(eq(materialListsTable.invoiceId, invoiceId));
+  const listIds = lists.map((list: any) => list.id);
+  const items = listIds.length
+    ? await executor.select().from(materialListItemsTable)
+        .where(inArray(materialListItemsTable.listId, listIds))
+    : [];
+  const itemsByList: Record<number, typeof items> = {};
+  for (const item of items) (itemsByList[item.listId] ??= []).push(item);
 
-  // Compute ONE aggregate "Materials" total across all lists (each list has its own markup)
-  let materialsGrandTotal = 0;
-  for (const list of lists) {
-    const markup = parseFloat(list.markup ?? "40");
-    const markupMult = 1 + markup / 100;
-    const listItems = itemsByList[list.id] ?? [];
-    for (const item of listItems) {
-      const unitCost = parseFloat(item.unitCostSnapshot ?? "0");
-      const qty = parseFloat(item.qty ?? "1");
-      materialsGrandTotal += qty * unitCost * markupMult;
-    }
-  }
-  materialsGrandTotal = parseFloat(materialsGrandTotal.toFixed(2));
+  const materialsTotal = parseFloat(lists.reduce((sum: number, list: any) => {
+    const markupMultiplier = 1 + parseFloat(list.markup ?? "40") / 100;
+    return sum + (itemsByList[list.id] ?? []).reduce((listSum: number, item: any) =>
+      listSum + parseFloat(item.unitCostSnapshot ?? "0") *
+        parseFloat(item.qty ?? "1") * markupMultiplier, 0);
+  }, 0).toFixed(2));
 
-  // One aggregate "Materials" line — source: "material" so cleanup logic still works
-  const newMaterialLines: LineItem[] = materialsGrandTotal > 0
-    ? [{
-        id: 0, // reassigned below
+  const rawItems = Array.isArray(invoice.lineItems) ? invoice.lineItems as LineItem[] : [];
+  const retained = rawItems.filter(item => !isMaterialLine(item));
+  const maxId = retained.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0);
+  const lineItems = materialsTotal > 0
+    ? [...retained, {
+        id: maxId + 1,
         description: "Materials",
         quantity: 1,
-        unitPrice: materialsGrandTotal,
-        total: materialsGrandTotal,
+        unitPrice: materialsTotal,
+        total: materialsTotal,
         source: "material",
       }]
-    : [];
-
-  const hasMaterialItems = newMaterialLines.length > 0;
-
-  // Find or create a draft invoice for this job
-  let [existingInvoice] = await db
-    .select()
-    .from(invoicesTable)
-    .where(and(eq(invoicesTable.jobId, jobId), eq(invoicesTable.status, "draft")))
-    .orderBy(desc(invoicesTable.id))
-    .limit(1);
-
-  // Materials only attach to an existing job-card draft — never create their own invoice.
-  // If no draft exists yet, wait silently; the user will create one from the job card.
-  if (!existingInvoice) return;
-
-  // Strip all existing material-sourced lines (handles both old aggregate line and new per-item lines)
-  const rawItems = Array.isArray(existingInvoice.lineItems) ? existingInvoice.lineItems : [];
-  let laborLines = (rawItems as LineItem[]).filter(li => !isMaterialLine(li));
-
-  // Safety net: if there are no labor/service lines at all, inject a placeholder
-  if (laborLines.length === 0) {
-    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
-    if (job) {
-      const locationParts = [job.locationName, job.address, job.city, job.state].filter(Boolean);
-      const locationSuffix = locationParts.length ? ` — ${locationParts.join(", ")}` : "";
-      const laborDesc = `${job.title}${locationSuffix}`;
-      laborLines = [{
-        id: 1,
-        description: laborDesc,
-        quantity: 1,
-        unitPrice: 0,
-        total: 0,
-      }];
-    }
-  }
-
-  // Assign fresh sequential IDs to the new material lines
-  const maxLaborId = laborLines.length > 0 ? Math.max(...laborLines.map(li => li.id)) : 0;
-  const materialLines = newMaterialLines.map((li, i) => ({ ...li, id: maxLaborId + i + 1 }));
-
-  // Labor/service lines first, then individual material lines
-  const newItems: LineItem[] = [...laborLines, ...materialLines];
-
-  const subtotal = newItems.reduce((s, li) => s + li.quantity * li.unitPrice, 0);
-  const taxRate = existingInvoice.taxRate ? parseFloat(existingInvoice.taxRate) : 0;
+    : retained;
+  const subtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  const taxRate = invoice.taxRate ? parseFloat(invoice.taxRate) : 0;
   const taxAmount = taxRate ? subtotal * (taxRate / 100) : 0;
-
-  await db.update(invoicesTable).set({
-    lineItems: newItems,
+  await executor.update(invoicesTable).set({
+    lineItems,
     subtotal: subtotal.toFixed(2),
     taxAmount: taxAmount.toFixed(2),
     total: (subtotal + taxAmount).toFixed(2),
-  }).where(eq(invoicesTable.id, existingInvoice.id));
+  }).where(eq(invoicesTable.id, invoiceId));
+}
+
+/** Existing job hooks now sync only invoices to which that job's lists are assigned. */
+export async function syncMaterialsToJobInvoice(jobId: number) {
+  await initializeLegacyMaterialAssignments(jobId);
+  const lists = await db.select({ invoiceId: materialListsTable.invoiceId })
+    .from(materialListsTable).where(eq(materialListsTable.jobId, jobId));
+  const invoiceIds = [...new Set(lists.map(list => list.invoiceId).filter((id): id is number => id != null))];
+  for (const invoiceId of invoiceIds) await syncMaterialsToInvoice(invoiceId);
 }
 
 router.get("/", async (req, res) => {
   try {
+    await initializeLegacyMaterialAssignments(undefined, req.user?.id);
     const { jobId } = req.query;
     const userId = req.user?.id;
 
@@ -301,6 +248,8 @@ router.get("/", async (req, res) => {
         name: materialListsTable.name,
         jobId: materialListsTable.jobId,
         jobTitle: jobsTable.title,
+        clientId: jobsTable.clientId,
+        invoiceId: materialListsTable.invoiceId,
         markup: materialListsTable.markup,
         createdAt: materialListsTable.createdAt,
       })
@@ -345,6 +294,19 @@ router.post("/", async (req, res) => {
 
     // Name is optional — auto-generate one if not provided
     const resolvedName = name?.trim() || "Materials";
+    const [job] = jobId
+      ? await db.select({ clientId: jobsTable.clientId, businessId: jobsTable.businessId })
+          .from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1)
+      : [];
+    const [draft] = jobId && job?.clientId && job.businessId
+      ? await db.select({ id: invoicesTable.id }).from(invoicesTable)
+          .where(and(
+            eq(invoicesTable.jobId, jobId),
+            eq(invoicesTable.clientId, job.clientId),
+            eq(invoicesTable.businessId, job.businessId),
+            eq(invoicesTable.status, "draft"),
+          )).orderBy(desc(invoicesTable.id)).limit(1)
+      : [];
 
     const [list] = await db
       .insert(materialListsTable)
@@ -352,6 +314,8 @@ router.post("/", async (req, res) => {
         name: resolvedName,
         userId,
         jobId: jobId || null,
+        invoiceId: draft?.id ?? null,
+        invoiceAssignmentInitialized: true,
         markup: markup.toString(),
       })
       .returning();
@@ -433,7 +397,11 @@ router.put("/:id", async (req, res) => {
 
     // Verify ownership before making any changes
     const ownerCheck = await db
-      .select({ id: materialListsTable.id, jobId: materialListsTable.jobId })
+      .select({
+        id: materialListsTable.id,
+        jobId: materialListsTable.jobId,
+        invoiceId: materialListsTable.invoiceId,
+      })
       .from(materialListsTable)
       .where(
         userId
@@ -444,6 +412,24 @@ router.put("/:id", async (req, res) => {
 
     if (ownerCheck.length === 0) return res.status(404).json({ error: "Material list not found" });
     const oldJobId = ownerCheck[0].jobId;
+    const assignedInvoiceId = ownerCheck[0].invoiceId;
+
+    if (assignedInvoiceId && jobId !== undefined && (jobId || null) !== oldJobId) {
+      const [assignedInvoice] = await db.select({
+        clientId: invoicesTable.clientId,
+        businessId: invoicesTable.businessId,
+      }).from(invoicesTable).where(eq(invoicesTable.id, assignedInvoiceId)).limit(1);
+      const [newJob] = jobId
+        ? await db.select({ clientId: jobsTable.clientId, businessId: jobsTable.businessId })
+            .from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1)
+        : [];
+      if (!assignedInvoice || !newJob || assignedInvoice.clientId !== newJob.clientId ||
+          assignedInvoice.businessId !== newJob.businessId) {
+        return res.status(409).json({
+          error: "Unassign this material list before changing it to a different client or business.",
+        });
+      }
+    }
 
     await db
       .update(materialListsTable)
@@ -577,7 +563,10 @@ router.delete("/:id", async (req, res) => {
     if (userId) ownerConditions.push(eq(materialListsTable.userId, userId));
 
     const [listRow] = await db
-      .select({ jobId: materialListsTable.jobId })
+      .select({
+        jobId: materialListsTable.jobId,
+        invoiceId: materialListsTable.invoiceId,
+      })
       .from(materialListsTable)
       .where(and(...ownerConditions))
       .limit(1);
@@ -606,6 +595,7 @@ router.delete("/:id", async (req, res) => {
 
       await db.delete(materialListsTable).where(and(...ownerConditions));
 
+      if (listRow.invoiceId) await syncMaterialsToInvoice(listRow.invoiceId);
       // Auto-sync materials to the job's draft invoice after deletion
       if (listRow.jobId) {
         await syncMaterialsToJobInvoice(listRow.jobId);
@@ -636,31 +626,147 @@ router.get("/jobs/:jobId/materials-pdf", async (req, res) => {
   }
 });
 
-// Keep attach-to-invoice as a no-op for backward compatibility (returns existing invoice id if any)
 router.post("/:id/attach-to-invoice", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
-
-    const list = await getListWithItems(id, req.user?.id);
-    if (!list) return res.status(404).json({ error: "Material list not found" });
-
-    if (!list.jobId) {
-      return res.status(400).json({ error: "This list is not linked to a job." });
+    if (!Object.prototype.hasOwnProperty.call(req.body ?? {}, "invoiceId")) {
+      return res.status(400).json({ error: "invoiceId is required; use null to detach." });
+    }
+    const invoiceId = req.body.invoiceId === null ? null : Number(req.body.invoiceId);
+    const confirmAfterFinalized = req.body.confirmAfterFinalized === true;
+    if (invoiceId !== null && (!Number.isInteger(invoiceId) || invoiceId <= 0)) {
+      return res.status(400).json({ error: "Invalid invoiceId." });
     }
 
-    // Materials are now auto-synced — just return the current draft invoice id
-    const [invoice] = await db
-      .select({ id: invoicesTable.id })
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.jobId, list.jobId), eq(invoicesTable.status, "draft")))
-      .orderBy(desc(invoicesTable.id))
-      .limit(1);
+    await initializeLegacyMaterialAssignments(undefined, req.user?.id);
+    const result = await db.transaction(async (tx) => {
+      const [list] = await tx.select().from(materialListsTable)
+        .where(and(
+          eq(materialListsTable.id, id),
+          ...(req.user?.id ? [eq(materialListsTable.userId, req.user.id)] : []),
+        )).for("update").limit(1);
+      if (!list) return { status: 404, body: { error: "Material list not found" } };
+      if (!list.jobId) return { status: 409, body: { error: "This material list is not linked to a job." } };
+      if (list.invoiceId === invoiceId) {
+        return {
+          status: 200,
+          body: { materialListId: id, invoiceId, previousInvoiceId: invoiceId, changed: false, historyEventId: null },
+        };
+      }
 
-    return res.json({ invoiceId: invoice?.id ?? null, created: false });
+      const [job] = await tx.select({
+        clientId: jobsTable.clientId,
+        businessId: jobsTable.businessId,
+      }).from(jobsTable).where(eq(jobsTable.id, list.jobId)).limit(1);
+      if (!job?.clientId || !job.businessId) {
+        return { status: 409, body: { error: "The source job needs a client and business before assignment." } };
+      }
+
+      const [source] = list.invoiceId
+        ? await tx.select({
+            id: invoicesTable.id,
+            invoiceNumber: invoicesTable.invoiceNumber,
+            status: invoicesTable.status,
+            clientId: invoicesTable.clientId,
+            businessId: invoicesTable.businessId,
+            jobTitle: jobsTable.title,
+          }).from(invoicesTable).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+            .where(eq(invoicesTable.id, list.invoiceId)).limit(1)
+        : [];
+      const [destination] = invoiceId
+        ? await tx.select({
+            id: invoicesTable.id,
+            invoiceNumber: invoicesTable.invoiceNumber,
+            status: invoicesTable.status,
+            clientId: invoicesTable.clientId,
+            businessId: invoicesTable.businessId,
+            jobTitle: jobsTable.title,
+          }).from(invoicesTable).leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+            .where(eq(invoicesTable.id, invoiceId)).limit(1)
+        : [];
+
+      if (invoiceId && !destination) return { status: 404, body: { error: "Destination invoice not found." } };
+      if (destination && destination.status !== "draft") {
+        return { status: 409, body: { error: "Materials can only be assigned to a draft invoice." } };
+      }
+      if (destination && (destination.clientId !== job.clientId || destination.businessId !== job.businessId)) {
+        return { status: 409, body: { error: "Choose a draft invoice for this same client and business." } };
+      }
+
+      const sourceIsFinalized = !!source && source.status !== "draft";
+      if (sourceIsFinalized && !confirmAfterFinalized) {
+        const invoiceLabel = (inv: typeof source) =>
+          `${inv?.invoiceNumber || `Invoice #${inv?.id}`} · ${inv?.jobTitle || "Job"}`;
+        return {
+          status: 409,
+          body: {
+            error: "Confirmation required before moving materials from a sent or paid invoice.",
+            confirmationRequired: true,
+            sourceInvoiceLabel: invoiceLabel(source),
+            destinationInvoiceLabel: destination ? invoiceLabel(destination) : "No invoice (detach)",
+          },
+        };
+      }
+
+      await tx.update(materialListsTable).set({
+        invoiceId,
+        invoiceAssignmentInitialized: true,
+      }).where(eq(materialListsTable.id, id));
+
+      if (source?.status === "draft") await syncMaterialsToInvoice(source.id, tx);
+      if (destination) await syncMaterialsToInvoice(destination.id, tx);
+
+      const action = !list.invoiceId ? "attach" : !invoiceId ? "detach" : "reassign";
+      const snapshotLabel = (inv: typeof source) =>
+        inv ? `${inv.invoiceNumber || `Invoice #${inv.id}`} · ${inv.jobTitle || "Job"}` : null;
+      const [event] = await tx.insert(materialListInvoiceEventsTable).values({
+        materialListId: id,
+        materialListNameSnapshot: list.name,
+        action,
+        previousInvoiceId: list.invoiceId,
+        previousInvoiceLabel: snapshotLabel(source),
+        destinationInvoiceId: invoiceId,
+        destinationInvoiceLabel: snapshotLabel(destination),
+        actorUserId: req.user?.id ?? null,
+        confirmedAfterFinalized: sourceIsFinalized && confirmAfterFinalized,
+      }).returning({ id: materialListInvoiceEventsTable.id });
+      return {
+        status: 200,
+        body: { materialListId: id, invoiceId, previousInvoiceId: list.invoiceId, changed: true, historyEventId: event.id },
+      };
+    });
+    return res.status(result.status).json(result.body);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed" });
+    res.status(500).json({ error: "Failed to update material-list invoice assignment." });
+  }
+});
+
+router.get("/:id/invoice-assignment-history", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const list = await getListWithItems(id, req.user?.id);
+    if (!list) return res.status(404).json({ error: "Material list not found" });
+    const events = await db.select().from(materialListInvoiceEventsTable)
+      .where(eq(materialListInvoiceEventsTable.materialListId, id))
+      .orderBy(desc(materialListInvoiceEventsTable.createdAt));
+    return res.json(events.map(event => ({
+      id: event.id,
+      materialListNameSnapshot: event.materialListNameSnapshot,
+      action: event.action,
+      previousInvoiceId: event.previousInvoiceId,
+      previousInvoiceLabel: event.previousInvoiceLabel,
+      destinationInvoiceId: event.destinationInvoiceId,
+      destinationInvoiceLabel: event.destinationInvoiceLabel,
+      actorUserId: event.actorUserId,
+      confirmedAfterFinalized: event.confirmedAfterFinalized,
+      createdAt: event.createdAt.toISOString(),
+    })));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch invoice assignment history." });
   }
 });
 

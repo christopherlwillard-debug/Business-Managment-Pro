@@ -5,19 +5,15 @@ import {
   useCreateDailyLog,
   useDeleteDailyLog,
   useListJobs,
-  useGetSettings,
   useListMaterialLists,
   useAttachMaterialListToInvoice,
   type DailyLog,
   type CreateDailyLogRequest,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import { ClipboardList, Plus, Trash2, FileText, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDate, formatCurrency, localDateString } from "@/lib/utils";
-
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function today() {
   return localDateString();
@@ -36,7 +32,6 @@ export default function DailyLogs() {
   const { data: logs = [], isLoading } = useListDailyLogs();
   const { data: materialLists = [] } = useListMaterialLists();
   const { data: jobs = [] } = useListJobs();
-  const { data: settings } = useGetSettings();
   const createLog = useCreateDailyLog();
   const deleteLog = useDeleteDailyLog();
   const attachToInvoice = useAttachMaterialListToInvoice();
@@ -93,24 +88,20 @@ export default function DailyLogs() {
     if (!log.materialListId) return;
     const list = materialLists.find(l => l.id === log.materialListId);
     if (!list) return;
-    let attachmentUrl: string | undefined;
-    let attachmentName: string | undefined;
-    let attachmentSize: number | undefined;
+    if (!list.invoiceId) {
+      setAttachMsg(prev => ({
+        ...prev,
+        [log.id]: { ok: false, text: "Assign this list to a draft invoice from Materials first." },
+      }));
+      return;
+    }
     try {
-      const pdfBlob = await generateMaterialListPdf(list, log.jobTitle ?? undefined, settings?.companyName ?? undefined);
-      const fd = new FormData();
-      fd.append("file", pdfBlob, `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`);
-      const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
-      if (uploadRes.ok) {
-        const up = await uploadRes.json() as { url: string; filename: string; size: number };
-        attachmentUrl = up.url;
-        attachmentName = `Material List – ${list.name}.pdf`;
-        attachmentSize = up.size;
-      }
-    } catch { }
-    try {
-      await attachToInvoice.mutateAsync({ id: list.id, attachmentUrl, attachmentName, attachmentSize });
-      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: "Pushed to invoice." } }));
+      await attachToInvoice.mutateAsync({
+        id: list.id,
+        invoiceId: list.invoiceId,
+        confirmAfterFinalized: false,
+      });
+      setAttachMsg(prev => ({ ...prev, [log.id]: { ok: true, text: "This list is assigned to its invoice." } }));
       queryClient.invalidateQueries({ queryKey: ["/api/invoices"] });
     } catch {
       setAttachMsg(prev => ({ ...prev, [log.id]: { ok: false, text: "Failed to push." } }));

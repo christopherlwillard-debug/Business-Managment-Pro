@@ -239,7 +239,6 @@ export interface ProductionComponent {
   status: ProductionComponentStatus;
   expectedLaborHours: number | null;
   expectedDurationDays: number | null;
-  expectedDurationDaysExplicit: boolean;
   expectedCrewSize: number | null;
   checklistContext: ProductionComponentChecklistContext;
   materialContext: ProductionComponentMaterialContext;
@@ -290,8 +289,6 @@ export interface Job {
   mfhModelYear?: number | null;
   mfhConstructionType?: string | null;
   mhProductionServices?: number[] | null;
-  daysOnJob?: number | null;
-  daysOnJobExplicit?: boolean;
   productionComponents?: ProductionComponent[];
   manHours?: number | null;
   homeModel?: string | null;
@@ -358,8 +355,7 @@ export const UpdateProductionComponentStatusRequestStatus = {
 
 export interface UpdateProductionComponentStatusRequest {
   componentInstanceKey: string;
-  status?: UpdateProductionComponentStatusRequestStatus;
-  expectedDurationDays?: number | null;
+  status: UpdateProductionComponentStatusRequestStatus;
 }
 
 export interface CreateComponentWorkSessionRequest {
@@ -902,6 +898,54 @@ export interface Invoice {
   voidReason?: string | null;
   createdAt: string;
   [key: string]: unknown;
+}
+
+export interface MaterialListInvoiceAssignmentInput {
+  /**
+   * Draft invoice ID, or null to detach the list.
+   * @nullable
+   */
+  invoiceId: number | null;
+  /** Confirms reassignment from a sent or paid invoice. */
+  confirmAfterFinalized: boolean;
+}
+
+export interface MaterialListInvoiceAssignmentResult {
+  materialListId: number;
+  /** @nullable */
+  invoiceId: number | null;
+  /** @nullable */
+  previousInvoiceId: number | null;
+  changed: boolean;
+  /** @nullable */
+  historyEventId?: number | null;
+}
+
+export type MaterialListInvoiceAssignmentHistoryEventAction =
+  (typeof MaterialListInvoiceAssignmentHistoryEventAction)[keyof typeof MaterialListInvoiceAssignmentHistoryEventAction];
+
+export const MaterialListInvoiceAssignmentHistoryEventAction = {
+  attach: "attach",
+  reassign: "reassign",
+  detach: "detach",
+} as const;
+
+export interface MaterialListInvoiceAssignmentHistoryEvent {
+  id: number;
+  materialListNameSnapshot: string;
+  action: MaterialListInvoiceAssignmentHistoryEventAction;
+  /** @nullable */
+  previousInvoiceId?: number | null;
+  /** @nullable */
+  previousInvoiceLabel?: string | null;
+  /** @nullable */
+  destinationInvoiceId?: number | null;
+  /** @nullable */
+  destinationInvoiceLabel?: string | null;
+  /** @nullable */
+  actorUserId?: string | null;
+  confirmedAfterFinalized: boolean;
+  createdAt: string;
 }
 
 export type InvoiceCommunicationEventEventType =

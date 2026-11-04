@@ -29,7 +29,6 @@ export interface ProductionComponent {
   status: ProductionComponentStatus;
   expectedLaborHours: number | null;
   expectedDurationDays: number | null;
-  expectedDurationDaysExplicit: boolean;
   expectedCrewSize: number | null;
   checklistContext: ProductionComponentChecklistContext;
   materialContext: ProductionComponentMaterialContext;

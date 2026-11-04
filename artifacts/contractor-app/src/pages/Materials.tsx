@@ -10,16 +10,15 @@ import {
   useUpdateMaterialList,
   useDeleteMaterialList,
   useAttachMaterialListToInvoice,
+  useMaterialListInvoiceAssignmentHistory,
   useListInvoices,
   type MaterialList,
   type MaterialListItem,
   type MaterialListItemInput,
   useListJobs,
   type Job,
-  useGetSettings,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
-import { generateMaterialListPdf } from "@/lib/generateMaterialListPdf";
 import {
   Package, Plus, Search, Pencil, Trash2, X, Check,
   ListChecks, Filter, AlertTriangle, ChevronDown, ChevronUp,
@@ -354,53 +353,52 @@ function MaterialListCard({
   const [showInvoicePicker, setShowInvoicePicker] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | "">("");
   const attachMutation = useAttachMaterialListToInvoice();
-  const { data: settings } = useGetSettings();
-  const { data: allInvoices = [] } = useListInvoices({ status: "draft" });
-
-  const draftInvoicesForJob = list.jobId
-    ? (allInvoices as any[]).filter((inv: any) => inv.jobId === list.jobId)
-    : [];
+  const { data: allInvoices = [] } = useListInvoices();
+  const { data: assignmentHistory = [] } = useMaterialListInvoiceAssignmentHistory(list.id, expanded);
+  const invoices = allInvoices as any[];
+  const draftInvoicesForClient = invoices.filter(
+    inv => inv.status === "draft" && list.clientId != null && inv.clientId === list.clientId,
+  );
+  const currentInvoice = invoices.find(inv => inv.id === list.invoiceId);
+  const invoiceLabel = (inv: any) => {
+    if (!inv) return "Unassigned";
+    const jobLocation = [inv.jobTitle, inv.locationName || [inv.city, inv.state].filter(Boolean).join(", ")]
+      .filter(Boolean).join(" · ");
+    return `${inv.invoiceNumber || `Invoice #${inv.id}`}${jobLocation ? ` — ${jobLocation}` : ""}`;
+  };
 
   const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
 
-  async function handleAttach(invoiceId: number) {
+  async function handleAttach(invoiceId: number | null) {
+    if (invoiceId === (list.invoiceId ?? null)) {
+      setShowInvoicePicker(false);
+      return;
+    }
+    const destination = invoices.find(inv => inv.id === invoiceId);
+    const sourceIsFinalized = !!currentInvoice && currentInvoice.status !== "draft";
+    let confirmed = false;
+    if (sourceIsFinalized) {
+      const destinationLabel = invoiceId == null ? "Unassigned" : invoiceLabel(destination);
+      const accepted = window.confirm(
+        `${list.name} is currently on ${invoiceLabel(currentInvoice)}. Moving it to ${destinationLabel} will not change the sent/paid invoice and may bill these materials again. Continue?`,
+      );
+      if (!accepted) return;
+      confirmed = true;
+    }
     setAttaching(true);
     setAttachMsg(null);
     setShowInvoicePicker(false);
     try {
-      const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-      let attachmentUrl: string | undefined;
-      let attachmentName: string | undefined;
-      let attachmentSize: number | undefined;
-
-      let pdfUploadFailed = false;
-      try {
-        const pdfBlob = await generateMaterialListPdf(list, undefined, settings?.companyName ?? undefined);
-        const fd = new FormData();
-        const filename = `material-list-${list.name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.pdf`;
-        fd.append("file", pdfBlob, filename);
-        const uploadRes = await fetch(`${BASE}/api/uploads`, { method: "POST", body: fd });
-        if (uploadRes.ok) {
-          const uploaded = await uploadRes.json() as { url: string; filename: string; size: number };
-          attachmentUrl = uploaded.url;
-          attachmentName = `Material List \u2013 ${list.name}.pdf`;
-          attachmentSize = uploaded.size;
-        } else {
-          pdfUploadFailed = true;
-        }
-      } catch { pdfUploadFailed = true; }
-
-      const invLabel = (allInvoices as any[]).find((inv: any) => inv.id === invoiceId)?.invoiceNumber || `#${invoiceId}`;
-      const res = await attachMutation.mutateAsync({ id: list.id, invoiceId, attachmentUrl, attachmentName, attachmentSize });
-      if (res.invoiceId) {
-        const successMsg = `Added to invoice ${invLabel}.`;
-        setAttachMsg({ ok: true, text: pdfUploadFailed ? `${successMsg} (PDF could not be uploaded.)` : successMsg });
-      } else {
-        setAttachMsg({ ok: false, text: "Failed to attach." });
-      }
-    } catch {
-      setAttachMsg({ ok: false, text: "Failed to attach. Please try again." });
+      await attachMutation.mutateAsync({ id: list.id, invoiceId, confirmAfterFinalized: confirmed });
+      setAttachMsg({
+        ok: true,
+        text: invoiceId == null ? "Material list unassigned." : `Assigned to ${invoiceLabel(destination)}.`,
+      });
+    } catch (error) {
+      setAttachMsg({
+        ok: false,
+        text: error instanceof Error ? error.message : "Could not change the invoice assignment.",
+      });
     } finally {
       setAttaching(false);
     }
@@ -408,11 +406,11 @@ function MaterialListCard({
 
   function handleAttachClick() {
     setAttachMsg(null);
-    if (draftInvoicesForJob.length === 0) {
-      setAttachMsg({ ok: false, text: "No draft invoice for this job. Create one in Invoices first." });
+    if (draftInvoicesForClient.length === 0 && !list.invoiceId) {
+      setAttachMsg({ ok: false, text: "No draft invoice for this client. Create a draft invoice first." });
       return;
     }
-    setSelectedInvoiceId(draftInvoicesForJob[0].id);
+    setSelectedInvoiceId(list.invoiceId ?? "");
     setShowInvoicePicker(true);
   }
 
@@ -463,9 +461,12 @@ function MaterialListCard({
           </div>
         </div>
 
-        {/* Attach to invoice */}
+        {/* Assign this list to any draft invoice for its client */}
         {list.jobId && (
           <div className="mt-3">
+            <p className="mb-2 text-[11px] text-gray-500">
+              Invoice: <span className="font-semibold text-gray-700">{invoiceLabel(currentInvoice)}</span>
+            </p>
             {!showInvoicePicker ? (
               <button
                 onClick={handleAttachClick}
@@ -473,29 +474,32 @@ function MaterialListCard({
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-amber-200 text-amber-700 text-xs font-semibold hover:bg-amber-50 transition-colors disabled:opacity-60"
               >
                 <Link2 className="w-3.5 h-3.5" />
-                {attaching ? "Attaching…" : "Attach to Invoice"}
+                {attaching ? "Saving…" : list.invoiceId ? "Change Invoice" : "Assign to Invoice"}
               </button>
             ) : (
               <div className="flex flex-col gap-2">
-                <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">Select draft invoice:</p>
+                <p className="text-[11px] text-gray-500 font-semibold uppercase tracking-wide">
+                  Choose a draft for {list.clientId ? (currentInvoice?.clientName || "this client") : "this client"}:
+                </p>
                 <select
                   value={selectedInvoiceId}
-                  onChange={e => setSelectedInvoiceId(Number(e.target.value))}
+                  onChange={e => setSelectedInvoiceId(e.target.value ? Number(e.target.value) : "")}
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
                 >
-                  {draftInvoicesForJob.map((inv: any) => (
+                  <option value="">Unassigned</option>
+                  {draftInvoicesForClient.map((inv: any) => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber || `Invoice #${inv.id}`}{inv.clientName ? ` \u2013 ${inv.clientName}` : ""}
+                      {invoiceLabel(inv)}{inv.clientName ? ` · ${inv.clientName}` : ""}
                     </option>
                   ))}
                 </select>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { if (selectedInvoiceId) handleAttach(Number(selectedInvoiceId)); }}
-                    disabled={!selectedInvoiceId || attaching}
+                    onClick={() => handleAttach(selectedInvoiceId === "" ? null : Number(selectedInvoiceId))}
+                    disabled={attaching}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 transition-colors disabled:opacity-60"
                   >
-                    <Link2 className="w-3 h-3" /> Attach
+                    <Link2 className="w-3 h-3" /> Save Assignment
                   </button>
                   <button
                     onClick={() => setShowInvoicePicker(false)}
@@ -510,6 +514,24 @@ function MaterialListCard({
               <p className={`mt-1.5 text-xs ${attachMsg.ok ? "text-emerald-600" : "text-red-500"}`}>
                 {attachMsg.text}
               </p>
+            )}
+            {expanded && (
+              <div className="mt-3 border-t border-gray-100 pt-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Assignment history</p>
+                {assignmentHistory.length === 0 ? (
+                  <p className="mt-1 text-xs text-gray-400">No invoice changes recorded.</p>
+                ) : (
+                  <ul className="mt-1 space-y-1">
+                    {assignmentHistory.map(event => (
+                      <li key={event.id} className="text-xs text-gray-600">
+                        {new Date(event.createdAt).toLocaleString()}: {event.action} —{" "}
+                        {event.previousInvoiceLabel || "Unassigned"} → {event.destinationInvoiceLabel || "Unassigned"}
+                        {event.confirmedAfterFinalized ? " (confirmed after sent/paid)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
         )}
