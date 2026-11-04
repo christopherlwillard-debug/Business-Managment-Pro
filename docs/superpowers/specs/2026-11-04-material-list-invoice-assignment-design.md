@@ -13,6 +13,9 @@ separate invoice.
 
 The list must remain linked to its original job. Assigning it to another
 invoice must not move the list, linked material expenses, or other job records.
+Every successful assignment change must leave an audit record showing the
+previous invoice, destination invoice, timestamp, and whether post-send
+confirmation was given.
 
 ## Current behavior
 
@@ -29,8 +32,9 @@ invoice must not move the list, linked material expenses, or other job records.
 
 ### Assignment
 
-- Add a nullable invoice reference to the existing material-list record; do not
-  introduce a second ledger or join table.
+- Add a nullable invoice reference to the existing material-list record. Do not
+  introduce a many-to-many assignment table; the separate append-only event
+  table below exists only to satisfy the requested audit history.
 - A material list can be assigned to one invoice at a time. Multiple lists may
   be assigned to one invoice.
 - The picker shows all draft invoices for the same client and business, even
@@ -55,8 +59,19 @@ invoice must not move the list, linked material expenses, or other job records.
   current material line; later list edits or detachment do not rewrite that
   invoice.
 - Reassignment from a sent or paid invoice to a new draft is allowed only after
-  an explicit warning and confirmation. The issued invoice remains unchanged,
-  so the new draft may bill the same materials again.
+  an explicit warning and confirmation. The warning identifies the sent/paid
+  source invoice and destination draft by their visible invoice/job details.
+  Canceling the warning makes no request and changes neither assignment nor
+  invoice lines. The issued invoice remains unchanged, so the new draft may bill
+  the same materials again.
+- Record every successful attach, reassign, or detach in an append-only
+  `material_list_invoice_events` history with the material-list ID, previous
+  invoice ID, destination invoice ID, timestamp, actor when available, and
+  whether post-send confirmation was given. Rejected operations and canceled
+  confirmations create no event. Assignment change, event insert, and affected
+  draft-line synchronization must succeed or fail together.
+- Expose the assignment history from the material-list UI so the user can see
+  the previous and destination invoices and when the change occurred.
 - Creating a later draft does not silently move lists already assigned to an
   invoice. New lists retain the current behavior of attaching to the latest
   same-job draft when one exists; otherwise they remain unassigned until the
@@ -73,6 +88,9 @@ invoice must not move the list, linked material expenses, or other job records.
   the previous assignment.
 - Require an explicit confirmation flag when detaching or reassigning a list
   whose previous invoice is sent or paid.
+- Write an immutable history event in the same transaction as a successful
+  assignment and draft-line updates. Do not write history for a canceled or
+  rejected action.
 - On synchronization failure, preserve the previous assignment and invoice
   line state through a transaction or equivalent atomic update.
 - Do not create invoices as a side effect of material-list activity.
@@ -82,7 +100,9 @@ invoice must not move the list, linked material expenses, or other job records.
 1. **Overlapping systems:** Existing material-list-to-job-invoice synchronization
    is the system to extend.
 2. **Existing tables:** `material_lists`, `material_list_items`, and `invoices`
-   already own the necessary data. `expenses` remains the job-cost ledger.
+   own current assignments, source values, and billed amounts. `expenses`
+   remains the job-cost ledger. None preserves the requested assignment-change
+   history.
 3. **Existing routes:** Extend the material-list and invoice routes; do not add a
    parallel API surface.
 4. **Existing UI:** Materials owns list assignment; Invoices remains the owner
@@ -95,13 +115,20 @@ invoice must not move the list, linked material expenses, or other job records.
    ownership, which is not changed by assignment.
 7. **Sources of truth:** Material-list items and their markup determine the
    material amount; invoice line items determine invoiced revenue; `expenses`
-   determine recorded costs.
-8. **Duplicate implementation risk:** No new ledger or independent material
-   calculation is introduced. Only one invoice assignment exists per list.
-9. **System ownership:** This extends the existing Materials and Invoices
-   systems; it does not create a new subsystem.
+   determine recorded costs; `material_list_invoice_events` is authoritative
+   only for assignment history.
+8. **Duplicate implementation risk:** Do not create another accounting ledger
+   or calculation. A small append-only event table is justified because the
+   current assignment and invoice line cannot prove who changed the assignment,
+   from which invoice, when, or with what confirmation. The existing
+   `invoice_communication_events` records delivery attempts, not material-list
+   changes, and must not be repurposed.
+9. **System ownership:** This extends Materials and Invoices with one
+   narrowly-scoped history table; the event table does not affect accounting,
+   payroll, inventory balances, or tax calculations.
 10. **Recommendation:** Store one optional invoice assignment on the existing
-    list record and synchronize only assigned lists into draft invoices.
+    list record, write immutable assignment events, and synchronize only
+    assigned lists into draft invoices.
 
 ## Verification plan
 
@@ -109,7 +136,11 @@ invoice must not move the list, linked material expenses, or other job records.
   client, another business, sent/paid target invoices (even with confirmation),
   and unauthorized lists. Reject reassignment from a sent/paid prior invoice
   without confirmation; allow it with confirmation and assert the issued
-  invoice line remains unchanged.
+  invoice line remains unchanged. Verify the warning names both invoices and
+  canceling it makes no API request.
+- History tests: successful attach, reassign, and detach write exactly one
+  append-only event with the expected prior/destination invoice IDs, timestamp,
+  actor, and confirmation state; rejected and canceled actions write none.
 - Reassignment tests: old draft recalculates from remaining lists, target draft
   receives the selected list, and other invoice lines remain unchanged.
 - Data-integrity tests: list `job_id`, material expense IDs, and expense
@@ -119,8 +150,8 @@ invoice must not move the list, linked material expenses, or other job records.
   from a sent/paid invoice to a draft requires explicit confirmation and leaves
   the issued invoice unchanged.
 - UI checks: distinguish duplicate job names in the picker, show current
-  assignment, allow change/detach while draft, and display cross-job
-  attribution context.
+  assignment and assignment history, allow change/detach, name both invoices in
+  post-send warnings, and display cross-job attribution context.
 - Run focused API tests, database/API/client typechecks, and the published
   app's unauthenticated preview check. Do not modify production records.
 
