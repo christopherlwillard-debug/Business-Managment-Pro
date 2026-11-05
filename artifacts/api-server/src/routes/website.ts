@@ -2645,53 +2645,14 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
 
 // ── Media replace-everywhere ────────────────────────────────────────────────
 
-router.post("/media/:id/replace", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
-  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const { newUrl, newObjectPath, newFilename } = req.body as { newUrl: string; newObjectPath: string; newFilename: string };
-  if (!newUrl || !newObjectPath) return res.status(400).json({ error: "newUrl and newObjectPath required" });
-
-  const [item] = await db.select().from(websiteMediaTable)
-    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
-  if (!item) return res.status(404).json({ error: "Not found" });
-
-  const oldUrl = item.url;
-  const configs = await db.select().from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-
-  let replacedInConfigs = 0;
-  for (const config of configs) {
-    const sectionsJson = JSON.stringify(config.sections);
-    const settingsJson = JSON.stringify(config.settings);
-    const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
-    const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
-    if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
-      await db.update(websiteConfigsTable)
-        .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
-        .where(eq(websiteConfigsTable.id, config.id));
-      replacedInConfigs++;
-    }
-  }
-
-  const [updated] = await db.update(websiteMediaTable)
-    .set({
-      url: newUrl,
-      objectPath: newObjectPath,
-      filename: newFilename ?? item.filename,
-      webpObjectPath: null,
-      thumbnailObjectPath: null,
-      displayObjectPath: null,
-      optimized: false,
-    })
-    .where(eq(websiteMediaTable.id, id))
-    .returning();
-
-  const cleanupWarnings = await cleanupMediaObjects([
-    item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
-  ].filter(path => path !== newObjectPath));
-  res.json({ ok: true, replacedInConfigs, item: updated, cleanupWarnings });
-}));
+// Retired legacy replacement endpoint. It trusted caller-supplied storage
+// paths and URLs, while the current client uses /replace-upload to validate
+// uploaded image bytes and create the replacement object server-side.
+router.post("/media/:id/replace", (_req, res) => {
+  res.status(410).json({
+    error: "This media replacement endpoint is retired. Upload replacements through /replace-upload.",
+  });
+});
 
 router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
