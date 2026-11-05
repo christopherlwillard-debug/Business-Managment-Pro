@@ -2422,11 +2422,24 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const { originalname, mimetype, buffer, size } = req.file;
+  let folderId: number | null = null;
+  if (req.body.folderId !== undefined && req.body.folderId !== null && String(req.body.folderId).trim() !== "") {
+    folderId = Number(req.body.folderId);
+    if (!Number.isSafeInteger(folderId) || folderId <= 0) {
+      return res.status(400).json({ error: "Invalid folderId" });
+    }
+    const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
+      .from(websiteMediaFoldersTable)
+      .where(and(
+        eq(websiteMediaFoldersTable.id, folderId),
+        eq(websiteMediaFoldersTable.businessId, businessId),
+      ));
+    if (!folder) return res.status(400).json({ error: "Invalid folder" });
+  }
   const assets = await uploadMediaAssets(buffer, mimetype, originalname);
   const objectPath = assets.objectPath;
   const uuid = objectPath.split("/").pop()!;
   const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
-  const folderId = req.body.folderId ? parseInt(req.body.folderId) : null;
   try {
     const [item] = await db
       .insert(websiteMediaTable)
