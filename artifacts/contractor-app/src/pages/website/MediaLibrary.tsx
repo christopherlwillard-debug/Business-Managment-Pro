@@ -303,7 +303,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ displayName: displayName || null }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not rename image.");
+      }
       return res.json();
     },
     onSuccess: (updated: MediaItem) => {
@@ -312,6 +315,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       setDetailRenaming(false);
       if (detailItem?.id === updated.id) setDetailItem(updated);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const moveMutation = useMutation({
@@ -320,13 +324,17 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ folderId }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not move image.");
+      }
       return res.json();
     },
     onSuccess: (updated: MediaItem) => {
       invalidateAll();
       if (detailItem?.id === updated.id) setDetailItem(updated);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const createFolderMutation = useMutation({
@@ -335,7 +343,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not create folder.");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -343,6 +354,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       setShowNewFolder(false);
       setNewFolderName("");
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const renameFolderMutation = useMutation({
@@ -351,12 +363,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not rename folder.");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["website-media-folders", businessId] });
       setRenamingFolderId(null);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const deleteFolderMutation = useMutation({
@@ -364,12 +380,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       const res = await fetch(`${BASE}/api/website/media/folders/${id}?businessId=${businessId}`, {
         method: "DELETE", credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not delete folder.");
+      }
     },
     onSuccess: () => {
       invalidateAll();
       if (folderFilter !== "all") setFolderFilter("all");
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
