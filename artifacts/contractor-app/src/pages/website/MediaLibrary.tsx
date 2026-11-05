@@ -269,6 +269,13 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     onSuccess: (result, id) => {
       invalidateAll();
       setDeleteConfirm(null);
+      setSelectedIds(prev => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (renamingId === id) setRenamingId(null);
       if (detailItem?.id === id) setDetailItem(null);
       setOperationNotice(result.cleanupWarnings?.length
         ? { tone: "error", message: `Image deleted, but cleanup needs attention: ${result.cleanupWarnings[0]}` }
@@ -702,6 +709,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     onRenameChange={setRenameValue}
                     onRenameCommit={() => renameMutation.mutate({ id: item.id, displayName: renameValue.trim() })}
                     onRenameCancel={() => setRenamingId(null)}
+                    isDeleteConfirm={deleteConfirm === item.id}
+                    deleting={deleteMutation.isPending && deleteConfirm === item.id}
+                    onDeleteRequest={() => setDeleteConfirm(item.id)}
+                    onDeleteCancel={() => setDeleteConfirm(null)}
                     onDelete={() => deleteMutation.mutate(item.id)}
                     onMoveToFolder={folderId => moveMutation.mutate({ id: item.id, folderId })}
                     onDragStart={e => handleItemDragStart(item.id, e)}
@@ -724,13 +735,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               replacing={replacing}
               detailRenaming={detailRenaming}
               detailRenameValue={detailRenameValue}
-              isDeleting={deleteMutation.isPending}
+              isDeleting={deleteMutation.isPending && deleteConfirm === detailItem.id}
+              isDeleteConfirm={deleteConfirm === detailItem.id}
               onClose={() => setDetailItem(null)}
               onStartRename={() => { setDetailRenaming(true); setDetailRenameValue(detailItem.displayName ?? detailItem.filename); }}
               onRenameChange={setDetailRenameValue}
               onRenameCommit={() => renameMutation.mutate({ id: detailItem.id, displayName: detailRenameValue.trim() })}
               onRenameCancel={() => setDetailRenaming(false)}
               onMoveToFolder={folderId => moveMutation.mutate({ id: detailItem.id, folderId })}
+              onDeleteRequest={() => setDeleteConfirm(detailItem.id)}
+              onDeleteCancel={() => setDeleteConfirm(null)}
               onDelete={() => deleteMutation.mutate(detailItem.id)}
               onReplace={() => replaceInputRef.current?.click()}
               onEnhanceDone={() => qc.invalidateQueries({ queryKey: ["website-media", businessId] })}
@@ -904,15 +918,16 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
 }
 
 function ListItem({ item, usageCount, selected, isActive, renamingId, renameValue, renameRef, folders, mode,
-  onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel, onDelete, onMoveToFolder,
-  onDragStart, onDragEnd }: {
+  isDeleteConfirm, deleting, onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
+  onDeleteRequest, onDeleteCancel, onDelete, onMoveToFolder, onDragStart, onDragEnd }: {
   item: MediaItem; usageCount: number; selected: boolean; isActive: boolean;
   renamingId: number | null; renameValue: string; renameRef: React.RefObject<HTMLInputElement>;
-  folders: MediaFolder[]; mode: string;
+  folders: MediaFolder[]; mode: string; isDeleteConfirm: boolean; deleting: boolean;
   onActivate: () => void; onToggleSelect: () => void;
   onStartRename: () => void; onRenameChange: (v: string) => void;
   onRenameCommit: () => void; onRenameCancel: () => void;
-  onDelete: () => void; onMoveToFolder: (folderId: number | null) => void;
+  onDeleteRequest: () => void; onDeleteCancel: () => void; onDelete: () => void;
+  onMoveToFolder: (folderId: number | null) => void;
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const isRenaming = renamingId === item.id;
@@ -977,19 +992,33 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
           className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" title="Rename">
           <Pencil className="w-3 h-3" />
         </button>
-        <button onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete">
-          <Trash2 className="w-3 h-3" />
-        </button>
+        {isDeleteConfirm ? (
+          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+            <span className="text-[10px] text-destructive font-medium">Delete?</span>
+            <button type="button" onClick={onDelete} disabled={deleting}
+              className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-semibold disabled:opacity-60">
+              {deleting ? "…" : "Yes"}
+            </button>
+            <button type="button" onClick={onDeleteCancel} disabled={deleting}
+              className="px-1.5 py-0.5 rounded border border-border text-[10px] disabled:opacity-60">
+              No
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={e => { e.stopPropagation(); onDeleteRequest(); }}
+            className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete" aria-label="Delete image">
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders, replacing,
-  detailRenaming, detailRenameValue, isDeleting,
+  detailRenaming, detailRenameValue, isDeleting, isDeleteConfirm,
   onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  onMoveToFolder, onDelete, onReplace, onEnhanceDone }: {
+  onMoveToFolder, onDeleteRequest, onDeleteCancel, onDelete, onReplace, onEnhanceDone }: {
   item: MediaItem;
   businessId: number;
   usageDetails: { locations: UsageLocation[]; total: number } | null;
@@ -999,12 +1028,15 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
   detailRenaming: boolean;
   detailRenameValue: string;
   isDeleting: boolean;
+  isDeleteConfirm: boolean;
   onClose: () => void;
   onStartRename: () => void;
   onRenameChange: (v: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
   onMoveToFolder: (folderId: number | null) => void;
+  onDeleteRequest: () => void;
+  onDeleteCancel: () => void;
   onDelete: () => void;
   onReplace: () => void;
   onEnhanceDone: () => void;
@@ -1313,11 +1345,30 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
           {replacing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           {replacing ? "Replacing…" : "Replace everywhere"}
         </button>
-        <button onClick={onDelete} disabled={isDeleting}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60">
-          {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-          Delete
-        </button>
+        {isDeleteConfirm ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 space-y-2">
+            <p className="text-[11px] font-medium text-destructive">Delete this image permanently?</p>
+            {usageDetails?.total ? (
+              <p className="text-[10px] text-destructive/80">It is currently used in {usageDetails.total} site section{usageDetails.total === 1 ? "" : "s"}.</p>
+            ) : null}
+            <div className="flex gap-2">
+              <button type="button" onClick={onDelete} disabled={isDeleting}
+                className="flex-1 px-2 py-1 text-[10px] font-semibold bg-destructive text-destructive-foreground rounded disabled:opacity-60">
+                {isDeleting ? "Deleting…" : "Delete"}
+              </button>
+              <button type="button" onClick={onDeleteCancel} disabled={isDeleting}
+                className="flex-1 px-2 py-1 text-[10px] border border-border rounded disabled:opacity-60">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={onDeleteRequest} disabled={isDeleting}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60">
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );
