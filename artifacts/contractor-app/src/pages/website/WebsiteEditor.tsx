@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { readEditorPreference, writeEditorPreference } from "./storageUtils";
+import { readEditorPreference, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2651,16 +2651,15 @@ function WebsiteEditor() {
       }
       if (isDirtyRef.current) requestSave();
 
-      while (saveInFlightRef.current || saveQueuedRef.current) {
-        let pending = saveInFlightPromiseRef.current;
-        if (!pending && saveQueuedRef.current) {
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
           saveQueuedRef.current = false;
           requestSave();
-          pending = saveInFlightPromiseRef.current;
-        }
-        if (!pending) break;
-        await pending.catch(() => undefined);
-      }
+        },
+      });
 
       if (isDirtyRef.current || saveErrorRevisionRef.current !== null) {
         throw new Error("Save your latest changes before publishing.");
