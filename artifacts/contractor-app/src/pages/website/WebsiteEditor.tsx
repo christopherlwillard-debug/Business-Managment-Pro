@@ -4284,8 +4284,13 @@ function WebsiteEditor() {
   }
 
   function addPage(name: string, customSlug?: string, prebuiltSections?: Section[]) {
-    const slug = (customSlug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
-    const conflict = pagesRef.current.find(page => page.slug === slug || page.id === "home" && slug === "home");
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      toast({ title: "Page name is required", variant: "destructive" });
+      return;
+    }
+    const slug = (customSlug ?? normalizedName).toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "page";
+    const conflict = pagesRef.current.find(page => page.slug.toLowerCase() === slug || page.id === "home" && slug === "home");
     if (conflict) {
       toast({
         title: "Page slug already in use",
@@ -4294,10 +4299,10 @@ function WebsiteEditor() {
       });
       return;
     }
-    const id = "page-" + Math.random().toString(36).slice(2, 9);
-    const newPage: SitePage = { id, name, slug, sections: prebuiltSections ?? [] };
+    const id = "page-" + nanoid(10);
+    const newPage: SitePage = { id, name: normalizedName, slug, sections: prebuiltSections ?? [] };
     const siteSlug = activeBusiness?.slug ?? "";
-    const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}`, pageId: id };
+    const newLink = { id: nanoid(), label: normalizedName, href: `/site/${siteSlug}/${slug}`, pageId: id };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
@@ -4307,6 +4312,11 @@ function WebsiteEditor() {
     });
     setActivePageId(id);
     setActiveSection(null);
+    setSelectedComponentState(null);
+    setSelectedRowState(null);
+    setSelectedCardState(null);
+    setSelectedCardData(null);
+    try { localStorage.setItem("site-editor-last-page", id); } catch { /* ignore */ }
   }
 
   function addPageFromTemplate(tpl: PageTemplate, customName?: string) {
