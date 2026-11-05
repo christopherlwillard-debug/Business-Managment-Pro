@@ -15,12 +15,10 @@ describe("Website Studio preference storage", () => {
   });
 
   it("returns null when browser storage cannot be read", () => {
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: vi.fn(() => { throw new Error("Storage access denied"); }),
-        setItem: vi.fn(),
-      },
+    const blockedWindow = Object.defineProperty({}, "localStorage", {
+      get() { throw new Error("Storage access denied"); },
     });
+    vi.stubGlobal("window", blockedWindow);
 
     expect(readEditorPreference("website-editor-viewport")).toBeNull();
   });
