@@ -18,3 +18,26 @@ export function writeEditorPreference(key: string, value: string): void {
     // Editor preferences are optional; storage failure must not break editing.
   }
 }
+/**
+ * Wait until the editor's serialized save queue has fully drained. The
+ * callbacks keep this helper independent of React and make the ordering
+ * behavior straightforward to regression-test.
+ */
+export async function waitForWebsiteSaveQueue(options: {
+  isInFlight: () => boolean;
+  isQueued: () => boolean;
+  getPending: () => Promise<unknown> | null;
+  flushQueued: () => void;
+}): Promise<void> {
+  while (options.isInFlight() || options.isQueued()) {
+    const pending = options.getPending();
+    if (!pending) {
+      if (options.isQueued()) {
+        options.flushQueued();
+        continue;
+      }
+      return;
+    }
+    await pending.catch(() => undefined);
+  }
+}
