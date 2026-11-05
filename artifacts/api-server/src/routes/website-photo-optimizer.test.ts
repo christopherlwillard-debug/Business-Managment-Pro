@@ -54,9 +54,9 @@ describe("imageProcessor — website media upload validation", () => {
     await expect(detectWebsiteMediaMimeType(png)).resolves.toBe("image/png");
   });
 
-  it("rejects SVG so active content is not stored at a public same-origin media URL", async () => {
-    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
-    await expect(detectWebsiteMediaMimeType(svg)).resolves.toBeNull();
+  it("recognizes SVG while public response CSP keeps its active content sandboxed", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script>alert(1)</script><rect width="1" height="1"/></svg>');
+    await expect(detectWebsiteMediaMimeType(svg)).resolves.toBe("image/svg+xml");
   });
 
   it("rejects malformed and non-image file bytes", async () => {

@@ -25,13 +25,14 @@ const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
   webp: "image/webp",
   gif: "image/gif",
   tiff: "image/tiff",
+  svg: "image/svg+xml",
 };
 
 /**
  * Detect a supported raster image from its bytes, not the client-supplied MIME
- * type. SVG is intentionally excluded because the public media URL serves
- * uploaded objects from the application's origin and SVG can contain script.
- * Returns null for malformed, unsupported, or active-content formats.
+ * type. SVG is retained for image use; every public Website Studio image route
+ * applies a sandbox CSP so an SVG opened directly cannot execute active content.
+ * Returns null for malformed or unsupported formats.
  */
 export async function detectWebsiteMediaMimeType(inputBuffer: Buffer): Promise<string | null> {
   try {
