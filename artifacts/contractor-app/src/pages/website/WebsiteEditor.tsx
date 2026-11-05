@@ -2052,7 +2052,15 @@ function WebsiteEditor() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.code !== "Space" || e.repeat) return;
       const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      const target = e.target as HTMLElement | null;
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTextEntry = (element: HTMLElement | null) => !!element && (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) ||
+        element.isContentEditable ||
+        !!element.closest('[contenteditable="true"], [role="textbox"]')
+      );
+      // Space inserts a character during inline editing; it must never start canvas panning.
+      if (editingIdRef.current || isTextEntry(target) || isTextEntry(activeElement) || ["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
       e.preventDefault();
       setSpaceHeld(true);
     }
