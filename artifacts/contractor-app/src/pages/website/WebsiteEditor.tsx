@@ -116,6 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
+import { readEditorPreference, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1508,9 +1509,9 @@ function WebsiteEditor() {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
-  const [activePageId, setActivePageId] = useState<string>(() => {
-    try { return localStorage.getItem("site-editor-last-page") ?? "home"; } catch { return "home"; }
-  });
+  const [activePageId, setActivePageId] = useState<string>(
+    () => readEditorPreference("site-editor-last-page") ?? "home"
+  );
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingPageName, setEditingPageName] = useState("");
   const [showAddPage, setShowAddPage] = useState(false);
@@ -1560,12 +1561,8 @@ function WebsiteEditor() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
-    try {
-      const saved = localStorage.getItem("website-editor-viewport");
-      return saved === "tablet" || saved === "mobile" ? saved : "desktop";
-    } catch {
-      return "desktop";
-    }
+    const saved = readEditorPreference("website-editor-viewport");
+    return saved === "tablet" || saved === "mobile" ? saved : "desktop";
   });
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [pickerIsReset, setPickerIsReset] = useState(false);
@@ -1616,7 +1613,7 @@ function WebsiteEditor() {
   const [saveSectionName, setSaveSectionName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: ContextMenuGroup[] } | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
-    () => localStorage.getItem("website-editor-left-collapsed") === "true"
+    () => readEditorPreference("website-editor-left-collapsed") === "true"
   );
   const [leftPanelTab, setLeftPanelTab] = useState<"structure" | "layers" | "assets" | "components">("structure");
   /** Active library-panel drag state — tracks ghost position and canvas drop target. */
@@ -1630,8 +1627,8 @@ function WebsiteEditor() {
   } | null>(null);
   const libraryDragRef = useRef<typeof libraryDrag>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>(() => {
-    const s = localStorage.getItem('website-inspector-mode');
-    return (s === 'pinned' || s === 'floating') ? s : 'auto';
+    const s = readEditorPreference("website-inspector-mode");
+    return (s === "pinned" || s === "floating") ? s : "auto";
   });
   /** Whether the right inspector drawer is currently open (default hidden). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -1644,11 +1641,25 @@ function WebsiteEditor() {
   const selectedSubElementRef = useRef<{ type: string; label: string } | null>(null);
   selectedSubElementRef.current = selectedSubElement;
   const [floatingPos, setFloatingPos] = useState<{ x: number; y: number }>(() => {
+    const fallback = {
+      x: typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 300),
+      y: 64,
+    };
+    const saved = readEditorPreference("website-inspector-float-pos");
+    if (!saved) return fallback;
     try {
-      const s = localStorage.getItem('website-inspector-float-pos');
-      if (s) return JSON.parse(s) as { x: number; y: number };
-    } catch {}
-    return { x: Math.max(0, window.innerWidth - 300), y: 64 };
+      const parsed = JSON.parse(saved) as { x?: unknown; y?: unknown };
+      if (typeof parsed.x !== "number" || !Number.isFinite(parsed.x) ||
+          typeof parsed.y !== "number" || !Number.isFinite(parsed.y)) return fallback;
+      const maxX = typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 240);
+      const maxY = typeof window === "undefined" ? 0 : Math.max(0, window.innerHeight - 80);
+      return {
+        x: Math.min(maxX, Math.max(0, parsed.x)),
+        y: Math.min(maxY, Math.max(0, parsed.y)),
+      };
+    } catch {
+      return fallback;
+    }
   });
   const floatingDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
   const [canvasZoom, setCanvasZoom] = useState(100);
@@ -1706,16 +1717,16 @@ function WebsiteEditor() {
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
-    try { localStorage.setItem("website-editor-viewport", v); } catch { /* storage is optional */ }
+    writeEditorPreference("website-editor-viewport", v);
   }
 
   useEffect(() => {
-    localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
+    writeEditorPreference("website-editor-left-collapsed", String(leftCollapsed));
     leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem('website-inspector-mode', panelMode);
+    writeEditorPreference("website-inspector-mode", panelMode);
   }, [panelMode]);
 
   // Clear sub-element drill-down whenever the user switches to a different section.
@@ -4282,7 +4293,7 @@ function WebsiteEditor() {
     setSelectedRowState(null);
     setSelectedCardState(null);
     setSelectedCardData(null);
-    try { localStorage.setItem("site-editor-last-page", pageId); } catch { /* ignore */ }
+    writeEditorPreference("site-editor-last-page", pageId);
   }
 
   function patchHomeHeaderNavLinks(allPages: SitePage[], updater: (links: any[]) => any[]): SitePage[] {
@@ -4328,7 +4339,7 @@ function WebsiteEditor() {
     setSelectedRowState(null);
     setSelectedCardState(null);
     setSelectedCardData(null);
-    try { localStorage.setItem("site-editor-last-page", id); } catch { /* ignore */ }
+    writeEditorPreference("site-editor-last-page", id);
   }
 
   function addPageFromTemplate(tpl: PageTemplate, customName?: string) {
@@ -4389,7 +4400,7 @@ function WebsiteEditor() {
       setSelectedCardState(null);
       setSelectedCardData(null);
       setSelectedSubElement(null);
-      try { localStorage.setItem("site-editor-last-page", "home"); } catch { /* ignore */ }
+      writeEditorPreference("site-editor-last-page", "home");
     }
     setDeletePageConfirm(null);
   }
@@ -7426,8 +7437,8 @@ function WebsiteEditor() {
           {!editorNarrow && activeTab === "editor" && !focusMode && !previewMode && panelMode !== 'floating' && (() => {
             const sec = activeSection ? sections.find(s => s.id === activeSection) : null;
             const hasValidSec = !!sec;
-            const _savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
-            const dockW = Math.max(240, Math.min(300, isNaN(_savedW) ? 280 : _savedW));
+            const _savedW = Number.parseInt(readEditorPreference("inspector-panel-width") ?? "280", 10);
+            const dockW = Math.max(240, Math.min(300, Number.isNaN(_savedW) ? 280 : _savedW));
             const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec && inspectorOpen);
 
             // Header section: show Header Builder instead of generic InspectorPanel
@@ -7799,8 +7810,8 @@ function WebsiteEditor() {
             if (!sec) return null;
             // Header section: show Header Builder in a floating window
             if (sec.type === "header") {
-              const savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
-              const floatW = Math.max(240, Math.min(300, isNaN(savedW) ? 280 : savedW));
+              const savedW = Number.parseInt(readEditorPreference("inspector-panel-width") ?? "280", 10);
+              const floatW = Math.max(240, Math.min(300, Number.isNaN(savedW) ? 280 : savedW));
               return (
                 <div
                   className="fixed z-[9990]"
@@ -8038,7 +8049,7 @@ function WebsiteEditor() {
                   onPointerUp={() => {
                     if (!floatingDragRef.current) return;
                     floatingDragRef.current = null;
-                    setFloatingPos(p => { localStorage.setItem('website-inspector-float-pos', JSON.stringify(p)); return p; });
+                    setFloatingPos(p => { writeEditorPreference("website-inspector-float-pos", JSON.stringify(p)); return p; });
                   }}
                   onPointerCancel={() => { floatingDragRef.current = null; }}
                 >
