@@ -55,6 +55,7 @@ describe("Website Studio save queue", () => {
     const startQueuedSave = () => {
       inFlight = true;
       pending = new Promise<void>(resolve => { finishSecond = resolve; });
+      void pending.then(() => { inFlight = false; });
     };
 
     const first = pending;
@@ -102,11 +103,25 @@ describe("Website Studio save queue", () => {
         queued = false;
         inFlight = true;
         pending = new Promise<void>(resolve => { finish = resolve; });
+        void pending.then(() => { inFlight = false; });
       },
     });
 
+    const drained = waitForWebsiteSaveQueue({
+      isInFlight: () => inFlight,
+      isQueued: () => queued,
+      getPending: () => pending,
+      flushQueued: () => {
+        queued = false;
+        inFlight = true;
+        pending = new Promise<void>(resolve => { finish = resolve; });
+        void pending.then(() => { inFlight = false; });
+      },
+    });
     expect(inFlight).toBe(true);
     expect(queued).toBe(false);
     finish();
+    await drained;
+    expect(inFlight).toBe(false);
   });
 });
