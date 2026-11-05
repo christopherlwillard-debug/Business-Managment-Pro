@@ -737,7 +737,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               detailRenameValue={detailRenameValue}
               isDeleting={deleteMutation.isPending && deleteConfirm === detailItem.id}
               isDeleteConfirm={deleteConfirm === detailItem.id}
-              onClose={() => setDetailItem(null)}
+              onClose={() => { setDetailItem(null); setDeleteConfirm(null); }}
               onStartRename={() => { setDetailRenaming(true); setDetailRenameValue(detailItem.displayName ?? detailItem.filename); }}
               onRenameChange={setDetailRenameValue}
               onRenameCommit={() => renameMutation.mutate({ id: detailItem.id, displayName: detailRenameValue.trim() })}
