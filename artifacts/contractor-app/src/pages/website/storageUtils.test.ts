@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readEditorPreference, writeEditorPreference } from "./storageUtils";
+import { readEditorPreference, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
 
 describe("Website Studio preference storage", () => {
   afterEach(() => {
@@ -41,5 +41,72 @@ describe("Website Studio preference storage", () => {
     });
 
     expect(() => writeEditorPreference("website-editor-viewport", "tablet")).not.toThrow();
+  });
+});
+
+describe("Website Studio save queue", () => {
+  it("waits for an in-flight save and the newer queued snapshot", async () => {
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    let inFlight = true;
+    let queued = true;
+    let pending: Promise<void> | null = new Promise<void>(resolve => { finishFirst = resolve; });
+
+    const startQueuedSave = () => {
+      inFlight = true;
+      pending = new Promise<void>(resolve => { finishSecond = resolve; });
+    };
+
+    const first = pending;
+    void first!.then(() => {
+      inFlight = false;
+      if (queued) {
+        queued = false;
+        startQueuedSave();
+      }
+    });
+
+    const drained = waitForWebsiteSaveQueue({
+      isInFlight: () => inFlight,
+      isQueued: () => queued,
+      getPending: () => pending,
+      flushQueued: () => {
+        queued = false;
+        startQueuedSave();
+      },
+    });
+
+    finishFirst();
+    await Promise.resolve();
+    expect(inFlight).toBe(true);
+    expect(queued).toBe(false);
+
+    finishSecond();
+    await drained;
+
+    expect(inFlight).toBe(true);
+    expect(queued).toBe(false);
+  });
+
+  it("starts a queued save when the queue has no active promise", async () => {
+    let queued = true;
+    let inFlight = false;
+    let finish!: () => void;
+    let pending: Promise<void> | null = null;
+
+    await waitForWebsiteSaveQueue({
+      isInFlight: () => inFlight,
+      isQueued: () => queued,
+      getPending: () => pending,
+      flushQueued: () => {
+        queued = false;
+        inFlight = true;
+        pending = new Promise<void>(resolve => { finish = resolve; });
+      },
+    });
+
+    expect(inFlight).toBe(true);
+    expect(queued).toBe(false);
+    finish();
   });
 });
