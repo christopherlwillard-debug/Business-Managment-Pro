@@ -2478,17 +2478,16 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   }
 }));
 
-router.post("/media", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { filename, objectPath, url, size, folderId } = req.body as { filename: string; objectPath: string; url: string; size: number; folderId?: number | null };
-  if (!filename || !objectPath || !url) return res.status(400).json({ error: "Missing fields" });
-  const [item] = await db
-    .insert(websiteMediaTable)
-    .values({ businessId, filename, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
-    .returning();
-  res.json(item);
-}));
+// Retired legacy metadata-registration endpoint. Accepting caller-supplied
+// object paths here allowed a caller to register another business's known
+// public media path, after which DELETE /media/:id could remove that object.
+// New media must be uploaded through /media/upload so bytes, MIME type, and
+// folder ownership are validated before the database row is created.
+router.post("/media", (_req, res) => {
+  res.status(410).json({
+    error: "This media registration endpoint is retired. Upload files through /media/upload.",
+  });
+});
 
 router.delete("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
