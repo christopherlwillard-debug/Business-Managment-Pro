@@ -208,6 +208,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   async function handleUpload(files: FileList | File[]) {
     const fileArr = Array.from(files).filter(f => f.type.startsWith("image/"));
     if (!fileArr.length) return;
+    // Keep every file in this batch in the folder selected when upload began,
+    // even if the user changes the folder while sequential uploads are running.
+    const destinationFolderId = folderFilter;
     setUploading(true);
     setOperationNotice(null);
     const succeeded: string[] = [];
@@ -216,7 +219,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       for (const file of fileArr) {
         const formData = new FormData();
         formData.append("file", file);
-        if (folderFilter !== "all") formData.append("folderId", String(folderFilter));
+        if (destinationFolderId !== "all") formData.append("folderId", String(destinationFolderId));
         const res = await fetch(`${BASE}/api/website/media/upload?businessId=${businessId}`, {
           method: "POST", credentials: "include", body: formData,
         });
