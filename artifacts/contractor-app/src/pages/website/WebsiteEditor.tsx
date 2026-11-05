@@ -1560,7 +1560,12 @@ function WebsiteEditor() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
-    return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
+    try {
+      const saved = localStorage.getItem("website-editor-viewport");
+      return saved === "tablet" || saved === "mobile" ? saved : "desktop";
+    } catch {
+      return "desktop";
+    }
   });
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [pickerIsReset, setPickerIsReset] = useState(false);
@@ -1701,7 +1706,7 @@ function WebsiteEditor() {
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
-    localStorage.setItem("website-editor-viewport", v);
+    try { localStorage.setItem("website-editor-viewport", v); } catch { /* storage is optional */ }
   }
 
   useEffect(() => {
@@ -4257,8 +4262,14 @@ function WebsiteEditor() {
 
   function switchPage(pageId: string) {
     if (pageId === activePageId) return;
+    // Persist edits made on the outgoing page before moving the editor focus.
+    if (isDirtyRef.current) requestSave();
     setActivePageId(pageId);
     setActiveSection(null);
+    setSelectedComponentState(null);
+    setSelectedRowState(null);
+    setSelectedCardState(null);
+    setSelectedCardData(null);
     try { localStorage.setItem("site-editor-last-page", pageId); } catch { /* ignore */ }
   }
 
@@ -4356,16 +4367,26 @@ function WebsiteEditor() {
   }
 
   function renamePage(pageId: string, name: string) {
-    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      toast({ title: "Page name is required", variant: "destructive" });
+      return;
+    }
+    const slug = normalizedName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const conflictingPage = pagesRef.current.find(page => page.id !== pageId && page.slug.toLowerCase() === slug);
+    if (conflictingPage) {
+      toast({ title: "Page slug already in use", description: `"${slug}" is already used by ${conflictingPage.name}. Choose a different page name.`, variant: "destructive" });
+      return;
+    }
     const siteSlug = activeBusiness?.slug ?? "";
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
-      const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p);
+      const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name: normalizedName, slug } : p);
       return patchHomeHeaderNavLinks(updated, links =>
         links.map(link =>
           (link as any).pageId === pageId
-            ? { ...link, label: name, href: `/site/${siteSlug}/${slug}` }
+            ? { ...link, label: normalizedName, href: `/site/${siteSlug}/${slug}` }
             : link
         )
       );
