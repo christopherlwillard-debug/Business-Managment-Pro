@@ -83,9 +83,13 @@ function displayLabel(item: MediaItem): string {
 export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }: MediaLibraryProps) {
   const qc = useQueryClient();
 
-  const [viewMode, setViewMode] = useState<"grid" | "list">(() =>
-    (localStorage.getItem("media-view-mode") as "grid" | "list") ?? "grid"
-  );
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    try {
+      return localStorage.getItem("media-view-mode") === "list" ? "list" : "grid";
+    } catch {
+      return "grid";
+    }
+  });
   const [folderFilter, setFolderFilter] = useState<number | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
