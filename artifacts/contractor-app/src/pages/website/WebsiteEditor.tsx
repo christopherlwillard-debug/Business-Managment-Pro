@@ -2588,10 +2588,14 @@ function WebsiteEditor() {
 
   const deleteSavedSectionMutation = useMutation({
     mutationFn: async (savedId: number) => {
-      await fetch(`${BASE}/api/website/saved-sections/${savedId}?businessId=${bizId}`, {
+      const res = await fetch(`${BASE}/api/website/saved-sections/${savedId}?businessId=${bizId}`, {
         method: "DELETE",
         credentials: "include",
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to delete saved section");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["saved-sections", bizId] });
