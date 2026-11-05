@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { applyPublicWebsiteImageSecurityHeaders, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs } from "./website";
+import multer from "multer";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs } from "./website";
 
 describe("website data boundaries", () => {
+  it("returns a client error for oversized and malformed media uploads", () => {
+    expect(getWebsiteMediaUploadError(new multer.MulterError("LIMIT_FILE_SIZE"))).toEqual({
+      status:  413,
+      message: "Image exceeds the 20 MB upload limit.",
+    });
+    expect(getWebsiteMediaUploadError(new multer.MulterError("LIMIT_UNEXPECTED_FILE"))).toEqual({
+      status: 400,
+      message: "Invalid image upload request. Choose one image file and try again.",
+    });
+    expect(getWebsiteMediaUploadError(new Error("storage unavailable"))).toBeNull();
+  });
+
   it("adds restrictive headers to every public Website Studio image response", () => {
     const headers = new Map<string, string>();
     applyPublicWebsiteImageSecurityHeaders({
