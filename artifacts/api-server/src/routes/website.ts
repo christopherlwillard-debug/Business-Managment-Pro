@@ -39,6 +39,13 @@ export function normalizePageSlug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/** Returns null when no folder was selected, or undefined for an invalid ID. */
+export function parseWebsiteMediaFolderId(value: unknown): number | null | undefined {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
 type WebsitePageLike = { id?: string; name?: string; slug?: string };
 
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
@@ -2422,12 +2429,9 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const { originalname, mimetype, buffer, size } = req.file;
-  let folderId: number | null = null;
-  if (req.body.folderId !== undefined && req.body.folderId !== null && String(req.body.folderId).trim() !== "") {
-    folderId = Number(req.body.folderId);
-    if (!Number.isSafeInteger(folderId) || folderId <= 0) {
-      return res.status(400).json({ error: "Invalid folderId" });
-    }
+  const folderId = parseWebsiteMediaFolderId(req.body.folderId);
+  if (folderId === undefined) return res.status(400).json({ error: "Invalid folderId" });
+  if (folderId !== null) {
     const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
       .from(websiteMediaFoldersTable)
       .where(and(
