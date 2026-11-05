@@ -384,7 +384,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   function changeViewMode(m: "grid" | "list") {
     setViewMode(m);
-    localStorage.setItem("media-view-mode", m);
+    try { localStorage.setItem("media-view-mode", m); } catch { /* storage is optional */ }
   }
 
   function handleItemDragStart(itemId: number, e: React.DragEvent) {
