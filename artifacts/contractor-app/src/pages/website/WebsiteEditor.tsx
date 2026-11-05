@@ -1771,6 +1771,7 @@ function WebsiteEditor() {
   const businessSessionRef = useRef(0);
   const saveInFlightRef = useRef(false);
   const saveQueuedRef = useRef(false);
+  const saveInFlightPromiseRef = useRef<Promise<unknown> | null>(null);
   const saveErrorRevisionRef = useRef<number | null>(null);
 
   const bizId = activeBusiness?.id;
@@ -2576,7 +2577,13 @@ function WebsiteEditor() {
       return;
     }
     saveInFlightRef.current = true;
-    saveMutation.mutate(request);
+    const pending = saveMutation.mutateAsync(request);
+    saveInFlightPromiseRef.current = pending;
+    void pending.finally(() => {
+      if (saveInFlightPromiseRef.current === pending) {
+        saveInFlightPromiseRef.current = null;
+      }
+    }).catch(() => undefined);
   }
 
   const createSavedSectionMutation = useMutation({
@@ -2632,13 +2639,35 @@ function WebsiteEditor() {
   }, [localPages, localSettings, bizId]);
 
   async function handlePublish() {
+    if (publishing) return;
     setPublishing(true);
-    const request = captureSaveRequest();
-    if (!request) {
-      setPublishing(false);
-      return;
-    }
     try {
+      // Publish only after the latest editor revision has finished saving.
+      // If a save is already running, queue one more snapshot so that the
+      // in-flight older request cannot overwrite the published revision.
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (isDirtyRef.current) requestSave();
+
+      while (saveInFlightRef.current || saveQueuedRef.current) {
+        let pending = saveInFlightPromiseRef.current;
+        if (!pending && saveQueuedRef.current) {
+          saveQueuedRef.current = false;
+          requestSave();
+          pending = saveInFlightPromiseRef.current;
+        }
+        if (!pending) break;
+        await pending.catch(() => undefined);
+      }
+
+      if (isDirtyRef.current || saveErrorRevisionRef.current !== null) {
+        throw new Error("Save your latest changes before publishing.");
+      }
+
+      const request = captureSaveRequest();
+      if (!request) return;
       const res = await fetch(`${BASE}/api/website/publish?businessId=${request.businessId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2663,8 +2692,12 @@ function WebsiteEditor() {
       setShowPublished(true);
       setTimeout(() => setShowPublished(false), 5000);
       toast({ title: "Website published!" });
-    } catch {
-      toast({ title: "Publish failed", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Publish failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setPublishing(false);
     }
