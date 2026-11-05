@@ -29,7 +29,7 @@ const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Detect a supported raster image from its bytes, not the client-supplied MIME
+ * Detect a supported image format from its bytes, not the client-supplied MIME
  * type. SVG is retained for image use; every public Website Studio image route
  * applies a sandbox CSP so an SVG opened directly cannot execute active content.
  * Returns null for malformed or unsupported formats.

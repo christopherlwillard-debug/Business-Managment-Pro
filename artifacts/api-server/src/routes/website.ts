@@ -2443,7 +2443,7 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   const { originalname, buffer, size } = req.file;
   const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
   if (!detectedMimeType) {
-    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, or AVIF." });
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, AVIF, or SVG." });
   }
   const folderId = parseWebsiteMediaFolderId(req.body.folderId);
   if (folderId === undefined) return res.status(400).json({ error: "Invalid folderId" });
@@ -2707,7 +2707,7 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
   const { originalname, buffer, size } = req.file;
   const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
   if (!detectedMimeType) {
-    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, or AVIF." });
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, AVIF, or SVG." });
   }
   const newAssets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const newObjectPath = newAssets.objectPath;
