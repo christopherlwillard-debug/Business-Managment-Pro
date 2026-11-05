@@ -224,7 +224,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
           method: "POST", credentials: "include", body: formData,
         });
         if (!res.ok) {
-          failed.push(`${file.name} (${res.status})`);
+          const body = await res.json().catch(() => null) as { error?: string } | null;
+          failed.push(`${file.name} (${body?.error ?? `HTTP ${res.status}`})`);
           continue;
         }
         succeeded.push(file.name);
