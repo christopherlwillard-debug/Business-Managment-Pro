@@ -10,9 +10,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import sharp from "sharp";
 import {
   createMediaVariants,
   applyEnhancements,
+  detectWebsiteMediaMimeType,
   CROP_RATIOS,
   cropRatioLabel,
 } from "../lib/imageProcessor";
@@ -39,6 +41,27 @@ describe("imageProcessor — createMediaVariants", () => {
     expect(cropRatioLabel("16:9")).toMatch(/Widescreen/i);
     expect(cropRatioLabel("4:3")).toMatch(/Standard/i);
     expect(cropRatioLabel("1:1")).toMatch(/Square/i);
+  });
+});
+
+// ── Website media upload validation ─────────────────────────────────────────
+
+describe("imageProcessor — website media upload validation", () => {
+  it("detects the stored MIME type from image bytes", async () => {
+    const png = await sharp({
+      create: { width: 1, height: 1, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    }).png().toBuffer();
+    await expect(detectWebsiteMediaMimeType(png)).resolves.toBe("image/png");
+  });
+
+  it("rejects SVG so active content is not stored at a public same-origin media URL", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    await expect(detectWebsiteMediaMimeType(svg)).resolves.toBeNull();
+  });
+
+  it("rejects malformed and non-image file bytes", async () => {
+    await expect(detectWebsiteMediaMimeType(Buffer.from("<html><script>alert(1)</script></html>"))).resolves.toBeNull();
+    await expect(detectWebsiteMediaMimeType(Buffer.from("not an image"))).resolves.toBeNull();
   });
 });
 

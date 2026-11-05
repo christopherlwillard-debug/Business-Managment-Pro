@@ -19,6 +19,34 @@
 
 import sharp from "sharp";
 
+const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  tiff: "image/tiff",
+};
+
+/**
+ * Detect a supported raster image from its bytes, not the client-supplied MIME
+ * type. SVG is intentionally excluded because the public media URL serves
+ * uploaded objects from the application's origin and SVG can contain script.
+ * Returns null for malformed, unsupported, or active-content formats.
+ */
+export async function detectWebsiteMediaMimeType(inputBuffer: Buffer): Promise<string | null> {
+  try {
+    const metadata = await sharp(inputBuffer).metadata();
+    if (metadata.format === "heif") {
+      if (metadata.compression === "av1") return "image/avif";
+      if (metadata.compression === "hevc") return "image/heic";
+      return null;
+    }
+    return WEBSITE_MEDIA_MIME_TYPES[metadata.format ?? ""] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface MediaVariants {

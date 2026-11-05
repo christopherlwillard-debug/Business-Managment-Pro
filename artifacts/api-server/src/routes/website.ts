@@ -10,7 +10,7 @@ import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
-import { createMediaVariants, applyEnhancements, type EnhancementOptions } from "../lib/imageProcessor";
+import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, type EnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
@@ -2428,7 +2428,11 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
-  const { originalname, mimetype, buffer, size } = req.file;
+  const { originalname, buffer, size } = req.file;
+  const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
+  if (!detectedMimeType) {
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, or AVIF." });
+  }
   const folderId = parseWebsiteMediaFolderId(req.body.folderId);
   if (folderId === undefined) return res.status(400).json({ error: "Invalid folderId" });
   if (folderId !== null) {
@@ -2440,7 +2444,7 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
       ));
     if (!folder) return res.status(400).json({ error: "Invalid folder" });
   }
-  const assets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const assets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const objectPath = assets.objectPath;
   const uuid = objectPath.split("/").pop()!;
   const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
@@ -2688,8 +2692,12 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
 
-  const { originalname, mimetype, buffer, size } = req.file;
-  const newAssets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const { originalname, buffer, size } = req.file;
+  const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
+  if (!detectedMimeType) {
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, or AVIF." });
+  }
+  const newAssets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const newObjectPath = newAssets.objectPath;
   const uuid = newObjectPath.split("/").pop()!;
   const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
@@ -2904,6 +2912,8 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
         response.headers.forEach((value, key) => res.setHeader(key, value));
         res.setHeader("Content-Type", "image/webp");
         res.setHeader("Vary", "Accept");
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
         if (response.body) {
           const nodeStream = Readable.fromWeb(response.body as any);
           nodeStream.pipe(res);
@@ -2923,6 +2933,8 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (acceptsWebP) res.setHeader("Vary", "Accept");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
