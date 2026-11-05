@@ -856,6 +856,11 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
       {isDeleteConfirm ? (
         <div className="absolute inset-0 bg-destructive/90 flex flex-col items-center justify-center gap-2 z-20">
           <p className="text-white text-[10px] font-medium text-center px-2">Delete this image?</p>
+          {usageCount > 0 && (
+            <p className="text-white/90 text-[9px] text-center px-2">
+              Used in {usageCount} site section{usageCount === 1 ? "" : "s"}.
+            </p>
+          )}
           <div className="flex gap-1.5">
             <button onClick={onDelete} disabled={deleting}
               className="px-2 py-0.5 bg-white text-destructive rounded text-[10px] font-semibold hover:bg-gray-100">
@@ -995,6 +1000,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
         {isDeleteConfirm ? (
           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
             <span className="text-[10px] text-destructive font-medium">Delete?</span>
+            {usageCount > 0 && <span className="text-[9px] text-amber-600">{usageCount} in use</span>}
             <button type="button" onClick={onDelete} disabled={deleting}
               className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-semibold disabled:opacity-60">
               {deleting ? "…" : "Yes"}
