@@ -4380,6 +4380,12 @@ function WebsiteEditor() {
     if (activePageId === pageId) {
       setActivePageId("home");
       setActiveSection(null);
+      setSelectedComponentState(null);
+      setSelectedRowState(null);
+      setSelectedCardState(null);
+      setSelectedCardData(null);
+      setSelectedSubElement(null);
+      try { localStorage.setItem("site-editor-last-page", "home"); } catch { /* ignore */ }
     }
     setDeletePageConfirm(null);
   }
@@ -4390,7 +4396,7 @@ function WebsiteEditor() {
       toast({ title: "Page name is required", variant: "destructive" });
       return;
     }
-    const slug = normalizedName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const slug = normalizedName.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "page";
     const conflictingPage = pagesRef.current.find(page => page.id !== pageId && page.slug.toLowerCase() === slug);
     if (conflictingPage) {
       toast({ title: "Page slug already in use", description: `"${slug}" is already used by ${conflictingPage.name}. Choose a different page name.`, variant: "destructive" });
