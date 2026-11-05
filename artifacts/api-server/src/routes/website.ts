@@ -27,6 +27,12 @@ const openai = new OpenAI({
 const router = Router();
 const publicRouter = Router();
 
+/** Prevent active content in user-controlled files from executing when opened as a document. */
+export function applyPublicWebsiteImageSecurityHeaders(res: { setHeader(name: string, value: string): unknown }): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
+}
+
 const BASE_URL = process.env["BASE_URL"] ?? "";
 
 export function normalizePageSlug(value: string): string {
@@ -528,6 +534,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -564,6 +571,7 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2225,6 +2233,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2259,6 +2268,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2298,6 +2308,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2344,6 +2355,7 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2912,8 +2924,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
         response.headers.forEach((value, key) => res.setHeader(key, value));
         res.setHeader("Content-Type", "image/webp");
         res.setHeader("Vary", "Accept");
-        res.setHeader("X-Content-Type-Options", "nosniff");
-        res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
+        applyPublicWebsiteImageSecurityHeaders(res);
         if (response.body) {
           const nodeStream = Readable.fromWeb(response.body as any);
           nodeStream.pipe(res);
@@ -2933,8 +2944,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (acceptsWebP) res.setHeader("Vary", "Accept");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2955,6 +2965,7 @@ publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);

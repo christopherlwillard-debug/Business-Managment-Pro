@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs } from "./website";
 
 describe("website data boundaries", () => {
+  it("adds restrictive headers to every public Website Studio image response", () => {
+    const headers = new Map<string, string>();
+    applyPublicWebsiteImageSecurityHeaders({
+      setHeader: (name, value) => { headers.set(name, value); },
+    });
+    expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(headers.get("Content-Security-Policy")).toBe("sandbox; default-src 'none';");
+  });
+
   it("normalizes page slugs deterministically", () => {
     expect(normalizePageSlug("  Spring  Special!!! ")).toBe("spring-special");
     expect(normalizePageSlug("A--B")).toBe("a-b");
