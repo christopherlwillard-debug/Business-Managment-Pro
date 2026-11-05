@@ -120,6 +120,21 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const [detailRenaming, setDetailRenaming] = useState(false);
   const [detailRenameValue, setDetailRenameValue] = useState("");
 
+  // A mounted library can be reused when the selected business changes. Never
+  // carry selections, dialogs, or item details across business boundaries.
+  useEffect(() => {
+    setFolderFilter("all");
+    setSearch("");
+    setSelectedIds(new Set());
+    setDetailItem(null);
+    setRenamingId(null);
+    setRenamingFolderId(null);
+    setDetailRenaming(false);
+    setDeleteConfirm(null);
+    setBulkDeleteConfirm(false);
+    setOperationNotice(null);
+  }, [businessId]);
+
   // ── Queries ───────────────────────────────────────────────────────────────
 
   const { data: items = [], isLoading, isError: mediaLoadFailed, refetch: refetchMedia } = useQuery<MediaItem[]>({
