@@ -1651,8 +1651,9 @@ function WebsiteEditor() {
       const parsed = JSON.parse(saved) as { x?: unknown; y?: unknown };
       if (typeof parsed.x !== "number" || !Number.isFinite(parsed.x) ||
           typeof parsed.y !== "number" || !Number.isFinite(parsed.y)) return fallback;
-      const maxX = typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 240);
-      const maxY = typeof window === "undefined" ? 0 : Math.max(0, window.innerHeight - 80);
+      const maxX = typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 280);
+      // Keep the floating inspector's title bar reachable after a window resize.
+      const maxY = typeof window === "undefined" ? 0 : Math.max(0, window.innerHeight - 48);
       return {
         x: Math.min(maxX, Math.max(0, parsed.x)),
         y: Math.min(maxY, Math.max(0, parsed.y)),
