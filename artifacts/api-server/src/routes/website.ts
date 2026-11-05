@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import multer from "multer";
 import { Readable } from "stream";
 import { createHmac, createHash } from "crypto";
@@ -18,6 +18,23 @@ import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/a
 const objectStorageService = new ObjectStorageService();
 
 const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+export function getWebsiteMediaUploadError(error: unknown): { status: number; message: string } | null {
+  if (!(error instanceof multer.MulterError)) return null;
+  if (error.code === "LIMIT_FILE_SIZE") {
+    return { status: 413, message: "Image exceeds the 20 MB upload limit." };
+  }
+  return { status: 400, message: "Invalid image upload request. Choose one image file and try again." };
+}
+
+const websiteMediaUploadMiddleware: RequestHandler = (req, res, next) => {
+  mediaUpload.single("file")(req, res, error => {
+    if (!error) return next();
+    const uploadError = getWebsiteMediaUploadError(error);
+    if (uploadError) return res.status(uploadError.status).json({ error: uploadError.message });
+    return next(error);
+  });
+};
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2436,7 +2453,7 @@ router.get("/media", wrapAsync(async (req, res) => {
   res.json(items);
 }));
 
-router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
+router.post("/media/upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
@@ -2654,7 +2671,7 @@ router.post("/media/:id/replace", (_req, res) => {
   });
 });
 
-router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
+router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
