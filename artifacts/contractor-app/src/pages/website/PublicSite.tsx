@@ -432,8 +432,14 @@ export default function PublicSite() {
   // ── FAQ JSON-LD: build if any FAQ sections are rendered on this page ─────────
   const faqItems = bodySections
     .filter(s => s.type === "faq" && s.enabled)
-    .flatMap(s => (s.content.items as Array<{ question?: string; answer?: string }> | undefined) ?? [])
-    .filter(i => i.question && i.answer);
+    .flatMap(s => Array.isArray(s.content.items) ? s.content.items : [])
+    .filter((item): item is { question: string; answer: string } =>
+      !!item && typeof item === "object" &&
+      typeof (item as { question?: unknown }).question === "string" &&
+      typeof (item as { answer?: unknown }).answer === "string" &&
+      !!(item as { question: string }).question.trim() &&
+      !!(item as { answer: string }).answer.trim()
+    );
   const faqJsonLd = faqItems.length > 0
     ? JSON.stringify({
         "@context": "https://schema.org",
