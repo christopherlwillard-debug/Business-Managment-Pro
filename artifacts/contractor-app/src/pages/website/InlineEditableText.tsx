@@ -103,6 +103,10 @@ export function InlineEditableText({
   function handleSelectedKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      // Do not let the activation key reach the window-level canvas shortcuts.
+      // In particular, the Space-pan listener runs before React's state update
+      // has made editingIdRef current, which can swallow the first typed space.
+      e.stopPropagation();
       ctx?.startEditing(id, value, onCommit, enterBehavior, escapeBehavior);
     }
   }
