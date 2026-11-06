@@ -139,6 +139,7 @@ type WebsitePageLike = { id?: string; name?: string; slug?: string; sections?: u
 export function getWebsitePageList(value: unknown): WebsitePageLike[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
+  const seenIds = new Set<string>();
   return value.flatMap((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
     const page = raw as Record<string, unknown>;
@@ -146,7 +147,11 @@ export function getWebsitePageList(value: unknown): WebsitePageLike[] {
     const slug = normalizePageSlug(page.slug);
     if (!slug || slug === "home" || seen.has(slug)) return [];
     seen.add(slug);
-    const id = typeof page.id === "string" && page.id.trim() ? page.id : `page-${index + 1}`;
+    const preferredId = typeof page.id === "string" && page.id.trim() ? page.id.trim() : `page-${index + 1}`;
+    let id = preferredId;
+    let idSuffix = 2;
+    while (seenIds.has(id)) id = `${preferredId}-${idSuffix++}`;
+    seenIds.add(id);
     const name = typeof page.name === "string" && page.name.trim() ? page.name.trim().slice(0, 120) : slug;
     const sections = Array.isArray(page.sections)
       ? page.sections.flatMap((rawSection, sectionIndex) => {
