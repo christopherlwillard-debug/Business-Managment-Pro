@@ -45,7 +45,9 @@ export function calculateSquareInvoicePayment(
     !Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0
   ) return null;
 
-  const nextPaidCents = paidCents + paymentAmountCents;
+  // Cap invoice allocation at the invoice total. Any excess remains visible
+  // in the Square payment mirror for reconciliation, not invoice revenue.
+  const nextPaidCents = Math.min(totalCents, paidCents + paymentAmountCents);
   return {
     amountPaid: (nextPaidCents / 100).toFixed(2),
     status: nextPaidCents >= totalCents ? "paid" : "partial",
@@ -109,7 +111,9 @@ async function handleSquarePayment(opts: {
           return;
         }
 
-        const allocation = calculateSquareInvoicePayment(invoice.total, invoice.amountPaid, amountMoney);
+        const allocation = invoice.status === "paid"
+          ? null
+          : calculateSquareInvoicePayment(invoice.total, invoice.amountPaid, amountMoney);
         if (allocation) {
           await tx.update(invoicesTable)
             .set({
