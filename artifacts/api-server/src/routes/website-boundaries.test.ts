@@ -284,8 +284,8 @@ describe("Website Studio public page list recovery", () => {
       { id: "valid", slug: "about" },
       { id: "also-valid", slug: "contact" },
     ])).toEqual([
-      { id: "valid", slug: "about" },
-      { id: "also-valid", slug: "contact" },
+      { id: "valid", name: "about", slug: "about", sections: [] },
+      { id: "also-valid", name: "contact", slug: "contact", sections: [] },
     ]);
   });
 });
