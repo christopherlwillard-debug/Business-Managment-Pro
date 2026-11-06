@@ -1,14 +1,30 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
+import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import {
   clientProfileRouteStopColumns,
   clientProfileSquarePaymentColumns,
 } from "../lib/client-profile-projections.js";
 
 const router = Router();
+
+async function resolveClientBusinessAssignment(value: unknown): Promise<{
+  businessId: number | null;
+  businessLine: string | null;
+} | undefined> {
+  if (value == null || value === "") return { businessId: null, businessLine: null };
+  if (typeof value !== "string") return undefined;
+  const requestedSlug = value.trim();
+  const slug = requestedSlug === "asphalt" ? "asphalt_sealing"
+    : requestedSlug === "contracting" ? "general_contracting"
+    : requestedSlug;
+  if (!slug) return { businessId: null, businessLine: null };
+  const [business] = await db.select({ id: businessesTable.id, slug: businessesTable.slug })
+    .from(businessesTable).where(eq(businessesTable.slug, slug)).limit(1);
+  return business ? { businessId: business.id, businessLine: business.slug } : undefined;
+}
 
 function scopedOwnerPredicate(
   columns: { businessId: any; businessLine: any },
@@ -25,6 +41,7 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!Number.isInteger(id)) return next();
     if (!scope) return next();
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
@@ -41,6 +58,7 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
 router.get("/", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const clientScope = scopedOwnerPredicate(clientsTable, scope);
     const invoiceScope = scopedOwnerPredicate(invoicesTable, scope);
     const [clients, openInvoices] = await Promise.all([
@@ -83,13 +101,15 @@ router.post("/", async (req, res) => {
   try {
     const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     const [client] = await db.insert(clientsTable).values({
       name, email, phone, address, city, state, zip, notes,
       nextServiceDate: nextServiceDate ?? null,
       serviceIntervalMonths: serviceIntervalMonths ?? null,
-      businessLine: businessLine ?? null,
-      businessId: scope?.id ?? null,
+      businessLine: owner.slug,
+      businessId: owner.id,
       reminderOptOut: reminderOptOut === true,
       mileageSurchargeEnabled: mileageSurchargeEnabled === true,
       mileageSurchargeTriggerMiles: mileageSurchargeTriggerMiles ?? null,
@@ -182,7 +202,12 @@ router.put("/:id", async (req, res) => {
     if ("notes" in req.body) updates.notes = notes;
     if ("nextServiceDate" in req.body) updates.nextServiceDate = nextServiceDate ?? null;
     if ("serviceIntervalMonths" in req.body) updates.serviceIntervalMonths = serviceIntervalMonths ?? null;
-    if ("businessLine" in req.body) updates.businessLine = businessLine ?? null;
+    if ("businessLine" in req.body) {
+      const assignment = await resolveClientBusinessAssignment(businessLine);
+      if (!assignment) return res.status(400).json({ error: "Select a valid business." });
+      updates.businessLine = assignment.businessLine;
+      updates.businessId = assignment.businessId;
+    }
     if ("reminderOptOut" in req.body) updates.reminderOptOut = reminderOptOut === true;
     if ("mileageSurchargeEnabled" in req.body) updates.mileageSurchargeEnabled = mileageSurchargeEnabled === true;
     if ("mileageSurchargeTriggerMiles" in req.body) updates.mileageSurchargeTriggerMiles = mileageSurchargeTriggerMiles ?? null;
@@ -205,13 +230,10 @@ router.patch("/:id/business-line", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
-    const { businessLine } = req.body;
-    const normalized = businessLine === undefined ? null : businessLine;
-    if (!VALID_BUSINESS_LINES.includes(normalized)) {
-      return res.status(400).json({ error: "Invalid business line. Must be 'asphalt', 'contracting', or null." });
-    }
+    const assignment = await resolveClientBusinessAssignment(req.body?.businessLine);
+    if (!assignment) return res.status(400).json({ error: "Select a valid business." });
     const [client] = await db.update(clientsTable)
-      .set({ businessLine: normalized })
+      .set(assignment)
       .where(eq(clientsTable.id, id))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
