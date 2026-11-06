@@ -165,3 +165,26 @@ Every batch must trace confirmed defects through callers, schema, and tests; add
 ### Next repair scope
 
 The smallest safe next repair is **SQR-003: make each existing Square ingestion path atomic with its canonical accounting write**, without changing allocation rules or adding a new ledger. Before implementation, confirm transaction support in the route's test harness and inspect the remaining Square reference paths. SQR-004/005/006 remain separate financial repairs and require their own explicit approval and source-of-truth design.
+
+
+## Square payment reliability implementation — 2026-11-06
+
+**Approval and architecture review:** The user authorized fixes to the four previously named Square findings (SQR-003 through SQR-006). The required ten-point review consulted the system registry, decisions, changelog, existing routes, schemas, UI projections, invoice calculations, cash-revenue helper, and tax/report consumers. The implementation reuses `invoices`, `other_income`, and `square_payments`; it adds no table, migration, report calculation, or new source of truth.
+
+- **SQR-003 — implemented:** `handleSquarePayment` now performs its database reads and writes through one Drizzle transaction. The unique Square payment claim and the related invoice or `other_income` write now commit or roll back together. Website-deposit submission/prospect updates are included in that same transaction. The explicit invoice-reference path now also claims the provider payment inside the transaction.
+- **SQR-004 — implemented in the existing aggregate model:** generic Tap-to-Pay matching now adds the received amount to the invoice's existing `amountPaid` aggregate using integer cents and sets `partial` until the invoice balance is covered. It no longer marks every matched invoice paid regardless of receipt amount.
+- **SQR-005 — implemented in the existing aggregate model:** explicit `inv_<id>` Square references now use the same amount-aware allocation and persist the Square payment mirror row. Cancelled invoices are not updated; already-paid invoices are not incremented again by a later distinct Square payment.
+- **SQR-006 — implemented:** Square mirror rows now retain the matched `clientId`, `invoiceId`, and `invoiceNumber` for both generic invoice matching and explicit invoice references. Invoice business ownership is used for the mirror row when an invoice is matched.
+- Invoice allocation is capped at the invoice total. The full provider amount remains visible in `square_payments`; any overage is not treated as additional invoice revenue and requires reconciliation.
+- Added regression coverage for partial receipts, completion after a prior partial receipt, successive receipts using cents, overpayment capping, and invalid amounts. Existing signature-ingress tests remain in place.
+
+### Residual accounting boundary
+
+The existing `amountPaid` and provider timestamp fields remain aggregate/snapshot fields. They still cannot allocate each receipt, refund, or reversal to its actual tax year across Square, Stripe, manual receipts, and bank reconciliation. This batch deliberately does not change cash-basis reports or create a customer-payment event ledger. Overpayment excess is visible in the Square mirror but has no separate unapplied-credit workflow yet. Those remain separate architecture work, not silently solved by these route changes.
+
+### Validation
+
+- Reviewed the updated route and test source after the commits.
+- Added five focused invoice-allocation assertions; **tests, TypeScript checks, and builds were not executed** because this session has no repository checkout/package runtime.
+- GitHub Actions returned no workflow runs and the commit had no combined status checks at the time of inspection. No test pass is claimed.
+- The audit branch remains separate from `master`; no merge, deployment, credentials, or production data were changed.
