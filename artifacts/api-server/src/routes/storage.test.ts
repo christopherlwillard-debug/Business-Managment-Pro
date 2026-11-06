@@ -67,6 +67,32 @@ describe("generic presigned upload authorization", () => {
     expect(h.getObjectEntityUploadURL).not.toHaveBeenCalled();
   });
 
+  it("rejects generic uploads with an unsupported content type", async () => {
+    const response = await request(createApp())
+      .post("/storage/uploads/request-url")
+      .send({ name: "payload.exe", size: 1024, contentType: "application/x-msdownload" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/file type is not supported/i);
+    expect(h.getObjectEntityUploadURL).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty, oversized, and malformed upload metadata", async () => {
+    const invalidPayloads = [
+      { name: "empty.pdf", size: 0, contentType: "application/pdf" },
+      { name: "large.pdf", size: 25 * 1024 * 1024 + 1, contentType: "application/pdf" },
+      { name: "bad.pdf", size: 1024.5, contentType: "application/pdf" },
+      { name: "x".repeat(256), size: 1024, contentType: "application/pdf" },
+      { name: "missing-type.pdf", size: 1024 },
+    ];
+
+    for (const payload of invalidPayloads) {
+      const response = await request(createApp()).post("/storage/uploads/request-url").send(payload);
+      expect(response.status).toBe(400);
+    }
+    expect(h.getObjectEntityUploadURL).not.toHaveBeenCalled();
+  });
+
   it("allows the owner to request a presigned upload URL", async () => {
     const response = await request(createApp())
       .post("/storage/uploads/request-url")
