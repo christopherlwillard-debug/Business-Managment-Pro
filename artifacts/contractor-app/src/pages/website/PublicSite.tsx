@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
-import { buildThemeCssVarBlock } from "./themes";
+import { buildThemeCssVarBlock, sanitizeWebsiteFontFamily } from "./themes";
 import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
 import { HeroSection } from "./sections/HeroSection";
@@ -464,8 +464,8 @@ export default function PublicSite() {
       {createPortal(
         <>
           {googleFontsHref && <link rel="stylesheet" href={googleFontsHref} />}
-          {settings.headingFont && (
-            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+          {sanitizeWebsiteFontFamily(settings.headingFont) && (
+            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${sanitizeWebsiteFontFamily(settings.headingFont)}',system-ui,sans-serif}`}</style>
           )}
           <style>{buildThemeCssVarBlock(settings.themeId, {
             brandColor: settings.brandColor,
