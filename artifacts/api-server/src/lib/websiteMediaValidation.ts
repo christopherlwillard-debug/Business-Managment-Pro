@@ -34,3 +34,18 @@ export function validateWebsiteMediaPatch(value: unknown):
   if (Object.keys(update).length === 0) return { ok: false, error: "Nothing to update." };
   return { ok: true, update };
 }
+/** Validate and normalize bulk-delete IDs before constructing a database IN clause. */
+export function validateWebsiteMediaIds(value: unknown):
+  | { ok: true; ids: number[] }
+  | { ok: false; error: string } {
+  if (!Array.isArray(value) || value.length === 0) {
+    return { ok: false, error: "Select at least one image to delete." };
+  }
+  if (value.length > 1000) {
+    return { ok: false, error: "Delete no more than 1,000 images at a time." };
+  }
+  if (!value.every(id => Number.isSafeInteger(id) && id > 0)) {
+    return { ok: false, error: "Image IDs must be positive integers." };
+  }
+  return { ok: true, ids: [...new Set(value as number[])] };
+}
