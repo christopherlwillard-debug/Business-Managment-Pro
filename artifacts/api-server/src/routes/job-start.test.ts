@@ -47,6 +47,7 @@ vi.mock("@workspace/db", () => {
 });
 
 vi.mock("../lib/business-scope.js", () => ({
+  hasRequestedBusiness: () => false,
   requestedBusiness: async () => ({ id: 1, slug: "general_contracting" }),
   belongsToBusiness: (record: { businessId?: number | null }, scope: { id: number }) => record.businessId === scope.id,
   invalidBusinessScope: () => false,
