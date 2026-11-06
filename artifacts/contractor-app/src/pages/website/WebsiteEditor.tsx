@@ -198,7 +198,7 @@ function renderSection(
   isEditing: boolean,
   onChange: (content: Record<string, unknown>) => void,
   extras?: {
-    onAboutPhotoUpload?: (file: File) => Promise<void>;
+    onAboutPhotoUpload?: (sectionId: string, file: File) => Promise<void>;
     isAboutPhotoUploading?: boolean;
     onPortfolioPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
     uploadingPortfolioPhotoIds?: Set<string>;
@@ -258,7 +258,7 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
-    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload ? (file: File) => extras.onAboutPhotoUpload!(section.id, file) : undefined} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={section.id} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
     case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} businessName={extras?.businessName} />;
     case "image":   return <ImageSection {...(props as any)} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
@@ -3787,7 +3787,7 @@ function WebsiteEditor() {
     }
   }
 
-  async function handleAboutPhotoUpload(file: File) {
+  async function handleAboutPhotoUpload(sectionId: string, file: File) {
     const upload = beginWebsiteAssetUpload();
     if (!upload.businessId || !upload.slug) {
       finishWebsiteAssetUpload(upload.key);
@@ -3796,15 +3796,12 @@ function WebsiteEditor() {
     }
     setAboutPhotoUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const originalPhotoUrls = new Map(
-      (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
-        .filter(section => section.type === "about")
-        .map(section => [section.id, section.content.photoUrl] as const),
-    );
+    const originalPhotoUrl = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId && section.type === "about")?.content.photoUrl;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
     setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
-      pageSections.map(section => section.type === "about"
+      pageSections.map(section => section.id === sectionId && section.type === "about"
         ? { ...section, content: { ...section.content, photoUrl: blobUrl } }
         : section),
     ));
@@ -3827,7 +3824,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/about-photo`;
         setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
-          pageSections.map(section => section.type === "about" && section.content.photoUrl === blobUrl
+          pageSections.map(section => section.id === sectionId && section.type === "about" && section.content.photoUrl === blobUrl
             ? { ...section, content: { ...section.content, photoObjectPath: objectPath, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
             : section),
         ));
@@ -3839,11 +3836,10 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
           pageSections.map(section => {
-            if (section.type !== "about" || section.content.photoUrl !== blobUrl) return section;
+            if (section.id !== sectionId || section.type !== "about" || section.content.photoUrl !== blobUrl) return section;
             const content = { ...section.content };
-            const originalUrl = originalPhotoUrls.get(section.id);
-            if (originalUrl === undefined) delete content.photoUrl;
-            else content.photoUrl = originalUrl;
+            if (originalPhotoUrl === undefined) delete content.photoUrl;
+            else content.photoUrl = originalPhotoUrl;
             return { ...section, content };
           }),
         ));
