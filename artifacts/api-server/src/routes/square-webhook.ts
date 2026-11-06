@@ -128,6 +128,93 @@ async function handleSquarePayment(opts: {
     }
   }
 
+  // These reference-based flows also need a unique provider-payment claim:
+  // prospect deposits append an event, so duplicate Square deliveries must not
+  // create duplicate deposit history.
+  if (
+    squarePaymentId &&
+    amountMoney !== null &&
+    (referenceId?.startsWith("quick_") || referenceId?.startsWith("prospect_") || referenceId?.startsWith("estimate_"))
+  ) {
+    let ownerId: number | null = null;
+    let ownerSlug: string | null = null;
+    let clientId: number | null = null;
+    let clientName: string | null = buyerName;
+    let description = "Square Reference Payment";
+    let targetExists = false;
+
+    if (referenceId.startsWith("quick_")) {
+      const chargeId = Number.parseInt(referenceId.slice(6), 10);
+      if (Number.isSafeInteger(chargeId) && chargeId > 0) {
+        const [charge] = await tx.select({
+          id: quickChargesTable.id,
+          customerName: quickChargesTable.customerName,
+        }).from(quickChargesTable).where(eq(quickChargesTable.id, chargeId)).limit(1);
+        if (charge) {
+          targetExists = true;
+          clientName = charge.customerName ?? buyerName;
+          description = `Square Quick Charge — ${chargeId}`;
+        }
+      }
+    } else if (referenceId.startsWith("prospect_")) {
+      const prospectId = Number.parseInt(referenceId.slice(9), 10);
+      if (Number.isSafeInteger(prospectId) && prospectId > 0) {
+        const [prospect] = await tx.select({
+          id: prospectsTable.id,
+          businessId: prospectsTable.businessId,
+          businessLine: prospectsTable.businessLine,
+          clientId: prospectsTable.clientId,
+          contactName: prospectsTable.contactName,
+        }).from(prospectsTable).where(eq(prospectsTable.id, prospectId)).limit(1);
+        if (prospect) {
+          targetExists = true;
+          ownerId = prospect.businessId;
+          ownerSlug = prospect.businessLine;
+          clientId = prospect.clientId;
+          clientName = prospect.contactName ?? buyerName;
+          description = `Square Prospect Deposit — ${prospectId}`;
+        }
+      }
+    } else {
+      const estimateId = Number.parseInt(referenceId.slice(9), 10);
+      if (Number.isSafeInteger(estimateId) && estimateId > 0) {
+        const [estimate] = await tx.select({
+          id: estimatesTable.id,
+          businessId: estimatesTable.businessId,
+          businessLine: estimatesTable.businessLine,
+          clientId: estimatesTable.clientId,
+          title: estimatesTable.title,
+        }).from(estimatesTable).where(eq(estimatesTable.id, estimateId)).limit(1);
+        if (estimate) {
+          targetExists = true;
+          ownerId = estimate.businessId;
+          ownerSlug = estimate.businessLine;
+          clientId = estimate.clientId;
+          clientName = estimate.title;
+          description = `Square Estimate Deposit — ${estimateId}`;
+        }
+      }
+    }
+
+    if (targetExists) {
+      const businessId = await resolveWebhookBusinessId(ownerId, ownerSlug, tx);
+      const inserted = await tx.insert(squarePaymentsTable).values({
+        squarePaymentId,
+        amountCents: amountMoney,
+        businessId,
+        description,
+        clientId,
+        clientName: clientName ?? null,
+        paidAt,
+      }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+      if (inserted.length === 0) {
+        console.log(`Square reference payment ${squarePaymentId} already recorded — skipping duplicate`);
+        return;
+      }
+    }
+  }
+
   if (referenceId?.startsWith("quick_")) {
     const chargeId = parseInt(referenceId.slice(6));
     if (!isNaN(chargeId)) {
