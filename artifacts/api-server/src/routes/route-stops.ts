@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { routeStopsTable, clientsTable, prospectsTable, jobsTable, type RouteStop as RouteStopRow } from "@workspace/db/schema";
-import { eq, and, gte, lte, isNull, asc, SQL } from "drizzle-orm";
+import { eq, and, gte, lte, isNull, or, asc, SQL } from "drizzle-orm";
 import { geocodeAddressString } from "../geocode-helpers";
 
 const VALID_STATUSES = ["prospect", "scheduled", "completed", "skipped"] as const;
@@ -305,7 +305,7 @@ router.post("/fix-geocoding", async (req, res) => {
     const missing = await db
       .select({ id: routeStopsTable.id, address: routeStopsTable.address })
       .from(routeStopsTable)
-      .where(isNull(routeStopsTable.lat));
+      .where(or(isNull(routeStopsTable.lat), isNull(routeStopsTable.lng)));
 
     let fixed = 0;
     let failed = 0;
