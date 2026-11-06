@@ -1845,6 +1845,10 @@ function WebsiteEditor() {
     saveQueuedRef.current = false;
     saveErrorRevisionRef.current = null;
     setHasUnpublishedChanges(false);
+    setIsGenerating(false);
+    setGeneratingStep("");
+    setShowAIWizard(false);
+    setShowGeneratorScreen(false);
     setBgUploading({});
     setLogoUploading(false);
     setFaviconUploading(false);
