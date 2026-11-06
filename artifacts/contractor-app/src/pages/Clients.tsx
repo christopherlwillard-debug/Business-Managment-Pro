@@ -42,7 +42,6 @@ export default function Clients() {
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number; billingProfileCount: number; mfhPricingCount: number; productionPricingCount: number } | null>(null);
   const [isCheckingDelete, setIsCheckingDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -105,28 +104,6 @@ export default function Clients() {
       setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
     } finally {
       setIsCheckingDelete(false);
-    }
-  };
-
-  const handleDeleteConfirmed = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      const response = await fetch(`${BASE}/api/clients/${deleteTarget.id}${getClientBusinessScopeQuery(deleteTarget)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? "Failed to delete client");
-      }
-      refetch();
-    } catch (error) {
-      toast({ title: error instanceof Error ? error.message : "Failed to delete client", variant: "destructive" });
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
-      setDeleteLinkCounts(null);
     }
   };
 
@@ -368,11 +345,11 @@ export default function Clients() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h3 className="font-bold text-foreground text-base">Permanently delete client?</h3>
+                <h3 className="font-bold text-foreground text-base">Client deletion unavailable</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   <span className="font-semibold text-foreground">{deleteTarget.name}</span>
-                  {" "}will be{" "}
-                  <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+                  {" "}is being retained to protect its job, invoice, payment, and pricing history.
+                  Permanent deletion is disabled until a recoverable archive/restore workflow is available.
                 </p>
               </div>
             </div>
@@ -412,8 +389,8 @@ export default function Clients() {
             )}
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={handleDeleteCancel} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
-              <button onClick={handleDeleteConfirmed} disabled={isDeleting || isCheckingDelete} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                {isDeleting ? "Deleting…" : <><Trash2 className="w-4 h-4" /> Delete</>}
+              <button disabled title="Archive/restore support is not available yet" className="px-4 py-2 rounded-xl font-medium bg-muted text-muted-foreground cursor-not-allowed">
+                Deletion disabled
               </button>
             </div>
           </div>
