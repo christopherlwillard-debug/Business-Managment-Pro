@@ -4205,7 +4205,7 @@ router.get("/suggest-images", wrapAsync(async (req, res) => {
 
   // ── Own uploaded photos ─────────────────────────────────────────────────────
   let ownPhotos: Array<{ id: number; url: string; displayName: string | null; filename: string }> = [];
-  if (!isNaN(businessId) && businessId > 0) {
+  if (businessId) {
     const media = await db
       .select({
         id:          websiteMediaTable.id,
