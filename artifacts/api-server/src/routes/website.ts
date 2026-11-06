@@ -2038,28 +2038,22 @@ Rules:
 }));
 
 router.post("/upload-logo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-logos");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-about-photo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-about-photos");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-portfolio-photo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-portfolio-photos");
   res.json({ uploadURL, objectPath });
 }));
