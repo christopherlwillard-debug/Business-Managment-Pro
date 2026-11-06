@@ -1,5 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readEditorPreference, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
+import { readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+
+
+describe("Website Studio custom page persistence", () => {
+  it("explicitly clears the last deleted custom page instead of retaining stale settings", () => {
+    const settings = { brandColor: "#123456", pages: [{ id: "about", slug: "about" }] };
+    expect(withWebsitePageList(settings, [])).toEqual({ brandColor: "#123456", pages: [] });
+  });
+
+  it("persists the current page list while preserving unrelated settings", () => {
+    const settings = { brandColor: "#123456", customDomain: "example.com", pages: [{ id: "old" }] };
+    const pages = [{ id: "new", slug: "contact" }];
+    expect(withWebsitePageList(settings, pages)).toEqual({
+      brandColor: "#123456", customDomain: "example.com", pages,
+    });
+  });
+});
 
 describe("Website Studio preference storage", () => {
   afterEach(() => {
