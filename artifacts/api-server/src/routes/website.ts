@@ -53,6 +53,13 @@ export function applyPublicWebsiteImageSecurityHeaders(res: { setHeader(name: st
 
 const BASE_URL = process.env["BASE_URL"] ?? "";
 
+/** Normalize absent or malformed JSON request bodies before route destructuring. */
+function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 export function normalizePageSlug(value: string): string {
   return value
     .trim()
@@ -483,7 +490,7 @@ router.put("/", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections?: unknown; settings?: unknown };
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
   const sectionsValidation = validateWebsiteSections(sections);
   if (!sectionsValidation.ok) return res.status(400).json({ error: sectionsValidation.error });
   const settingsValidation = validateWebsiteSettings(settings);
@@ -2191,7 +2198,7 @@ import { generateColorPalettes } from "../lib/colorPalette";
  * unbounded response bodies.
  */
 router.post("/suggest-colors", wrapAsync(async (req, res) => {
-  const { businessId, baseColor } = req.body as {
+  const { businessId, baseColor } = getWebsiteRequestBody(req.body) as {
     businessId?: number;
     baseColor?: string;
   };
@@ -3811,7 +3818,7 @@ router.post("/score", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as {
+  const { sections, settings } = getWebsiteRequestBody(req.body) as {
     sections?: SectionInput[];
     settings?: Record<string, unknown>;
   };
@@ -4116,7 +4123,7 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId || isNaN(businessId)) return res.status(400).json({ error: "businessId required" });
 
-  const { sections, settings } = req.body as { sections?: SectionInput[]; settings?: Record<string, unknown> };
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: SectionInput[]; settings?: Record<string, unknown> };
   let finalSections = sections;
   let finalSettings = settings;
 
