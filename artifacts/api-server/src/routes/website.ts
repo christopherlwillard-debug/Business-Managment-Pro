@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, val
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -2491,7 +2491,7 @@ router.post("/media/upload", websiteMediaUploadMiddleware, wrapAsync(async (req,
     const [item] = await db
       .insert(websiteMediaTable)
       .values({
-        businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null,
+        businessId, filename: truncateWebsiteMediaFilename(originalname), objectPath, url, size: size ?? 0, folderId: folderId ?? null,
         webpObjectPath: assets.webpObjectPath,
         thumbnailObjectPath: assets.thumbnailObjectPath,
         displayObjectPath: assets.displayObjectPath,
@@ -2632,7 +2632,7 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
 
   // Upload enhanced image — stored as WebP (applyEnhancements always returns WebP)
   const baseFilename = item.filename.replace(/\.[^.]+$/, "");
-  const enhancedFilename = `${baseFilename}_enhanced.webp`;
+  const enhancedFilename = truncateWebsiteMediaFilename(`${baseFilename}_enhanced.webp`);
   const enhancedAssets = await uploadMediaAssets(enhancedBuffer, "image/webp", enhancedFilename);
   const enhancedPath = enhancedAssets.objectPath;
   const enhancedUuid = enhancedPath.split("/").pop()!;
@@ -2646,7 +2646,7 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
       url: enhancedUrl,
       size: enhancedBuffer.length,
       folderId: item.folderId ?? null,
-      displayName: `${item.displayName ?? baseFilename} (enhanced)`,
+      displayName: truncateWebsiteMediaFilename(`${item.displayName ?? baseFilename} (enhanced)`),
       webpObjectPath: enhancedAssets.webpObjectPath,
       thumbnailObjectPath: enhancedAssets.thumbnailObjectPath,
       displayObjectPath: enhancedAssets.displayObjectPath,
@@ -2712,7 +2712,7 @@ router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync
       }
       [updated] = await tx.update(websiteMediaTable)
         .set({
-          url: newUrl, objectPath: newObjectPath, filename: originalname, size: size ?? item.size,
+          url: newUrl, objectPath: newObjectPath, filename: truncateWebsiteMediaFilename(originalname), size: size ?? item.size,
           webpObjectPath: newAssets.webpObjectPath,
           thumbnailObjectPath: newAssets.thumbnailObjectPath,
           displayObjectPath: newAssets.displayObjectPath,
