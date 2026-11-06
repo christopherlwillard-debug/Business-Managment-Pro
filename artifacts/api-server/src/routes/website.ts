@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, sho
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { countWebsiteMediaUrlReferences, truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
+import { countWebsiteMediaUrlReferences, parsePositiveDatabaseId, truncateWebsiteMediaFilename, validateSavedWebsiteSection, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -3094,20 +3094,18 @@ router.get("/saved-sections", wrapAsync(async (req, res) => {
 }));
 
 router.post("/saved-sections", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.body.businessId);
-  const { name, sectionType, content, blockStyle } = getWebsiteRequestBody(req.body) as {
-    name: string; sectionType: string;
-    content: Record<string, unknown>; blockStyle?: Record<string, unknown>;
-  };
-  if (!businessId || !name || !sectionType) {
-    return res.status(400).json({ error: "businessId, name, sectionType required" });
-  }
+  const body = getWebsiteRequestBody(req.body);
+  const businessId = parsePositiveDatabaseId(body.businessId);
+  if (!businessId) return res.status(400).json({ error: "Valid businessId required" });
+  const validation = validateSavedWebsiteSection(body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, sectionType, content, blockStyle } = validation.section;
   const [row] = await db
     .insert(savedSectionsTable)
     .values({
       businessId,
-      name: name.trim().slice(0, 255),
-      sectionJson: { type: sectionType, content: content ?? {}, blockStyle: blockStyle ?? null },
+      name,
+      sectionJson: { type: sectionType, content, blockStyle: blockStyle ?? null },
     })
     .returning();
   const json = row.sectionJson as { type: string; content: unknown; blockStyle?: unknown };
@@ -3122,13 +3120,16 @@ router.post("/saved-sections", wrapAsync(async (req, res) => {
 }));
 
 router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  const businessId = parseInt(req.body.businessId);
-  const { name } = getWebsiteRequestBody(req.body) as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const id = parsePositiveDatabaseId(req.params.id);
+  const businessId = parsePositiveDatabaseId(req.body.businessId);
+  const { name } = getWebsiteRequestBody(req.body) as { name?: unknown };
+  if (!id || !businessId) return res.status(400).json({ error: "Valid section and business IDs required" });
+  if (typeof name !== "string" || !name.trim() || [...name].length > 255) {
+    return res.status(400).json({ error: "Section name is required and must be 255 characters or fewer." });
+  }
   const [row] = await db
     .update(savedSectionsTable)
-    .set({ name: name.trim().slice(0, 255) })
+    .set({ name: name.trim() })
     .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Not found" });
@@ -3136,12 +3137,15 @@ router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/saved-sections/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  const businessId = parseInt((Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? req.body.businessId) as string);
-  if (!businessId) return res.status(400).json({ error: "businessId required" });
-  await db
+  const id = parsePositiveDatabaseId(req.params.id);
+  const rawBusinessId = Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? req.body.businessId;
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
+  if (!id || !businessId) return res.status(400).json({ error: "Valid section and business IDs required" });
+  const [deleted] = await db
     .delete(savedSectionsTable)
-    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)));
+    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)))
+    .returning({ id: savedSectionsTable.id });
+  if (!deleted) return res.status(404).json({ error: "Saved section not found" });
   return res.json({ ok: true });
 }));
 
