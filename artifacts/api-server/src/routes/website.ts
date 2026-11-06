@@ -144,6 +144,36 @@ export function getWebsitePageList(value: unknown): WebsitePageLike[] {
   );
 }
 
+/** Return only normalized public page slugs before placing them in sitemap URLs. */
+export function getWebsiteSitemapPages(value: unknown): Array<{ slug: string; name: string }> {
+  return getWebsitePageList(value).flatMap(page => {
+    const slug = normalizePageSlug(page.slug ?? "");
+    if (!slug || slug === "home") return [];
+    const name = typeof page.name === "string" ? page.name.slice(0, 160) : slug;
+    return [{ slug, name }];
+  });
+}
+
+/** Escape XML text nodes so persisted website data cannot break sitemap markup. */
+export function escapeWebsiteXml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** Accept only a bare DNS hostname for a configured custom website domain. */
+export function getSafeWebsiteCustomDomain(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const host = value.trim().toLowerCase().replace(/\\.$/, "");
+  if (!host || host.length > 253 || host.includes("://") || /[\\s\\/\\\\:@?#<>]/.test(host)) return null;
+  const labels = host.split(".");
+  if (labels.length < 2 || labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
+  return host;
+}
+
 /** Parse a positive USD amount without parseFloat's permissive partial-string behavior. */
 export function parseWebsiteMoneyCents(value: unknown): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
@@ -893,13 +923,16 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
 // These must be registered BEFORE the /:slug catch-all so Express routes them
 // correctly. Both by-host (custom domain) and slug-based variants are provided.
 
-function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
-  const trimBase = baseUrl.replace(/\/$/, "");
+export function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
+  const trimBase = escapeWebsiteXml(baseUrl.replace(/\\/$/, ""));
   const urls = [
     `  <url><loc>${trimBase}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
-    ...pages.map(p =>
-      `  <url><loc>${trimBase}/${p.slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
-    ),
+    ...pages.map(page => {
+      const slug = normalizePageSlug(page.slug);
+      return slug
+        ? `  <url><loc>${trimBase}/${slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
+        : "";
+    }).filter(Boolean),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
 }
@@ -924,7 +957,7 @@ publicRouter.get("/by-host/sitemap.xml", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).send("No site found for this domain");
 
   const settings = config.settings as Record<string, unknown>;
-  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
+  const pages = getWebsiteSitemapPages(settings.pages);
   const baseUrl = `https://${host}`;
   res.setHeader("Content-Type", "application/xml");
   res.setHeader("Cache-Control", "public, max-age=3600");
@@ -953,8 +986,8 @@ publicRouter.get("/:slug/sitemap.xml", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).send("Website not published");
 
   const settings = config.settings as Record<string, unknown>;
-  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
-  const customDomain = settings.customDomain as string | undefined;
+  const pages = getWebsiteSitemapPages(settings.pages);
+  const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const baseUrl = customDomain
     ? `https://${customDomain}`
     : `${BASE_URL}/site/${slug}`;
@@ -977,7 +1010,7 @@ publicRouter.get("/:slug/robots.txt", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).send("Website not published");
 
   const settings = config.settings as Record<string, unknown>;
-  const customDomain = settings.customDomain as string | undefined;
+  const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const sitemapUrl = customDomain
     ? `https://${customDomain}/sitemap.xml`
     : `${BASE_URL}/api/public/site/${slug}/sitemap.xml`;
