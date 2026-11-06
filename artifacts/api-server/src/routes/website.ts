@@ -1927,27 +1927,31 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
   if (!Array.isArray(sections) || sections.length === 0) {
     return res.status(400).json({ error: "sections array is required" });
   }
-  if (!businessContext?.businessName) {
+  const sectionValidation = validateWebsiteSections(sections);
+  if (!sectionValidation.ok) return res.status(400).json({ error: sectionValidation.error });
+  if (!businessContext || typeof businessContext !== "object" || Array.isArray(businessContext) ||
+      typeof businessContext.businessName !== "string" || !businessContext.businessName.trim()) {
     return res.status(400).json({ error: "businessContext.businessName is required" });
   }
+  const validSections = sectionValidation.sections as unknown as SectionForCopy[];
 
   // Generate copy for all sections in parallel
   const results = await Promise.allSettled(
-    sections.map(s => generateSectionCopy(s, businessContext)),
+    validSections.map(s => generateSectionCopy(s, businessContext)),
   );
   const failures: Record<string, string> = {};
   results.forEach((outcome, i) => {
     if (outcome.status === "rejected") {
-      failures[sections[i]!.id] = outcome.reason instanceof Error
+      failures[validSections[i]!.id] = outcome.reason instanceof Error
         ? outcome.reason.message
         : "AI could not generate this section.";
     } else if (!outcome.value) {
-      failures[sections[i]!.id] = "This section type does not support AI copy generation.";
+      failures[validSections[i]!.id] = "This section type does not support AI copy generation.";
     }
   });
 
   // Merge generated copy back into sections immutably
-  const enriched = sections.map((section, i) => {
+  const enriched = validSections.map((section, i) => {
     const outcome = results[i];
     if (outcome?.status !== "fulfilled" || !outcome.value) return section;
 
