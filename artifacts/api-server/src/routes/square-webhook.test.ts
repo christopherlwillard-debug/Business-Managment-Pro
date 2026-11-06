@@ -35,6 +35,7 @@ app.use(express.json({
 app.use("/", squareWebhookRouter);
 
 const originalNodeEnv = process.env["NODE_ENV"];
+const originalSignatureKey = process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"];
 const rawPendingEvent = `{
   "type": "payment.updated",
   "data": {
@@ -56,7 +57,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"];
+  if (originalSignatureKey === undefined) delete process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"];
+  else process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"] = originalSignatureKey;
   if (originalNodeEnv === undefined) delete process.env["NODE_ENV"];
   else process.env["NODE_ENV"] = originalNodeEnv;
 });
