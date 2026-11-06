@@ -19,9 +19,22 @@ import {
   cropRatioLabel,
   validateEnhancementOptions,
   shouldGenerateWebsiteMediaVariants,
+  WEBSITE_MEDIA_MAX_PIXELS,
+  isWithinWebsiteMediaPixelLimit,
 } from "../lib/imageProcessor";
 
 // ── imageProcessor — module-level tests ──────────────────────────────────────
+
+describe("imageProcessor — decoded image size limits", () => {
+  it("accepts normal dimensions and rejects invalid or excessive pixel counts", () => {
+    expect(WEBSITE_MEDIA_MAX_PIXELS).toBe(40_000_000);
+    expect(isWithinWebsiteMediaPixelLimit(6000, 6000)).toBe(true);
+    expect(isWithinWebsiteMediaPixelLimit(8000, 6000)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit(0, 100)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit(Number.MAX_SAFE_INTEGER, 2)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit("100", 100)).toBe(false);
+  });
+});
 
 describe("imageProcessor — createMediaVariants", () => {
   it("exports createMediaVariants as a function", () => {
