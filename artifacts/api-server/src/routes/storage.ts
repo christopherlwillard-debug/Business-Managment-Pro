@@ -79,6 +79,13 @@ async function canDownloadObject(req: Request, wildcardPath: string): Promise<bo
  * Then uploads the file directly to the returned presigned URL.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response): Promise<void> => {
+  const userId = getRequestUserId(req);
+  const ownerId = await getOwnerId();
+  if (!userId || userId !== ownerId) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+
   const { name, size, contentType } = req.body ?? {};
   if (!name || !size || !contentType) {
     res.status(400).json({ error: "Missing required fields: name, size, contentType" });
