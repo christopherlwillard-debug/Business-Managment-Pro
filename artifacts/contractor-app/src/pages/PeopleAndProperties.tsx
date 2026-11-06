@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { useBusiness } from "@/contexts/BusinessContext";
+import { getClientBusinessScopeQuery, getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 import { useSearchParams } from "wouter";
 const SubcontractorsTab = lazy(() => import("./Subcontractors"));
 const ContactsTab = lazy(() => import("./AddressBook"));
@@ -19,7 +20,6 @@ import {
   useListClients,
   useCreateClient,
   useUpdateClient,
-  useDeleteClient,
 } from "@workspace/api-client-react";
 import type { Client } from "@workspace/api-client-react";
 import { ProspectDrawer } from "@/components/ProspectDrawer";
@@ -265,7 +265,6 @@ export default function PeopleAndProperties() {
   const convertMutation = useConvertProspectToClient();
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
-  const deleteClient = useDeleteClient();
 
   const [convertingId, setConvertingId] = useState<number | null>(null);
   const [openLineDropdown, setOpenLineDropdown] = useState<number | null>(null);
@@ -671,6 +670,7 @@ export default function PeopleAndProperties() {
       zip: formData.get("zip") as string || null,
       notes: formData.get("notes") as string || null,
       businessLine: clientFormLine,
+      ...(editingClient ? getClientSourceBusinessFields(editingClient) : {}),
     };
     try {
       if (editingClient) {
@@ -690,10 +690,17 @@ export default function PeopleAndProperties() {
     if (!deleteClientTarget) return;
     setIsDeletingClient(true);
     try {
-      await deleteClient.mutateAsync({ id: deleteClientTarget.id });
+      const response = await fetch(`${BASE}/api/clients/${deleteClientTarget.id}${getClientBusinessScopeQuery(deleteClientTarget)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Error deleting client");
+      }
       refetchClients();
-    } catch {
-      toast({ title: "Error deleting client", variant: "destructive" });
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Error deleting client", variant: "destructive" });
     } finally {
       setIsDeletingClient(false);
       setDeleteClientTarget(null);
@@ -704,7 +711,9 @@ export default function PeopleAndProperties() {
     setAssigningLineId(clientId);
     setOpenLineDropdown(null);
     try {
-      const res = await fetch(`${BASE}/api/clients/${clientId}/business-line`, {
+      const sourceClient = clients?.find(client => client.id === clientId);
+      const sourceQuery = sourceClient ? getClientBusinessScopeQuery(sourceClient) : "";
+      const res = await fetch(`${BASE}/api/clients/${clientId}/business-line${sourceQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
