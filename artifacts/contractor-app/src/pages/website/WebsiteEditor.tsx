@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { cancelWebsiteRenameBlurCommit, completeSectionBlockStyleUpload, consumeWebsiteRenameBlurCommit, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -982,6 +982,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
   const isExpanded = expandedIds.has(node.id);
   const isActivePage = node.id === activePageId;
   const page = node.page!;
+  const pageRenameShouldCommitOnBlurRef = useRef(false);
   const lockedHeader = node.id === "home"
     ? (isActivePage ? activeSections : (page.sections ?? [])).find(s => s.type === "header")
     : null;
@@ -1029,10 +1030,21 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
         {editingPageId === node.id ? (
           <input type="text" value={editingPageName}
             onChange={e => setEditingPageName(e.target.value)}
-            onBlur={() => { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }}
+            onBlur={() => {
+              if (!consumeWebsiteRenameBlurCommit(pageRenameShouldCommitOnBlurRef)) return;
+              if (editingPageName.trim()) renamePage(node.id, editingPageName.trim());
+              setEditingPageId(null);
+            }}
             onKeyDown={e => {
-              if (e.key === "Enter") { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }
-              if (e.key === "Escape") setEditingPageId(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelWebsiteRenameBlurCommit(pageRenameShouldCommitOnBlurRef);
+                setEditingPageId(null);
+              }
             }}
             className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
             autoFocus onClick={e => e.stopPropagation()}
@@ -1045,7 +1057,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
           </button>
         )}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button type="button" aria-label={`Rename ${node.label} page`} onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
+          <button type="button" aria-label={`Rename ${node.label} page`} onClick={e => { e.stopPropagation(); pageRenameShouldCommitOnBlurRef.current = true; setEditingPageId(node.id); setEditingPageName(node.label); }}
             className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground">
             <Pencil className="w-2.5 h-2.5" />
           </button>
