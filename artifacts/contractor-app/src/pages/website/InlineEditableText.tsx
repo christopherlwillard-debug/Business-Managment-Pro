@@ -142,9 +142,12 @@ export function InlineEditableText({
         style={style}
         contentEditable
         suppressContentEditableWarning
-        onInput={(e: React.FormEvent<HTMLElement>) =>
-          ctx!.updateDraft(e.currentTarget.textContent ?? "")
-        }
+        onInput={(e: React.FormEvent<HTMLElement>) => {
+          // contentEditable creates block nodes for Enter in most browsers.
+          // textContent concatenates those blocks, while innerText preserves line breaks.
+          const text = e.currentTarget.innerText;
+          ctx!.updateDraft(typeof text === "string" ? text : e.currentTarget.textContent ?? "");
+        }}
         onKeyDown={handleEditingKeyDown}
         onBlur={() => ctx?.commitEdit()}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
