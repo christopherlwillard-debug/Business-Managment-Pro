@@ -57,6 +57,7 @@ const router = Router();
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid invoice ID" });
     const scope = await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
