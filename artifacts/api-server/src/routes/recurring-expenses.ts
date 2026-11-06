@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq, and, getTableColumns } from "drizzle-orm";
-import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -48,17 +48,58 @@ export function localDateStr(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function advanceDate(dateStr: string, frequency: string): string {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
-  switch (frequency) {
-    case "weekly":    d.setDate(d.getDate() + 7); break;
-    case "biweekly":  d.setDate(d.getDate() + 14); break;
-    case "monthly":   d.setMonth(d.getMonth() + 1); break;
-    case "quarterly": d.setMonth(d.getMonth() + 3); break;
-    case "yearly":    d.setFullYear(d.getFullYear() + 1); break;
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leapYear ? 29 : 28;
   }
-  return localDateStr(d);
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function parseDateOnlyParts(value: string): { year: number; month: number; day: number } {
+  if (!isValidRecurringExpenseDate(value)) {
+    throw new RangeError("Recurring expense dates must be valid YYYY-MM-DD calendar dates");
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  return { year, month, day };
+}
+
+/**
+ * Advance from the current due date while retaining the original start-date
+ * day for month-based schedules. This prevents Jan 31 from overflowing into
+ * March and prevents Feb 29 schedules from drifting after non-leap years.
+ */
+export function advanceDate(
+  dateStr: string,
+  frequency: string,
+  anchorDateStr: string = dateStr,
+): string {
+  const current = parseDateOnlyParts(dateStr);
+  const anchor = parseDateOnlyParts(anchorDateStr);
+
+  if (frequency === "weekly" || frequency === "biweekly") {
+    const date = new Date(dateStr + "T00:00:00.000Z");
+    date.setUTCDate(date.getUTCDate() + (frequency === "weekly" ? 7 : 14));
+    const year = date.getUTCFullYear();
+    if (year < 0 || year > 9999) throw new RangeError("Recurring expense date is outside the supported range");
+    return date.toISOString().slice(0, 10);
+  }
+
+  const monthIncrement = frequency === "monthly" ? 1
+    : frequency === "quarterly" ? 3
+    : frequency === "yearly" ? 12
+    : null;
+  if (monthIncrement == null) throw new RangeError("Unsupported recurring expense frequency");
+
+  const targetMonthIndex = current.year * 12 + current.month - 1 + monthIncrement;
+  const targetYear = Math.floor(targetMonthIndex / 12);
+  const targetMonth = targetMonthIndex % 12 + 1;
+  if (targetYear < 0 || targetYear > 9999) throw new RangeError("Recurring expense date is outside the supported range");
+  const targetDay = Math.min(anchor.day, daysInMonth(targetYear, targetMonth));
+
+  return String(targetYear).padStart(4, "0") + "-"
+    + String(targetMonth).padStart(2, "0") + "-"
+    + String(targetDay).padStart(2, "0");
 }
 
 function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?: string | null) {
@@ -125,38 +166,45 @@ router.post("/", async (req, res) => {
     }
 
     const today = localDateStr();
-    let nextDueDate = startDate;
 
-    const [template] = await db.insert(recurringExpensesTable).values({
-      description: description.trim(), amount: parsedAmount, category: category.trim(),
-      vendor: vendor || null, jobId: parsedJobId, notes: notes || null,
-      frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
-       businessId: owner.id,
-    }).returning();
+    // Create the template and its first occurrence as one unit. If either the
+    // expense insert or schedule advance fails, the whole transaction rolls
+    // back so the startup worker cannot later duplicate a partial creation.
+    const template = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(recurringExpensesTable).values({
+        description: description.trim(), amount: parsedAmount, category: category.trim(),
+        vendor: vendor || null, jobId: parsedJobId, notes: notes || null,
+        frequency, startDate, endDate: endDate || null, nextDueDate: startDate, active: true,
+        businessId: owner.id,
+      }).returning();
+      if (!created) throw new Error("Failed to create recurring expense template");
 
-    // If the start date is today or in the past, immediately generate the
-    // first expense so it appears right away (don't wait for the cron job).
-    if (startDate <= today) {
-      await db.insert(expensesTable).values({
-        description: template.description,
-        amount: template.amount,
-        category: template.category,
-        vendor: template.vendor,
-        jobId: template.jobId,
-        notes: template.notes,
-        date: template.nextDueDate,
-        recurringExpenseId: template.id,
-        businessId: template.businessId,
-         businessLine: owner.slug,
+      // If the start date is today or in the past, generate the first expense
+      // immediately instead of waiting for the midnight worker.
+      if (startDate > today) return created;
+
+      await tx.insert(expensesTable).values({
+        description: created.description,
+        amount: created.amount,
+        category: created.category,
+        vendor: created.vendor,
+        jobId: created.jobId,
+        notes: created.notes,
+        date: created.nextDueDate,
+        recurringExpenseId: created.id,
+        businessId: created.businessId,
+        businessLine: owner.slug,
       });
-      const nextNext = advanceDate(template.nextDueDate, template.frequency);
-      const shouldDeactivate = template.endDate && nextNext > template.endDate;
-      await db
-        .update(recurringExpensesTable)
-        .set(shouldDeactivate ? { active: false } : { nextDueDate: nextNext })
-        .where(eq(recurringExpensesTable.id, template.id));
-      nextDueDate = nextNext;
-    }
+
+      const nextDueDate = advanceDate(created.nextDueDate, created.frequency, created.startDate);
+      const active = !(created.endDate && nextDueDate > created.endDate);
+      const [advanced] = await tx.update(recurringExpensesTable)
+        .set({ nextDueDate, active })
+        .where(eq(recurringExpensesTable.id, created.id))
+        .returning();
+
+      return advanced ?? { ...created, nextDueDate, active };
+    });
 
     const [row] = await db
       .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
@@ -199,7 +247,11 @@ router.put("/:id", async (req, res) => {
     const [current] = await db.select().from(recurringExpensesTable)
       .where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, owner.id)));
     if (!current) return res.status(404).json({ error: "Recurring expense not found" });
-    if (parsedJobId !== undefined && parsedJobId != null) {
+    const parsedJobId = jobId !== undefined ? parseRecurringExpenseJobId(jobId) : undefined;
+    if (jobId !== undefined && parsedJobId === undefined) {
+      return res.status(400).json({ error: "Job ID must be a positive integer" });
+    }
+    if (parsedJobId != null) {
       const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, parsedJobId)).limit(1);
       if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
@@ -222,8 +274,6 @@ router.put("/:id", async (req, res) => {
       return res.status(400).json({ error: "Notes are invalid" });
     }
     if (active !== undefined && typeof active !== "boolean") return res.status(400).json({ error: "Active must be a boolean" });
-    const parsedJobId = jobId !== undefined ? parseRecurringExpenseJobId(jobId) : undefined;
-    if (jobId !== undefined && parsedJobId === undefined) return res.status(400).json({ error: "Job ID must be a positive integer" });
     if (startDate !== undefined && !isValidRecurringExpenseDate(startDate)) return res.status(400).json({ error: "Start date must be a valid YYYY-MM-DD date" });
     if (endDate !== undefined && !isValidRecurringExpenseDate(endDate, true)) return res.status(400).json({ error: "End date must be a valid YYYY-MM-DD date" });
     const effectiveStartDate = startDate ?? current.startDate;
@@ -235,18 +285,21 @@ router.put("/:id", async (req, res) => {
     if (scheduleChanged) {
       if (current) {
         const effectiveStart = startDate ?? current.startDate;
-        const effectiveFreq  = frequency ?? current.frequency;
+        const effectiveFreq = frequency ?? current.frequency;
+        if (!FREQUENCIES.includes(effectiveFreq as typeof FREQUENCIES[number])) {
+          return res.status(400).json({ error: "The existing recurring expense frequency is invalid" });
+        }
         const today = localDateStr();
         let next = effectiveStart;
-        while (next < today) next = advanceDate(next, effectiveFreq);
+        while (next < today) next = advanceDate(next, effectiveFreq, effectiveStart);
         nextDueDate = next;
       }
     }
 
     const [updated] = await db.update(recurringExpensesTable).set({
-      ...(description !== undefined && { description }),
+      ...(description !== undefined && { description: description.trim() }),
       ...(amount !== undefined && { amount: parsedAmount }),
-      ...(category !== undefined && { category }),
+      ...(category !== undefined && { category: category.trim() }),
       ...(vendor !== undefined && { vendor: vendor || null }),
       ...(jobId !== undefined && { jobId: parsedJobId }),
       ...(notes !== undefined && { notes: notes || null }),
