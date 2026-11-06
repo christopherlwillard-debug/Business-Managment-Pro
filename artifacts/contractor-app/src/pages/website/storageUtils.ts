@@ -177,7 +177,7 @@ export function getPublicSiteQueryKey(
 export function getSafeWebsiteHref(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const href = value.trim();
-  if (!href || href.includes("\\") || href.includes("\n") || href.includes("\r")) return null;
+  if (!href || href.includes("\\") || [...href].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return null;
   if (href.startsWith("#") || (href.startsWith("/") && !href.startsWith("//"))) return href;
   if (/^(https?:|mailto:|tel:)/i.test(href)) return href;
   return null;
