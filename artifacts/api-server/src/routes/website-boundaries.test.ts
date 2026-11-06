@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -174,5 +174,16 @@ describe("Website Studio section normalization", () => {
       content: { headline: "Welcome" },
     });
     expect(result.every(section => typeof section.type === "string" && !!section.content)).toBe(true);
+  });
+});
+
+
+describe("Website Studio media storage filenames", () => {
+  it("uses a fixed safe filename extension derived from detected image bytes", () => {
+    expect(getWebsiteMediaStorageFilename("image/jpeg")).toBe("website-media.jpg");
+    expect(getWebsiteMediaStorageFilename("image/svg+xml")).toBe("website-media.svg");
+    expect(getWebsiteMediaStorageFilename("image/avif")).toBe("website-media.avif");
+    expect(getWebsiteMediaStorageFilename("image/webp")).toBe("website-media.webp");
+    expect(getWebsiteMediaStorageFilename("../../etc/passwd")).toBe("website-media.img");
   });
 });
