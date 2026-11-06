@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -44,6 +44,36 @@ describe("Website Studio contact email escaping", () => {
     expect(escapeWebsiteEmailHtml("<img src=x onerror=alert(1)>")).toBe("&lt;img src=x onerror=alert(1)&gt;");
     expect(escapeWebsiteEmailHtml("A & B \"quoted\" 'text'")).toBe("A &amp; B &quot;quoted&quot; &#39;text&#39;");
     expect(escapeWebsiteEmailHtml(null)).toBe("");
+  });
+});
+
+describe("Website Studio failed deposit checkout tracking", () => {
+  it("marks the saved submission failed and preserves the original checkout error", async () => {
+    const checkoutError = new Error("Square unavailable");
+    let markedFailed = false;
+    await expect(createWebsiteDepositCheckout(
+      async () => { throw checkoutError; },
+      async () => { markedFailed = true; },
+    )).rejects.toBe(checkoutError);
+    expect(markedFailed).toBe(true);
+  });
+
+  it("does not replace the Square error when recording failure also fails", async () => {
+    const checkoutError = new Error("Square unavailable");
+    const statusError = new Error("Database unavailable");
+    await expect(createWebsiteDepositCheckout(
+      async () => { throw checkoutError; },
+      async () => { throw statusError; },
+    )).rejects.toBe(checkoutError);
+  });
+
+  it("returns a successful checkout without marking the submission failed", async () => {
+    let markedFailed = false;
+    await expect(createWebsiteDepositCheckout(
+      async () => ({ url: "https://checkout.example", id: "checkout-1" }),
+      async () => { markedFailed = true; },
+    )).resolves.toEqual({ url: "https://checkout.example", id: "checkout-1" });
+    expect(markedFailed).toBe(false);
   });
 });
 
