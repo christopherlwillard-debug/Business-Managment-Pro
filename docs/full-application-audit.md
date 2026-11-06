@@ -64,7 +64,7 @@ Every batch must trace confirmed defects through callers, schema, and tests; add
 
 ### Validation and limitations for this batch
 
-- Inspected the final branch diff against `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b`: 22 code commits and two ledger commits across 12 code files plus the audit ledger, confined to client routes/callers, API contract/types, and focused tests. No unrelated files were overwritten.
+- Inspected the final branch diff against `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b`: 22 code commits across 12 code files plus the audit-ledger updates, confined to client routes/callers, API contract/types, and focused tests. No unrelated files were overwritten.
 - At the archive-safety code-batch head, the branch was 394 commits ahead of `master` and 0 behind; `master` unchanged. Subsequent commits only update this audit ledger. No open pull request. The latest code commit had no status contexts, and no Actions runs were returned for the branch.
 - Tests, typecheck, and build were **not executed**. This environment has GitHub file/commit access but no local repository checkout or package runtime. Added tests are therefore **found/fixed with regression coverage authored, not target-tested**; no pass is claimed.
 - No migration, production data, credentials, merge, or deployment was changed.
