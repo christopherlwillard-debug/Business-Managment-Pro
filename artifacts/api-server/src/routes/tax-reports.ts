@@ -209,8 +209,8 @@ router.get("/schedule-c", async (req, res) => {
 
     // A selected tax owner includes its parent/child business family, but never
     // unassigned mileage records or mileage owned by another business.
-    const mileageWhere = blFilter && taxBusinessIds.length > 0
-      ? inArray(mileageLogsTable.businessId, taxBusinessIds)
+    const mileageWhere = blFilter
+      ? (taxBusinessIds.length > 0 ? inArray(mileageLogsTable.businessId, taxBusinessIds) : sql`false`)
       : undefined;
 
     // 1. Gross Receipts (Line 1) — cash basis: only paid invoices count as received income.
