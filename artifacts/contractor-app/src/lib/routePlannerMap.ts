@@ -4,9 +4,9 @@ export type MapCoordinateStop = {
   lng: number | null;
 };
 
-export function hasValidMapCoordinates(
-  stop: Pick<MapCoordinateStop, "lat" | "lng">,
-): boolean {
+export function hasValidMapCoordinates<T extends Pick<MapCoordinateStop, "lat" | "lng">>(
+  stop: T,
+): stop is T & { lat: number; lng: number } {
   return typeof stop.lat === "number"
     && Number.isFinite(stop.lat)
     && stop.lat >= -90
@@ -17,7 +17,9 @@ export function hasValidMapCoordinates(
     && stop.lng <= 180;
 }
 
-export function getMapReadyStops<T extends MapCoordinateStop>(stops: T[]): T[] {
+export function getMapReadyStops<T extends MapCoordinateStop>(
+  stops: T[],
+): Array<T & { lat: number; lng: number }> {
   return stops.filter(hasValidMapCoordinates);
 }
 
