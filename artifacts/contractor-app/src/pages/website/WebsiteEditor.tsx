@@ -3621,12 +3621,18 @@ function WebsiteEditor() {
   }
 
   async function handleLogoUpload(file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Logo upload failed", variant: "destructive" });
+      return;
+    }
     setLogoUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const settingsAtStart = settings;
-    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
+    const originalLogoUrl = settingsRef.current.logoUrl;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalSettings({ ...settingsAtStart, logoUrl: blobUrl } as SiteSettings);
+    setLocalSettings(prev => prev ? { ...prev, logoUrl: blobUrl } : prev);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-logo`, {
         method: "POST",
@@ -3642,32 +3648,47 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/logo`;
-      const savedSettings = { ...settingsAtStart, logoObjectPath: objectPath, logoUrl: canonicalUrl } as SiteSettings & { logoObjectPath: string };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(savedSettings);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      setLocalSettings({ ...savedSettings, logoUrl: `${canonicalUrl}?v=${Date.now()}` } as SiteSettings);
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Logo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/logo`;
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.logoUrl === blobUrl
+            ? { logoObjectPath: objectPath, logoUrl: `${canonicalUrl}?v=${Date.now()}` }
+            : {}),
+        } as SiteSettings : prev);
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        if (settingsRef.current.logoUrl === blobUrl) toast({ title: "Logo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalSettings(settingsAtStart);
-      toast({ title: "Logo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.logoUrl === blobUrl ? { logoUrl: originalLogoUrl } : {}),
+        } : prev);
+        toast({ title: "Logo upload failed", variant: "destructive" });
+      }
     } finally {
-      setLogoUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setLogoUploading(false);
     }
   }
 
   async function handleFaviconUpload(file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Favicon upload failed", variant: "destructive" });
+      return;
+    }
     setFaviconUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const settingsAtStart = settings;
-    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
+    const originalFaviconUrl = settingsRef.current.faviconUrl ?? "";
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalSettings({ ...settingsAtStart, faviconUrl: blobUrl });
+    setLocalSettings(prev => prev ? { ...prev, faviconUrl: blobUrl } : prev);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-favicon`, {
         method: "POST",
@@ -3683,35 +3704,54 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/favicon`;
-      const savedSettings = { ...settingsAtStart, faviconObjectPath: objectPath, faviconUrl: canonicalUrl };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(savedSettings);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      setLocalSettings({ ...savedSettings, faviconUrl: `${canonicalUrl}?v=${Date.now()}` });
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Favicon uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/favicon`;
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.faviconUrl === blobUrl
+            ? { faviconObjectPath: objectPath, faviconUrl: `${canonicalUrl}?v=${Date.now()}` }
+            : {}),
+        } : prev);
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        if (settingsRef.current.faviconUrl === blobUrl) toast({ title: "Favicon uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalSettings(settingsAtStart);
-      toast({ title: "Favicon upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.faviconUrl === blobUrl ? { faviconUrl: originalFaviconUrl } : {}),
+        } : prev);
+        toast({ title: "Favicon upload failed", variant: "destructive" });
+      }
     } finally {
-      setFaviconUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setFaviconUploading(false);
     }
   }
 
   async function handleAboutPhotoUpload(file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+      return;
+    }
     setAboutPhotoUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalPhotoUrls = new Map(
+      (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+        .filter(section => section.type === "about")
+        .map(section => [section.id, section.content.photoUrl] as const),
+    );
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.type === "about" ? { ...s, content: { ...s.content, photoUrl: blobUrl } } : s
+    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+      pageSections.map(section => section.type === "about"
+        ? { ...section, content: { ...section.content, photoUrl: blobUrl } }
+        : section),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-about-photo`, {
@@ -3728,30 +3768,36 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/about-photo`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.type === "about"
-          ? { ...s, content: { ...s.content, photoObjectPath: objectPath, photoUrl: canonicalUrl } }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.type === "about"
-          ? { ...s, content: { ...s.content, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Photo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/about-photo`;
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.type === "about" && section.content.photoUrl === blobUrl
+            ? { ...section, content: { ...section.content, photoObjectPath: objectPath, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
+            : section),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Photo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Photo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          pageSections.map(section => {
+            if (section.type !== "about" || section.content.photoUrl !== blobUrl) return section;
+            const content = { ...section.content };
+            const originalUrl = originalPhotoUrls.get(section.id);
+            if (originalUrl === undefined) delete content.photoUrl;
+            else content.photoUrl = originalUrl;
+            return { ...section, content };
+          }),
+        ));
+        toast({ title: "Photo upload failed", variant: "destructive" });
+      }
     } finally {
-      setAboutPhotoUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setAboutPhotoUploading(false);
     }
   }
 
@@ -3759,39 +3805,51 @@ function WebsiteEditor() {
     sectionList: Section[],
     projectId: string,
     photoId: string,
-    patch: Record<string, unknown>
+    patch: Record<string, unknown>,
+    expectedPreviewUrl?: string,
   ): Section[] {
-    return sectionList.map(s =>
-      s.type === "portfolio"
+    return sectionList.map(section =>
+      section.type === "portfolio"
         ? {
-            ...s,
+            ...section,
             content: {
-              ...s.content,
-              projects: ((s.content.projects as any[]) ?? []).map((proj: any) =>
-                proj.id === projectId
+              ...section.content,
+              projects: ((section.content.projects as any[]) ?? []).map((project: any) =>
+                project.id === projectId
                   ? {
-                      ...proj,
-                      photos: (proj.photos ?? []).map((p: any) =>
-                        p.id === photoId ? { ...p, ...patch } : p
+                      ...project,
+                      photos: (project.photos ?? []).map((photo: any) =>
+                        photo.id === photoId && (!expectedPreviewUrl || photo.photoUrl === expectedPreviewUrl)
+                          ? { ...photo, ...patch }
+                          : photo
                       ),
                     }
-                  : proj
+                  : project
               ),
             },
           }
-        : s
+        : section
     );
   }
 
   async function handlePortfolioPhotoUpload(projectId: string, photoId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+      return;
+    }
     setUploadingPortfolioPhotoIds(prev => new Set(prev).add(photoId));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalPhoto = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .filter(section => section.type === "portfolio")
+      .flatMap(section => (section.content.projects as any[]) ?? [])
+      .find(project => project.id === projectId)?.photos?.find((photo: any) => photo.id === photoId);
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
+    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+      patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: blobUrl }),
+    ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-portfolio-photo`, {
         method: "POST",
@@ -3807,53 +3865,87 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const photoUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/portfolio-photo/${photoUuid}`;
-      const savedSections = patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoObjectPath: objectPath, photoUrl: canonicalUrl });
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(patchPortfolioPhoto(savedSections, projectId, photoId, { photoUrl: `${canonicalUrl}?v=${Date.now()}` }));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Photo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const photoUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/portfolio-photo/${photoUuid}`;
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          patchPortfolioPhoto(pageSections, projectId, photoId, {
+            photoObjectPath: objectPath,
+            photoUrl: `${canonicalUrl}?v=${Date.now()}`,
+          }, blobUrl),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Photo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Photo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: originalPhoto?.photoUrl }, blobUrl),
+        ));
+        toast({ title: "Photo upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingPortfolioPhotoIds(prev => {
-        const next = new Set(prev);
-        next.delete(photoId);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingPortfolioPhotoIds(prev => {
+          const next = new Set(prev);
+          next.delete(photoId);
+          return next;
+        });
+      }
     }
   }
 
+  function patchColumnImageBlock(
+    sectionList: Section[],
+    sectionId: string,
+    colId: string,
+    blockId: string,
+    patch: Record<string, unknown>,
+    expectedPreviewUrl?: string,
+  ): Section[] {
+    return sectionList.map(section => section.id === sectionId
+      ? {
+          ...section,
+          content: {
+            ...section.content,
+            columns: ((section.content.columns as any[]) ?? []).map((column: any) =>
+              column.id === colId
+                ? {
+                    ...column,
+                    blocks: (column.blocks ?? []).map((block: any) =>
+                      block.id === blockId && (!expectedPreviewUrl || block.url === expectedPreviewUrl)
+                        ? { ...block, ...patch }
+                        : block
+                    ),
+                  }
+                : column
+            ),
+          },
+        }
+      : section);
+  }
+
   async function handleColumnImageUpload(sectionId: string, colId: string, blockId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Image upload failed", variant: "destructive" });
+      return;
+    }
     const key = `${colId}:${blockId}`;
     setUploadingColumnImageKeys(prev => new Set(prev).add(key));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalBlock = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId)?.content.columns as any[] | undefined;
+    const originalUrl = originalBlock?.find(column => column.id === colId)?.blocks?.find((block: any) => block.id === blockId)?.url;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.id === sectionId
-        ? {
-            ...s,
-            content: {
-              ...s.content,
-              columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                col.id === colId
-                  ? { ...col, blocks: (col.blocks ?? []).map((b: any) => b.id === blockId ? { ...b, url: blobUrl } : b) }
-                  : col
-              ),
-            },
-          }
-        : s
+    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+      patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: blobUrl }),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
@@ -3870,65 +3962,37 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const imgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                  col.id === colId
-                    ? {
-                        ...col,
-                        blocks: (col.blocks ?? []).map((b: any) =>
-                          b.id === blockId ? { ...b, objectPath, url: canonicalUrl } : b
-                        ),
-                      }
-                    : col
-                ),
-              },
-            }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                  col.id === colId
-                    ? {
-                        ...col,
-                        blocks: (col.blocks ?? []).map((b: any) =>
-                          b.id === blockId ? { ...b, url: `${canonicalUrl}?v=${Date.now()}` } : b
-                        ),
-                      }
-                    : col
-                ),
-              },
-            }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Image uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const imgUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          patchColumnImageBlock(pageSections, sectionId, colId, blockId, {
+            objectPath,
+            url: `${canonicalUrl}?v=${Date.now()}`,
+          }, blobUrl),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Image uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Image upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: originalUrl }, blobUrl),
+        ));
+        toast({ title: "Image upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingColumnImageKeys(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingColumnImageKeys(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   }
 
