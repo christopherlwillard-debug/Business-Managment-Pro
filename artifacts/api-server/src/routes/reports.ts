@@ -244,9 +244,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
       db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine, jobsTable.businessId))),
       // Recent rows — always unfiltered
-      db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
-      db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
-      db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate), isNull(ownerCapitalEntriesTable.voidedAt))),
+      db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).where(blWhere(jobsTable.businessLine, jobsTable.businessId)).orderBy(desc(jobsTable.createdAt)).limit(5),
+      db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).where(blWhere(invoicesTable.businessLine, invoicesTable.businessId)).orderBy(desc(invoicesTable.createdAt)).limit(5),
+      db.select().from(ownerCapitalEntriesTable).where(and(
+        gte(ownerCapitalEntriesTable.date, startDate),
+        lte(ownerCapitalEntriesTable.date, expenseEndDate),
+        isNull(ownerCapitalEntriesTable.voidedAt),
+        reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+      )),
       // Fixed/allocation sub payments — cash-basis cash out.
       // Date range covers the full 6-month chart window (chartStartDate) so that
       // subPayByMonth is populated for all chart months, not just the KPI period.
@@ -254,7 +259,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // No business-line filter at DB level so the result powers both KPI (filtered in JS) and byBusinessLine.
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — exclude them
       // to avoid double-counting with the expensesTable rows.
-      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessLine: subPaymentRecordsTable.businessLine })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessId: subPaymentRecordsTable.businessId, businessLine: subPaymentRecordsTable.businessLine })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
@@ -396,7 +401,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     let subContractorOwed = 0;
     let subContractorPaid = 0;
     for (const r of subPayRows) {
-      if (validBl && r.businessLine !== validBl) continue;
+      if (reportBusiness && !(r.businessId != null
+        ? r.businessId === reportBusiness.id
+        : r.businessLine === reportBusiness.slug)) continue;
       const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       subContractorPaid += paid;
       // Trust paymentStatus as authoritative — paid/overpaid rows have no outstanding liability.
