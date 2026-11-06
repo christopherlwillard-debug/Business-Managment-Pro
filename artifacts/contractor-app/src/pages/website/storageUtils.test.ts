@@ -114,3 +114,45 @@ describe("Website Studio save queue", () => {
     expect(inFlight).toBe(false);
   });
 });
+
+
+describe("Website Studio background image upload state", () => {
+  it("merges the uploaded image into the latest section without discarding other edits", async () => {
+    const { patchSectionBlockStyle } = await import("./storageUtils");
+    const latest = [
+      { id: "hero", content: { headline: "Edited while uploading" }, blockStyle: { padding: "large", bgImageUrl: "blob:preview" } },
+      { id: "about", content: { heading: "Also edited" } },
+    ];
+    const result = patchSectionBlockStyle(latest, "hero", {
+      bgImageObjectPath: "/objects/uploads/website-section-bgs/id",
+      bgImageUrl: "/api/public/site/demo/section-bg/id",
+      bgType: "image",
+    });
+    expect(result[0].content.headline).toBe("Edited while uploading");
+    expect(result[0].blockStyle).toEqual({
+      padding: "large",
+      bgImageObjectPath: "/objects/uploads/website-section-bgs/id",
+      bgImageUrl: "/api/public/site/demo/section-bg/id",
+      bgType: "image",
+    });
+    expect(result[1]).toBe(latest[1]);
+  });
+
+  it("rolls back only its own preview and preserves later edits", async () => {
+    const { restoreSectionBlockStylePreview } = await import("./storageUtils");
+    const latest = [
+      { id: "hero", content: { headline: "Kept edit" }, blockStyle: { padding: "large", bgImageUrl: "blob:preview" } },
+      { id: "about", content: { heading: "Kept too" } },
+    ];
+    const result = restoreSectionBlockStylePreview(latest, "hero", "blob:preview", { padding: "small", bgColor: "#fff" });
+    expect(result[0].content.headline).toBe("Kept edit");
+    expect(result[0].blockStyle).toEqual({ padding: "small", bgColor: "#fff" });
+    expect(result[1]).toBe(latest[1]);
+  });
+
+  it("does not undo a newer background selection when an older upload fails", async () => {
+    const { restoreSectionBlockStylePreview } = await import("./storageUtils");
+    const latest = [{ id: "hero", blockStyle: { bgImageUrl: "blob:newer" } }];
+    expect(restoreSectionBlockStylePreview(latest, "hero", "blob:older", undefined)).toBe(latest);
+  });
+});
