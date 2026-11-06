@@ -229,8 +229,8 @@ export function escapeWebsiteXml(value: unknown): string {
 /** Accept only a bare DNS hostname for a configured custom website domain. */
 export function getSafeWebsiteCustomDomain(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const host = value.trim().toLowerCase().replace(/\\.$/, "");
-  if (!host || host.length > 253 || host.includes("://") || /[\\s\\/\\\\:@?#<>]/.test(host)) return null;
+  const host = value.trim().toLowerCase().replace(/\.$/, "");
+  if (!host || host.length > 253 || host.includes("://") || /[\s\/\\:@?#<>]/.test(host)) return null;
   const labels = host.split(".");
   if (labels.length < 2 || labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
   return host;
