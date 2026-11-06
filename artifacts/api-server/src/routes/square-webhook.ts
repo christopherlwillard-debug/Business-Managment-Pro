@@ -10,21 +10,46 @@ import { verifySquareWebhookSignature } from "../lib/square";
 
 const router = Router();
 
-async function resolveWebhookBusinessId(candidateId?: number | null, candidateSlug?: string | null): Promise<number> {
+async function resolveWebhookBusinessId(
+  candidateId?: number | null,
+  candidateSlug?: string | null,
+  executor: any = db,
+): Promise<number> {
   if (candidateId != null) {
-    const [row] = await db.select({ id: businessesTable.id }).from(businessesTable)
+    const [row] = await executor.select({ id: businessesTable.id }).from(businessesTable)
       .where(eq(businessesTable.id, candidateId)).limit(1);
     if (row) return row.id;
   }
   if (candidateSlug) {
-    const [row] = await db.select({ id: businessesTable.id }).from(businessesTable)
+    const [row] = await executor.select({ id: businessesTable.id }).from(businessesTable)
       .where(eq(businessesTable.slug, candidateSlug)).limit(1);
     if (row) return row.id;
   }
-  const [fallback] = await db.select({ id: businessesTable.id }).from(businessesTable)
+  const [fallback] = await executor.select({ id: businessesTable.id }).from(businessesTable)
     .where(eq(businessesTable.slug, "general_contracting")).limit(1);
   if (!fallback) throw new Error("General Contracting business is not configured");
   return fallback.id;
+}
+
+/** Apply a Square receipt to the existing invoice aggregate using integer cents. */
+export function calculateSquareInvoicePayment(
+  invoiceTotal: string | number | null,
+  amountAlreadyPaid: string | number | null,
+  paymentAmountCents: number,
+): { amountPaid: string; status: "partial" | "paid" } | null {
+  const totalCents = Math.round(Number(invoiceTotal) * 100);
+  const paidCents = Math.round(Number(amountAlreadyPaid ?? 0) * 100);
+  if (
+    !Number.isSafeInteger(totalCents) || totalCents <= 0 ||
+    !Number.isSafeInteger(paidCents) || paidCents < 0 ||
+    !Number.isSafeInteger(paymentAmountCents) || paymentAmountCents <= 0
+  ) return null;
+
+  const nextPaidCents = paidCents + paymentAmountCents;
+  return {
+    amountPaid: (nextPaidCents / 100).toFixed(2),
+    status: nextPaidCents >= totalCents ? "paid" : "partial",
+  };
 }
 
 async function handleSquarePayment(opts: {
@@ -38,6 +63,8 @@ async function handleSquarePayment(opts: {
 }) {
   const { referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, buyerName, paidAt } = opts;
 
+  await db.transaction(async (tx) => {
+
   const recognized =
     referenceId &&
     (referenceId.startsWith("inv_") ||
@@ -46,20 +73,58 @@ async function handleSquarePayment(opts: {
       referenceId.startsWith("estimate_") ||
       referenceId.startsWith("website_deposit_"));
 
-  if (referenceId?.startsWith("inv_")) {
-    const invoiceId = parseInt(referenceId.slice(4));
-    if (!isNaN(invoiceId)) {
-      await db.update(invoicesTable)
-        .set({ status: "paid", squarePaidAt: paidAt })
-        .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "cancelled")));
-      console.log(`Invoice ${invoiceId} marked paid via Square (payment ${squarePaymentId})`);
+  if (referenceId?.startsWith("inv_") && squarePaymentId && amountMoney !== null) {
+    const invoiceId = Number.parseInt(referenceId.slice(4), 10);
+    if (Number.isSafeInteger(invoiceId) && invoiceId > 0) {
+      const [invoice] = await tx.select({
+        id: invoicesTable.id,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        clientId: invoicesTable.clientId,
+        total: invoicesTable.total,
+        amountPaid: invoicesTable.amountPaid,
+        status: invoicesTable.status,
+        businessId: invoicesTable.businessId,
+        businessLine: invoicesTable.businessLine,
+      }).from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1);
+
+      if (invoice && invoice.status !== "cancelled") {
+        const businessId = await resolveWebhookBusinessId(invoice.businessId, invoice.businessLine, tx);
+        const inserted = await tx.insert(squarePaymentsTable).values({
+          squarePaymentId,
+          amountCents: amountMoney,
+          businessId,
+          description: `Square Invoice Payment — ${invoice.invoiceNumber ?? invoiceId}`,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          clientId: invoice.clientId,
+          clientName: null,
+          paidAt,
+        }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+        if (inserted.length === 0) {
+          console.log(`Square invoice payment ${squarePaymentId} already recorded — skipping duplicate`);
+          return;
+        }
+
+        const allocation = calculateSquareInvoicePayment(invoice.total, invoice.amountPaid, amountMoney);
+        if (allocation) {
+          await tx.update(invoicesTable)
+            .set({
+              status: allocation.status,
+              amountPaid: allocation.amountPaid,
+              ...(allocation.status === "paid" ? { squarePaidAt: paidAt } : {}),
+            })
+            .where(and(eq(invoicesTable.id, invoiceId), ne(invoicesTable.status, "cancelled")));
+          console.log(`Invoice ${invoiceId} received Square payment ${squarePaymentId}; status is ${allocation.status}`);
+        }
+      }
     }
   }
 
   if (referenceId?.startsWith("quick_")) {
     const chargeId = parseInt(referenceId.slice(6));
     if (!isNaN(chargeId)) {
-      await db.update(quickChargesTable)
+      await tx.update(quickChargesTable)
         .set({ status: "paid", paidAt })
         .where(eq(quickChargesTable.id, chargeId));
       console.log(`Quick charge ${chargeId} marked paid via Square`);
@@ -69,14 +134,14 @@ async function handleSquarePayment(opts: {
   if (referenceId?.startsWith("prospect_")) {
     const prospectId = parseInt(referenceId.slice(9));
     if (!isNaN(prospectId)) {
-      await db.update(prospectsTable)
+      await tx.update(prospectsTable)
         .set({
           depositPaidAt: paidAt,
           ...(amountMoney !== null ? { depositPaidAmount: (amountMoney / 100).toFixed(2) } : {}),
           updatedAt: paidAt,
         })
         .where(eq(prospectsTable.id, prospectId));
-      await db.insert(prospectEventsTable).values({
+      await tx.insert(prospectEventsTable).values({
         prospectId,
         type: "deposit_received",
         newValue: amountMoney !== null ? (amountMoney / 100).toFixed(2) : null,
@@ -88,7 +153,7 @@ async function handleSquarePayment(opts: {
   if (referenceId?.startsWith("estimate_")) {
     const estimateId = parseInt(referenceId.slice(9));
     if (!isNaN(estimateId)) {
-      await db.update(estimatesTable)
+      await tx.update(estimatesTable)
         .set({
           depositPaidAt: paidAt,
           ...(amountMoney !== null ? { depositPaidAmount: (amountMoney / 100).toFixed(2) } : {}),
@@ -113,9 +178,9 @@ async function handleSquarePayment(opts: {
     }
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
-    const businessId = await resolveWebhookBusinessId(null, siteSlug);
+    const businessId = await resolveWebhookBusinessId(null, siteSlug, tx);
 
-    const inserted = await db.insert(squarePaymentsTable).values({
+    const inserted = await tx.insert(squarePaymentsTable).values({
       squarePaymentId,
       amountCents: amountMoney,
       businessId,
@@ -130,7 +195,7 @@ async function handleSquarePayment(opts: {
       return;
     }
 
-    await db.insert(otherIncomeTable).values({
+    await tx.insert(otherIncomeTable).values({
       amount: amountDollars,
       date: dateStr,
       description: `Website Deposit — ${siteSlug}`,
@@ -145,7 +210,7 @@ async function handleSquarePayment(opts: {
 
     // Mark deposit submission paid (new format with submission ID in referenceId)
     if (submissionId !== null) {
-      await db.update(depositSubmissionsTable)
+      await tx.update(depositSubmissionsTable)
         .set({ paymentStatus: "paid" })
         .where(eq(depositSubmissionsTable.id, submissionId));
       console.log(`Deposit submission ${submissionId} marked paid`);
@@ -170,14 +235,14 @@ async function handleSquarePayment(opts: {
       if (prospect) matchedProspectId = prospect.id;
     }
     if (matchedProspectId !== null) {
-      await db.update(prospectsTable)
+      await tx.update(prospectsTable)
         .set({
           depositPaidAt: paidAt,
           ...(amountMoney !== null ? { depositPaidAmount: (amountMoney / 100).toFixed(2) } : {}),
           updatedAt: paidAt,
         })
         .where(eq(prospectsTable.id, matchedProspectId));
-      await db.insert(prospectEventsTable).values({
+      await tx.insert(prospectEventsTable).values({
         prospectId: matchedProspectId,
         type: "deposit_received",
         newValue: amountMoney !== null ? (amountMoney / 100).toFixed(2) : null,
@@ -190,44 +255,42 @@ async function handleSquarePayment(opts: {
     // Try to match a client: Square customer ID → buyer email → client name
     let client: typeof clientsTable.$inferSelect | undefined;
     if (customerId) {
-      [client] = await db.select().from(clientsTable).where(eq(clientsTable.squareCustomerId, customerId));
+      [client] = await tx.select().from(clientsTable).where(eq(clientsTable.squareCustomerId, customerId));
     }
     if (!client && buyerEmail) {
       const emailLower = buyerEmail.trim().toLowerCase();
-      [client] = await db.select().from(clientsTable).where(ilike(clientsTable.email, emailLower));
+      [client] = await tx.select().from(clientsTable).where(ilike(clientsTable.email, emailLower));
     }
     if (!client && buyerName) {
       const nameLower = buyerName.trim();
-      [client] = await db.select().from(clientsTable).where(ilike(clientsTable.name, nameLower));
+      [client] = await tx.select().from(clientsTable).where(ilike(clientsTable.name, nameLower));
     }
 
     const clientId = client?.id ?? null;
-    const businessId = await resolveWebhookBusinessId(client?.businessId, client?.businessLine);
+    const businessId = await resolveWebhookBusinessId(client?.businessId, client?.businessLine, tx);
 
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
 
-    // Claim the payment before matching invoices. This makes retries and
-    // concurrent webhook deliveries idempotent even when the first delivery
-    // arrived before an invoice existed and was recorded as other income.
-    const inserted = await db.insert(squarePaymentsTable).values({
-      squarePaymentId,
-      amountCents: amountMoney,
-      businessId,
-      description: "Square Payment",
-      clientId: null,
-      clientName: buyerName ?? null,
-      paidAt,
-    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
-
-    if (inserted.length === 0) {
-      console.log(`Square payment ${squarePaymentId} already recorded — skipping duplicate`);
-      return;
-    }
+    let openInvoice: {
+      id: number;
+      invoiceNumber: string | null;
+      total: string;
+      amountPaid: string | null;
+      businessId: number | null;
+      businessLine: string | null;
+    } | undefined;
 
     if (clientId) {
-      const [openInvoice] = await db
-        .select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, total: invoicesTable.total })
+      [openInvoice] = await tx
+        .select({
+          id: invoicesTable.id,
+          invoiceNumber: invoicesTable.invoiceNumber,
+          total: invoicesTable.total,
+          amountPaid: invoicesTable.amountPaid,
+          businessId: invoicesTable.businessId,
+          businessLine: invoicesTable.businessLine,
+        })
         .from(invoicesTable)
         .where(and(
           eq(invoicesTable.clientId, clientId),
@@ -237,19 +300,46 @@ async function handleSquarePayment(opts: {
         ))
         .orderBy(asc(invoicesTable.issueDate))
         .limit(1);
-
-      if (openInvoice) {
-        await db.update(invoicesTable)
-          .set({ status: "paid", squarePaidAt: paidAt })
-          .where(and(eq(invoicesTable.id, openInvoice.id), ne(invoicesTable.status, "cancelled")));
-        console.log(
-          `Square Wix/Tap payment ${squarePaymentId} — matched to invoice #${openInvoice.invoiceNumber} for client ${client?.name ?? clientId} ($${amountDollars})`
-        );
-        return;
-      }
     }
 
-    await db.insert(otherIncomeTable).values({
+    const paymentBusinessId = openInvoice
+      ? await resolveWebhookBusinessId(openInvoice.businessId, openInvoice.businessLine, tx)
+      : businessId;
+    const inserted = await tx.insert(squarePaymentsTable).values({
+      squarePaymentId,
+      amountCents: amountMoney,
+      businessId: paymentBusinessId,
+      description: openInvoice ? `Square Invoice Payment — ${openInvoice.invoiceNumber ?? openInvoice.id}` : "Square Payment",
+      invoiceId: openInvoice?.id ?? null,
+      invoiceNumber: openInvoice?.invoiceNumber ?? null,
+      clientId,
+      clientName: buyerName ?? client?.name ?? null,
+      paidAt,
+    }).onConflictDoNothing().returning({ id: squarePaymentsTable.id });
+
+    if (inserted.length === 0) {
+      console.log(`Square payment ${squarePaymentId} already recorded — skipping duplicate`);
+      return;
+    }
+
+    if (openInvoice) {
+      const allocation = calculateSquareInvoicePayment(openInvoice.total, openInvoice.amountPaid, amountMoney);
+      if (allocation) {
+        await tx.update(invoicesTable)
+          .set({
+            status: allocation.status,
+            amountPaid: allocation.amountPaid,
+            ...(allocation.status === "paid" ? { squarePaidAt: paidAt } : {}),
+          })
+          .where(and(eq(invoicesTable.id, openInvoice.id), ne(invoicesTable.status, "cancelled")));
+      }
+      console.log(
+        `Square Wix/Tap payment ${squarePaymentId} — matched to invoice #${openInvoice.invoiceNumber} for client ${client?.name ?? clientId} ($${amountDollars}); status is ${allocation?.status ?? "unchanged"}`
+      );
+      return;
+    }
+
+    await tx.insert(otherIncomeTable).values({
       amount: amountDollars,
       date: dateStr,
       description: "Square Payment",
@@ -265,6 +355,7 @@ async function handleSquarePayment(opts: {
         (client ? ` for client ${client.name}` : " (unmatched customer)")
     );
   }
+  });
 }
 
 router.post("/", async (req: Request, res: Response) => {
