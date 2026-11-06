@@ -71,7 +71,7 @@ export interface EnhancementOptions {
 
 /**
  * Generate three size/format variants from a raw upload buffer.
- * Always auto-rotates from EXIF so all variants are correctly oriented.
+ * Auto-rotates from EXIF so all uploaded variants are correctly oriented.
  */
 export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVariants> {
   // Always fix EXIF orientation first so all variants are upright.
@@ -103,7 +103,8 @@ export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVar
 
 /**
  * Apply Willard's chosen enhancements to an image buffer.
- * Returns the enhanced image as a JPEG or WebP buffer (preserves input format).
+ * Returns the enhanced image as WebP. EXIF orientation is applied only when
+ * the user selects the Straighten option.
  *
  * Originals must never be passed here — always operate on a copy.
  */
@@ -111,8 +112,9 @@ export async function applyEnhancements(
   inputBuffer: Buffer,
   opts: EnhancementOptions,
 ): Promise<Buffer> {
-  // Step 1 — always auto-rotate from EXIF
-  let base = await sharp(inputBuffer).rotate().toBuffer();
+  // Step 1 — correct EXIF orientation only when explicitly requested.
+  const source = sharp(inputBuffer);
+  const base = await (opts.straighten ? source.rotate() : source).toBuffer();
 
   // Step 2 — get dimensions of the (now correctly-oriented) image
   const meta = await sharp(base).metadata();
