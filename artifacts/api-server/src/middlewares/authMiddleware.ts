@@ -76,7 +76,11 @@ async function performRefresh(
         const latest = await getSession(sid);
         if (
           latest?.user?.id
-          && latest.access_token !== session.access_token
+          && (
+            latest.access_token !== session.access_token
+            || latest.refresh_token !== session.refresh_token
+            || (latest.expires_at != null && latest.expires_at > (session.expires_at ?? 0))
+          )
           && latest.expires_at != null
           && Math.floor(Date.now() / 1000) <= latest.expires_at
         ) {
