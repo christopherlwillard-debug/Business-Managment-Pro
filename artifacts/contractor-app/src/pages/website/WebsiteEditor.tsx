@@ -4647,9 +4647,30 @@ function WebsiteEditor() {
     const operationSession = businessSessionRef.current;
     const operationBusinessId = bizId;
     const operationRevision = editorRevisionRef.current;
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, operationSession)) {
+      toast({ title: "Wait for uploads to finish", description: "Finish your image uploads before replacing the website with a template." });
+      return;
+    }
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     setApplyingTemplate(true);
     try {
+      // A template write must run after any autosave already sent to the server,
+      // otherwise a slower old autosave can finish last and restore the old site.
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
+          saveQueuedRef.current = false;
+          requestSave();
+        },
+      });
+      if (operationSession !== businessSessionRef.current || operationBusinessId !== bizIdRef.current) return;
+      if (operationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while template was waiting", description: "Your edits were preserved. Apply the template again if you still want to replace the page.", variant: "destructive" });
+        return;
+      }
       const appliedSections = t.sections.map(s => {
         if (s.type === "footer" && bizInfo) {
           return { ...s, content: { ...s.content, phone: bizInfo.phone ?? "", email: bizInfo.email ?? "", licenseNumber: bizInfo.licenseNumber ?? "", copyright: `© ${new Date().getFullYear()} ${bizInfo.name ?? ""}. All rights reserved.` } };
@@ -4665,7 +4686,6 @@ function WebsiteEditor() {
         ...(settings.faviconObjectPath ? { faviconObjectPath: settings.faviconObjectPath } : {}),
         ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
       };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       const templatePayload = {
         sections: (appliedSections as any[]).map((s, i) => ({ ...s, order: i })),
         settings: savedSettings,
