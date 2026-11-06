@@ -20,6 +20,7 @@ function isOwnerPayCategory(category: unknown): boolean {
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid expense ID" });
     const scope = await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
@@ -447,7 +448,7 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const [expense] = await buildExpenseQuery().where(eq(expensesTable.id, id));
     if (!expense) return res.status(404).json({ error: "Expense not found" });
     res.json(formatExpense(expense, expense.jobTitle, expense.subcontractorName));
@@ -459,7 +460,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
        excludeFromNetProfit, countsTowardJobProfit,
@@ -589,8 +590,8 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/spr/:sprId", async (req, res) => {
   try {
-    const sprId = parseInt(req.params.sprId as string);
-    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    const sprId = Number(req.params.sprId);
+    if (!Number.isSafeInteger(sprId) || sprId <= 0) return res.status(400).json({ error: "Invalid id" });
     return res.status(409).json({ error: "Posted subcontractor payments cannot be deleted. Use the reversal action to preserve payment history." });
   } catch (err) {
     console.error(err);
@@ -600,9 +601,9 @@ router.delete("/spr/:sprId", async (req, res) => {
 
 router.post("/spr/:sprId/reverse", async (req, res) => {
   try {
-    const sprId = parseInt(req.params.sprId as string);
+    const sprId = Number(req.params.sprId);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isSafeInteger(sprId) || sprId <= 0) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A reversal reason is required" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
@@ -633,9 +634,9 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/void", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
