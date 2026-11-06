@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -125,5 +125,18 @@ describe("Website Studio page shape validation", () => {
       ok: true,
       pages: [{ id: "about-1", name: "About", slug: "about", sections: [] }],
     });
+  });
+});
+
+describe("Website Studio request body normalization", () => {
+  it("returns an empty record for missing, primitive, or array bodies", () => {
+    expect(getWebsiteRequestBody(undefined)).toEqual({});
+    expect(getWebsiteRequestBody(null)).toEqual({});
+    expect(getWebsiteRequestBody("bad")).toEqual({});
+    expect(getWebsiteRequestBody([])).toEqual({});
+  });
+
+  it("preserves valid object bodies", () => {
+    expect(getWebsiteRequestBody({ sections: [], settings: {} })).toEqual({ sections: [], settings: {} });
   });
 });
