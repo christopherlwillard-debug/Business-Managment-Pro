@@ -3577,7 +3577,6 @@ function WebsiteEditor() {
           completeSectionBlockStyleUpload(pageSections, sectionId, blobUrl, {
             bgImageObjectPath: objectPath,
             bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
-            bgType: "image",
           }),
         ));
         qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
