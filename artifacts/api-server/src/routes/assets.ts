@@ -185,12 +185,15 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid asset ID" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
-    await db.delete(assetsTable).where(and(
-      eq(assetsTable.id, parseInt(req.params.id)),
+    const [deleted] = await db.delete(assetsTable).where(and(
+      eq(assetsTable.id, id),
       mutationBusinessPredicate(assetsTable, ownership.business),
-    ));
+    )).returning({ id: assetsTable.id });
+    if (!deleted) return res.status(404).json({ error: "Asset not found" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
@@ -260,10 +263,10 @@ router.delete("/:id/business-use/:year", async (req, res) => {
     if (!Number.isSafeInteger(assetId) || assetId <= 0 || !Number.isInteger(year) || year < 1900 || year > 2200) {
       return res.status(400).json({ error: "Invalid asset ID or year" });
     }
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [asset] = await db.select({ id: assetsTable.id }).from(assetsTable)
-      .where(and(eq(assetsTable.id, assetId), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
+      .where(and(eq(assetsTable.id, assetId), mutationBusinessPredicate(assetsTable, ownership.business)));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
     await db.delete(assetBusinessUseTable)
       .where(and(eq(assetBusinessUseTable.assetId, assetId), eq(assetBusinessUseTable.year, year)));
@@ -278,8 +281,8 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid asset ID" });
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     let fileBuffer = req.file.buffer;
@@ -305,7 +308,7 @@ router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
     );
 
     const [updated] = await db.update(assetsTable).set({ receiptUrl: objectPath })
-      .where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : []))).returning();
+      .where(and(eq(assetsTable.id, id), mutationBusinessPredicate(assetsTable, ownership.business))).returning();
     if (!updated) return res.status(404).json({ error: "Asset not found" });
 
     res.json(formatAsset(updated));
