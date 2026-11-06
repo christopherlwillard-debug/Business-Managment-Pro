@@ -106,6 +106,15 @@ export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name
 
 type WebsitePageLike = { id?: string; name?: string; slug?: string; sections?: unknown[] };
 
+/** Treat legacy/corrupt persisted page settings as an empty or filtered list. */
+export function getWebsitePageList(value: unknown): WebsitePageLike[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((page): page is WebsitePageLike =>
+    !!page && typeof page === "object" && !Array.isArray(page) &&
+    typeof (page as { slug?: unknown }).slug === "string"
+  );
+}
+
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
   ok: false;
   error: string;
@@ -949,7 +958,7 @@ publicRouter.get("/by-host", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Business not found" });
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
       return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
     }
@@ -972,7 +981,7 @@ publicRouter.get("/:slug", wrapAsync(async (req, res) => {
 
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     const page = pages.find(candidate => normalizePageSlug(String(candidate.slug ?? "")) === requestedPage);
     if (!page) return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
   }
@@ -3137,7 +3146,7 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
       return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
     }
