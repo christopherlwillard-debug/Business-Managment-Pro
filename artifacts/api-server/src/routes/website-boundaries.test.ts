@@ -204,7 +204,7 @@ describe("Website Studio section identity", () => {
     }]);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.pages[0].sections?.map(section => section.id)).toEqual(["duplicate", "duplicate-2"]);
+      expect((result.pages[0].sections as Array<{ id: string }>).map(section => section.id)).toEqual(["duplicate", "duplicate-2"]);
     }
   });
 });
