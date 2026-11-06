@@ -35,6 +35,9 @@ describe("website data boundaries", () => {
     expect(parseWebsiteMediaFolderId("")).toBeNull();
     expect(parseWebsiteMediaFolderId("  ")).toBeNull();
     expect(parseWebsiteMediaFolderId("12")).toBe(12);
+    expect(parseWebsiteMediaFolderId(true)).toBeUndefined();
+    expect(parseWebsiteMediaFolderId([12])).toBeUndefined();
+    expect(parseWebsiteMediaFolderId("1e2")).toBeUndefined();
     expect(parseWebsiteMediaFolderId(12)).toBe(12);
     expect(parseWebsiteMediaFolderId("0")).toBeUndefined();
     expect(parseWebsiteMediaFolderId("-2")).toBeUndefined();
