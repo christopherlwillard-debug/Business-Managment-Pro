@@ -599,13 +599,15 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <span className="text-[10px] text-muted-foreground tabular-nums">{folder.itemCount}</span>
                 </button>
               )}
-              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0">
-                <button onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary" title="Rename">
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden items-center gap-0 group-hover:flex group-focus-within:flex">
+                <button type="button" onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
+                  title="Rename" aria-label={`Rename ${folder.name} folder`}>
                   <Pencil className="w-2.5 h-2.5" />
                 </button>
-                <button onClick={() => deleteFolderMutation.mutate(folder.id)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-destructive" title="Delete">
+                <button type="button" onClick={() => deleteFolderMutation.mutate(folder.id)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-destructive"
+                  title="Delete" aria-label={`Delete ${folder.name} folder`}>
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
