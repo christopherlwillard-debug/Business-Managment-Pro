@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -41,6 +41,22 @@ describe("website data boundaries", () => {
     expect(parseWebsiteMediaFolderId("1.5")).toBeUndefined();
     expect(parseWebsiteMediaFolderId("12abc")).toBeUndefined();
     expect(parseWebsiteMediaFolderId(Number.MAX_SAFE_INTEGER + 1)).toBeUndefined();
+  });
+
+  it("validates media folder names against the database's 100-character limit", () => {
+    expect(validateWebsiteMediaFolderName("  Job Photos  ")).toEqual({ ok: true, name: "Job Photos" });
+    expect(validateWebsiteMediaFolderName("x".repeat(100))).toEqual({ ok: true, name: "x".repeat(100) });
+    expect(validateWebsiteMediaFolderName("x".repeat(101))).toEqual({
+      ok: false,
+      error: "Folder names must be 100 characters or fewer.",
+    });
+    expect(validateWebsiteMediaFolderName("  ")).toEqual({ ok: false, error: "Folder name is required." });
+    expect(validateWebsiteMediaFolderName(42)).toEqual({ ok: false, error: "Folder name must be text." });
+    expect(validateWebsiteMediaFolderName("😀".repeat(100))).toEqual({ ok: true, name: "😀".repeat(100) });
+    expect(validateWebsiteMediaFolderName("😀".repeat(101))).toEqual({
+      ok: false,
+      error: "Folder names must be 100 characters or fewer.",
+    });
   });
 
   it("rejects duplicate and home page slugs before persistence", () => {
