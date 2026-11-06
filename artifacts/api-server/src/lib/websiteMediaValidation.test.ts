@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { truncateWebsiteMediaFilename, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
 
 describe("validateWebsiteMediaPatch", () => {
   it("accepts valid metadata and folder updates", () => {
@@ -94,5 +94,29 @@ describe("Website Studio direct upload validation", () => {
   it("rejects filenames beyond the database-safe limit", async () => {
     const { validateWebsiteDirectUpload } = await import("./websiteMediaValidation");
     expect(validateWebsiteDirectUpload({ ...valid, name: "x".repeat(256) }, "image").ok).toBe(false);
+  });
+});
+
+describe("Website Studio analysis input validation", () => {
+  const validSection = { type: "hero", enabled: true, content: { headline: "Welcome" } };
+
+  it("accepts valid section and settings payloads", () => {
+    expect(validateWebsiteAnalysisInput([validSection], { brandColor: "#123456" }).ok).toBe(true);
+    expect(validateWebsiteAnalysisInput([], {}).ok).toBe(true);
+  });
+
+  it("rejects malformed arrays, section records, content, and settings", () => {
+    for (const [sections, settings] of [
+      ["not-an-array", {}],
+      [[null], {}],
+      [[{ ...validSection, type: 12 }], {}],
+      [[{ ...validSection, content: null }], {}],
+      [[{ ...validSection, content: [] }], {}],
+      [[validSection], null],
+      [[validSection], []],
+      [[validSection], "bad"],
+    ] as Array<[unknown, unknown]>) {
+      expect(validateWebsiteAnalysisInput(sections, settings).ok).toBe(false);
+    }
   });
 });
