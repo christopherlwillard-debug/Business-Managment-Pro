@@ -170,6 +170,11 @@ export function consumeWebsiteRenameBlurCommit(state: { current: boolean }): boo
   return shouldCommit;
 }
 
+/** Disable the pending blur commit when the user explicitly cancels a rename with Escape. */
+export function cancelWebsiteRenameBlurCommit(state: { current: boolean }): void {
+  state.current = false;
+}
+
 /** Scope public-site cache entries to the requested page as well as the site and preview mode. */
 export function getPublicSiteQueryKey(
   slug: string | undefined,
