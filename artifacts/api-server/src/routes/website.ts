@@ -73,9 +73,7 @@ export function isWebsiteStoredObjectPath(value: unknown, prefix: string): value
 
 /** Only resolve logo objects through the app's own object-storage namespace. */
 export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
-  if (typeof value !== "string" || !value.startsWith("/objects/uploads/")) return false;
-  if (value.includes("\\") || value.includes("%") || value.includes("?") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32)) return false;
-  return value.slice("/objects/uploads/".length).split("/").every(segment => segment.length > 0 && segment !== "." && segment !== "..");
+  return isWebsiteStoredObjectPath(value, "/objects/uploads/website-logos/");
 }
 
 export function normalizePageSlug(value: string): string {
@@ -662,7 +660,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
 
   const settings = config.settings as Record<string, unknown>;
   const logoObjectPath = settings.logoObjectPath as string | undefined;
-  if (!logoObjectPath?.startsWith("/objects/uploads/website-logos/")) {
+  if (!isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
     return res.status(404).json({ error: "No logo" });
   }
 
