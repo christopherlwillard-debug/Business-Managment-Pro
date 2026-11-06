@@ -129,3 +129,39 @@ Every batch must trace confirmed defects through callers, schema, and tests; add
 
 - Fix SQR-003 with a transaction that couples the unique Square payment claim to the canonical invoice or `other_income` mutation.
 - Fix SQR-004 with amount-aware invoice allocation and regression tests, after tracing how partial receipts are represented in dashboard, P&L, tax, and year-end cash-basis reports.
+
+
+## Square payment diagnosis — 2026-11-06
+
+**Repair gate:** Diagnosis only. No payment/accounting behavior was changed in this batch. Constitution Rule 55 requires explicit approval for financial-ledger and accounting-logic repairs. The existing architecture memory `.agents/memory/accounting-repair-guardrails.md` also documents that the invoice `amountPaid` field is an aggregate snapshot and cannot represent multiple receipts, refunds, or event dates. A partial-payment repair must therefore be designed against the established source-of-truth constraints before implementation.
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Fix commit | Residual risk |
+|---|---|---|---|---|---|---|
+| SQR-003 | High | Square webhook → payment ingestion / revenue posting | In the unreferenced Tap-to-Pay path and website-deposit path, `square_payments` is inserted with `ON CONFLICT DO NOTHING` and committed before the corresponding `other_income` insert or invoice update. A later database failure leaves the unique provider payment claimed; a retry then exits on the conflict and never completes the canonical accounting write. | **Found; repair diagnosis complete, implementation gated** | — | Provider mirror and accounting ledger can diverge after partial failure. Requires one transaction coupling the unique claim and canonical write; verify transaction isolation and all reference-ID paths. |
+| SQR-004 | High | Square Tap-to-Pay → invoice matching | The generic unmatched-reference path selects the oldest open invoice for a matched client, then unconditionally sets `status: "paid"` without comparing `amountMoney` to `total - amountPaid`. The payment amount is only logged. | **Found; repair diagnosis complete, implementation gated** | — | A partial receipt can close an invoice and overstate cash collected. Current aggregate invoice snapshot cannot preserve multiple receipt events or reversals; do not implement a partial-payment workaround without approved ledger/source-of-truth design. |
+| SQR-005 | High | Square invoice payment-link webhook → invoice lifecycle | The explicit `inv_<id>` reference path also sets the invoice to `paid` unconditionally and ignores `amountMoney`; it does not update `amountPaid` or persist the Square payment ID through the `square_payments` mirror in this branch. This is a separate path from the generic client-matching defect in SQR-004. | **Found; repair diagnosis complete, implementation gated** | — | Invoice status, aggregate paid amount, provider reconciliation, and cash-basis reports can disagree. Requires tracing Square link amount/partial-payment semantics and existing manual/Stripe behavior before repair. |
+| SQR-006 | Medium | Square payment mirror → invoice/client reconciliation | The generic path inserts `square_payments` with `clientId: null` and does not populate the available `invoiceId` / `invoiceNumber` fields even after matching a client and invoice. The schema explicitly supports these links, but the handler discards the matched relationship. | **Found; repair diagnosis complete, implementation gated** | — | Payment history cannot reliably explain which invoice/client received a provider payment; reporting and reconciliation may require fuzzy matching. Needs approved mapping semantics and regression fixtures. |
+
+### Evidence inspected
+
+- `artifacts/api-server/src/routes/square-webhook.ts`: `handleSquarePayment` explicit `inv_` branch; website-deposit insert-before-other-income sequence; generic Tap-to-Pay claim-before-invoice-match sequence; unconditional invoice-paid update.
+- `lib/db/src/schema/invoices.ts`: invoice `total`, aggregate `amountPaid`, `squarePaidAt`, and `stripePaidAt` fields.
+- `lib/db/src/schema/square-payments.ts`: unique `squarePaymentId`, `invoiceId`, `invoiceNumber`, and `clientId` relationship fields.
+- `artifacts/api-server/src/routes/square-webhook.test.ts`: existing tests cover signature ingress only; no tests cover payment-claim rollback, amount allocation, explicit invoice reference handling, or mirror relationship persistence.
+- `.agents/memory/accounting-repair-guardrails.md`: explicitly warns that the invoice aggregate cannot prove multiple receipts, refunds, or event dates and requires source-record-first accounting design.
+
+### Repair impact review
+
+- **Tables:** `square_payments`, `invoices`, `other_income`; potentially an existing canonical payment-event table only if architecture review confirms one.
+- **APIs:** `POST /api/square-webhook`; invoice/payment read paths; reconciliation endpoints.
+- **Pages:** Invoices, Square Transactions, Accounting, Banking/reconciliation.
+- **Reports:** Dashboard, P&L, cash-basis revenue, Schedule C, tax/year-end reports, reserve calculations.
+- **Accounting:** Direct impact on receipt amount, invoice balance, payment date, idempotency, and revenue recognition.
+- **Permissions:** Public signed webhook boundary; no user-session authorization change proposed.
+- **Multi-business:** Must preserve business ownership from invoice/client and website configuration; never fall back to an unrelated business for a matched invoice.
+- **Tax calculations:** Cash-basis receipt timing and amount may change; must be tested across all affected report surfaces.
+- **Inventory:** No direct effect identified.
+
+### Next repair scope
+
+The smallest safe next repair is **SQR-003: make each existing Square ingestion path atomic with its canonical accounting write**, without changing allocation rules or adding a new ledger. Before implementation, confirm transaction support in the route's test harness and inspect the remaining Square reference paths. SQR-004/005/006 remain separate financial repairs and require their own explicit approval and source-of-truth design.
