@@ -72,11 +72,12 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
       fixedAmount: jobSubcontractorsTable.fixedAmount,
       allocationPct: jobSubcontractorsTable.allocationPct,
       amountPaid: sql<string>`CASE
+        -- Any canonical ledger row suppresses the legacy cached fallback,
+        -- even when every canonical payment has been reversed.
         WHEN EXISTS (
           SELECT 1 FROM sub_payment_records spr
           WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
             AND spr.subcontractor_id = ${subcontractorsTable.id}
-            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
         )
         THEN COALESCE((
           SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
