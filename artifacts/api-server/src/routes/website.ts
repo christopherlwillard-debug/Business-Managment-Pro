@@ -69,6 +69,15 @@ export function parseWebsiteMediaFolderId(value: unknown): number | null | undef
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
+/** Validate folder names against the database's varchar(100) column before writing. */
+export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name: string } | { ok: false; error: string } {
+  if (typeof value !== "string") return { ok: false, error: "Folder name must be text." };
+  const name = value.trim();
+  if (!name) return { ok: false, error: "Folder name is required." };
+  if ([...name].length > 100) return { ok: false, error: "Folder names must be 100 characters or fewer." };
+  return { ok: true, name };
+}
+
 type WebsitePageLike = { id?: string; name?: string; slug?: string };
 
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
@@ -2839,10 +2848,10 @@ router.get("/media/folders", wrapAsync(async (req, res) => {
 router.post("/media/folders", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { name } = req.body as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const [folder] = await db.insert(websiteMediaFoldersTable)
-    .values({ businessId, name: name.trim() })
+    .values({ businessId, name: validation.name })
     .returning();
   res.json({ ...folder, itemCount: 0 });
 }));
@@ -2851,10 +2860,10 @@ router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   const folderId = parseInt(req.params.folderId as string);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
-  const { name } = req.body as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const [updated] = await db.update(websiteMediaFoldersTable)
-    .set({ name: name.trim() })
+    .set({ name: validation.name })
     .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)))
     .returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
