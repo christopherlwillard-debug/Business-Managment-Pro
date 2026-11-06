@@ -415,7 +415,7 @@ async function handleSquarePayment(opts: {
       businessLine: string | null;
     } | undefined;
 
-    if (clientId) {
+    if (clientId && businessId != null) {
       [openInvoice] = await tx
         .select({
           id: invoicesTable.id,
