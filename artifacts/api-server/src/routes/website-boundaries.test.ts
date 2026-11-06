@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -92,6 +92,29 @@ describe("Website Studio sitemap safety", () => {
     const xml = buildSitemapXml("https://example.com", [{ slug: "../private", name: "Private" }, { slug: "About Us", name: "About" }]);
     expect(xml).toContain("https://example.com/about-us");
     expect(xml).not.toContain("../private");
+  });
+});
+
+describe("Website Studio portfolio photo lookup", () => {
+  const path = "/objects/uploads/website-portfolio-photos/550e8400-e29b-41d4-a716-446655440000";
+
+  it("finds photos in current project galleries and legacy galleries", () => {
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: {
+      projects: [{ photos: [{ photoObjectPath: path }] }],
+    } }], path)).toBe(true);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: {
+      photos: [{ photoObjectPath: path }],
+    } }], path)).toBe(true);
+  });
+
+  it("returns false for malformed sections, projects, photo lists, and unsafe paths", () => {
+    expect(hasWebsitePortfolioPhoto(null, path)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: {
+      projects: [null, "bad", { photos: null }, { photos: [{ photoObjectPath: 42 }] }],
+    } }], path)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { projects: {} } }], path)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [null, []] } }], path)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [{ photoObjectPath: path }] } }], "/objects/uploads/other/" + path.split("/").pop())).toBe(false);
   });
 });
 
