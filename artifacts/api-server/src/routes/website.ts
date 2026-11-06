@@ -1310,6 +1310,10 @@ publicRouter.post("/:slug/view", (req, res) => {
 
   db.select({ id: businessesTable.id })
     .from(businessesTable)
+    .innerJoin(websiteConfigsTable, and(
+      eq(websiteConfigsTable.businessId, businessesTable.id),
+      eq(websiteConfigsTable.published, true),
+    ))
     .where(eq(businessesTable.slug, slug as string))
     .then(([biz]) => {
       if (biz) {
