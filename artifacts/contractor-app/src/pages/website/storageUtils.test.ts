@@ -228,6 +228,6 @@ describe("page-scoped section content updates", () => {
     const { patchWebsitePageSectionContent } = await import("./storageUtils");
     const pages = [{ id: "home", sections: [{ id: "hero", content: { headline: "Home" } }] }];
     expect(patchWebsitePageSectionContent(pages, "missing", "hero", {})).toBe(pages);
-    expect(patchWebsitePageSectionContent(pages, "home", "missing", {} )?.[0].sections[0].content).toEqual({ headline: "Home" });
+    expect(patchWebsitePageSectionContent(pages, "home", "missing", {})).toBe(pages);
   });
 });
