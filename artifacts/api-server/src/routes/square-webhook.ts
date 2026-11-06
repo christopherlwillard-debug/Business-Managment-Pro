@@ -5,7 +5,7 @@ import {
   prospectEventsTable, otherIncomeTable, squarePaymentsTable, clientsTable,
   depositSubmissionsTable, businessesTable,
 } from "@workspace/db/schema";
-import { eq, and, ne, asc, ilike, or } from "drizzle-orm";
+import { eq, and, ne, asc, ilike, or, isNull } from "drizzle-orm";
 import { verifySquareWebhookSignature } from "../lib/square";
 
 const router = Router();
@@ -29,6 +29,21 @@ async function resolveWebhookBusinessId(
     .where(eq(businessesTable.slug, "general_contracting")).limit(1);
   if (!fallback) throw new Error("General Contracting business is not configured");
   return fallback.id;
+}
+
+/** Restrict fallback invoice matching to the client's resolved business. Legacy rows
+ * without businessId are eligible only when their businessLine matches the client.
+ */
+export function squareInvoiceBusinessCondition(
+  businessId: number,
+  businessLine: string | null | undefined,
+) {
+  return businessLine
+    ? or(
+        eq(invoicesTable.businessId, businessId),
+        and(isNull(invoicesTable.businessId), eq(invoicesTable.businessLine, businessLine)),
+      )
+    : eq(invoicesTable.businessId, businessId);
 }
 
 /** Apply a Square receipt to the existing invoice aggregate using integer cents. */
@@ -389,6 +404,7 @@ async function handleSquarePayment(opts: {
         .from(invoicesTable)
         .where(and(
           eq(invoicesTable.clientId, clientId),
+          squareInvoiceBusinessCondition(businessId, client?.businessLine),
           ne(invoicesTable.status, "paid"),
           ne(invoicesTable.status, "draft"),
           ne(invoicesTable.status, "cancelled"),
