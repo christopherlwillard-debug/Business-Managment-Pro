@@ -3684,7 +3684,7 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     if (!p) return 0;
     const projects = p.content.projects as Array<{ photos?: unknown[] }> | undefined;
     return Array.isArray(projects)
-      ? projects.reduce((s, pr) => s + (Array.isArray(pr.photos) ? pr.photos.length : 0), 0)
+      ? projects.reduce((s, pr) => s + (pr && typeof pr === "object" && Array.isArray(pr.photos) ? pr.photos.filter(Boolean).length : 0), 0)
       : 0;
   }
 
@@ -3880,16 +3880,16 @@ function checkAccessibilitySections(
 
   if (services) {
     type Item = { mediaType?: string; imageUrl?: string; imageAlt?: string };
-    const items = (services.content.items as Item[] | undefined) ?? [];
-    const missing = items.filter(i => i.mediaType === "image" && str(i.imageUrl) && !str(i.imageAlt));
+    const items = Array.isArray(services.content.items) ? services.content.items as Item[] : [];
+    const missing = items.filter(i => !!i && typeof i === "object" && i.mediaType === "image" && str(i.imageUrl) && !str(i.imageAlt));
     check(missing.length === 0, { id: "service-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} service image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Screen readers can't describe images without alt text." });
   } else { totalChecks++; }
 
   const gallery = findEnabled("gallery");
   if (gallery) {
     type GImg = { url?: string; alt?: string };
-    const imgs = (gallery.content.images as GImg[] | undefined) ?? [];
-    const missing = imgs.filter(i => str(i.url) && !str(i.alt));
+    const imgs = Array.isArray(gallery.content.images) ? gallery.content.images as GImg[] : [];
+    const missing = imgs.filter(i => !!i && typeof i === "object" && str(i.url) && !str(i.alt));
     check(missing.length === 0, { id: "gallery-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} gallery image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Alt text improves SEO and assistive technology support." });
   } else { totalChecks++; }
 
@@ -3980,22 +3980,27 @@ function analyzePerformanceSections(
     if (s.type === "about" || s.type === "meet-owner") { add(str(c.photoUrl), s.type); }
     if (s.type === "image")   { add(str(c.imageUrl), s.type); }
     if (s.type === "services") {
-      for (const item of (c.items as Array<{mediaType?:string;imageUrl?:string}>|undefined)??[]) {
-        if (item.mediaType === "image") add(str(item.imageUrl), s.type);
+      for (const item of (Array.isArray(c.items) ? c.items : []) as Array<{mediaType?:string;imageUrl?:string}>) {
+        if (item && typeof item === "object" && item.mediaType === "image") add(str(item.imageUrl), s.type);
       }
     }
     if (s.type === "gallery") {
-      for (const img of (c.images as Array<{url?:string}>|undefined)??[]) add(str(img.url), s.type);
+      for (const img of (Array.isArray(c.images) ? c.images : []) as Array<{url?:string}>) {
+        if (img && typeof img === "object") add(str(img.url), s.type);
+      }
     }
     if (s.type === "portfolio") {
-      for (const proj of (c.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]) {
-        for (const ph of proj.photos??[]) add(str(ph.url), s.type);
+      for (const proj of (Array.isArray(c.projects) ? c.projects : []) as Array<{photos?:Array<{url?:string}>}>) {
+        if (!proj || typeof proj !== "object") continue;
+        for (const ph of Array.isArray(proj.photos) ? proj.photos : []) {
+          if (ph && typeof ph === "object") add(str(ph.url), s.type);
+        }
       }
     }
     if (s.type === "before-after") { add(str(c.beforeUrl), s.type); add(str(c.afterUrl), s.type); }
     if (["featured-clients","partners","certifications"].includes(s.type)) {
-      for (const item of (c.items as Array<{imageUrl?:string;logoUrl?:string}>|undefined)??[]) {
-        add(str(item.imageUrl ?? item.logoUrl), s.type);
+      for (const item of (Array.isArray(c.items) ? c.items : []) as Array<{imageUrl?:string;logoUrl?:string}>) {
+        if (item && typeof item === "object") add(str(item.imageUrl ?? item.logoUrl), s.type);
       }
     }
   }
@@ -4016,7 +4021,7 @@ function analyzePerformanceSections(
 
   const gallery = enabled.find(s => s.type === "gallery");
   if (gallery) {
-    const gc = (gallery.content.images as Array<{url?:string}>|undefined)?.filter(i => str(i.url)).length ?? 0;
+    const gc = (Array.isArray(gallery.content.images) ? gallery.content.images as Array<{url?:string}> : []).filter(i => !!i && typeof i === "object" && str(i.url)).length;
     check(gc <= 6, { id: "gallery-image-count", category: "Images", severity: gc > 12 ? "error" : "warning", fixable: false, label: gc > 12 ? "Gallery loading too many images at once" : "Gallery has many images", current: `${gc} gallery images`, recommendation: "Keep 6–8 featured photos. Move extra to a Portfolio page." });
   } else { totalChecks++; }
 
@@ -4041,7 +4046,7 @@ function analyzePerformanceSections(
 
   const portfolio = enabled.find(s => s.type === "portfolio");
   if (portfolio) {
-    const totalPhotos = ((portfolio.content.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]).reduce((s,p) => s + (p.photos?.filter(ph => str(ph.url)).length ?? 0), 0);
+    const totalPhotos = (Array.isArray(portfolio.content.projects) ? portfolio.content.projects as Array<{photos?:Array<{url?:string}>}> : []).reduce((s,p) => s + (p && typeof p === "object" && Array.isArray(p.photos) ? p.photos.filter(ph => !!ph && typeof ph === "object" && str(ph.url)).length : 0), 0);
     check(totalPhotos <= 12, { id: "portfolio-photo-count", category: "Loading", severity: "warning", fixable: false, label: "Portfolio has many photos", current: `${totalPhotos} portfolio photos`, recommendation: "Show 3–4 best projects × 3 photos each (12 total max)." });
   } else { totalChecks++; }
 
