@@ -138,16 +138,53 @@ describe("Website Studio background image upload state", () => {
     expect(result[1]).toBe(latest[1]);
   });
 
-  it("rolls back only its own preview and preserves later edits", async () => {
+  it("rolls back only its own background fields and preserves concurrent style edits", async () => {
     const { restoreSectionBlockStylePreview } = await import("./storageUtils");
     const latest = [
-      { id: "hero", content: { headline: "Kept edit" }, blockStyle: { padding: "large", bgImageUrl: "blob:preview" } },
+      { id: "hero", content: { headline: "Kept edit" }, blockStyle: {
+        padding: "large", marginTop: 24, bgImageUrl: "blob:preview", bgType: "image",
+        bgImageObjectPath: "/objects/old-image",
+      } },
       { id: "about", content: { heading: "Kept too" } },
     ];
-    const result = restoreSectionBlockStylePreview(latest, "hero", "blob:preview", { padding: "small", bgColor: "#fff" });
+    const result = restoreSectionBlockStylePreview(latest, "hero", "blob:preview", {
+      padding: "small", bgColor: "#fff", bgImageUrl: "/old-image", bgType: "image",
+    });
     expect(result[0].content.headline).toBe("Kept edit");
-    expect(result[0].blockStyle).toEqual({ padding: "small", bgColor: "#fff" });
+    expect(result[0].blockStyle).toEqual({
+      padding: "large", marginTop: 24, bgImageUrl: "/old-image", bgType: "image",
+      bgImageObjectPath: "/objects/old-image",
+    });
     expect(result[1]).toBe(latest[1]);
+  });
+
+  it("does not replace a newer background when an older upload succeeds", async () => {
+    const { completeSectionBlockStyleUpload } = await import("./storageUtils");
+    const latest = [{ id: "hero", blockStyle: { bgImageUrl: "blob:newer", bgType: "image" } }];
+    expect(completeSectionBlockStyleUpload(latest, "hero", "blob:older", {
+      bgImageUrl: "/older-image", bgImageObjectPath: "/objects/older-image",
+    })).toBe(latest);
+  });
+
+  it("updates the target page from its latest sections only", async () => {
+    const { patchWebsitePageSections } = await import("./storageUtils");
+    const pages = [
+      { id: "home", sections: [{ id: "hero", content: { headline: "Latest" } }] },
+      { id: "about", sections: [{ id: "about", content: { body: "Keep" } }] },
+    ];
+    const result = patchWebsitePageSections(pages, "home", sections =>
+      sections.map(section => ({ ...section, content: { ...section.content, imageUrl: "/new-image" } })),
+    );
+    expect(result?.[0].sections[0].content).toEqual({ headline: "Latest", imageUrl: "/new-image" });
+    expect(result?.[1]).toBe(pages[1]);
+  });
+
+  it("ignores pending uploads from a different business session", async () => {
+    const { hasPendingWebsiteAssetUploads } = await import("./storageUtils");
+    const pending = new Set(["3:upload-a", "4:upload-b"]);
+    expect(hasPendingWebsiteAssetUploads(pending, 3)).toBe(true);
+    expect(hasPendingWebsiteAssetUploads(pending, 4)).toBe(true);
+    expect(hasPendingWebsiteAssetUploads(pending, 5)).toBe(false);
   });
 
   it("does not undo a newer background selection when an older upload fails", async () => {
