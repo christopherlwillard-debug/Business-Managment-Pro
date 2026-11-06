@@ -116,6 +116,8 @@ describe("Website Studio page shape validation", () => {
     expect(validatePageSlugs([{ slug: "about", name: { value: "bad" } }]).ok).toBe(false);
     expect(validatePageSlugs([{ slug: "about", id: 12 }]).ok).toBe(false);
     expect(validatePageSlugs([{ slug: "about", sections: {} }]).ok).toBe(false);
+    expect(validatePageSlugs([{ slug: "about", sections: [null] }]).ok).toBe(false);
+    expect(validatePageSlugs([{ slug: "about", sections: [{ type: "hero", content: [] }] }]).ok).toBe(false);
   });
 
   it("accepts valid page metadata and section arrays", () => {
