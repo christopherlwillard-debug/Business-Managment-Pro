@@ -257,3 +257,37 @@ SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals.
 - Source paths and callers were traced; no production payroll rows, session records, or provider credentials were accessed.
 - No tests, TypeScript checks, or runtime authentication exercises were run in this environment. No validation pass is claimed.
 - The audit branch remains isolated from master; no merge, deployment, or production data change was made.
+
+
+## Route Planner map rendering correctness — 2026-11-06
+
+### Finding
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Fix commits | Residual risk |
+|---|---|---|---|---|---|---|
+| RTE-005 | Medium | Route Planner → map pins, initial map center, route optimization, and geocode refresh | The page used truthiness checks (`lat && lng`) in map fitting, initial center selection, and geocoded-stop counts. Valid coordinates containing zero were discarded. `MapFitter` also depended only on the number of geocoded stops, so changing a stop's coordinates without changing that count left the map centered on stale bounds. A separate missing-pin indicator checked latitude only and missed rows with longitude missing. | **Fixed in code; four focused helper regression tests authored, not target-tested** | `52c69ab0`, `a4e62a05`, `a9d2a765`, `cb6d4669`, `a882d717` | UI rendering and Leaflet behavior still need browser validation; no runtime or build check was available. |
+
+### Repair details
+
+- Added shared coordinate validation that accepts valid zero coordinates, rejects null/non-finite/out-of-range coordinates, and provides a stable key based on stop IDs and coordinates.
+- Map fitting now refits when actual coordinates change even if the number of mapped stops remains unchanged.
+- Initial map center and route-optimization geocoded-stop counts now use the same coordinate validation.
+- Map fitting receives the full stop list and filters internally, rather than receiving a list already filtered by truthiness.
+- Missing-pin detection now catches either latitude or longitude being null.
+- Added four regression cases covering zero coordinates, invalid coordinates, same-count coordinate changes, and stable keys.
+
+### Branch and validation
+
+- Rechecked the existing audit branch before editing; six commits had landed since the prior checkpoint, and their Route Planner code/tests and ledger changes were preserved.
+- Re-read Rule 55, the system registry, Route Planner API/schema/UI, and the current audit ledger before this single-system UI repair.
+- No business ownership, record assignment, schema, or financial behavior changed.
+- **No tests, TypeScript checks, builds, or browser tests were executed** because this session has GitHub repository access but no local package runtime. Tests are authored only; no pass is claimed.
+- The branch remains separate from `master`; no merge, deployment, or production data change was made.
+
+### Outstanding higher-priority findings
+
+- `RTE-004`: Route Planner's shared stop records and active-business UI selection need an explicit ownership policy before repair.
+- `STO-001`: Generic presigned uploads need a confirmed authorization and actual object-size/content-type enforcement policy.
+- `SQR-008`: Square's generic client matching must not silently pick an invoice from another business.
+- `SUB-PAY-001` and `SUB-PAY-002`: Payroll payment-date and reversal history defects remain gated because they change financial reporting.
+- `AUTH-001`: OIDC refresh failure classification and refresh-token concurrency remain unresolved.
