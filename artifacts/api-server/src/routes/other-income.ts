@@ -136,8 +136,8 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
     const data = parseOtherIncomeBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
     const ownership = await resolveMutationBusiness(req);
@@ -172,8 +172,8 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
     const scope = await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
@@ -187,9 +187,9 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/void", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = Number(req.params.id);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
