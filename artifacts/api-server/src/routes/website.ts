@@ -1340,7 +1340,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
       return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
     }
     if (parsedCents < configuredCents) {
-      return res.status(400).json({ error: `Custom amount must be at least ${configuredAmount.toFixed(2)}.` });
+      return res.status(400).json({ error: `Custom amount must be at least $${configuredAmount.toFixed(2)}.` });
     }
     amount = parsedCents / 100;
   }
@@ -1447,7 +1447,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     if (!allowCustomAmount) return res.status(400).json({ error: "Custom amount is not allowed." });
     const parsedCents = parseWebsiteMoneyCents(customAmount);
     if (parsedCents === null) return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
-    if (parsedCents < configuredCents) return res.status(400).json({ error: `Minimum deposit is ${configuredAmount.toFixed(2)}.` });
+    if (parsedCents < configuredCents) return res.status(400).json({ error: `Minimum deposit is $${configuredAmount.toFixed(2)}.` });
     amount = parsedCents / 100;
   }
 
