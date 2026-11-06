@@ -158,6 +158,20 @@ describe("Website Studio background image upload state", () => {
     expect(result[1]).toBe(latest[1]);
   });
 
+  it("keeps a background mode change made while the upload was pending", async () => {
+    const { completeSectionBlockStyleUpload, restoreSectionBlockStylePreview } = await import("./storageUtils");
+    const latest = [{ id: "hero", blockStyle: { bgImageUrl: "blob:preview", bgType: "gradient", bgColor: "#123456" } }];
+    expect(completeSectionBlockStyleUpload(latest, "hero", "blob:preview", {
+      bgImageUrl: "/uploaded-image", bgImageObjectPath: "/objects/uploaded-image",
+    })).toBe(latest);
+    const rolledBack = restoreSectionBlockStylePreview(latest, "hero", "blob:preview", {
+      bgImageUrl: "/previous-image", bgType: "image",
+    });
+    expect(rolledBack[0].blockStyle).toEqual({
+      bgImageUrl: "/previous-image", bgType: "gradient", bgColor: "#123456",
+    });
+  });
+
   it("does not replace a newer background when an older upload succeeds", async () => {
     const { completeSectionBlockStyleUpload } = await import("./storageUtils");
     const latest = [{ id: "hero", blockStyle: { bgImageUrl: "blob:newer", bgType: "image" } }];
