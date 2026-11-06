@@ -283,13 +283,15 @@ describe("Website Studio public page list recovery", () => {
         { id: "same", type: "hero", content: {} },
         { id: "same", type: "text", content: {} },
       ] },
+      { id: "page-contact", name: "Contact Two", slug: "contact-two", sections: [] },
     ]);
-    expect(pages).toHaveLength(2);
+    expect(pages).toHaveLength(3);
     expect(pages[0]).toMatchObject({ id: "page-1", name: "about-us", slug: "about-us" });
     expect(pages[0].sections).toEqual([
       { id: "hero-2", type: "hero", enabled: true, order: 1, content: { headline: "Welcome" } },
     ]);
     expect(pages[1].sections?.map(section => (section as { id: string }).id)).toEqual(["same", "same-2"]);
+    expect(pages[2].id).toBe("page-contact-2");
   });
 
   it("filters malformed entries before public route slug lookups", () => {
