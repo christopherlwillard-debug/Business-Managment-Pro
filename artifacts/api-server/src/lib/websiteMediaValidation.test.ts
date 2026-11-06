@@ -129,7 +129,7 @@ describe("Website Studio configuration validation", () => {
   });
 
   it("rejects malformed sections before they can be persisted", () => {
-    for (const value of [null, {}, "bad", [null], [[]], [{ type: "hero", content: {} }], [{ type: "", content: {} }], [{ type: "hero", content: [] }], [{ type: "hero", content: {}, enabled: "yes" }]]) {
+    for (const value of [null, {}, "bad", [null], [[]], [{ type: "hero", content: {} }], [{ type: "", content: {} }], [{ type: "hero", content: [] }], [{ type: "hero", content: {}, enabled: "yes" }], [{ id: 7, type: "hero", content: {} }]]) {
       expect(validateWebsiteSections(value).ok).toBe(false);
     }
   });
