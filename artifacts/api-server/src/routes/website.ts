@@ -79,7 +79,7 @@ export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name
   return { ok: true, name };
 }
 
-type WebsitePageLike = { id?: string; name?: string; slug?: string };
+type WebsitePageLike = { id?: string; name?: string; slug?: string; sections?: unknown[] };
 
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
   ok: false;
