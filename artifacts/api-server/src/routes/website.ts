@@ -5201,75 +5201,7 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   return res.json(template);
 }));
 
-// ── POST /regenerate-section ──────────────────────────────────────────────────
-// Regenerates one section while leaving the rest of the client-side template
-// untouched. The caller supplies the current template as context so the copy
-// remains consistent with the selected business and visual direction.
-router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { sectionType, section, templateContext } = getWebsiteRequestBody(req.body) as {
-    sectionType?: string;
-    section?: { id?: string; type?: string; enabled?: boolean; order?: number; content?: Record<string, unknown> };
-    templateContext?: { name?: string; description?: string; style?: string; brandColor?: string; sections?: unknown[] };
-  };
-  if (!sectionType || !VALID_SECTION_TYPES.includes(sectionType as typeof VALID_SECTION_TYPES[number])) {
-    return res.status(400).json({ error: "A valid sectionType is required." });
-  }
-  if (!section || typeof section !== "object") {
-    return res.status(400).json({ error: "section is required." });
-  }
-
-  const prompt = [
-    "You are refreshing one section of a contractor/business website template.",
-    `Template name: ${templateContext?.name ?? "Business website"}`,
-    `Template description: ${templateContext?.description ?? ""}`,
-    `Visual style: ${templateContext?.style ?? "not specified"}`,
-    `Brand color: ${templateContext?.brandColor ?? ""}`,
-    `All section types in the template: ${JSON.stringify(
-      Array.isArray(templateContext?.sections)
-        ? templateContext.sections.map((s: any) => s?.type).filter(Boolean)
-        : [],
-    )}`,
-    "",
-    `Regenerate ONLY the "${sectionType}" section.`,
-    "Return one JSON object with exactly: { id, type, enabled, order, content }.",
-    `The type MUST be "${sectionType}". Keep the content schema appropriate for this section type, with specific fresh copy (not placeholders).`,
-    `Current section to improve: ${JSON.stringify(section)}`,
-    "Do not return markdown, an array, or any other text.",
-  ].join("\n");
-
-  const completion = await openai.chat.completions.create({
-    model: BUILDPRO_AI_MINI_MODEL,
-    messages: [
-      { role: "system", content: "Return ONLY one valid JSON section object. No markdown or code fences." },
-      { role: "user", content: prompt },
-    ],
-    max_tokens: 1200,
-    temperature: 0.9,
-  });
-  const raw = (completion.choices[0]?.message?.content ?? "").trim();
-  let replacement: Record<string, unknown> | null = null;
-  try {
-    replacement = JSON.parse(raw);
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      try { replacement = JSON.parse(match[0]); } catch { /* handled below */ }
-    }
-  }
-  if (!replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
-    return res.status(422).json({ error: "AI returned an invalid section. Please try again." });
-  }
-  if (replacement.type !== sectionType) replacement.type = sectionType;
-  replacement.id = section.id ?? replacement.id ?? sectionType;
-  replacement.enabled = typeof replacement.enabled === "boolean" ? replacement.enabled : section.enabled !== false;
-  replacement.order = typeof replacement.order === "number" ? replacement.order : section.order ?? 0;
-  replacement.content = replacement.content && typeof replacement.content === "object" && !Array.isArray(replacement.content)
-    ? replacement.content
-    : {};
-  return res.json(replacement);
-}));
-
-// ── POST /generate-from-profile ──────────────────────────────────────────────
+// The sole /regenerate-section handler is registered near the end of this file.\n// ── POST /generate-from-profile ──────────────────────────────────────────────
 // M20: AI Website Generator — one-click full site generation from business data.
 // Streams server-sent events so the client can show meaningful progress steps.
 //
