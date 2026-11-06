@@ -144,6 +144,35 @@ export function getWebsitePageList(value: unknown): WebsitePageLike[] {
   );
 }
 
+/** Filter persisted section data before public routes inspect nested content. */
+export function getWebsiteSectionList(value: unknown): Array<{
+  id?: string;
+  type: string;
+  enabled?: boolean;
+  content: Record<string, unknown>;
+  blockStyle?: Record<string, unknown>;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const section = item as Record<string, unknown>;
+    if (typeof section.type !== "string" || !section.type.trim()) return [];
+    const content = section.content && typeof section.content === "object" && !Array.isArray(section.content)
+      ? section.content as Record<string, unknown>
+      : {};
+    const blockStyle = section.blockStyle && typeof section.blockStyle === "object" && !Array.isArray(section.blockStyle)
+      ? section.blockStyle as Record<string, unknown>
+      : undefined;
+    return [{
+      ...(typeof section.id === "string" ? { id: section.id } : {}),
+      type: section.type,
+      ...(typeof section.enabled === "boolean" ? { enabled: section.enabled } : {}),
+      content,
+      ...(blockStyle ? { blockStyle } : {}),
+    }];
+  });
+}
+
 /** Return only normalized public page slugs before placing them in sitemap URLs. */
 export function getWebsiteSitemapPages(value: unknown): Array<{ slug: string; name: string }> {
   return getWebsitePageList(value).flatMap(page => {
@@ -522,7 +551,7 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const sections = (config?.sections ?? []) as SectionRow[];
+  const sections = getWebsiteSectionList(config?.sections) as SectionRow[];
   const settings = (config?.settings ?? {}) as Record<string, unknown>;
 
   // ── 3. Extract from sections ───────────────────────────────────────────────
@@ -811,7 +840,7 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config.sections);
   const aboutSection = sections.find(s => s.type === "about");
   const photoObjectPath = aboutSection?.content?.photoObjectPath as string | undefined;
   if (!isWebsiteStoredObjectPath(photoObjectPath, "/objects/uploads/website-about-photos/")) {
@@ -1160,7 +1189,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
       .select({ sections: websiteConfigsTable.sections })
       .from(websiteConfigsTable)
       .where(eq(websiteConfigsTable.businessId, biz.id));
-    const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
+    const sections = getWebsiteSectionList(config?.sections);
     const contactSection = sections.find(s => s.type === "contact");
     const notifEmail = contactSection?.content?.notificationEmail as string | undefined;
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -2516,7 +2545,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
 
   const expectedObjectPath = `/objects/uploads/website-section-bgs/${bgUuid}`;
-  const sections = config.sections as Array<{ blockStyle?: { bgImageObjectPath?: string } }>;
+  const sections = getWebsiteSectionList(config.sections);
   const found = sections.some(s => s.blockStyle?.bgImageObjectPath === expectedObjectPath);
   if (!found) return res.status(404).json({ error: "Image not found" });
 
@@ -2552,7 +2581,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
 
   const expectedObjectPath = `/objects/uploads/website-column-images/${imgUuid}`;
-  const sections = config.sections as Array<{ type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config.sections);
   const found = sections
     .filter(s => s.type === "columns")
     .some(s => {
@@ -3064,7 +3093,7 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
 
   const locations: Array<{ sectionId: string; sectionType: string }> = [];
   for (const config of configs) {
-    const sections = config.sections as Array<{ id: string; type: string; content: unknown }>;
+    const sections = getWebsiteSectionList(config.sections);
     if (Array.isArray(sections)) {
       for (const section of sections) {
         if (JSON.stringify(section.content ?? {}).includes(item.url)) {
