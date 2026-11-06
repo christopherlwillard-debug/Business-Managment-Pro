@@ -155,3 +155,30 @@ describe("Website Studio media reference protection", () => {
     expect(countWebsiteMediaUrlReferences({ url: "/media/1" }, "")).toBe(0);
   });
 });
+
+describe("saved Website Studio section validation", () => {
+  it("accepts and normalizes valid saved sections", () => {
+    expect(validateSavedWebsiteSection({
+      name: "  Hero  ", sectionType: "hero", content: { headline: "Welcome" }, blockStyle: null,
+    })).toEqual({
+      ok: true, section: { name: "Hero", sectionType: "hero", content: { headline: "Welcome" }, blockStyle: null },
+    });
+  });
+
+  it("rejects malformed names, types, content, and styles", () => {
+    for (const value of [
+      null, [], {}, { name: {}, sectionType: "hero", content: {} },
+      { name: "x".repeat(256), sectionType: "hero", content: {} },
+      { name: "Hero", sectionType: {}, content: {} },
+      { name: "Hero", sectionType: "hero", content: [] },
+      { name: "Hero", sectionType: "hero", content: {}, blockStyle: [] },
+    ]) expect(validateSavedWebsiteSection(value).ok).toBe(false);
+  });
+
+  it("accepts only positive safe database IDs", () => {
+    expect(parsePositiveDatabaseId("12")).toBe(12);
+    for (const value of ["12junk", "1.5", 0, -1, Number.MAX_SAFE_INTEGER + 1, null]) {
+      expect(parsePositiveDatabaseId(value)).toBe(null);
+    }
+  });
+});
