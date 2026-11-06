@@ -140,3 +140,11 @@ export function patchWebsitePageSectionContent<
     };
   });
 }
+
+/** Persist the complete custom-page collection, including an explicit empty list after the last page is deleted. */
+export function withWebsitePageList<T extends Record<string, unknown>>(
+  settings: T,
+  pages: unknown[],
+): T & { pages: unknown[] } {
+  return { ...settings, pages };
+}
