@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable } from "@workspace/db/schema";
+import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable, mfhClientPricingTable, productionPriceOverridesTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
 import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import {
@@ -279,12 +279,22 @@ router.get("/:id/link-counts", async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
     const scope = await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
-    const [jobs, invoices, estimates] = await Promise.all([
+    const [jobs, invoices, estimates, billingProfiles, mfhPricing, productionPricing] = await Promise.all([
       db.select({ id: jobsTable.id }).from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))),
       db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))),
       db.select({ id: estimatesTable.id }).from(estimatesTable).where(and(eq(estimatesTable.clientId, id), scopedOwnerPredicate(estimatesTable, scope))),
+      db.select({ id: clientBillingProfilesTable.id }).from(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
+      db.select({ id: mfhClientPricingTable.id }).from(mfhClientPricingTable).where(eq(mfhClientPricingTable.clientId, id)),
+      db.select({ id: productionPriceOverridesTable.id }).from(productionPriceOverridesTable).where(eq(productionPriceOverridesTable.clientId, id)),
     ]);
-    res.json({ jobCount: jobs.length, invoiceCount: invoices.length, estimateCount: estimates.length });
+    res.json({
+      jobCount: jobs.length,
+      invoiceCount: invoices.length,
+      estimateCount: estimates.length,
+      billingProfileCount: billingProfiles.length,
+      mfhPricingCount: mfhPricing.length,
+      productionPricingCount: productionPricing.length,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch link counts" });
@@ -296,20 +306,53 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const scope = res.locals.clientBusinessScope;
     if (!scope) return res.status(400).json({ error: "Client business scope is required" });
-    // Keep related records in the same business boundary as the client. The
-    // final parent DELETE is also scoped to protect against a concurrent reassignment.
-    await Promise.all([
-      db.update(prospectsTable).set({ clientId: null }).where(and(eq(prospectsTable.clientId, id), mutationBusinessPredicate(prospectsTable, scope))),
-      db.update(estimatesTable).set({ clientId: null }).where(and(eq(estimatesTable.clientId, id), mutationBusinessPredicate(estimatesTable, scope))),
-      db.update(invoicesTable).set({ clientId: null }).where(and(eq(invoicesTable.clientId, id), mutationBusinessPredicate(invoicesTable, scope))),
-      db.update(jobsTable).set({ clientId: null }).where(and(eq(jobsTable.clientId, id), mutationBusinessPredicate(jobsTable, scope))),
-      // Billing profiles are client-owned and are removed with their client.
-      db.delete(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
-    ]);
-    const [deleted] = await db.delete(clientsTable)
-      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
-      .returning();
-    if (!deleted) return res.status(404).json({ error: "Client not found" });
+    // Lock the owner row while checking client-specific pricing. These rows
+    // cascade on client deletion, so a simple preflight outside the transaction
+    // could race with a concurrent pricing write and silently destroy settings.
+    const result = await db.transaction(async tx => {
+      const [lockedClient] = await tx.select().from(clientsTable)
+        .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
+        .for("update");
+      if (!lockedClient) return { status: "not_found" as const };
+
+      const billingProfiles = await tx.select({ id: clientBillingProfilesTable.id })
+        .from(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id));
+      const mfhPricing = await tx.select({ id: mfhClientPricingTable.id })
+        .from(mfhClientPricingTable).where(eq(mfhClientPricingTable.clientId, id));
+      const productionPricing = await tx.select({ id: productionPriceOverridesTable.id })
+        .from(productionPriceOverridesTable).where(eq(productionPriceOverridesTable.clientId, id));
+
+      if (billingProfiles.length || mfhPricing.length || productionPricing.length) {
+        return {
+          status: "blocked" as const,
+          billingProfileCount: billingProfiles.length,
+          mfhPricingCount: mfhPricing.length,
+          productionPricingCount: productionPricing.length,
+        };
+      }
+
+      // Keep linked operational/financial records in the same business boundary.
+      await Promise.all([
+        tx.update(prospectsTable).set({ clientId: null }).where(and(eq(prospectsTable.clientId, id), mutationBusinessPredicate(prospectsTable, scope))),
+        tx.update(estimatesTable).set({ clientId: null }).where(and(eq(estimatesTable.clientId, id), mutationBusinessPredicate(estimatesTable, scope))),
+        tx.update(invoicesTable).set({ clientId: null }).where(and(eq(invoicesTable.clientId, id), mutationBusinessPredicate(invoicesTable, scope))),
+        tx.update(jobsTable).set({ clientId: null }).where(and(eq(jobsTable.clientId, id), mutationBusinessPredicate(jobsTable, scope))),
+      ]);
+      const [deleted] = await tx.delete(clientsTable)
+        .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
+        .returning();
+      return deleted ? { status: "deleted" as const } : { status: "not_found" as const };
+    });
+
+    if (result.status === "blocked") {
+      return res.status(409).json({
+        error: "This client has saved billing or manufacturer pricing. Remove or transfer those settings before deleting the client.",
+        billingProfileCount: result.billingProfileCount,
+        mfhPricingCount: result.mfhPricingCount,
+        productionPricingCount: result.productionPricingCount,
+      });
+    }
+    if (result.status === "not_found") return res.status(404).json({ error: "Client not found" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
