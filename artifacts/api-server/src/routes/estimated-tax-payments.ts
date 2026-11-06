@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable, settingsTable } from "@workspace/db";
-import { eq, and, gte, lte, sum } from "drizzle-orm";
+import { eq, and, gte, lte, sum, or, isNull } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
-import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, mutationBusinessPredicate, type BusinessScope } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -89,19 +89,33 @@ interface YearTaxData {
   assumptionsUsed: ReturnType<typeof getTaxAssumptions>;
 }
 
-async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
+async function computeTaxData(year: number, ytd = false, scope: BusinessScope | null = null): Promise<YearTaxData> {
   const startDate = `${year}-01-01`;
   const today = new Date().toISOString().slice(0, 10);
   const endDate = ytd ? (today < `${year}-12-31` ? today : `${year}-12-31`) : `${year}-12-31`;
+  const invoiceOwner = scope
+    ? or(eq(invoicesTable.businessId, scope.id), and(isNull(invoicesTable.businessId), eq(invoicesTable.businessLine, scope.slug)))
+    : undefined;
+  const expenseOwner = scope
+    ? or(eq(expensesTable.businessId, scope.id), and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, scope.slug)))
+    : undefined;
+  const otherIncomeOwner = scope
+    ? or(
+        eq(otherIncomeTable.businessId, String(scope.id)),
+        eq(otherIncomeTable.businessId, scope.slug),
+        and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+      )
+    : undefined;
+  const mileageOwner = scope ? eq(mileageLogsTable.businessId, scope.id) : undefined;
 
   const [invoicesResult, expensesResult, mileageResult, otherIncomeResult] = await Promise.all([
-    db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-    db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+    db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), invoiceOwner)),
+    db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), expenseOwner)),
     db.select({ date: mileageLogsTable.date, miles: mileageLogsTable.miles, classification: mileageLogsTable.classification }).from(mileageLogsTable).where(
-      and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+      and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageOwner)
     ),
     db.select({ total: sum(otherIncomeTable.amount) }).from(otherIncomeTable).where(
-      and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))
+      and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), otherIncomeOwner)
     ),
   ]);
   const [settings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
@@ -125,13 +139,22 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
 
 // GET /api/estimated-tax-payments?year=YYYY
 router.get("/", wrapAsync(async (req, res) => {
-  const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+  const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+  if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) {
+    res.status(400).json({ error: "A valid tax year is required" });
+    return;
+  }
+  const year = rawYear;
+  const scope = await requestedBusiness(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
   const currentCalendarYear = new Date().getFullYear();
+  const paymentConditions = [eq(estimatedTaxPaymentsTable.year, year)];
+  if (scope) paymentConditions.push(eq(estimatedTaxPaymentsTable.businessId, scope.id));
   const [payments, currentYearData, priorYearData] = await Promise.all([
-    db.select().from(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.year, year)),
-    computeTaxData(year, year === currentCalendarYear),
-    computeTaxData(year - 1),
+    db.select().from(estimatedTaxPaymentsTable).where(and(...paymentConditions)),
+    computeTaxData(year, year === currentCalendarYear, scope),
+    computeTaxData(year - 1, false, scope),
   ]);
 
   const { fullYearFederalTax, fullYearKyTax } = currentYearData;
