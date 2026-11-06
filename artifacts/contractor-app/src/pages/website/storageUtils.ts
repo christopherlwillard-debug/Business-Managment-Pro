@@ -172,3 +172,28 @@ export function getPublicSiteQueryKey(
 ): readonly ["public-site", string, string, boolean] {
   return ["public-site", slug ?? `__host__${host}`, pageSlug ?? "__home__", isDraftPreview];
 }
+
+/** Accept only safe website navigation destinations from persisted editor content. */
+export function getSafeWebsiteHref(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const href = value.trim();
+  if (!href || href.includes("\\") || href.includes("\n") || href.includes("\r")) return null;
+  if (href.startsWith("#") || (href.startsWith("/") && !href.startsWith("//"))) return href;
+  if (/^(https?:|mailto:|tel:)/i.test(href)) return href;
+  return null;
+}
+
+/** Ignore malformed persisted navigation entries and supply stable fallback keys. */
+export function getSafePublicNavLinks(value: unknown): Array<{ id: string; label: string; href: string }> {
+  if (!Array.isArray(value)) return [];
+  const links: Array<{ id: string; label: string; href: string }> = [];
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const link = item as Record<string, unknown>;
+    if (typeof link.label !== "string" || !link.label.trim()) return;
+    const href = getSafeWebsiteHref(link.href);
+    if (!href) return;
+    links.push({ id: typeof link.id === "string" && link.id.trim() ? link.id : `nav-link-${index}`, label: link.label, href });
+  });
+  return links;
+}
