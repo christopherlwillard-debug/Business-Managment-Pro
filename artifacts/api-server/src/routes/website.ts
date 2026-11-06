@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, sho
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { truncateWebsiteMediaFilename, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -3771,6 +3771,14 @@ router.post("/score", wrapAsync(async (req, res) => {
     settings?: Record<string, unknown>;
   };
 
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
+
   // If sections/settings not provided in body, load from DB
   let finalSections = sections;
   let finalSettings = settings;
@@ -3919,6 +3927,14 @@ router.post("/check-accessibility", wrapAsync(async (req, res) => {
   let finalSections = sections;
   let finalSettings = settings;
 
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
+
   if (!finalSections || !finalSettings) {
     const [config] = await db
       .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
@@ -4050,6 +4066,14 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
   const { sections, settings } = req.body as { sections?: SectionInput[]; settings?: Record<string, unknown> };
   let finalSections = sections;
   let finalSettings = settings;
+
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
 
   if (!finalSections || !finalSettings) {
     const [config] = await db
