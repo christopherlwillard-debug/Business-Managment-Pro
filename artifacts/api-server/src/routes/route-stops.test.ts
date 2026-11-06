@@ -17,12 +17,13 @@ const h = vi.hoisted(() => ({
   jobsTable: {
     id: "jobs.id",
     clientId: "jobs.client_id",
+    businessLine: "jobs.business_line",
     sqFt: "jobs.sq_ft",
     coats: "jobs.coats",
   },
   clientsTable: { id: "clients.id", name: "clients.name" },
   prospectsTable: { id: "prospects.id", contactName: "prospects.contact_name", address: "prospects.address" },
-  jobs: [] as Array<{ id: number; clientId: number | null }>,
+  jobs: [] as Array<{ id: number; clientId: number | null; businessLine?: string | null }>,
   stops: [] as Array<{ id: number; clientId: number | null; jobId: number | null; scheduledDate?: string | null; sortOrder?: number | null; lat?: number | null; lng?: number | null; address?: string; createdAt: Date }>,
   blockUpdates: [] as Array<{ values: any; condition: any }>,
   transactionCalls: 0,
@@ -75,6 +76,7 @@ vi.mock("@workspace/db", () => {
               : [];
           const fieldFor = (column: unknown) =>
             column === h.jobsTable.id || column === h.routeStopsTable.id ? "id"
+              : column === h.jobsTable.businessLine ? "businessLine"
               : column === h.routeStopsTable.clientId ? "clientId"
                 : column === h.routeStopsTable.jobId ? "jobId"
                   : column === h.routeStopsTable.scheduledDate ? "scheduledDate"
@@ -150,9 +152,9 @@ const originalStop = {
 
 beforeEach(() => {
   h.jobs = [
-    { id: 100, clientId: 10 },
-    { id: 200, clientId: 11 },
-    { id: 201, clientId: 10 },
+    { id: 100, clientId: 10, businessLine: "general_contracting" },
+    { id: 200, clientId: 11, businessLine: "asphalt_sealing" },
+    { id: 201, clientId: 10, businessLine: "general_contracting" },
   ];
   h.stops = [{ ...originalStop }];
   h.insertedStop = { id: 6, clientId: 10, jobId: 201, createdAt: new Date("2026-11-02T12:00:00.000Z") };
@@ -180,6 +182,18 @@ describe("route stop job/client relationship integrity", () => {
     expect(h.insertValues).toBeNull();
   });
 
+  it("rejects a job link from a different active business", async () => {
+    const response = await request(app).post("/").send({
+      address: "123 Main St",
+      jobId: 100,
+      businessLine: "asphalt_sealing",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("does not belong to the linked client");
+    expect(h.insertValues).toBeNull();
+  });
+
   it("allows a job-only route stop when the referenced job exists", async () => {
     const response = await request(app).post("/").send({
       address: "123 Main St",
@@ -195,6 +209,17 @@ describe("route stop job/client relationship integrity", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toContain("does not belong to the linked client");
+    expect(h.updateValues).toBeNull();
+  });
+
+  it("rejects reassigning a stop to a job from another active business", async () => {
+    const response = await request(app).put("/5").send({
+      jobId: 200,
+      clientId: 11,
+      businessLine: "general_contracting",
+    });
+
+    expect(response.status).toBe(400);
     expect(h.updateValues).toBeNull();
   });
 
