@@ -1,12 +1,23 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
-import { eq, and, or, isNull, getTableColumns } from "drizzle-orm";
+import { eq, and, getTableColumns } from "drizzle-orm";
 import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
 const FREQUENCIES = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+
+/** Reject partial/unsafe business IDs instead of silently widening a list to all businesses. */
+export function parseRecurringExpenseBusinessId(value: unknown): number | null | undefined {
+  if (value == null || value === "") return null;
+  const text = typeof value === "number" && Number.isSafeInteger(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  if (!/^\\d+$/.test(text)) return undefined;
+  const id = Number(text);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
 
 export function localDateStr(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -37,15 +48,14 @@ function formatTemplate(t: typeof recurringExpensesTable.$inferSelect, jobTitle?
 router.get("/", async (req, res) => {
   try {
     const { businessId } = req.query;
-    const rawBizId = businessId != null ? parseInt(businessId as string) : NaN;
-    if (businessId != null && isNaN(rawBizId)) {
-      res.status(400).json({ error: "businessId must be a number" });
+    const bizId = parseRecurringExpenseBusinessId(businessId);
+    if (bizId === undefined) {
+      res.status(400).json({ error: "businessId must be a positive integer" });
       return;
     }
-    const bizId = !isNaN(rawBizId) ? rawBizId : null;
-    const condition = bizId != null
-      ? or(eq(recurringExpensesTable.businessId, bizId), isNull(recurringExpensesTable.businessId))
-      : undefined;
+    // Recurring templates have no legacy businessLine column, so null-owned
+    // records cannot safely be attributed to a selected business.
+    const condition = bizId != null ? eq(recurringExpensesTable.businessId, bizId) : undefined;
     const rows = await db
       .select({ ...getTableColumns(recurringExpensesTable), jobTitle: jobsTable.title })
       .from(recurringExpensesTable)
