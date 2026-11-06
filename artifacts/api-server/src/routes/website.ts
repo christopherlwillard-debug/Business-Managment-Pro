@@ -5086,6 +5086,8 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   }
   if (!template.name || typeof template.name !== "string" || !(template.name as string).trim()) {
     template.name = "AI Template";
+  } else {
+    template.name = (template.name as string).trim().slice(0, 200);
   }
   if (!template.description || typeof template.description !== "string") {
     template.description = "";
