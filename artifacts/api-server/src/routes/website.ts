@@ -79,8 +79,9 @@ export function normalizePageSlug(value: string): string {
 
 /** Returns null when no folder was selected, or undefined for an invalid ID. */
 export function parseWebsiteMediaFolderId(value: unknown): number | null | undefined {
-  if (value === undefined || value === null || String(value).trim() === "") return null;
-  const id = Number(value);
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  if (typeof value !== "string" || !/^\\d+$/.test(value.trim())) return undefined;
+  const id = Number(value.trim());
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
