@@ -38,7 +38,7 @@ vi.mock("drizzle-orm", () => {
   };
 });
 
-const { default: squareWebhookRouter, calculateSquareInvoicePayment, squareInvoiceBusinessCondition } = await import("./square-webhook");
+const { default: squareWebhookRouter, calculateSquareInvoicePayment, squareInvoiceBusinessCondition, chooseUniqueSquareClient } = await import("./square-webhook");
 const app = express();
 app.use(express.json({
   verify: (req, _res, buffer) => {
@@ -207,6 +207,21 @@ describe("Square fallback invoice business matching", () => {
     expect(squareInvoiceBusinessCondition(2, null)).toEqual({
       op: "eq",
       args: ["invoice.businessId", 2],
+    });
+  });
+});
+
+
+describe("Square client identity matching", () => {
+  it("accepts a single exact client match", () => {
+    const client = { id: 3 };
+    expect(chooseUniqueSquareClient([client])).toEqual({ client, ambiguous: false });
+  });
+
+  it("does not arbitrarily select one of multiple matching clients", () => {
+    expect(chooseUniqueSquareClient([{ id: 3 }, { id: 8 }])).toEqual({
+      client: undefined,
+      ambiguous: true,
     });
   });
 });
