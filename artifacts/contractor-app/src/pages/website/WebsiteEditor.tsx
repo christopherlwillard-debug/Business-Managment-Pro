@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { cancelWebsiteRenameBlurCommit, completeSectionBlockStyleUpload, consumeWebsiteRenameBlurCommit, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { cancelWebsiteRenameBlurCommit, completeSectionBlockStyleUpload, consumeWebsiteRenameBlurCommit, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, removeWebsitePageAndNavigationLinks, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1863,6 +1863,7 @@ function WebsiteEditor() {
     setGeneratingStep("");
     setShowAIWizard(false);
     setShowGeneratorScreen(false);
+    setDeletePageConfirm(null);
     setBgUploading({});
     setLogoUploading(false);
     setFaviconUploading(false);
@@ -4626,19 +4627,18 @@ function WebsiteEditor() {
   }
 
   function deletePage(pageId: string) {
-    if (pageId === "home") return;
+    if (pageId === "home" || !pagesRef.current.some(page => page.id === pageId)) return;
     setDeletePageConfirm(pageId);
   }
 
   function doDeletePage(pageId: string) {
+    if (pageId === "home" || !pagesRef.current.some(page => page.id === pageId)) {
+      setDeletePageConfirm(null);
+      return;
+    }
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalPages(prev => {
-      const filtered = (prev ?? pages).filter(p => p.id !== pageId);
-      return patchHomeHeaderNavLinks(filtered, links =>
-        links.filter(link => (link as any).pageId !== pageId)
-      );
-    });
+    setLocalPages(prev => removeWebsitePageAndNavigationLinks(prev ?? pages, pageId));
     if (activePageId === pageId) {
       setActivePageId("home");
       setActiveSection(null);
@@ -8835,6 +8835,32 @@ function WebsiteEditor() {
         onApply={handleRefreshApply}
       />
     )}
+
+    <AlertDialog
+      open={deletePageConfirm !== null}
+      onOpenChange={open => {
+        if (!open) setDeletePageConfirm(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete page?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {pages.find(page => page.id === deletePageConfirm)?.name ?? "This page"} will be removed from your website, along with its navigation link. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (deletePageConfirm) doDeletePage(deletePageConfirm);
+            }}
+          >
+            Delete page
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     {saveSectionTarget && (
       <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50">
