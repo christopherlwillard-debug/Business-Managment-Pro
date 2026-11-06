@@ -321,7 +321,7 @@ export function getSafeWebsitePaymentReturnUrl(value: unknown, customDomainValue
 /** Preserve failed checkout attempts instead of leaving deposit submissions stuck as pending. */
 export async function createWebsiteDepositCheckout<T>(
   createCheckout: () => Promise<T>,
-  markSubmissionFailed: () => Promise<unknown>,
+  markSubmissionFailed: () => PromiseLike<unknown>,
 ): Promise<T> {
   try {
     return await createCheckout();
