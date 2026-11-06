@@ -73,6 +73,11 @@ export interface EnhancementOptions {
  * Generate three size/format variants from a raw upload buffer.
  * Auto-rotates from EXIF so all uploaded variants are correctly oriented.
  */
+/** Animated GIFs must keep their original bytes; a default Sharp conversion would flatten them to one frame. */
+export function shouldGenerateWebsiteMediaVariants(mimetype: string): boolean {
+  return mimetype.startsWith("image/") && mimetype !== "image/svg+xml" && mimetype !== "image/gif";
+}
+
 export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVariants> {
   // Always fix EXIF orientation first so all variants are upright.
   const base = await sharp(inputBuffer).rotate().toBuffer();
