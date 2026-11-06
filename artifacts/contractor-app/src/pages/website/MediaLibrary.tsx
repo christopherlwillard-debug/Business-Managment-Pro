@@ -5,6 +5,7 @@ import {
   Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw, MapPin,
   Sparkles, Wand2,
 } from "lucide-react";
+import { partitionWebsiteMediaFiles } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -206,15 +207,23 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   // ── Upload / Replace ──────────────────────────────────────────────────────
 
   async function handleUpload(files: FileList | File[]) {
-    const fileArr = Array.from(files).filter(f => f.type.startsWith("image/"));
-    if (!fileArr.length) return;
+    const { uploadable: fileArr, unsupported } = partitionWebsiteMediaFiles(Array.from(files));
+    if (!fileArr.length) {
+      if (unsupported.length) {
+        setOperationNotice({
+          tone: "error",
+          message: `No images uploaded. Unsupported files: ${unsupported.map(file => file.name).join(", ")}.`,
+        });
+      }
+      return;
+    }
     // Keep every file in this batch in the folder selected when upload began,
     // even if the user changes the folder while sequential uploads are running.
     const destinationFolderId = folderFilter;
     setUploading(true);
     setOperationNotice(null);
     const succeeded: string[] = [];
-    const failed: string[] = [];
+    const failed: string[] = unsupported.map(file => `${file.name} (not an image file)`);
     try {
       for (const file of fileArr) {
         const formData = new FormData();
