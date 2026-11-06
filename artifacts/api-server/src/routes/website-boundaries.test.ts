@@ -82,3 +82,17 @@ describe("website data boundaries", () => {
     });
   });
 });
+describe("Website Studio page input validation", () => {
+  it("rejects malformed pages collections instead of silently preserving them", () => {
+    expect(validatePageSlugs({ slug: "about" }).ok).toBe(false);
+    expect(validatePageSlugs("about")).toMatchObject({ ok: false, error: "Pages must be provided as a list." });
+    expect(validatePageSlugs([null])).toMatchObject({ ok: false, error: "Every page must be a valid page object." });
+    expect(validatePageSlugs([["about"]])).toMatchObject({ ok: false, error: "Every page must be a valid page object." });
+  });
+
+  it("continues to accept omitted pages and an empty page list", () => {
+    expect(validatePageSlugs(undefined)).toEqual({ ok: true, pages: [] });
+    expect(validatePageSlugs(null)).toEqual({ ok: true, pages: [] });
+    expect(validatePageSlugs([])).toEqual({ ok: true, pages: [] });
+  });
+});
