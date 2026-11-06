@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, isNull, or } from "drizzle-orm";
 import { jobsTable } from "@workspace/db/schema";
-import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -83,6 +83,7 @@ router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, businessLine } = req.query as { startDate?: string; endDate?: string; businessLine?: string };
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const conditions: any[] = [isNull(otherIncomeTable.voidedAt)];
     if (startDate && endDate) {
       conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
@@ -172,6 +173,7 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [existing] = await db.select().from(otherIncomeTable).where(eq(otherIncomeTable.id, id));
     if (!existing || !belongsToBusiness(existing, scope)) { res.status(404).json({ error: "Not found" }); return; }
     return res.status(409).json({ error: "Posted income cannot be deleted. Use the void action to preserve financial history." });
