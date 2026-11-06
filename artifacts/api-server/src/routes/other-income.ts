@@ -91,6 +91,7 @@ router.get("/", async (req, res) => {
     if (scope) {
       conditions.push(or(
         eq(otherIncomeTable.businessId, String(scope.id)),
+        eq(otherIncomeTable.businessId, scope.slug),
         and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
       ));
     } else if (businessLine) {
