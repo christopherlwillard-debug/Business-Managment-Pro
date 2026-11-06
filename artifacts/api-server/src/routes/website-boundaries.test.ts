@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -13,6 +13,31 @@ describe("Website Studio route registration", () => {
 });
 
 
+
+describe("Website Studio public contact form boundaries", () => {
+  it("accepts only bounded text values and trims whitespace", () => {
+    expect(getWebsiteContactText("  Customer  ")).toBe("Customer");
+    expect(getWebsiteContactText({ value: "bad" })).toBeUndefined();
+    expect(getWebsiteContactText("x".repeat(120), 100)).toHaveLength(100);
+    expect(getWebsiteContactText("   ")).toBeUndefined();
+  });
+
+  it("filters malformed custom fields and caps entry count, labels, and values", () => {
+    const manyFields = Object.fromEntries(Array.from({ length: 35 }, (_, index) => ["Field " + index, "value"]));
+    const fields = getSafeWebsiteSubmissionFields({
+      "  Name  ": "  Chris  ",
+      ["x".repeat(120)]: "label too long",
+      Invalid: { nested: true },
+      Empty: "   ",
+      ...manyFields,
+    });
+    expect(fields.Name).toBe("Chris");
+    expect(fields.Invalid).toBeUndefined();
+    expect(fields.Empty).toBeUndefined();
+    expect(Object.keys(fields).length).toBeLessThanOrEqual(30);
+    expect(Object.values(fields).every(value => typeof value === "string" && value.length <= 5000)).toBe(true);
+  });
+});
 
 describe("Website Studio contact email escaping", () => {
   it("escapes untrusted field labels and values before HTML email rendering", () => {
