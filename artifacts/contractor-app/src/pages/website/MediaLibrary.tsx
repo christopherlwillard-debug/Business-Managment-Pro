@@ -167,11 +167,11 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     enabled: !!businessId,
   });
 
-  const { data: usageDetails, isLoading: isLoadingDetails } = useQuery<{ locations: UsageLocation[]; total: number }>({
+  const { data: usageDetails, isLoading: isLoadingDetails, isError: usageDetailsFailed } = useQuery<{ locations: UsageLocation[]; total: number }>({
     queryKey: ["website-media-usage-details", businessId, detailItem?.id],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/media/${detailItem!.id}/usage-details?businessId=${businessId}`, { credentials: "include" });
-      if (!res.ok) return { locations: [], total: 0 };
+      if (!res.ok) throw new Error("Could not verify image usage.");
       return res.json();
     },
     enabled: !!detailItem && mode === "browse" && !!businessId,
@@ -761,6 +761,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               item={detailItem}
               businessId={businessId}
               usageDetails={usageDetails ?? null}
+              usageDetailsFailed={usageDetailsFailed}
               isLoadingDetails={isLoadingDetails}
               folders={folders}
               replacing={replacing}
@@ -1052,13 +1053,14 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
   );
 }
 
-function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders, replacing,
+function DetailPanel({ item, businessId, usageDetails, usageDetailsFailed, isLoadingDetails, folders, replacing,
   detailRenaming, detailRenameValue, isDeleting, isDeleteConfirm,
   onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
   onMoveToFolder, onDeleteRequest, onDeleteCancel, onDelete, onReplace, onEnhanceDone }: {
   item: MediaItem;
   businessId: number;
   usageDetails: { locations: UsageLocation[]; total: number } | null;
+  usageDetailsFailed: boolean;
   isLoadingDetails: boolean;
   folders: MediaFolder[];
   replacing: boolean;
@@ -1233,6 +1235,8 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
               <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
               <span className="text-[11px] text-muted-foreground">Checking…</span>
             </div>
+          ) : usageDetailsFailed ? (
+            <p className="text-[11px] text-destructive">Could not verify image usage. Try again before deleting.</p>
           ) : !usageDetails || usageDetails.total === 0 ? (
             <p className="text-[11px] text-muted-foreground italic">Not used on site</p>
           ) : (
