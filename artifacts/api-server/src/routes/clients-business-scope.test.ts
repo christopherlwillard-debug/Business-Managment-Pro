@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
     routeStops: { id: "route_stops.id", clientId: "route_stops.client_id" },
     otherIncome: { id: "other_income.id", clientId: "other_income.client_id" },
     squarePayments: { id: "square_payments.id", clientId: "square_payments.client_id" },
+    mfhClientPricing: { id: "mfh_client_pricing.id", clientId: "mfh_client_pricing.client_id" },
+    productionPriceOverrides: { id: "production_price_overrides.id", clientId: "production_price_overrides.client_id" },
   },
   businesses: [
     { id: 1, slug: "general_contracting" },
@@ -22,6 +24,9 @@ const h = vi.hoisted(() => ({
   client: null as any,
   updatedClient: null as any,
   deletedClient: null as any,
+  billingProfiles: [] as any[],
+  mfhPricing: [] as any[],
+  productionPricing: [] as any[],
   updateConditions: [] as any[],
   deleteConditions: [] as any[],
   updateValues: [] as any[],
@@ -39,6 +44,8 @@ vi.mock("@workspace/db/schema", () => ({
   routeStopsTable: h.tables.routeStops,
   otherIncomeTable: h.tables.otherIncome,
   squarePaymentsTable: h.tables.squarePayments,
+  mfhClientPricingTable: h.tables.mfhClientPricing,
+  productionPriceOverridesTable: h.tables.productionPriceOverrides,
 }));
 
 vi.mock("@workspace/db", () => {
@@ -50,6 +57,7 @@ vi.mock("@workspace/db", () => {
       where(value: any) { condition = value; return chain; },
       limit() { return chain; },
       orderBy() { return chain; },
+      for() { return chain; },
       then(resolve: (value: any) => unknown, reject?: (reason: unknown) => unknown) {
         let rows: any[] = [];
         if (table === h.tables.clients) {
@@ -59,6 +67,12 @@ vi.mock("@workspace/db", () => {
           if (condition?.op === "eq") {
             rows = rows.filter(row => row[condition.column === h.tables.businesses.id ? "id" : "slug"] === condition.value);
           }
+        } else if (table === h.tables.clientBillingProfiles) {
+          rows = h.billingProfiles;
+        } else if (table === h.tables.mfhClientPricing) {
+          rows = h.mfhPricing;
+        } else if (table === h.tables.productionPriceOverrides) {
+          rows = h.productionPricing;
         }
         return Promise.resolve(rows).then(resolve, reject);
       },
@@ -85,11 +99,15 @@ vi.mock("@workspace/db", () => {
     };
   }
 
+  const tx = {
+    select: () => selectChain(),
+    update: (table: any) => mutationChain(table, "update"),
+    delete: (table: any) => mutationChain(table, "delete"),
+  };
   return {
     db: {
-      select: () => selectChain(),
-      update: (table: any) => mutationChain(table, "update"),
-      delete: (table: any) => mutationChain(table, "delete"),
+      ...tx,
+      transaction: async (callback: (transaction: typeof tx) => unknown) => callback(tx),
     },
   };
 });
@@ -137,6 +155,9 @@ beforeEach(() => {
   };
   h.updatedClient = { ...h.client, name: "Updated client" };
   h.deletedClient = { ...h.client };
+  h.billingProfiles = [];
+  h.mfhPricing = [];
+  h.productionPricing = [];
   h.updateConditions.length = 0;
   h.deleteConditions.length = 0;
   h.updateValues.length = 0;
@@ -194,6 +215,17 @@ describe("client mutation business ownership", () => {
 
     expect(response.status).toBe(404);
     expect(h.updateConditions).toHaveLength(0);
+    expect(h.deleteConditions).toHaveLength(0);
+  });
+
+  it("preserves client-specific MFH pricing instead of allowing the FK cascade to erase it", async () => {
+    h.mfhPricing = [{ id: 44 }];
+
+    const response = await request(app).delete("/clients/7?businessId=2");
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ mfhPricingCount: 1 });
+    expect(response.body.error).toContain("saved billing or manufacturer pricing");
     expect(h.deleteConditions).toHaveLength(0);
   });
 });
