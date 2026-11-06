@@ -49,7 +49,7 @@ async function performRefresh(
   session: SessionData,
 ): Promise<RefreshResult> {
   const now = Math.floor(Date.now() / 1000);
-  if (!session.expires_at || now <= session.expires_at) {
+  if (session.expires_at == null || now <= session.expires_at) {
     return { kind: "ok", session };
   }
   if (!session.refresh_token) return { kind: "invalid" };
@@ -106,7 +106,7 @@ async function refreshIfExpired(
   session: SessionData,
 ): Promise<RefreshResult> {
   const now = Math.floor(Date.now() / 1000);
-  if (!session.expires_at || now <= session.expires_at) {
+  if (session.expires_at == null || now <= session.expires_at) {
     return { kind: "ok", session };
   }
 
@@ -156,7 +156,7 @@ export async function authMiddleware(
   }
 
   const now = Math.floor(Date.now() / 1000);
-  req.authSessionState.refreshAttempted = Boolean(session.expires_at && now > session.expires_at);
+  req.authSessionState.refreshAttempted = Boolean(session.expires_at != null && now > session.expires_at);
   const refreshResult = await refreshIfExpired(sid, session);
   req.authSessionState.refreshSucceeded = refreshResult.kind === "ok";
   if (refreshResult.kind === "invalid") {
