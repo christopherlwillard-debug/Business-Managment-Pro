@@ -1324,6 +1324,17 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
+  // Match the public site read boundary: unpublished websites must not accept
+  // contact submissions or create prospects through a directly called API.
+  const [publishedConfig] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(and(
+      eq(websiteConfigsTable.businessId, biz.id),
+      eq(websiteConfigsTable.published, true),
+    ));
+  if (!publishedConfig) return res.status(404).json({ error: "Website not published" });
+
   const { name, phone, email, serviceType, message, fieldValues, labeledFields } = getWebsiteRequestBody(req.body) as {
     name?: string; phone?: string; email?: string; serviceType?: string; message?: string;
     fieldValues?: Record<string, string>;
@@ -1381,11 +1392,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   try {
-    const [config] = await db
-      .select({ sections: websiteConfigsTable.sections })
-      .from(websiteConfigsTable)
-      .where(eq(websiteConfigsTable.businessId, biz.id));
-    const sections = getWebsiteSectionList(config?.sections);
+    const sections = getWebsiteSectionList(publishedConfig.sections);
     const contactSection = sections.find(s => s.type === "contact");
     const notifEmail = contactSection?.content?.notificationEmail as string | undefined;
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
