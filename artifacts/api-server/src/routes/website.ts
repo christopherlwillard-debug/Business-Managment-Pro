@@ -837,7 +837,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const logoObjectPath = settings.logoObjectPath as string | undefined;
   if (!isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
     return res.status(404).json({ error: "No logo" });
@@ -907,11 +907,16 @@ function normalizeHost(raw: string): string {
 // icon, theme colour) so "Add to Home Screen" reflects the business, not BuildPro.
 // They are intentionally public (no auth) and mounted before the /:slug catch-all.
 
-function buildManifest(biz: { name: string; slug: string }, settings: Record<string, unknown>): Record<string, unknown> {
-  const brandColor = (settings.brandColor as string | undefined) ?? "#1a1a2e";
-  const logoUrl = (settings.logoUrl as string | undefined) ?? "";
+export function buildManifest(biz: { name: string; slug: string }, settingsValue: unknown): Record<string, unknown> {
+  const settings = getWebsiteRequestBody(settingsValue);
+  const brandColor = typeof settings.brandColor === "string" && /^#[0-9a-f]{6}$/i.test(settings.brandColor)
+    ? settings.brandColor
+    : "#1a1a2e";
+  const logoUrl = typeof settings.logoUrl === "string" ? settings.logoUrl : "";
+  const isSafeLogoUrl = logoUrl.startsWith("https://") ||
+    (logoUrl.startsWith("/") && !logoUrl.startsWith("//") && !logoUrl.includes("\\\\"));
   const icons: unknown[] = [];
-  if (logoUrl && (logoUrl.startsWith("http") || logoUrl.startsWith("/"))) {
+  if (logoUrl && isSafeLogoUrl) {
     icons.push({ src: logoUrl, sizes: "any", type: "image/png", purpose: "any" });
   }
   // Always include a fallback favicon-sized entry
@@ -956,7 +961,7 @@ publicRouter.get("/by-host/manifest.json", wrapAsync(async (req, res) => {
 
   res.setHeader("Content-Type", "application/manifest+json");
   res.setHeader("Cache-Control", "public, max-age=3600");
-  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+  res.json(buildManifest(biz, getWebsiteRequestBody(config.settings)));
 }));
 
 publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
@@ -977,7 +982,7 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
 
   res.setHeader("Content-Type", "application/manifest+json");
   res.setHeader("Cache-Control", "public, max-age=3600");
-  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+  res.json(buildManifest(biz, getWebsiteRequestBody(config.settings)));
 }));
 
 // ── Sitemap + robots ─────────────────────────────────────────────────────────
@@ -1018,7 +1023,7 @@ publicRouter.get("/by-host/sitemap.xml", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("No site found for this domain");
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const pages = getWebsiteSitemapPages(settings.pages);
   const baseUrl = `https://${host}`;
   res.setHeader("Content-Type", "application/xml");
@@ -1047,7 +1052,7 @@ publicRouter.get("/:slug/sitemap.xml", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("Website not published");
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const pages = getWebsiteSitemapPages(settings.pages);
   const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const baseUrl = customDomain
@@ -1071,7 +1076,7 @@ publicRouter.get("/:slug/robots.txt", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("Website not published");
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const sitemapUrl = customDomain
     ? `https://${customDomain}/sitemap.xml`
@@ -2547,7 +2552,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const faviconObjectPath = settings.faviconObjectPath as string | undefined;
   if (!isWebsiteStoredObjectPath(faviconObjectPath, "/objects/uploads/website-favicons/")) {
     return res.status(404).json({ error: "No favicon" });
