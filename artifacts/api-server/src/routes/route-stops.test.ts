@@ -247,6 +247,14 @@ describe("route stop block splitting", () => {
     expect(h.blockUpdates).toHaveLength(0);
   });
 
+  it("returns a validation error for an empty request instead of a server error", async () => {
+    const response = await request(app).post("/split-blocks");
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/date/i);
+    expect(h.transactionCalls).toBe(0);
+  });
+
   it("assigns all stops for a date inside one transaction", async () => {
     h.stops = [
       { ...originalStop, id: 5, sortOrder: 0 },
