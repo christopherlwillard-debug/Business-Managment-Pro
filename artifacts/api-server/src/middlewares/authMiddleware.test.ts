@@ -107,7 +107,7 @@ describe("OIDC session refresh reliability", () => {
   it("uses a newer session when another process has already rotated the refresh token", async () => {
     const latestSession = {
       ...expiredSession(),
-      access_token: "new-access-token",
+      access_token: "expired-access-token",
       refresh_token: "new-refresh-token",
       expires_at: Math.floor(Date.now() / 1000) + 3600,
     };
