@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteSectionRecordItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, getWebsiteDepositFieldConfig, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteSectionRecordItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getWebsiteContactFieldError, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, getWebsiteDepositFieldConfig, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -36,6 +36,35 @@ describe("Website Studio public contact form boundaries", () => {
     expect(fields.Empty).toBeUndefined();
     expect(Object.keys(fields).length).toBeLessThanOrEqual(30);
     expect(Object.values(fields).every(value => typeof value === "string" && value.length <= 5000)).toBe(true);
+  });
+});
+
+describe("Website Studio public contact field validation", () => {
+  it("requires the default full-name field when legacy forms omit field settings", () => {
+    expect(getWebsiteContactFieldError(undefined, {})).toBe("Full Name is required.");
+    expect(getWebsiteContactFieldError(null, { name: "Chris" })).toBeNull();
+  });
+
+  it("enforces configured required fields using field IDs, not visitor-supplied labels", () => {
+    const fields = [
+      { id: "customer_name", label: "Customer name", type: "text", required: true },
+      { id: "job_type", label: "Job type", type: "dropdown", required: true, options: ["Sealing", "Repair"] },
+    ];
+    expect(getWebsiteContactFieldError(fields, { customer_name: "Chris" })).toBe("Job type is required.");
+    expect(getWebsiteContactFieldError(fields, { customer_name: "Chris", job_type: "Other" }))
+      .toBe("Job type must be one of the available options.");
+    expect(getWebsiteContactFieldError(fields, { customer_name: "Chris", job_type: "Sealing" })).toBeNull();
+  });
+
+  it("validates optional email values and required checkboxes", () => {
+    const fields = [
+      { id: "email_address", label: "Email address", type: "email", required: false },
+      { id: "consent", label: "Consent", type: "checkbox", required: true },
+    ];
+    expect(getWebsiteContactFieldError(fields, { consent: "true", email_address: "not-an-email" }))
+      .toBe("Email address must be a valid email address.");
+    expect(getWebsiteContactFieldError(fields, { email_address: "chris@example.com" })).toBe("Consent is required.");
+    expect(getWebsiteContactFieldError(fields, { consent: "true", email_address: "chris@example.com" })).toBeNull();
   });
 });
 
