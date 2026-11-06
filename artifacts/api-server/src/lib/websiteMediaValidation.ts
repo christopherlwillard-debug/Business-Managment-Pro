@@ -54,3 +54,30 @@ export function validateWebsiteMediaIds(value: unknown):
 export function truncateWebsiteMediaFilename(value: string, maxLength = 255): string {
   return [...value].slice(0, Math.max(0, maxLength)).join("");
 }
+
+/** Validate the declared metadata used to mint direct-to-storage Website Studio upload URLs. */
+export function validateWebsiteDirectUpload(value: unknown, kind: "favicon" | "image"):
+  | { ok: true; upload: { name: string; size: number; contentType: string } }
+  | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Upload details must be an object." };
+  }
+  const input = value as Record<string, unknown>;
+  if (typeof input.name !== "string" || input.name.trim().length === 0 || [...input.name].length > 255) {
+    return { ok: false, error: "Choose a valid image filename (255 characters or fewer)." };
+  }
+  const maxBytes = kind === "favicon" ? 2 * 1024 * 1024 : 20 * 1024 * 1024;
+  if (!Number.isSafeInteger(input.size) || (input.size as number) <= 0 || (input.size as number) > maxBytes) {
+    return { ok: false, error: kind === "favicon"
+      ? "Favicon images must be smaller than 2 MB."
+      : "Images must be smaller than 20 MB." };
+  }
+  const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"]);
+  if (typeof input.contentType !== "string" || !allowedTypes.has(input.contentType.toLowerCase())) {
+    return { ok: false, error: "Choose a supported image file (JPEG, PNG, WebP, GIF, AVIF, or icon)." };
+  }
+  if (kind === "favicon" && !["image/png", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"].includes(input.contentType.toLowerCase())) {
+    return { ok: false, error: "Favicons must be PNG, SVG, or ICO files." };
+  }
+  return { ok: true, upload: { name: input.name.trim(), size: input.size as number, contentType: input.contentType.toLowerCase() } };
+}
