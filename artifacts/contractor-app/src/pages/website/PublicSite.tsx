@@ -360,11 +360,15 @@ export default function PublicSite() {
 
   const headerContent = headerSec?.content as any;
   const navLinks = getSafePublicNavLinks(headerContent?.navLinks);
-  const headerPhone: string = headerContent?.phone ?? "";
-  const headerEmail: string = headerContent?.email ?? "";
-  const ctaLabel: string = headerContent?.ctaLabel ?? "Get a Quote";
+  const rawPhone = typeof headerContent?.phone === "string" ? headerContent.phone.trim() : "";
+  const rawEmail = typeof headerContent?.email === "string" ? headerContent.email.trim() : "";
+  const headerPhone = rawPhone.slice(0, 100);
+  const headerEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(rawEmail) ? rawEmail.slice(0, 320) : "";
+  const ctaLabel = typeof headerContent?.ctaLabel === "string" && headerContent.ctaLabel.trim()
+    ? headerContent.ctaLabel.trim().slice(0, 100)
+    : "Get a Quote";
   const ctaUrl: string = getSafeWebsiteHref(headerContent?.ctaConfig?.url) ?? "#contact";
-  const isSticky: boolean = headerContent?.sticky ?? true;
+  const isSticky: boolean = headerContent?.sticky !== false;
   const showPhone: boolean = headerContent?.showPhone !== false;
   const showCta: boolean = headerContent?.showCta !== false;
   const showLogo: boolean = headerContent?.showLogo !== false;
@@ -373,7 +377,10 @@ export default function PublicSite() {
   const showEmail: boolean = headerContent?.showEmail === true && !!headerEmail;
   const showVeteranBadge: boolean = headerContent?.showVeteranBadge === true;
   const showSdvosbBadge: boolean = headerContent?.showSdvosbBadge === true;
-  const logoAlignment: "left" | "center" | "right" = headerContent?.logoAlignment ?? "left";
+  const logoAlignment: "left" | "center" | "right" =
+    headerContent?.logoAlignment === "center" || headerContent?.logoAlignment === "right"
+      ? headerContent.logoAlignment
+      : "left";
   const logoHeightPx: number = resolveLogoHeightPx(headerContent?.logoSize);
 
   const GOOGLE_FONT_SET = new Set(["Oswald","Montserrat","Playfair Display","Raleway","Roboto Slab","Lato","Open Sans","Merriweather","Source Sans 3","Nunito"]);
@@ -385,7 +392,10 @@ export default function PublicSite() {
     : null;
 
   // content.headerStyle (set via the header toolbar's Style tab) overrides the site-level setting
-  const headerStyle = (headerContent?.headerStyle as "light" | "dark" | "transparent" | undefined) ?? settings.headerStyle ?? "light";
+  const requestedHeaderStyle = headerContent?.headerStyle ?? settings.headerStyle;
+  const headerStyle = requestedHeaderStyle === "dark" || requestedHeaderStyle === "transparent"
+    ? requestedHeaderStyle
+    : "light";
   const isDarkHeader = headerStyle === "dark" || headerStyle === "transparent";
   const headerBg =
     headerStyle === "dark" ? "bg-gray-900/95 backdrop-blur" :
