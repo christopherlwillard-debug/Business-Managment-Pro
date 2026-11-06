@@ -1278,6 +1278,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   const heading = (depositSection.content.heading as string) || "Deposit";
 
   const { returnUrl, customAmount } = getWebsiteRequestBody(req.body) as { returnUrl?: string; customAmount?: number };
+  const safeReturnUrl = getWebsiteContactText(returnUrl, 2048);
 
   let amount = configuredAmount;
   if (customAmount !== undefined) {
