@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, sho
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { truncateWebsiteMediaFilename, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -2209,37 +2209,34 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
 }));
 
 router.post("/upload-section-bg", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-section-bgs");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-column-image", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-column-images");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-favicon", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "favicon");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-favicons");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-card-image", wrapAsync(async (req, res) => {
-  const { name, size, contentType, businessId: rawBusinessId } = req.body as { name?: string; size?: number; contentType?: string; businessId?: number };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, size, contentType } = validation.upload;
+  const { businessId: rawBusinessId } = req.body as { businessId?: number };
   const businessId = Number(rawBusinessId);
   if (!businessId || isNaN(businessId)) {
     return res.status(400).json({ error: "Valid businessId required" });
