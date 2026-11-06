@@ -2,6 +2,7 @@ import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
 import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { InlineEditableText } from "../InlineEditableText";
+import { getSafeWebsiteHref } from "../storageUtils";
 
 export interface CTAContent {
   heading: string;
@@ -43,6 +44,10 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle,
 
   const showPrimary = !!(content.primaryLabel);
   const showSecondary = !!(content.secondaryLabel);
+  const primaryHref = getSafeWebsiteHref(content.primaryConfig?.url) ?? "#contact";
+  const secondaryHref = getSafeWebsiteHref(content.secondaryConfig?.url) ?? "#contact";
+  const primaryTarget = content.primaryConfig?.newTab && /^https?:\/\//i.test(primaryHref) ? "_blank" : undefined;
+  const secondaryTarget = content.secondaryConfig?.newTab && /^https?:\/\//i.test(secondaryHref) ? "_blank" : undefined;
 
   if (!isEditing) {
     return (
@@ -61,9 +66,9 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle,
             <div className="flex flex-wrap items-center justify-center gap-4">
               {showPrimary && (
                 <a
-                  href={content.primaryConfig?.url || "#contact"}
-                  target={content.primaryConfig?.newTab ? "_blank" : undefined}
-                  rel={content.primaryConfig?.newTab ? "noopener noreferrer" : undefined}
+                  href={primaryHref}
+                  target={primaryTarget}
+                  rel={primaryTarget ? "noopener noreferrer" : undefined}
                   className={`inline-block font-semibold transition-opacity hover:opacity-90 ${buttonConfigToClasses(content.primaryConfig)}`}
                   style={{
                     backgroundColor: buttonConfigToStyle(content.primaryConfig).backgroundColor ?? "#fff",
@@ -77,9 +82,9 @@ export function CTASection({ content, settings, isEditing, onChange, blockStyle,
               )}
               {showSecondary && (
                 <a
-                  href={content.secondaryConfig?.url || "#contact"}
-                  target={content.secondaryConfig?.newTab ? "_blank" : undefined}
-                  rel={content.secondaryConfig?.newTab ? "noopener noreferrer" : undefined}
+                  href={secondaryHref}
+                  target={secondaryTarget}
+                  rel={secondaryTarget ? "noopener noreferrer" : undefined}
                   className={`inline-block font-semibold transition-opacity hover:opacity-90 border-2 border-white text-white px-6 py-3`}
                   style={{
                     borderRadius: buttonConfigToStyle(content.secondaryConfig).borderRadius ?? "var(--theme-btn-radius, 9999px)",

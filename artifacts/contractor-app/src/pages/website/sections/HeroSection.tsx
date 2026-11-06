@@ -4,6 +4,7 @@ import { AiCopyPopover } from "./AiCopyPopover";
 import { FloatingToolbar, textStyleToCSS, type TextStyle } from "./TextStyleToolbar";
 import { ButtonEditor, buttonConfigToStyle, buttonConfigToClasses, type ButtonConfig } from "./ButtonEditor";
 import { InlineEditableText } from "../InlineEditableText";
+import { getSafeWebsiteHref } from "../storageUtils";
 
 // ── Content interface ──────────────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ export function HeroSection({
   /** Secondary CTA button (view-only; edit via inspector) */
   const secondaryCtaEl = showCta && content.secondaryCta?.enabled ? (
     <a
-      href={content.secondaryCta.href || "#"}
+      href={getSafeWebsiteHref(content.secondaryCta.href) ?? "#"}
       className={`inline-flex items-center justify-center px-6 py-3 font-semibold border-2 transition-colors ${
         darkText
           ? "rounded-full border-gray-400 text-gray-700 hover:bg-gray-100"
@@ -375,9 +376,9 @@ export function HeroSection({
 
   // ── View mode ────────────────────────────────────────────────────────────────
 
-  const ctaHref   = ctaBtn.url || "#contact";
-  const ctaTarget = ctaBtn.newTab ? "_blank" : undefined;
-  const ctaRel    = ctaBtn.newTab ? "noopener noreferrer" : undefined;
+  const ctaHref   = getSafeWebsiteHref(ctaBtn.url) ?? "#contact";
+  const ctaTarget = ctaBtn.newTab && /^https?:\/\//i.test(ctaHref) ? "_blank" : undefined;
+  const ctaRel    = ctaTarget ? "noopener noreferrer" : undefined;
 
   const primaryCtaEl = showCta ? (
     <a
