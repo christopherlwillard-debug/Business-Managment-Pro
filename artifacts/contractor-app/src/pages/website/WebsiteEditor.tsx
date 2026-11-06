@@ -2834,7 +2834,9 @@ function WebsiteEditor() {
       textEditSessionRef.current.timer = null;
     }, 1500);
     isDirtyRef.current = true;
-    const pageId = activePageIdRef.current;
+    // Capture the page from this render so delayed callbacks cannot mutate a
+    // different page after the user switches the editor.
+    const pageId = activePageId;
     setLocalPages(prev => patchWebsitePageSectionContent(prev, pageId, id, content));
   }
 
@@ -3062,6 +3064,9 @@ function WebsiteEditor() {
     if (!bizId) return;
     const sec = sections.find(s => s.id === sectionId);
     if (!sec) return;
+    const requestSession = businessSessionRef.current;
+    const requestBusinessId = bizId;
+    const requestRevision = editorRevisionRef.current;
     try {
       const res = await fetch(`${BASE}/api/website/regenerate-section`, {
         method: "POST",
@@ -3076,7 +3081,12 @@ function WebsiteEditor() {
       }
       const { content: generated } = await res.json() as { content: Record<string, unknown> };
       if (!generated) return;
-      history.pushSnapshot({ sections: pagesRef.current, settings });
+      if (requestSession !== businessSessionRef.current || requestBusinessId !== bizIdRef.current) return;
+      if (requestRevision !== editorRevisionRef.current) {
+        toast({ title: "Section changed while AI was working", description: "Your edits were preserved. Run regeneration again if needed.", variant: "destructive" });
+        return;
+      }
+      history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
       updateContent(sectionId, { ...(sec.content as Record<string, unknown>), ...generated });
       isDirtyRef.current = true;
       toast({ title: "Section regenerated ✨", description: "AI copy applied to this section", duration: 2500 });
