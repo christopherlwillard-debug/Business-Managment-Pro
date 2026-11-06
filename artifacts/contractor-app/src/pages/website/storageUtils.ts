@@ -212,6 +212,42 @@ export function getPublicSiteQueryKey(
   return ["public-site", slug ?? `__host__${host}`, pageSlug ?? "__home__", isDraftPreview];
 }
 
+/**
+ * Resolve public-site page routing for both app-hosted sites (/site/:slug/:page)
+ * and custom domains (/:page). A malformed or nested custom-domain path must
+ * not silently fall back to the homepage.
+ */
+export function resolvePublicSitePageRoute(
+  routeSlug: string | undefined,
+  routePageSlug: string | undefined,
+  pathname: string,
+): { pageSlug?: string; invalidPath: boolean } {
+  // App-hosted routes already identify the business and optional page explicitly.
+  if (routeSlug || routePageSlug) {
+    return {
+      ...(routePageSlug ? { pageSlug: routePageSlug } : {}),
+      invalidPath: false,
+    };
+  }
+
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return { invalidPath: false };
+  if (segments.length !== 1) return { invalidPath: true };
+
+  let pageSlug: string;
+  try {
+    pageSlug = decodeURIComponent(segments[0]);
+  } catch {
+    return { invalidPath: true };
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(pageSlug)) {
+    return { invalidPath: true };
+  }
+
+  return { pageSlug: pageSlug.toLowerCase(), invalidPath: false };
+}
+
 /** Accept only safe website navigation destinations from persisted editor content. */
 export function getSafeWebsiteHref(value: unknown): string | null {
   if (typeof value !== "string") return null;
