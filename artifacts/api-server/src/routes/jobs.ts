@@ -186,6 +186,7 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
     // Permit the edit form to claim a completely unassigned legacy job for
