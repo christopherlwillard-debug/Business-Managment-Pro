@@ -49,3 +49,8 @@ export function validateWebsiteMediaIds(value: unknown):
   }
   return { ok: true, ids: [...new Set(value as number[])] };
 }
+
+/** Keep generated or uploaded display filenames within the website_media varchar(255) limit. */
+export function truncateWebsiteMediaFilename(value: string, maxLength = 255): string {
+  return [...value].slice(0, Math.max(0, maxLength)).join("");
+}
