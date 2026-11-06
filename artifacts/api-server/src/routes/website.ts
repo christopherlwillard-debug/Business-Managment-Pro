@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import multer from "multer";
 import { Readable } from "stream";
 import { createHmac, createHash } from "crypto";
@@ -10,14 +10,32 @@ import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
-import { createMediaVariants, applyEnhancements, type EnhancementOptions } from "../lib/imageProcessor";
+import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, shouldGenerateWebsiteMediaVariants, validateEnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
+import { countWebsiteMediaUrlReferences, parsePositiveDatabaseId, truncateWebsiteMediaFilename, validateSavedWebsiteSection, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
 const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+export function getWebsiteMediaUploadError(error: unknown): { status: number; message: string } | null {
+  if (!(error instanceof multer.MulterError)) return null;
+  if (error.code === "LIMIT_FILE_SIZE") {
+    return { status: 413, message: "Image exceeds the 20 MB upload limit." };
+  }
+  return { status: 400, message: "Invalid image upload request. Choose one image file and try again." };
+}
+
+const websiteMediaUploadMiddleware: RequestHandler = (req, res, next) => {
+  mediaUpload.single("file")(req, res, error => {
+    if (!error) return next();
+    const uploadError = getWebsiteMediaUploadError(error);
+    if (uploadError) return res.status(uploadError.status).json({ error: uploadError.message });
+    return next(error);
+  });
+};
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -27,7 +45,104 @@ const openai = new OpenAI({
 const router = Router();
 const publicRouter = Router();
 
+/** Prevent active content in user-controlled files from executing when opened as a document. */
+export function applyPublicWebsiteImageSecurityHeaders(res: { setHeader(name: string, value: string): unknown }): void {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none';");
+}
+
 const BASE_URL = process.env["BASE_URL"] ?? "";
+
+/** Normalize absent or malformed JSON request bodies before route destructuring. */
+export function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+/** Validate opaque object IDs before composing public object-storage paths. */
+export function isWebsiteMediaObjectKey(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]{1,16})?$/i.test(value);
+}
+
+/** Require a trusted opaque UUID key under the expected upload namespace. */
+export function isWebsiteStoredObjectPath(value: unknown, prefix: string): value is string {
+  if (typeof value !== "string" || !value.startsWith(prefix)) return false;
+  return isWebsiteMediaObjectKey(value.slice(prefix.length));
+}
+
+/** Only resolve logo objects through the app's own object-storage namespace. */
+export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
+  return isWebsiteStoredObjectPath(value, "/objects/uploads/website-logos/");
+}
+
+/** Escape untrusted contact-form content before inserting it into notification email HTML. */
+export function escapeWebsiteEmailHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Accept bounded plain-text fields from anonymous public website forms only. */
+export function getWebsiteContactText(value: unknown, maxLength = 5000): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+/** Validate required and typed values against the published contact-form definition. */
+export function getWebsiteContactFieldError(
+  configuredFields: unknown,
+  values: Record<string, string>,
+): string | null {
+  const fields = Array.isArray(configuredFields)
+    ? configuredFields
+    : [{ id: "name", label: "Full Name", type: "text", required: true }];
+
+  for (const rawField of fields) {
+    if (!rawField || typeof rawField !== "object" || Array.isArray(rawField)) continue;
+    const field = rawField as Record<string, unknown>;
+    const id = getWebsiteContactText(field.id, 100);
+    if (!id) continue;
+
+    const label = getWebsiteContactText(field.label, 100) || "This field";
+    const value = getWebsiteContactText(values[id]);
+    const type = field.type;
+
+    if (field.required === true && (!value || (type === "checkbox" && value !== "true"))) {
+      return `${label} is required.`;
+    }
+    if (!value) continue;
+
+    if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      return `${label} must be a valid email address.`;
+    }
+
+    if (type === "dropdown" && Array.isArray(field.options)) {
+      const options = field.options.filter((option): option is string => typeof option === "string");
+      if (options.length > 0 && !options.includes(value)) {
+        return `${label} must be one of the available options.`;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Bound arbitrary visitor-defined labels and values before storing or emailing them. */
+export function getSafeWebsiteSubmissionFields(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [rawLabel, rawValue] of Object.entries(value).slice(0, 30)) {
+    const label = getWebsiteContactText(rawLabel, 100);
+    const fieldValue = getWebsiteContactText(rawValue, 5000);
+    if (label && fieldValue) result[label] = fieldValue;
+  }
+  return result;
+}
 
 export function normalizePageSlug(value: string): string {
   return value
@@ -39,20 +154,365 @@ export function normalizePageSlug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-type WebsitePageLike = { id?: string; name?: string; slug?: string };
+/** Returns null when no folder was selected, or undefined for an invalid ID. */
+export function parseWebsiteMediaFolderId(value: unknown): number | null | undefined {
+  if (value === null || value === undefined || (typeof value === "string" && value.trim() === "")) return null;
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return undefined;
+  const id = Number(value.trim());
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
+/** Validate folder names against the database's varchar(100) column before writing. */
+export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name: string } | { ok: false; error: string } {
+  if (typeof value !== "string") return { ok: false, error: "Folder name must be text." };
+  const name = value.trim();
+  if (!name) return { ok: false, error: "Folder name is required." };
+  if ([...name].length > 100) return { ok: false, error: "Folder names must be 100 characters or fewer." };
+  return { ok: true, name };
+}
+
+type WebsitePageLike = { id?: string; name?: string; slug?: string; sections?: unknown[] };
+
+/** Treat legacy/corrupt persisted page settings as a safe, unique page list. */
+export function getWebsitePageList(value: unknown): WebsitePageLike[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const seenIds = new Set<string>();
+  return value.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const page = raw as Record<string, unknown>;
+    if (typeof page.slug !== "string") return [];
+    const slug = normalizePageSlug(page.slug);
+    if (!slug || slug === "home" || seen.has(slug)) return [];
+    seen.add(slug);
+    const preferredId = typeof page.id === "string" && page.id.trim() ? page.id.trim() : `page-${index + 1}`;
+    let id = preferredId;
+    let idSuffix = 2;
+    while (seenIds.has(id)) id = `${preferredId}-${idSuffix++}`;
+    seenIds.add(id);
+    const name = typeof page.name === "string" && page.name.trim() ? page.name.trim().slice(0, 120) : slug;
+    const sections = Array.isArray(page.sections)
+      ? page.sections.flatMap((rawSection, sectionIndex) => {
+          if (!rawSection || typeof rawSection !== "object" || Array.isArray(rawSection)) return [];
+          const section = rawSection as Record<string, unknown>;
+          if (typeof section.type !== "string" || !section.type.trim()) return [];
+          const content = section.content && typeof section.content === "object" && !Array.isArray(section.content)
+            ? section.content as Record<string, unknown>
+            : {};
+          return [{
+            ...section,
+            id: typeof section.id === "string" && section.id.trim() ? section.id : `${section.type}-${sectionIndex + 1}`,
+            type: section.type,
+            enabled: typeof section.enabled === "boolean" ? section.enabled : true,
+            order: typeof section.order === "number" && Number.isFinite(section.order) ? section.order : sectionIndex,
+            content,
+          }];
+        })
+      : [];
+    return [{
+      ...page,
+      id,
+      name,
+      slug,
+      sections: ensureUniqueWebsiteSectionIds(sections),
+    }] as WebsitePageLike[];
+  });
+}
+
+/** Filter persisted section data before public routes inspect nested content. */
+export function getWebsiteSectionList(value: unknown): Array<{
+  id?: string;
+  type: string;
+  enabled?: boolean;
+  content: Record<string, unknown>;
+  blockStyle?: Record<string, unknown>;
+}> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const section = item as Record<string, unknown>;
+    if (typeof section.type !== "string" || !section.type.trim()) return [];
+    const content = section.content && typeof section.content === "object" && !Array.isArray(section.content)
+      ? section.content as Record<string, unknown>
+      : {};
+    const blockStyle = section.blockStyle && typeof section.blockStyle === "object" && !Array.isArray(section.blockStyle)
+      ? section.blockStyle as Record<string, unknown>
+      : undefined;
+    return [{
+      ...(typeof section.id === "string" ? { id: section.id } : {}),
+      type: section.type,
+      ...(typeof section.enabled === "boolean" ? { enabled: section.enabled } : {}),
+      content,
+      ...(blockStyle ? { blockStyle } : {}),
+    }];
+  });
+}
+
+/** Extract only usable titled items from a section's optional content array. */
+export function getWebsiteSectionTextItems(value: unknown): Array<{ title: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item =>
+    item && typeof item === "object" && !Array.isArray(item) &&
+    typeof (item as { title?: unknown }).title === "string" &&
+    (item as { title: string }).title.trim()
+      ? [{ title: (item as { title: string }).title.trim() }]
+      : []
+  );
+}
+
+/** Keep only plain record entries before AI copy merges or scoring inspect them. */
+export function getWebsiteSectionRecordItems(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> =>
+    !!item && typeof item === "object" && !Array.isArray(item)
+  );
+}
+
+/** Normalize string arrays from saved profile sections before using them in the website wizard. */
+export function getWebsiteStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
+  if (!Array.isArray(value)) return [];
+  const limit = Number.isFinite(maxItems) ? Math.max(0, Math.floor(maxItems)) : 0;
+  if (limit === 0) return [];
+  const scanLimit = Math.min(value.length, limit * 5);
+  const result: string[] = [];
+  for (const item of value.slice(0, scanLimit)) {
+    if (typeof item !== "string") continue;
+    const text = item.trim().slice(0, maxLength);
+    if (text) result.push(text);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+/** Keep only structurally valid social links from saved website sections. */
+export function getWebsiteSocialLinks(value: unknown): Array<{ platform: string; url: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const link = item as Record<string, unknown>;
+    const platform = getWebsiteContactText(link.platform, 40);
+    const url = getWebsiteContactText(link.url, 2048);
+    if (!platform || !url) return [];
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+    } catch {
+      return [];
+    }
+    return [{ platform, url }];
+  });
+}
+
+/** Normalize business-hours rows so malformed legacy settings cannot break wizard prefill. */
+export function getWebsiteWorkingHours(value: unknown): Array<{ day: string; open: string; close: string; closed: boolean }> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 7).flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const day = getWebsiteContactText(row.day, 20);
+    if (!day) return [];
+    return [{
+      day,
+      open: getWebsiteContactText(row.open, 20) ?? "",
+      close: getWebsiteContactText(row.close, 20) ?? "",
+      closed: typeof row.closed === "boolean" ? row.closed : false,
+    }];
+  });
+}
+
+/** Check a portfolio photo reference without trusting persisted nested array shapes. */
+export function hasWebsitePortfolioPhoto(sectionsValue: unknown, objectPath: unknown): boolean {
+  if (!isWebsiteStoredObjectPath(objectPath, "/objects/uploads/website-portfolio-photos/")) return false;
+  const portfolio = getWebsiteSectionList(sectionsValue).find(section => section.type === "portfolio");
+  if (!portfolio) return false;
+
+  const content = portfolio.content;
+  const photos = Array.isArray(content.projects)
+    ? content.projects.flatMap(project => {
+        if (!project || typeof project !== "object" || Array.isArray(project)) return [];
+        const projectPhotos = (project as Record<string, unknown>).photos;
+        return Array.isArray(projectPhotos) ? projectPhotos : [];
+      })
+    : Array.isArray(content.photos) ? content.photos : [];
+
+  return photos.some(photo =>
+    !!photo && typeof photo === "object" && !Array.isArray(photo) &&
+    (photo as Record<string, unknown>).photoObjectPath === objectPath
+  );
+}
+
+/** Return only normalized public page slugs before placing them in sitemap URLs. */
+export function getWebsiteSitemapPages(value: unknown): Array<{ slug: string; name: string }> {
+  return getWebsitePageList(value).flatMap(page => {
+    const slug = normalizePageSlug(page.slug ?? "");
+    if (!slug || slug === "home") return [];
+    const name = typeof page.name === "string" ? page.name.slice(0, 160) : slug;
+    return [{ slug, name }];
+  });
+}
+
+/** Escape XML text nodes so persisted website data cannot break sitemap markup. */
+export function escapeWebsiteXml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/** Accept only a bare DNS hostname for a configured custom website domain. */
+export function getSafeWebsiteCustomDomain(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const host = value.trim().toLowerCase().replace(/\.$/, "");
+  if (!host || host.length > 253 || host.includes("://") || /[\s\/\\:@?#<>]/.test(host)) return null;
+  const labels = host.split(".");
+  if (labels.length < 2 || labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) return null;
+  return host;
+}
+
+/** Allow payment completion redirects only to configured website origins, never forwarded request headers. */
+export function getSafeWebsitePaymentReturnUrl(value: unknown, customDomainValue: unknown, baseUrlValue: unknown): string | undefined {
+  const rawUrl = getWebsiteContactText(value, 2048);
+  if (!rawUrl) return undefined;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return undefined;
+
+  const allowedOrigins = new Set<string>();
+  const customDomain = getSafeWebsiteCustomDomain(customDomainValue);
+  if (customDomain) allowedOrigins.add(`https://${customDomain}`);
+
+  if (typeof baseUrlValue === "string" && baseUrlValue.trim()) {
+    try {
+      const base = new URL(baseUrlValue);
+      if (base.protocol === "https:" || base.protocol === "http:") allowedOrigins.add(base.origin.toLowerCase());
+    } catch {
+      // An invalid BASE_URL simply means no platform origin is allowed.
+    }
+  }
+
+  if (!allowedOrigins.has(parsed.origin.toLowerCase())) return undefined;
+  return `${parsed.origin}${parsed.pathname}?payment=success`;
+}
+
+/** Preserve failed checkout attempts instead of leaving deposit submissions stuck as pending. */
+export async function createWebsiteDepositCheckout<T>(
+  createCheckout: () => Promise<T>,
+  markSubmissionFailed: () => PromiseLike<unknown>,
+): Promise<T> {
+  try {
+    return await createCheckout();
+  } catch (error) {
+    try {
+      await markSubmissionFailed();
+    } catch {
+      // Preserve the original Square error if the status update also fails.
+    }
+    throw error;
+  }
+}
+
+/** Parse a positive USD amount without parseFloat's permissive partial-string behavior. */
+export function parseWebsiteMoneyCents(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const raw = typeof value === "string" ? value.trim() : String(value);
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw)) return null;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const cents = Math.round(amount * 100);
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
+}
+
+/** Find a structurally valid, enabled deposit section in legacy or corrupt settings. */
+export function getEnabledWebsiteDepositSection(value: unknown): { content: Record<string, unknown> } | null {
+  if (!Array.isArray(value)) return null;
+  const section = value.find((item): item is { type: string; enabled: boolean; content: Record<string, unknown> } =>
+    !!item && typeof item === "object" && !Array.isArray(item) &&
+    (item as { type?: unknown }).type === "deposit" &&
+    (item as { enabled?: unknown }).enabled === true &&
+    !!(item as { content?: unknown }).content &&
+    typeof (item as { content?: unknown }).content === "object" &&
+    !Array.isArray((item as { content?: unknown }).content)
+  );
+  return section ? { content: section.content } : null;
+}
+
+/** Use explicit booleans for optional deposit form fields; malformed settings fall back safely. */
+export function getWebsiteDepositFieldConfig(
+  value: unknown,
+  fallback: { show: boolean; required: boolean },
+): { show: boolean; required: boolean } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const config = value as Record<string, unknown>;
+  return {
+    show: typeof config.show === "boolean" ? config.show : fallback.show,
+    required: typeof config.required === "boolean" ? config.required : fallback.required,
+  };
+}
 
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
   ok: false;
   error: string;
   conflict: { slug: string; pageId?: string; pageName?: string };
 } {
-  if (!Array.isArray(pages)) return { ok: true, pages: [] };
+  if (pages === undefined || pages === null) return { ok: true, pages: [] };
+  if (!Array.isArray(pages)) {
+    return {
+      ok: false,
+      error: "Pages must be provided as a list.",
+      conflict: { slug: "invalid-pages" },
+    };
+  }
   const seen = new Map<string, WebsitePageLike>();
   const normalized: WebsitePageLike[] = [];
   for (const raw of pages) {
-    if (!raw || typeof raw !== "object") continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {
+        ok: false,
+        error: "Every page must be a valid page object.",
+        conflict: { slug: "invalid-page" },
+      };
+    }
     const page = raw as WebsitePageLike;
-    const slug = normalizePageSlug(String(page.slug ?? ""));
+    if (page.id !== undefined && typeof page.id !== "string") {
+      return {
+        ok: false,
+        error: "Page IDs must be text.",
+        conflict: { slug: "invalid-page-id" },
+      };
+    }
+    if (page.name !== undefined && typeof page.name !== "string") {
+      return {
+        ok: false,
+        error: "Page names must be text.",
+        conflict: { slug: "invalid-page-name" },
+      };
+    }
+    if (typeof page.slug !== "string") {
+      return {
+        ok: false,
+        error: "Every page must have a text URL slug.",
+        conflict: { slug: "invalid-page-slug", pageId: page.id, pageName: page.name },
+      };
+    }
+    if (page.sections !== undefined) {
+      const sectionValidation = validateWebsiteSections(page.sections);
+      if (!sectionValidation.ok) {
+        return {
+          ok: false,
+          error: "Page sections contain invalid section data.",
+          conflict: { slug: "invalid-page-sections", pageId: page.id, pageName: page.name },
+        };
+      }
+    }
+    const slug = normalizePageSlug(page.slug);
     if (!slug || slug === "home") {
       return {
         ok: false,
@@ -68,7 +528,13 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
         conflict: { slug, pageId: prior.id, pageName: prior.name },
       };
     }
-    const normalizedPage = { ...page, slug };
+    const normalizedPage = {
+      ...page,
+      slug,
+      ...(Array.isArray(page.sections)
+        ? { sections: ensureUniqueWebsiteSectionIds(page.sections as Array<{ id?: unknown; type?: unknown }>) }
+        : {}),
+    };
     seen.set(slug, normalizedPage);
     normalized.push(normalizedPage);
   }
@@ -80,7 +546,10 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
 // authenticated owner; checking the referenced row prevents arbitrary IDs
 // from creating or probing website records for nonexistent businesses.
 router.use(wrapAsync(async (req, res, next) => {
-  const bodyBusinessId = req.body && typeof req.body === "object" ? req.body.businessId : undefined;
+  // Express may leave req.body undefined for requests without a parsed JSON body.
+  // Normalize it once so every handler can safely validate or read fields.
+  req.body = getWebsiteRequestBody(req.body);
+  const bodyBusinessId = req.body.businessId;
   const raw = Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? bodyBusinessId;
   if (raw === undefined || raw === null || raw === "") return next();
   const businessId = Number(raw);
@@ -220,9 +689,41 @@ function defaultSettings() {
 
 type SectionRow = { id: string; type: string; enabled: boolean; order: number; content: Record<string, unknown> };
 
-function normalizeSections(existing: SectionRow[]): SectionRow[] {
+/** Give every section a stable, non-empty ID; duplicate IDs break editor selection and updates. */
+export function ensureUniqueWebsiteSectionIds<T extends { id?: unknown; type?: unknown }>(
+  sections: T[],
+): Array<T & { id: string }> {
+  const used = new Set<string>();
+  return sections.map((section, index) => {
+    const type = typeof section.type === "string" && section.type.trim() ? section.type.trim() : "section";
+    const preferred = typeof section.id === "string" && section.id.trim()
+      ? section.id.trim()
+      : `${type}-${index + 1}`;
+    let id = preferred;
+    let suffix = 2;
+    while (used.has(id)) id = `${preferred}-${suffix++}`;
+    used.add(id);
+    return { ...section, id };
+  });
+}
+
+export function normalizeSections(existing: unknown): SectionRow[] {
   const defaults = defaultSections() as SectionRow[];
-  const result = existing.map(s => {
+  const validExisting = Array.isArray(existing)
+    ? existing.filter((section): section is SectionRow =>
+        !!section && typeof section === "object" && !Array.isArray(section) &&
+        typeof section.type === "string" && !!section.type.trim() &&
+        !!section.content && typeof section.content === "object" && !Array.isArray(section.content)
+      )
+    : [];
+  const result = validExisting.map((raw, index) => {
+    const s: SectionRow = {
+      ...raw,
+      id: typeof raw.id === "string" && raw.id.trim() ? raw.id : `section-${index}`,
+      enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
+      order: typeof raw.order === "number" && Number.isFinite(raw.order) ? raw.order : index,
+      content: raw.content,
+    };
     if (s.type === "portfolio") {
       const c = s.content as any;
       if (!Array.isArray(c.projects)) {
@@ -248,7 +749,7 @@ function normalizeSections(existing: SectionRow[]): SectionRow[] {
       result.push({ ...def, order: nextOrder++, enabled: def.enabled });
     }
   }
-  return result;
+  return ensureUniqueWebsiteSectionIds(result) as SectionRow[];
 }
 
 // ── Business Profile Pre-fill ─────────────────────────────────────────────────
@@ -257,8 +758,8 @@ function normalizeSections(existing: SectionRow[]): SectionRow[] {
 // writes back to any settings table.
 
 router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -279,36 +780,35 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const sections = (config?.sections ?? []) as SectionRow[];
-  const settings = (config?.settings ?? {}) as Record<string, unknown>;
+  const sections = getWebsiteSectionList(config?.sections) as SectionRow[];
+  const settings = getWebsiteRequestBody(config?.settings);
 
   // ── 3. Extract from sections ───────────────────────────────────────────────
   // Services section items
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   // Service-area section
   const serviceAreaSection = sections.find(s => s.type === "service-area");
-  const coverageAreas  = (serviceAreaSection?.content?.areas          as string[] | undefined) ?? [];
-  const coverageStates = (serviceAreaSection?.content?.selectedStates as string[] | undefined) ?? [];
+  const coverageAreas = getWebsiteStringList(serviceAreaSection?.content?.areas);
+  const coverageStates = getWebsiteStringList(serviceAreaSection?.content?.selectedStates, 60, 80);
 
   // Footer section — social links
   const footerSection = sections.find(s => s.type === "footer");
-  type SocialLink = { platform: string; url: string };
-  const socialLinks = (footerSection?.content?.socialLinks as SocialLink[] | undefined) ?? [];
+  const socialLinks = getWebsiteSocialLinks(footerSection?.content?.socialLinks);
 
   // Business-hours section
-  type DayHours = { day: string; open: string; close: string; closed: boolean };
   const hoursSection = sections.find(s => s.type === "business-hours");
-  const workingHours = (hoursSection?.content?.hours as DayHours[] | undefined) ?? null;
+  const normalizedWorkingHours = getWebsiteWorkingHours(hoursSection?.content?.hours);
+  const workingHours = normalizedWorkingHours.length > 0 ? normalizedWorkingHours : null;
 
   // ── 4. Brand settings ──────────────────────────────────────────────────────
-  const brandColor = (settings.brandColor as string | undefined) ?? null;
-  const fontFamily = (settings.fontFamily as string | undefined) ?? null;
-  const themeId    = (settings.themeId    as string | undefined) ?? null;
+  const brandColor = getWebsiteContactText(settings.brandColor, 20) ?? null;
+  const fontFamily = getWebsiteContactText(settings.fontFamily, 80) ?? null;
+  const themeId = getWebsiteContactText(settings.themeId, 100) ?? null;
   // Prefer website logoUrl from settings; fall back to the business row
-  const logoUrl    = (settings.logoUrl as string | undefined) || biz.logoUrl || null;
+  const logoUrl = getWebsiteContactText(settings.logoUrl, 2048) || biz.logoUrl || null;
 
   // ── 5. Build address string ────────────────────────────────────────────────
   // Assemble full address: street + city/state + zip (omit blank parts)
@@ -354,8 +854,8 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
 }));
 
 router.get("/", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -390,18 +890,26 @@ router.get("/", wrapAsync(async (req, res) => {
   }
 
   const normalizedSections = normalizeSections(config.sections as SectionRow[]);
-  res.json({ ...config, sections: normalizedSections });
+  const settings = getWebsiteRequestBody(config.settings);
+  const pages = getWebsitePageList(settings.pages);
+  res.json({ ...config, sections: normalizedSections, settings: { ...settings, pages } });
 }));
 
 router.put("/", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections: unknown[]; settings: Record<string, unknown> };
-  if (settings?.seo && typeof settings.seo === "object") {
-    const seo = settings.seo as Record<string, unknown>;
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
+  const sectionsValidation = validateWebsiteSections(sections);
+  if (!sectionsValidation.ok) return res.status(400).json({ error: sectionsValidation.error });
+  const settingsValidation = validateWebsiteSettings(settings);
+  if (!settingsValidation.ok) return res.status(400).json({ error: settingsValidation.error });
+  const validatedSections = sectionsValidation.sections;
+  const validatedSettings = settingsValidation.settings;
+  if (validatedSettings.seo && typeof validatedSettings.seo === "object") {
+    const seo = validatedSettings.seo as Record<string, unknown>;
     const seoErrors = validateSeoMetadata({
       ...seo,
       ogTitle: seo.ogTitle || seo.metaTitle,
@@ -411,13 +919,16 @@ router.put("/", wrapAsync(async (req, res) => {
       return res.status(422).json({ error: "SEO metadata failed validation", fields: seoErrors });
     }
   }
-  const pageValidation = validatePageSlugs(settings?.pages);
+  const pageValidation = validatePageSlugs(validatedSettings.pages);
   if (!pageValidation.ok) {
     return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
   }
-  const normalizedSettings = settings
-    ? { ...settings, ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}) }
-    : settings;
+  const normalizedSettings = {
+    ...validatedSettings,
+    ...(Object.prototype.hasOwnProperty.call(validatedSettings, "pages")
+      ? { pages: pageValidation.pages }
+      : {}),
+  };
 
   const [existing] = await db
     .select({ id: websiteConfigsTable.id })
@@ -427,7 +938,7 @@ router.put("/", wrapAsync(async (req, res) => {
   if (existing) {
     const [updated] = await db
       .update(websiteConfigsTable)
-      .set({ sections: sections as any, settings: normalizedSettings as any, updatedAt: new Date() })
+      .set({ sections: validatedSections as any, settings: normalizedSettings as any, updatedAt: new Date() })
       .where(eq(websiteConfigsTable.id, existing.id))
       .returning();
     return res.json(updated);
@@ -435,19 +946,32 @@ router.put("/", wrapAsync(async (req, res) => {
 
   const [created] = await db
     .insert(websiteConfigsTable)
-    .values({ businessId, sections: sections as any, settings: normalizedSettings as any })
+    .values({ businessId, sections: validatedSections as any, settings: normalizedSettings as any })
     .returning();
   res.json(created);
 }));
 
 router.post("/publish", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections?: unknown[]; settings?: Record<string, unknown> };
-  if (settings) {
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
+  let validatedSections: Array<Record<string, unknown>> | undefined;
+  let validatedSettings: Record<string, unknown> | undefined;
+  if (sections !== undefined && sections !== null) {
+    const result = validateWebsiteSections(sections);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    validatedSections = result.sections;
+  }
+  if (settings !== undefined && settings !== null) {
+    const result = validateWebsiteSettings(settings);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    validatedSettings = result.settings;
+  }
+  if (validatedSettings) {
+    const settings = validatedSettings;
     if (settings.seo && typeof settings.seo === "object") {
       const seo = settings.seo as Record<string, unknown>;
       const seoErrors = validateSeoMetadata({
@@ -475,8 +999,8 @@ router.post("/publish", wrapAsync(async (req, res) => {
 
   if (existing) {
     const updateData: Record<string, unknown> = { published: true, publishedAt: now, updatedAt: now };
-    if (sections) updateData.sections = sections;
-    if (settings) updateData.settings = settings;
+    if (validatedSections) updateData.sections = validatedSections;
+    if (validatedSettings) updateData.settings = validatedSettings;
     const [updated] = await db
       .update(websiteConfigsTable)
       .set(updateData as any)
@@ -489,8 +1013,8 @@ router.post("/publish", wrapAsync(async (req, res) => {
     .insert(websiteConfigsTable)
     .values({
       businessId,
-      sections: (sections ?? defaultSections()) as any,
-      settings: (settings ?? defaultSettings()) as any,
+      sections: (validatedSections ?? defaultSections()) as any,
+      settings: (validatedSettings ?? defaultSettings()) as any,
       published: true,
       publishedAt: now,
     })
@@ -510,9 +1034,9 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const logoObjectPath = settings.logoObjectPath as string | undefined;
-  if (!logoObjectPath?.startsWith("/objects/uploads/website-logos/")) {
+  if (!isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
     return res.status(404).json({ error: "No logo" });
   }
 
@@ -521,6 +1045,7 @@ publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -545,10 +1070,10 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config.sections);
   const aboutSection = sections.find(s => s.type === "about");
   const photoObjectPath = aboutSection?.content?.photoObjectPath as string | undefined;
-  if (!photoObjectPath?.startsWith("/objects/uploads/website-about-photos/")) {
+  if (!isWebsiteStoredObjectPath(photoObjectPath, "/objects/uploads/website-about-photos/")) {
     return res.status(404).json({ error: "No about photo" });
   }
 
@@ -557,6 +1082,7 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -578,11 +1104,16 @@ function normalizeHost(raw: string): string {
 // icon, theme colour) so "Add to Home Screen" reflects the business, not BuildPro.
 // They are intentionally public (no auth) and mounted before the /:slug catch-all.
 
-function buildManifest(biz: { name: string; slug: string }, settings: Record<string, unknown>): Record<string, unknown> {
-  const brandColor = (settings.brandColor as string | undefined) ?? "#1a1a2e";
-  const logoUrl = (settings.logoUrl as string | undefined) ?? "";
+export function buildManifest(biz: { name: string; slug: string }, settingsValue: unknown): Record<string, unknown> {
+  const settings = getWebsiteRequestBody(settingsValue);
+  const brandColor = typeof settings.brandColor === "string" && /^#[0-9a-f]{6}$/i.test(settings.brandColor)
+    ? settings.brandColor
+    : "#1a1a2e";
+  const logoUrl = typeof settings.logoUrl === "string" ? settings.logoUrl : "";
+  const isSafeLogoUrl = logoUrl.startsWith("https://") ||
+    (logoUrl.startsWith("/") && !logoUrl.startsWith("//") && !logoUrl.includes("\\") && !/[\u0000-\u001f\u007f]/.test(logoUrl));
   const icons: unknown[] = [];
-  if (logoUrl && (logoUrl.startsWith("http") || logoUrl.startsWith("/"))) {
+  if (logoUrl && isSafeLogoUrl) {
     icons.push({ src: logoUrl, sizes: "any", type: "image/png", purpose: "any" });
   }
   // Always include a fallback favicon-sized entry
@@ -627,7 +1158,7 @@ publicRouter.get("/by-host/manifest.json", wrapAsync(async (req, res) => {
 
   res.setHeader("Content-Type", "application/manifest+json");
   res.setHeader("Cache-Control", "public, max-age=3600");
-  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+  res.json(buildManifest(biz, getWebsiteRequestBody(config.settings)));
 }));
 
 publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
@@ -648,7 +1179,7 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
 
   res.setHeader("Content-Type", "application/manifest+json");
   res.setHeader("Cache-Control", "public, max-age=3600");
-  res.json(buildManifest(biz, config.settings as Record<string, unknown>));
+  res.json(buildManifest(biz, getWebsiteRequestBody(config.settings)));
 }));
 
 // ── Sitemap + robots ─────────────────────────────────────────────────────────
@@ -656,13 +1187,16 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
 // These must be registered BEFORE the /:slug catch-all so Express routes them
 // correctly. Both by-host (custom domain) and slug-based variants are provided.
 
-function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
-  const trimBase = baseUrl.replace(/\/$/, "");
+export function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
+  const trimBase = escapeWebsiteXml(baseUrl.replace(/\/$/, ""));
   const urls = [
     `  <url><loc>${trimBase}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
-    ...pages.map(p =>
-      `  <url><loc>${trimBase}/${p.slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
-    ),
+    ...pages.map(page => {
+      const slug = normalizePageSlug(page.slug);
+      return slug
+        ? `  <url><loc>${trimBase}/${slug}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
+        : "";
+    }).filter(Boolean),
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
 }
@@ -686,8 +1220,8 @@ publicRouter.get("/by-host/sitemap.xml", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("No site found for this domain");
 
-  const settings = config.settings as Record<string, unknown>;
-  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
+  const settings = getWebsiteRequestBody(config.settings);
+  const pages = getWebsiteSitemapPages(settings.pages);
   const baseUrl = `https://${host}`;
   res.setHeader("Content-Type", "application/xml");
   res.setHeader("Cache-Control", "public, max-age=3600");
@@ -715,9 +1249,9 @@ publicRouter.get("/:slug/sitemap.xml", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("Website not published");
 
-  const settings = config.settings as Record<string, unknown>;
-  const pages = (settings.pages as Array<{ slug: string; name: string }> | undefined) ?? [];
-  const customDomain = settings.customDomain as string | undefined;
+  const settings = getWebsiteRequestBody(config.settings);
+  const pages = getWebsiteSitemapPages(settings.pages);
+  const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const baseUrl = customDomain
     ? `https://${customDomain}`
     : `${BASE_URL}/site/${slug}`;
@@ -739,8 +1273,8 @@ publicRouter.get("/:slug/robots.txt", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).send("Website not published");
 
-  const settings = config.settings as Record<string, unknown>;
-  const customDomain = settings.customDomain as string | undefined;
+  const settings = getWebsiteRequestBody(config.settings);
+  const customDomain = getSafeWebsiteCustomDomain(settings.customDomain);
   const sitemapUrl = customDomain
     ? `https://${customDomain}/sitemap.xml`
     : `${BASE_URL}/api/public/site/${slug}/sitemap.xml`;
@@ -775,7 +1309,7 @@ publicRouter.get("/by-host", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Business not found" });
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
       return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
     }
@@ -798,7 +1332,7 @@ publicRouter.get("/:slug", wrapAsync(async (req, res) => {
 
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     const page = pages.find(candidate => normalizePageSlug(String(candidate.slug ?? "")) === requestedPage);
     if (!page) return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
   }
@@ -815,6 +1349,10 @@ publicRouter.post("/:slug/view", (req, res) => {
 
   db.select({ id: businessesTable.id })
     .from(businessesTable)
+    .innerJoin(websiteConfigsTable, and(
+      eq(websiteConfigsTable.businessId, businessesTable.id),
+      eq(websiteConfigsTable.published, true),
+    ))
     .where(eq(businessesTable.slug, slug as string))
     .then(([biz]) => {
       if (biz) {
@@ -829,21 +1367,38 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
-  const { name, phone, email, serviceType, message, fieldValues, labeledFields } = req.body as {
+  // Match the public site read boundary: unpublished websites must not accept
+  // contact submissions or create prospects through a directly called API.
+  const [publishedConfig] = await db
+    .select({ sections: websiteConfigsTable.sections })
+    .from(websiteConfigsTable)
+    .where(and(
+      eq(websiteConfigsTable.businessId, biz.id),
+      eq(websiteConfigsTable.published, true),
+    ));
+  if (!publishedConfig) return res.status(404).json({ error: "Website not published" });
+  const contactSection = getWebsiteSectionList(publishedConfig.sections).find(section => section.type === "contact");
+
+  const { name, phone, email, serviceType, message, fieldValues, labeledFields } = getWebsiteRequestBody(req.body) as {
     name?: string; phone?: string; email?: string; serviceType?: string; message?: string;
     fieldValues?: Record<string, string>;
     labeledFields?: Record<string, string>;
   };
 
-  const normName = name ?? fieldValues?.name;
-  const normPhone = phone ?? fieldValues?.phone;
-  const normEmail = email ?? fieldValues?.email;
-  const normServiceType = serviceType ?? fieldValues?.serviceType;
-  const normMessage = message ?? fieldValues?.message;
+  const safeFieldValues = getSafeWebsiteSubmissionFields(fieldValues);
+  const fieldError = getWebsiteContactFieldError(contactSection?.content?.fields, safeFieldValues);
+  if (fieldError) return res.status(400).json({ error: fieldError });
 
+  const normName = getWebsiteContactText(name) ?? safeFieldValues.name;
+  const normPhone = getWebsiteContactText(phone, 100) ?? safeFieldValues.phone;
+  const normEmail = getWebsiteContactText(email, 320) ?? safeFieldValues.email;
+  const normServiceType = getWebsiteContactText(serviceType, 200) ?? safeFieldValues.serviceType;
+  const normMessage = getWebsiteContactText(message) ?? safeFieldValues.message;
+
+  const customSubmissionFields = getSafeWebsiteSubmissionFields(labeledFields);
   const submissionFields: Record<string, string> =
-    labeledFields && Object.keys(labeledFields).length > 0
-      ? labeledFields
+    Object.keys(customSubmissionFields).length > 0
+      ? customSubmissionFields
       : Object.fromEntries(
           ([
             normName ? ["Full Name", normName] : null,
@@ -884,17 +1439,11 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   try {
-    const [config] = await db
-      .select({ sections: websiteConfigsTable.sections })
-      .from(websiteConfigsTable)
-      .where(eq(websiteConfigsTable.businessId, biz.id));
-    const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
-    const contactSection = sections.find(s => s.type === "contact");
     const notifEmail = contactSection?.content?.notificationEmail as string | undefined;
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (notifEmail && EMAIL_RE.test(notifEmail)) {
       const rows = Object.entries(submissionFields)
-        .map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #f3f4f6;">${k}</td><td style="padding:6px 10px;color:#6b7280;border-bottom:1px solid #f3f4f6;">${v}</td></tr>`)
+        .map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #f3f4f6;">${escapeWebsiteEmailHtml(k)}</td><td style="padding:6px 10px;color:#6b7280;border-bottom:1px solid #f3f4f6;">${escapeWebsiteEmailHtml(v)}</td></tr>`)
         .join("");
       await sendEmail({
         to: notifEmail,
@@ -927,55 +1476,48 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
-    .select({ sections: websiteConfigsTable.sections })
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
 
-  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
-  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  const depositSection = getEnabledWebsiteDepositSection(config.sections);
   if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
 
-  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
-  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredCents = parseWebsiteMoneyCents(depositSection.content.amount);
+  if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredAmount = configuredCents / 100;
 
-  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
+  const allowCustomAmount = depositSection.content.allowCustomAmount === true;
 
-  const heading = (depositSection.content.heading as string) || "Deposit";
+  const heading = getWebsiteContactText(depositSection.content.heading, 100) || "Deposit";
 
-  const { returnUrl, customAmount } = req.body as { returnUrl?: string; customAmount?: number };
+  const { returnUrl, customAmount } = getWebsiteRequestBody(req.body) as { returnUrl?: string; customAmount?: number };
+  const safeReturnUrl = getWebsiteContactText(returnUrl, 2048);
 
   let amount = configuredAmount;
   if (customAmount !== undefined) {
     if (!allowCustomAmount) {
       return res.status(400).json({ error: "Custom amount is not allowed for this deposit." });
     }
-    const parsed = parseFloat(String(customAmount));
-    if (isNaN(parsed) || parsed <= 0) {
-      return res.status(400).json({ error: "Invalid custom amount." });
+    const parsedCents = parseWebsiteMoneyCents(customAmount);
+    if (parsedCents === null) {
+      return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
     }
-    if (parsed < configuredAmount) {
+    if (parsedCents < configuredCents) {
       return res.status(400).json({ error: `Custom amount must be at least $${configuredAmount.toFixed(2)}.` });
     }
-    amount = parsed;
+    amount = parsedCents / 100;
   }
 
-  const amountCents = Math.round(amount * 100);
+  const amountCents = parseWebsiteMoneyCents(amount);
+  if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
-  let redirectUrl: string | undefined;
-  if (returnUrl) {
-    try {
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
-      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
-      const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(returnUrl);
-      if (parsed.origin.toLowerCase() === requestOrigin) {
-        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
-      }
-    } catch {
-      // Invalid or mismatched URL — no redirect
-    }
-  }
+  const redirectUrl = getSafeWebsitePaymentReturnUrl(
+    safeReturnUrl,
+    getWebsiteRequestBody(config.settings).customDomain,
+    BASE_URL,
+  );
 
   const { url } = await createSquarePaymentLink({
     amountCents,
@@ -995,7 +1537,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "Payments are not configured for this site." });
   }
 
-  const { customerName, customerEmail, customerPhone, customerNotes, customAmount, returnUrl } = req.body as {
+  const { customerName, customerEmail, customerPhone, customerNotes, customAmount, returnUrl } = getWebsiteRequestBody(req.body) as {
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
@@ -1004,6 +1546,12 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     returnUrl?: string;
   };
 
+  const safeCustomerName = getWebsiteContactText(customerName, 200);
+  const safeCustomerEmail = getWebsiteContactText(customerEmail, 320);
+  const safeCustomerPhone = getWebsiteContactText(customerPhone, 100);
+  const safeCustomerNotes = getWebsiteContactText(customerNotes, 5000);
+  const safeReturnUrl = getWebsiteContactText(returnUrl, 2048);
+
   const [biz] = await db
     .select({ id: businessesTable.id, name: businessesTable.name })
     .from(businessesTable)
@@ -1011,90 +1559,86 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
-    .select({ id: websiteConfigsTable.id, sections: websiteConfigsTable.sections })
+    .select({ id: websiteConfigsTable.id, sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
 
-  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
-  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  const depositSection = getEnabledWebsiteDepositSection(config.sections);
   if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
 
-  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
-  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredCents = parseWebsiteMoneyCents(depositSection.content.amount);
+  if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredAmount = configuredCents / 100;
 
-  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
-  const heading = (depositSection.content.heading as string) || "Deposit";
+  const allowCustomAmount = depositSection.content.allowCustomAmount === true;
+  const heading = getWebsiteContactText(depositSection.content.heading, 100) || "Deposit";
 
-  type FieldCfg = { show?: boolean; required?: boolean };
-  const fName  = (depositSection.content.fieldName  as FieldCfg | undefined) ?? { show: true,  required: true };
-  const fEmail = (depositSection.content.fieldEmail as FieldCfg | undefined) ?? { show: true,  required: true };
-  const fPhone = (depositSection.content.fieldPhone as FieldCfg | undefined) ?? { show: false, required: false };
-  const fNotes = (depositSection.content.fieldNotes as FieldCfg | undefined) ?? { show: false, required: false };
+  const fName = getWebsiteDepositFieldConfig(depositSection.content.fieldName, { show: true, required: true });
+  const fEmail = getWebsiteDepositFieldConfig(depositSection.content.fieldEmail, { show: true, required: true });
+  const fPhone = getWebsiteDepositFieldConfig(depositSection.content.fieldPhone, { show: false, required: false });
+  const fNotes = getWebsiteDepositFieldConfig(depositSection.content.fieldNotes, { show: false, required: false });
 
-  if (fName.show !== false && fName.required !== false && !customerName?.trim()) {
+  if (fName.show !== false && fName.required !== false && !safeCustomerName) {
     return res.status(400).json({ error: "Name is required." });
   }
   if (fEmail.show !== false && fEmail.required !== false) {
-    if (!customerEmail?.trim()) return res.status(400).json({ error: "Email is required." });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+    if (!safeCustomerEmail) return res.status(400).json({ error: "Email is required." });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeCustomerEmail)) {
       return res.status(400).json({ error: "A valid email address is required." });
     }
-  } else if (customerEmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+  } else if (safeCustomerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeCustomerEmail)) {
     return res.status(400).json({ error: "Please enter a valid email address." });
   }
-  if (fPhone.show !== false && fPhone.required !== false && !customerPhone?.trim()) {
+  if (fPhone.show !== false && fPhone.required !== false && !safeCustomerPhone) {
     return res.status(400).json({ error: "Phone number is required." });
   }
-  if (fNotes.show !== false && fNotes.required !== false && !customerNotes?.trim()) {
+  if (fNotes.show !== false && fNotes.required !== false && !safeCustomerNotes) {
     return res.status(400).json({ error: "Notes are required." });
   }
 
   let amount = configuredAmount;
   if (customAmount !== undefined) {
     if (!allowCustomAmount) return res.status(400).json({ error: "Custom amount is not allowed." });
-    const parsed = parseFloat(String(customAmount));
-    if (isNaN(parsed) || parsed <= 0) return res.status(400).json({ error: "Invalid custom amount." });
-    if (parsed < configuredAmount) return res.status(400).json({ error: `Minimum deposit is $${configuredAmount.toFixed(2)}.` });
-    amount = parsed;
+    const parsedCents = parseWebsiteMoneyCents(customAmount);
+    if (parsedCents === null) return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
+    if (parsedCents < configuredCents) return res.status(400).json({ error: `Minimum deposit is $${configuredAmount.toFixed(2)}.` });
+    amount = parsedCents / 100;
   }
 
-  const amountCents = Math.round(amount * 100);
+  const amountCents = parseWebsiteMoneyCents(amount);
+  if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
-  let redirectUrl: string | undefined;
-  if (returnUrl) {
-    try {
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
-      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
-      const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(returnUrl);
-      if (parsed.origin.toLowerCase() === requestOrigin) {
-        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
-      }
-    } catch {
-      // Invalid or mismatched URL — no redirect
-    }
-  }
+  const redirectUrl = getSafeWebsitePaymentReturnUrl(
+    safeReturnUrl,
+    getWebsiteRequestBody(config.settings).customDomain,
+    BASE_URL,
+  );
 
   const [submission] = await db.insert(depositSubmissionsTable).values({
     businessId: biz.id,
     siteConfigId: config.id,
-    customerName: customerName?.trim() || "",
-    customerEmail: customerEmail?.trim().toLowerCase() || "",
-    customerPhone: customerPhone?.trim() || null,
-    customerNotes: customerNotes?.trim() || null,
-    amount: String(amount),
+    customerName: safeCustomerName || "",
+    customerEmail: safeCustomerEmail?.toLowerCase() || "",
+    customerPhone: safeCustomerPhone || null,
+    customerNotes: safeCustomerNotes || null,
+    amount: (amountCents / 100).toFixed(2),
     paymentStatus: "pending",
   }).returning();
 
-  const { url, id: checkoutId } = await createSquarePaymentLink({
-    amountCents,
-    currency: "USD",
-    productName: `${biz.name}: ${heading}`,
-    referenceId: `website_deposit_${slug}_${submission.id}`,
-    customerEmail: customerEmail?.trim() || undefined,
-    redirectUrl,
-  });
+  const { url, id: checkoutId } = await createWebsiteDepositCheckout(
+    () => createSquarePaymentLink({
+      amountCents,
+      currency: "USD",
+      productName: `${biz.name}: ${heading}`,
+      referenceId: `website_deposit_${slug}_${submission.id}`,
+      customerEmail: safeCustomerEmail || undefined,
+      redirectUrl,
+    }),
+    () => db.update(depositSubmissionsTable)
+      .set({ paymentStatus: "failed" })
+      .where(eq(depositSubmissionsTable.id, submission.id)),
+  );
 
   await db.update(depositSubmissionsTable)
     .set({ squareCheckoutId: checkoutId, squareCheckoutUrl: url })
@@ -1114,8 +1658,8 @@ publicRouter.get("/:slug/contact-prefill", wrapAsync(async (req, res) => {
 }));
 
 router.get("/contact-prefill-token", wrapAsync(async (req, res) => {
-  const contactId = parseInt(req.query.contactId as string);
-  if (!contactId || isNaN(contactId)) return res.status(400).json({ error: "contactId required" });
+  const contactId = parsePositiveDatabaseId(req.query.contactId);
+  if (!contactId) return res.status(400).json({ error: "Valid contactId required" });
   const [contact] = await db
     .select({ name: contactsTable.name, email: contactsTable.email, phone: contactsTable.phone })
     .from(contactsTable)
@@ -1126,8 +1670,8 @@ router.get("/contact-prefill-token", wrapAsync(async (req, res) => {
 }));
 
 router.get("/deposit-submissions", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const subs = await db
@@ -1140,8 +1684,8 @@ router.get("/deposit-submissions", wrapAsync(async (req, res) => {
 }));
 
 router.get("/form-submissions", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const subs = await db
@@ -1154,8 +1698,8 @@ router.get("/form-submissions", wrapAsync(async (req, res) => {
 }));
 
 router.get("/analytics", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -1249,7 +1793,7 @@ Return ONLY the copy text, no quotes, no explanation, no markdown.`;
  *   2. Structured: { field, businessContext, currentText? } — returns { result }
  */
 router.post("/generate-copy", wrapAsync(async (req, res) => {
-  const body = req.body as {
+  const body = getWebsiteRequestBody(req.body) as {
     prompt?: string;
     field?: string;
     businessContext?: BusinessContext;
@@ -1376,7 +1920,7 @@ const IMPROVE_TONE_INSTRUCTIONS: Record<string, string> = {
 const VALID_TONES = new Set(Object.keys(IMPROVE_TONE_INSTRUCTIONS));
 
 router.post("/improve-copy", wrapAsync(async (req, res) => {
-  const { text, tone, context } = req.body as {
+  const { text, tone, context } = getWebsiteRequestBody(req.body) as {
     text?: string;
     tone?: string;
     context?: BusinessContext;
@@ -1431,7 +1975,7 @@ router.post("/improve-copy", wrapAsync(async (req, res) => {
 //   5. Return SeoSettings object ready to be stored in settings.seo
 
 router.post("/generate-seo", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   // Load business row
@@ -1444,17 +1988,17 @@ router.post("/generate-seo", wrapAsync(async (req, res) => {
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
 
-  const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config?.sections);
 
   // Extract services from services section
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean).slice(0, 6);
 
   // Extract contact info from footer or business record
   const footerSection = sections.find(s => s.type === "footer");
-  const phone = (footerSection?.content?.phone as string | undefined) || biz.phone || "";
-  const email = (footerSection?.content?.email as string | undefined) || biz.email || "";
+  const phone = getWebsiteContactText(footerSection?.content?.phone, 100) || biz.phone || "";
+  const email = getWebsiteContactText(footerSection?.content?.email, 320) || biz.email || "";
 
   const location = [biz.city, biz.state].filter(Boolean).join(", ");
 
@@ -1520,9 +2064,9 @@ Return ONLY a valid JSON object with exactly these keys (no markdown, no code fe
   };
   if (phone)    localBusiness.telephone = phone;
   if (email)    localBusiness.email     = email;
-  const configuredDomain = (config?.settings as Record<string, unknown> | undefined)?.customDomain;
-  const publicBaseUrl = typeof configuredDomain === "string" && configuredDomain.trim()
-    ? `https://${configuredDomain.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+  const configuredDomain = getSafeWebsiteCustomDomain(getWebsiteRequestBody(config?.settings).customDomain);
+  const publicBaseUrl = configuredDomain
+    ? `https://${configuredDomain}`
     : BASE_URL ? `${BASE_URL.replace(/\/+$/, "")}/site/${biz.slug}` : undefined;
   if (publicBaseUrl) localBusiness.url = publicBaseUrl;
 
@@ -1609,8 +2153,10 @@ Return JSON with: headline (8-12 words, trade + location specific, not starting 
       break;
     }
     case "services": {
-      const items = (section.content.items as Array<{ title?: string }> | undefined) ?? [];
-      const titles = items.map((it, i) => it.title ?? `Service ${i + 1}`);
+      const items = getWebsiteSectionRecordItems(section.content.items);
+      const titles = items.map((item, index) =>
+        typeof item.title === "string" && item.title.trim() ? item.title.trim() : `Service ${index + 1}`
+      );
       prompt = `Write services section copy for: ${summary}
 Return JSON with: heading (4-7 words), subheading (1-2 sentences), items (array of {title, description} — one per service).
 Services to describe: ${JSON.stringify(titles)}
@@ -1794,7 +2340,7 @@ Return JSON with: heading.`;
  * Response: { sections }
  */
 router.post("/generate-site-copy", wrapAsync(async (req, res) => {
-  const { sections, businessContext } = req.body as {
+  const { sections, businessContext } = getWebsiteRequestBody(req.body) as {
     sections?: SectionForCopy[];
     businessContext?: BusinessContext;
   };
@@ -1802,27 +2348,31 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
   if (!Array.isArray(sections) || sections.length === 0) {
     return res.status(400).json({ error: "sections array is required" });
   }
-  if (!businessContext?.businessName) {
+  const sectionValidation = validateWebsiteSections(sections);
+  if (!sectionValidation.ok) return res.status(400).json({ error: sectionValidation.error });
+  if (!businessContext || typeof businessContext !== "object" || Array.isArray(businessContext) ||
+      typeof businessContext.businessName !== "string" || !businessContext.businessName.trim()) {
     return res.status(400).json({ error: "businessContext.businessName is required" });
   }
+  const validSections = sectionValidation.sections as unknown as SectionForCopy[];
 
   // Generate copy for all sections in parallel
   const results = await Promise.allSettled(
-    sections.map(s => generateSectionCopy(s, businessContext)),
+    validSections.map(s => generateSectionCopy(s, businessContext)),
   );
   const failures: Record<string, string> = {};
   results.forEach((outcome, i) => {
     if (outcome.status === "rejected") {
-      failures[sections[i]!.id] = outcome.reason instanceof Error
+      failures[validSections[i]!.id] = outcome.reason instanceof Error
         ? outcome.reason.message
         : "AI could not generate this section.";
     } else if (!outcome.value) {
-      failures[sections[i]!.id] = "This section type does not support AI copy generation.";
+      failures[validSections[i]!.id] = "This section type does not support AI copy generation.";
     }
   });
 
   // Merge generated copy back into sections immutably
-  const enriched = sections.map((section, i) => {
+  const enriched = validSections.map((section, i) => {
     const outcome = results[i];
     if (outcome?.status !== "fulfilled" || !outcome.value) return section;
 
@@ -1830,7 +2380,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For services, merge item descriptions into existing items (preserve IDs)
     if (section.type === "services" && Array.isArray(copy.items)) {
-      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingItems = getWebsiteSectionRecordItems(section.content.items);
       const copyItems = copy.items as Array<{ title: string; description: string }>;
       const mergedItems = existingItems.map((item, idx) => ({
         ...item,
@@ -1844,7 +2394,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For process, merge step descriptions into existing steps (preserve icons + IDs)
     if (section.type === "process" && Array.isArray(copy.steps)) {
-      const existingSteps = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingSteps = getWebsiteSectionRecordItems(section.content.steps);
       const copySteps = copy.steps as Array<{ title: string; description: string }>;
       const mergedSteps = existingSteps.map((step, idx) => ({
         ...step,
@@ -1867,7 +2417,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For why-choose-us, merge items similarly
     if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
-      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingItems = getWebsiteSectionRecordItems(section.content.items);
       const copyItems = copy.items as Array<{ title: string; description: string }>;
       const mergedItems = copyItems.map((item, idx) => ({
         id: (existingItems[idx] as any)?.id ?? `why-${idx + 1}`,
@@ -1927,12 +2477,12 @@ const LAYOUT_SUGGESTION_SCHEMA = {
 };
 
 router.post("/suggest-layout", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, businessName } = req.body as { sections?: any[]; businessName?: string };
+  const { sections, businessName } = getWebsiteRequestBody(req.body) as { sections?: any[]; businessName?: string };
   if (!Array.isArray(sections) || sections.length === 0) {
     return res.status(400).json({ error: "sections array required" });
   }
@@ -1983,28 +2533,22 @@ Rules:
 }));
 
 router.post("/upload-logo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-logos");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-about-photo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-about-photos");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-portfolio-photo", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-portfolio-photos");
   res.json({ uploadURL, objectPath });
 }));
@@ -2040,7 +2584,7 @@ router.get("/industry-profiles", wrapAsync(async (_req, res) => {
  * Response: { profile, sections, settings }
  */
 router.post("/generate-full-site", wrapAsync(async (req, res) => {
-  const { businessType, businessName, phone, email, includeOptional } = req.body as {
+  const { businessType, businessName, phone, email, includeOptional } = getWebsiteRequestBody(req.body) as {
     businessType?: string;
     businessName?: string;
     phone?: string;
@@ -2082,17 +2626,20 @@ import { generateColorPalettes } from "../lib/colorPalette";
  * Extracts dominant colors from the business logo (or falls back to a
  * user-supplied base color) and returns 4 named ThemeOverrides suggestions.
  *
- * Body (at least one of the three required):
- *   businessId?:  number  — if set, server fetches the logo from object storage
- *   logoUrl?:     string  — public http/https URL to fetch directly
- *   baseColor?:   string  — hex color used when no logo is available
+ * Body:
+ *   businessId?:  number  — fetch the saved logo from this business's object storage
+ *   baseColor?:   string  — hex color used when no saved logo is available
+ *
+ * Arbitrary caller-supplied URLs are intentionally not fetched here: doing so
+ * would expose the API server to SSRF, redirects to internal services, and
+ * unbounded response bodies.
  */
 router.post("/suggest-colors", wrapAsync(async (req, res) => {
-  const { businessId, logoUrl, baseColor } = req.body as {
-    businessId?: number;
-    logoUrl?: string;
+  const { businessId: rawBusinessId, baseColor } = getWebsiteRequestBody(req.body) as {
+    businessId?: unknown;
     baseColor?: string;
   };
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
 
   let dominantColors: string[] = [];
 
@@ -2110,27 +2657,30 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
       const settings = (config?.settings ?? {}) as Record<string, unknown>;
       const logoObjectPath = settings.logoObjectPath as string | undefined;
 
-      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+      if (isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
         const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
         const response = await objectStorageService.downloadObject(objectFile);
         if (response.body) {
           const chunks: Buffer[] = [];
           const nodeStream = Readable.fromWeb(response.body as any);
+          const maxLogoBytes = 5 * 1024 * 1024;
+          let totalBytes = 0;
           await new Promise<void>((resolve, reject) => {
-            nodeStream.on("data", (chunk: Buffer) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+            nodeStream.on("data", (chunk: Buffer) => {
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+              totalBytes += buffer.length;
+              if (totalBytes > maxLogoBytes) {
+                nodeStream.destroy();
+                reject(new Error("Saved logo exceeds the 5 MB color extraction limit."));
+                return;
+              }
+              chunks.push(buffer);
+            });
             nodeStream.on("end", resolve);
             nodeStream.on("error", reject);
           });
           imageBuffer = Buffer.concat(chunks);
         }
-      }
-    }
-
-    if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
-      // Fetch logo from a public URL
-      const fetchRes = await fetch(logoUrl);
-      if (fetchRes.ok) {
-        imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
       }
     }
 
@@ -2154,39 +2704,32 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
 }));
 
 router.post("/upload-section-bg", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-section-bgs");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-column-image", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-column-images");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-favicon", wrapAsync(async (req, res) => {
-  const { name, size, contentType } = req.body as { name?: string; size?: number; contentType?: string };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
+  const validation = validateWebsiteDirectUpload(req.body, "favicon");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-favicons");
   res.json({ uploadURL, objectPath });
 }));
 
 router.post("/upload-card-image", wrapAsync(async (req, res) => {
-  const { name, size, contentType, businessId: rawBusinessId } = req.body as { name?: string; size?: number; contentType?: string; businessId?: number };
-  if (!name || !size || !contentType) {
-    return res.status(400).json({ error: "Missing required fields: name, size, contentType" });
-  }
-  const businessId = Number(rawBusinessId);
-  if (!businessId || isNaN(businessId)) {
+  const validation = validateWebsiteDirectUpload(req.body, "image");
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { businessId: rawBusinessId } = getWebsiteRequestBody(req.body) as { businessId?: number };
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
+  if (!businessId) {
     return res.status(400).json({ error: "Valid businessId required" });
   }
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.id, businessId));
@@ -2207,9 +2750,9 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const settings = config.settings as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config.settings);
   const faviconObjectPath = settings.faviconObjectPath as string | undefined;
-  if (!faviconObjectPath?.startsWith("/objects/uploads/website-favicons/")) {
+  if (!isWebsiteStoredObjectPath(faviconObjectPath, "/objects/uploads/website-favicons/")) {
     return res.status(404).json({ error: "No favicon" });
   }
 
@@ -2218,6 +2761,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2232,6 +2776,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   const { slug, bgUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(bgUuid)) return res.status(404).json({ error: "Image not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
@@ -2243,7 +2788,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
 
   const expectedObjectPath = `/objects/uploads/website-section-bgs/${bgUuid}`;
-  const sections = config.sections as Array<{ blockStyle?: { bgImageObjectPath?: string } }>;
+  const sections = getWebsiteSectionList(config.sections);
   const found = sections.some(s => s.blockStyle?.bgImageObjectPath === expectedObjectPath);
   if (!found) return res.status(404).json({ error: "Image not found" });
 
@@ -2252,6 +2797,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2266,6 +2812,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   const { slug, imgUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(imgUuid)) return res.status(404).json({ error: "Image not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
@@ -2277,12 +2824,19 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
 
   const expectedObjectPath = `/objects/uploads/website-column-images/${imgUuid}`;
-  const sections = config.sections as Array<{ type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config.sections);
   const found = sections
     .filter(s => s.type === "columns")
     .some(s => {
-      const cols = (s.content?.columns as Array<{ blocks: Array<{ objectPath?: string }> }>) ?? [];
-      return cols.some(col => col.blocks?.some(b => b.objectPath === expectedObjectPath));
+      const cols = Array.isArray(s.content.columns) ? s.content.columns : [];
+      return cols.some(column => {
+        if (!column || typeof column !== "object" || Array.isArray(column)) return false;
+        const blocks = (column as Record<string, unknown>).blocks;
+        return Array.isArray(blocks) && blocks.some(block =>
+          !!block && typeof block === "object" && !Array.isArray(block) &&
+          (block as Record<string, unknown>).objectPath === expectedObjectPath
+        );
+      });
     });
   if (!found) return res.status(404).json({ error: "Image not found" });
 
@@ -2291,6 +2845,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2305,6 +2860,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res) => {
   const { slug, photoUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(photoUuid)) return res.status(404).json({ error: "Photo not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
@@ -2315,28 +2871,17 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
-  const portfolioSection = sections.find(s => s.type === "portfolio");
   const expectedObjectPath = `/objects/uploads/website-portfolio-photos/${photoUuid}`;
-  type PhotoRow = { photoObjectPath?: string };
-  const allPhotos: PhotoRow[] = (() => {
-    const c = portfolioSection?.content ?? {};
-    if (Array.isArray((c as any).projects)) {
-      return (c as any).projects.flatMap((proj: any) => proj.photos ?? []) as PhotoRow[];
-    }
-    return ((c as any).photos ?? []) as PhotoRow[];
-  })();
-  const photo = allPhotos.find(p => p.photoObjectPath === expectedObjectPath);
-
-  if (!photo?.photoObjectPath) {
+  if (!hasWebsitePortfolioPhoto(config.sections, expectedObjectPath)) {
     return res.status(404).json({ error: "Photo not found" });
   }
 
   try {
-    const objectFile = await objectStorageService.getObjectEntityFile(photo.photoObjectPath);
+    const objectFile = await objectStorageService.getObjectEntityFile(expectedObjectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2371,6 +2916,16 @@ async function cleanupMediaObjects(paths: Array<string | null | undefined>): Pro
  * Callers only write the DB row after this resolves, so a failed variant
  * cannot leave a library item that silently has incomplete derivatives.
  */
+/** Never derive object-storage path extensions from an uploaded filename. */
+export function getWebsiteMediaStorageFilename(mimetype: string): string {
+  const extensions: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+    "image/gif": "gif", "image/tiff": "tiff", "image/svg+xml": "svg",
+    "image/heic": "heic", "image/avif": "avif",
+  };
+  return `website-media.${extensions[mimetype] ?? "img"}`;
+}
+
 async function uploadMediaAssets(
   buffer: Buffer,
   mimetype: string,
@@ -2379,11 +2934,11 @@ async function uploadMediaAssets(
 ): Promise<MediaAssetPaths> {
   const uploaded: string[] = [];
   try {
-    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", filename);
+    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", getWebsiteMediaStorageFilename(mimetype));
     uploaded.push(objectPath);
     const assets: MediaAssetPaths = { objectPath };
 
-    if (mimetype.startsWith("image/") && mimetype !== "image/svg+xml") {
+    if (shouldGenerateWebsiteMediaVariants(mimetype)) {
       const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(buffer);
       const variantId = uuidPrefix ?? objectPath.split("/").pop()!.replace(/\.[^.]+$/, "");
       assets.webpObjectPath = await objectStorageService.uploadBufferWithFilename(
@@ -2407,7 +2962,7 @@ async function uploadMediaAssets(
 }
 
 router.get("/media", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const items = await db
     .select()
@@ -2417,21 +2972,35 @@ router.get("/media", wrapAsync(async (req, res) => {
   res.json(items);
 }));
 
-router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+router.post("/media/upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
-  const { originalname, mimetype, buffer, size } = req.file;
-  const assets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const { originalname, buffer, size } = req.file;
+  const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
+  if (!detectedMimeType) {
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, AVIF, or SVG." });
+  }
+  const folderId = parseWebsiteMediaFolderId(req.body.folderId);
+  if (folderId === undefined) return res.status(400).json({ error: "Invalid folderId" });
+  if (folderId !== null) {
+    const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
+      .from(websiteMediaFoldersTable)
+      .where(and(
+        eq(websiteMediaFoldersTable.id, folderId),
+        eq(websiteMediaFoldersTable.businessId, businessId),
+      ));
+    if (!folder) return res.status(400).json({ error: "Invalid folder" });
+  }
+  const assets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const objectPath = assets.objectPath;
   const uuid = objectPath.split("/").pop()!;
   const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
-  const folderId = req.body.folderId ? parseInt(req.body.folderId) : null;
   try {
     const [item] = await db
       .insert(websiteMediaTable)
       .values({
-        businessId, filename: originalname, objectPath, url, size: size ?? 0, folderId: folderId ?? null,
+        businessId, filename: truncateWebsiteMediaFilename(originalname), objectPath, url, size: size ?? 0, folderId: folderId ?? null,
         webpObjectPath: assets.webpObjectPath,
         thumbnailObjectPath: assets.thumbnailObjectPath,
         displayObjectPath: assets.displayObjectPath,
@@ -2445,27 +3014,36 @@ router.post("/media/upload", mediaUpload.single("file"), wrapAsync(async (req, r
   }
 }));
 
-router.post("/media", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { filename, objectPath, url, size, folderId } = req.body as { filename: string; objectPath: string; url: string; size: number; folderId?: number | null };
-  if (!filename || !objectPath || !url) return res.status(400).json({ error: "Missing fields" });
-  const [item] = await db
-    .insert(websiteMediaTable)
-    .values({ businessId, filename, objectPath, url, size: size ?? 0, folderId: folderId ?? null })
-    .returning();
-  res.json(item);
-}));
+// Retired legacy metadata-registration endpoint. Accepting caller-supplied
+// object paths here allowed a caller to register another business's known
+// public media path, after which DELETE /media/:id could remove that object.
+// New media must be uploaded through /media/upload so bytes, MIME type, and
+// folder ownership are validated before the database row is created.
+router.post("/media", (_req, res) => {
+  res.status(410).json({
+    error: "This media registration endpoint is retired. Upload files through /media/upload.",
+  });
+});
 
 router.delete("/media/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const [item] = await db
     .select()
     .from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+  const usageCount = countWebsiteMediaUrlReferences(configs, item.url);
+  if (usageCount > 0) {
+    return res.status(409).json({
+      error: "This image is still used on your website. Remove or replace those references before deleting it.",
+      usageCount,
+    });
+  }
   await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
   const cleanupWarnings = await cleanupMediaObjects([
     item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
@@ -2476,28 +3054,18 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
 // ── Media PATCH (rename / move to folder / set alt text) ──────────────────────
 
 router.patch("/media/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const { displayName, folderId, alt } = req.body as {
-    displayName?: string | null;
-    folderId?: number | null;
-    /** Accessibility alt text (max 255 chars). */
-    alt?: string | null;
-  };
-  const updateValues: Record<string, unknown> = {};
-  if (displayName !== undefined) updateValues.displayName = displayName || null;
-  if (alt !== undefined) updateValues.alt = alt ? alt.slice(0, 255) : null;
-  if (folderId !== undefined) {
-    if (folderId !== null) {
-      const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
-        .from(websiteMediaFoldersTable)
-        .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
-      if (!folder) return res.status(400).json({ error: "Invalid folder" });
-    }
-    updateValues.folderId = folderId ?? null;
+  const validation = validateWebsiteMediaPatch(req.body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const updateValues = validation.update;
+  if (updateValues.folderId !== undefined && updateValues.folderId !== null) {
+    const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
+      .from(websiteMediaFoldersTable)
+      .where(and(eq(websiteMediaFoldersTable.id, updateValues.folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
+    if (!folder) return res.status(400).json({ error: "Invalid folder" });
   }
-  if (Object.keys(updateValues).length === 0) return res.status(400).json({ error: "Nothing to update" });
   const [updated] = await db
     .update(websiteMediaTable)
     .set(updateValues as any)
@@ -2514,8 +3082,8 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
 // Uses the filename and business context to generate accurate alt text.
 
 router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const [item] = await db
@@ -2557,16 +3125,15 @@ router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
 // in the media library. The original is shown with an "Original" label alongside.
 
 router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
-  const { enhancements = {} } = req.body as { enhancements?: EnhancementOptions };
-
-  // Validate at least one enhancement is requested
-  if (!enhancements.brighten && !enhancements.straighten && !enhancements.crop) {
-    return res.status(400).json({ error: "No enhancements specified" });
-  }
+  const validation = validateEnhancementOptions(
+    (req.body as { enhancements?: unknown } | undefined)?.enhancements ?? {},
+  );
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const enhancements = validation.options;
 
   // Load the source media record
   const [item] = await db.select().from(websiteMediaTable)
@@ -2584,7 +3151,7 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
 
   // Upload enhanced image — stored as WebP (applyEnhancements always returns WebP)
   const baseFilename = item.filename.replace(/\.[^.]+$/, "");
-  const enhancedFilename = `${baseFilename}_enhanced.webp`;
+  const enhancedFilename = truncateWebsiteMediaFilename(`${baseFilename}_enhanced.webp`);
   const enhancedAssets = await uploadMediaAssets(enhancedBuffer, "image/webp", enhancedFilename);
   const enhancedPath = enhancedAssets.objectPath;
   const enhancedUuid = enhancedPath.split("/").pop()!;
@@ -2598,7 +3165,7 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
       url: enhancedUrl,
       size: enhancedBuffer.length,
       folderId: item.folderId ?? null,
-      displayName: `${item.displayName ?? baseFilename} (enhanced)`,
+      displayName: truncateWebsiteMediaFilename(`${item.displayName ?? baseFilename} (enhanced)`),
       webpObjectPath: enhancedAssets.webpObjectPath,
       thumbnailObjectPath: enhancedAssets.thumbnailObjectPath,
       displayObjectPath: enhancedAssets.displayObjectPath,
@@ -2613,57 +3180,18 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
 
 // ── Media replace-everywhere ────────────────────────────────────────────────
 
-router.post("/media/:id/replace", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
-  if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const { newUrl, newObjectPath, newFilename } = req.body as { newUrl: string; newObjectPath: string; newFilename: string };
-  if (!newUrl || !newObjectPath) return res.status(400).json({ error: "newUrl and newObjectPath required" });
+// Retired legacy replacement endpoint. It trusted caller-supplied storage
+// paths and URLs, while the current client uses /replace-upload to validate
+// uploaded image bytes and create the replacement object server-side.
+router.post("/media/:id/replace", (_req, res) => {
+  res.status(410).json({
+    error: "This media replacement endpoint is retired. Upload replacements through /replace-upload.",
+  });
+});
 
-  const [item] = await db.select().from(websiteMediaTable)
-    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
-  if (!item) return res.status(404).json({ error: "Not found" });
-
-  const oldUrl = item.url;
-  const configs = await db.select().from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-
-  let replacedInConfigs = 0;
-  for (const config of configs) {
-    const sectionsJson = JSON.stringify(config.sections);
-    const settingsJson = JSON.stringify(config.settings);
-    const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
-    const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
-    if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
-      await db.update(websiteConfigsTable)
-        .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
-        .where(eq(websiteConfigsTable.id, config.id));
-      replacedInConfigs++;
-    }
-  }
-
-  const [updated] = await db.update(websiteMediaTable)
-    .set({
-      url: newUrl,
-      objectPath: newObjectPath,
-      filename: newFilename ?? item.filename,
-      webpObjectPath: null,
-      thumbnailObjectPath: null,
-      displayObjectPath: null,
-      optimized: false,
-    })
-    .where(eq(websiteMediaTable.id, id))
-    .returning();
-
-  const cleanupWarnings = await cleanupMediaObjects([
-    item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
-  ].filter(path => path !== newObjectPath));
-  res.json({ ok: true, replacedInConfigs, item: updated, cleanupWarnings });
-}));
-
-router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
 
@@ -2671,17 +3199,22 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
 
-  const { originalname, mimetype, buffer, size } = req.file;
-  const newAssets = await uploadMediaAssets(buffer, mimetype, originalname);
+  const { originalname, buffer, size } = req.file;
+  const detectedMimeType = await detectWebsiteMediaMimeType(buffer);
+  if (!detectedMimeType) {
+    return res.status(415).json({ error: "Unsupported or invalid image. Upload JPEG, PNG, WebP, GIF, TIFF, HEIC, AVIF, or SVG." });
+  }
+  const newAssets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const newObjectPath = newAssets.objectPath;
   const uuid = newObjectPath.split("/").pop()!;
   const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
   const oldUrl = item.url;
 
-  const configs = await db.select().from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-
   try {
+    // Keep the config read inside the cleanup boundary: if it fails after the
+    // replacement objects were uploaded, those objects must not be orphaned.
+    const configs = await db.select().from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
     let replacedInConfigs = 0;
     let updated;
     await db.transaction(async tx => {
@@ -2699,7 +3232,7 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
       }
       [updated] = await tx.update(websiteMediaTable)
         .set({
-          url: newUrl, objectPath: newObjectPath, filename: originalname, size: size ?? item.size,
+          url: newUrl, objectPath: newObjectPath, filename: truncateWebsiteMediaFilename(originalname), size: size ?? item.size,
           webpObjectPath: newAssets.webpObjectPath,
           thumbnailObjectPath: newAssets.thumbnailObjectPath,
           displayObjectPath: newAssets.displayObjectPath,
@@ -2721,17 +3254,32 @@ router.post("/media/:id/replace-upload", mediaUpload.single("file"), wrapAsync(a
 // ── Media bulk delete ──────────────────────────────────────────────────────
 
 router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { ids } = req.body as { ids: number[] };
-  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+  const validation = validateWebsiteMediaIds((req.body as { ids?: unknown } | undefined)?.ids);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const ids = validation.ids;
   const items = await db.select({
+    id: websiteMediaTable.id,
+    url: websiteMediaTable.url,
     objectPath: websiteMediaTable.objectPath,
     webpObjectPath: websiteMediaTable.webpObjectPath,
     thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
     displayObjectPath: websiteMediaTable.displayObjectPath,
   }).from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+  const inUse = items
+    .map(item => ({ id: item.id, usageCount: countWebsiteMediaUrlReferences(configs, item.url) }))
+    .filter(item => item.usageCount > 0);
+  if (inUse.length > 0) {
+    return res.status(409).json({
+      error: "One or more selected images are still used on your website. Remove or replace those references before deleting them.",
+      inUse,
+    });
+  }
   await db.delete(websiteMediaTable)
     .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
   const cleanupWarnings = (await Promise.all(items.map(item => cleanupMediaObjects([
@@ -2743,7 +3291,7 @@ router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
 // ── Media usage counts ─────────────────────────────────────────────────────
 
 router.get("/media/usage-counts", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   const items = await db.select({ id: websiteMediaTable.id, url: websiteMediaTable.url })
@@ -2768,8 +3316,8 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
 // ── Media usage details (which sections use this image) ────────────────────
 
 router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const id = parseInt(req.params.id as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const [item] = await db.select({ url: websiteMediaTable.url })
@@ -2783,11 +3331,13 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
 
   const locations: Array<{ sectionId: string; sectionType: string }> = [];
   for (const config of configs) {
-    const sections = config.sections as Array<{ id: string; type: string; content: unknown }>;
+    const sections = getWebsiteSectionList(config.sections);
     if (Array.isArray(sections)) {
       for (const section of sections) {
         if (JSON.stringify(section.content ?? {}).includes(item.url)) {
-          locations.push({ sectionId: section.id, sectionType: section.type });
+          if (typeof section.id === "string" && typeof section.type === "string") {
+            locations.push({ sectionId: section.id, sectionType: section.type });
+          }
         }
       }
     }
@@ -2801,7 +3351,7 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
 // ── Media folders ──────────────────────────────────────────────────────────
 
 router.get("/media/folders", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   const folderRows = await db.select().from(websiteMediaFoldersTable)
@@ -2823,24 +3373,24 @@ router.get("/media/folders", wrapAsync(async (req, res) => {
 }));
 
 router.post("/media/folders", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { name } = req.body as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const [folder] = await db.insert(websiteMediaFoldersTable)
-    .values({ businessId, name: name.trim() })
+    .values({ businessId, name: validation.name })
     .returning();
   res.json({ ...folder, itemCount: 0 });
 }));
 
 router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const folderId = parseInt(req.params.folderId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const folderId = parsePositiveDatabaseId(req.params.folderId);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
-  const { name } = req.body as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
   const [updated] = await db.update(websiteMediaFoldersTable)
-    .set({ name: name.trim() })
+    .set({ name: validation.name })
     .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)))
     .returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
@@ -2848,8 +3398,8 @@ router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const folderId = parseInt(req.params.folderId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const folderId = parsePositiveDatabaseId(req.params.folderId);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   await db.update(websiteMediaTable)
     .set({ folderId: null })
@@ -2861,6 +3411,7 @@ router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
 
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params as { uuid: string };
+  if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
   // The original image is always served from a deterministic path derived from
   // the uuid, with no DB query. Published pages may still reference deleted
   // URLs, but the underlying object is intentionally removed with the record.
@@ -2887,6 +3438,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
         response.headers.forEach((value, key) => res.setHeader(key, value));
         res.setHeader("Content-Type", "image/webp");
         res.setHeader("Vary", "Accept");
+        applyPublicWebsiteImageSecurityHeaders(res);
         if (response.body) {
           const nodeStream = Readable.fromWeb(response.body as any);
           nodeStream.pipe(res);
@@ -2906,6 +3458,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
     if (acceptsWebP) res.setHeader("Vary", "Accept");
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2920,12 +3473,14 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params;
+  if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
   const objectPath = `/objects/uploads/website-card-images/${uuid}`;
   try {
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
+    applyPublicWebsiteImageSecurityHeaders(res);
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);
@@ -2951,7 +3506,7 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
   if (!config) return res.status(404).json({ error: "No website config" });
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {
-    const pages = ((config.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+    const pages = getWebsitePageList((config.settings as Record<string, unknown> | null)?.pages);
     if (!pages.some(page => normalizePageSlug(String(page.slug ?? "")) === requestedPage)) {
       return res.status(404).json({ error: "Page not found", code: "PUBLIC_PAGE_NOT_FOUND", pageSlug: requestedPage });
     }
@@ -2964,7 +3519,7 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
 // ── Saved Sections — CRUD ─────────────────────────────────────────────────────
 
 router.get("/saved-sections", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const rows = await db
     .select()
@@ -2985,20 +3540,18 @@ router.get("/saved-sections", wrapAsync(async (req, res) => {
 }));
 
 router.post("/saved-sections", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.body.businessId);
-  const { name, sectionType, content, blockStyle } = req.body as {
-    name: string; sectionType: string;
-    content: Record<string, unknown>; blockStyle?: Record<string, unknown>;
-  };
-  if (!businessId || !name || !sectionType) {
-    return res.status(400).json({ error: "businessId, name, sectionType required" });
-  }
+  const body = getWebsiteRequestBody(req.body);
+  const businessId = parsePositiveDatabaseId(body.businessId);
+  if (!businessId) return res.status(400).json({ error: "Valid businessId required" });
+  const validation = validateSavedWebsiteSection(body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const { name, sectionType, content, blockStyle } = validation.section;
   const [row] = await db
     .insert(savedSectionsTable)
     .values({
       businessId,
-      name: name.trim().slice(0, 255),
-      sectionJson: { type: sectionType, content: content ?? {}, blockStyle: blockStyle ?? null },
+      name,
+      sectionJson: { type: sectionType, content, blockStyle: blockStyle ?? null },
     })
     .returning();
   const json = row.sectionJson as { type: string; content: unknown; blockStyle?: unknown };
@@ -3013,13 +3566,16 @@ router.post("/saved-sections", wrapAsync(async (req, res) => {
 }));
 
 router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  const businessId = parseInt(req.body.businessId);
-  const { name } = req.body as { name: string };
-  if (!name?.trim()) return res.status(400).json({ error: "name required" });
+  const id = parsePositiveDatabaseId(req.params.id);
+  const businessId = parsePositiveDatabaseId(req.body.businessId);
+  const { name } = getWebsiteRequestBody(req.body) as { name?: unknown };
+  if (!id || !businessId) return res.status(400).json({ error: "Valid section and business IDs required" });
+  if (typeof name !== "string" || !name.trim() || [...name].length > 255) {
+    return res.status(400).json({ error: "Section name is required and must be 255 characters or fewer." });
+  }
   const [row] = await db
     .update(savedSectionsTable)
-    .set({ name: name.trim().slice(0, 255) })
+    .set({ name: name.trim() })
     .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Not found" });
@@ -3027,12 +3583,15 @@ router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/saved-sections/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  const businessId = parseInt((Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? req.body.businessId) as string);
-  if (!businessId) return res.status(400).json({ error: "businessId required" });
-  await db
+  const id = parsePositiveDatabaseId(req.params.id);
+  const rawBusinessId = Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? req.body.businessId;
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
+  if (!id || !businessId) return res.status(400).json({ error: "Valid section and business IDs required" });
+  const [deleted] = await db
     .delete(savedSectionsTable)
-    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)));
+    .where(and(eq(savedSectionsTable.id, id), eq(savedSectionsTable.businessId, businessId)))
+    .returning({ id: savedSectionsTable.id });
+  if (!deleted) return res.status(404).json({ error: "Saved section not found" });
   return res.json({ ok: true });
 }));
 
@@ -3115,12 +3674,12 @@ function lpUid(): string {
 }
 
 router.post("/generate-landing-page", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, customDescription, businessContext: ctxBody } = req.body as {
+  const { type, customDescription, businessContext: ctxBody } = getWebsiteRequestBody(req.body) as {
     type: string;
     customDescription?: string;
     businessContext?: BusinessContext;
@@ -3454,7 +4013,7 @@ Return slug as a clean URL slug (lowercase, hyphens only, no spaces or special c
     .select({ settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
-  const existingPages = ((existingConfig?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const existingPages = getWebsitePageList(getWebsiteRequestBody(existingConfig?.settings).pages);
   const conflict = existingPages.find(existing => normalizePageSlug(String(existing.slug ?? "")) === resolvedSlug);
   if (conflict || resolvedSlug === "home") {
     return res.status(409).json({
@@ -3546,18 +4105,18 @@ Generate specific, realistic content — no placeholder text.
 `;
 
 router.post("/build-section", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { prompt: userPrompt, businessContext: ctxBody } = req.body as {
+  const { prompt: userPrompt, businessContext: ctxBody } = getWebsiteRequestBody(req.body) as {
     prompt?: string;
     businessContext?: BusinessContext;
   };
 
-  if (!userPrompt?.trim()) {
-    return res.status(400).json({ error: "prompt required" });
+  if (typeof userPrompt !== "string" || !userPrompt.trim() || userPrompt.length > 2000) {
+    return res.status(400).json({ error: "Prompt is required and must be 2,000 characters or fewer." });
   }
 
   // Resolve business context — prefer caller-supplied; fall back to DB
@@ -3667,7 +4226,7 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
     if (!p) return 0;
     const projects = p.content.projects as Array<{ photos?: unknown[] }> | undefined;
     return Array.isArray(projects)
-      ? projects.reduce((s, pr) => s + (Array.isArray(pr.photos) ? pr.photos.length : 0), 0)
+      ? projects.reduce((s, pr) => s + (pr && typeof pr === "object" && Array.isArray(pr.photos) ? pr.photos.filter(Boolean).length : 0), 0)
       : 0;
   }
 
@@ -3744,15 +4303,23 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
 }
 
 router.post("/score", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as {
+  const { sections, settings } = getWebsiteRequestBody(req.body) as {
     sections?: SectionInput[];
     settings?: Record<string, unknown>;
   };
+
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
 
   // If sections/settings not provided in body, load from DB
   let finalSections = sections;
@@ -3767,8 +4334,9 @@ router.post("/score", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
   }
 
-  const result = scoreSections(finalSections, finalSettings);
-  res.json(result);
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(scoreSections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M14: Accessibility Checker ────────────────────────────────────────────────
@@ -3855,16 +4423,16 @@ function checkAccessibilitySections(
 
   if (services) {
     type Item = { mediaType?: string; imageUrl?: string; imageAlt?: string };
-    const items = (services.content.items as Item[] | undefined) ?? [];
-    const missing = items.filter(i => i.mediaType === "image" && str(i.imageUrl) && !str(i.imageAlt));
+    const items = Array.isArray(services.content.items) ? services.content.items as Item[] : [];
+    const missing = items.filter(i => !!i && typeof i === "object" && i.mediaType === "image" && str(i.imageUrl) && !str(i.imageAlt));
     check(missing.length === 0, { id: "service-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} service image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Screen readers can't describe images without alt text." });
   } else { totalChecks++; }
 
   const gallery = findEnabled("gallery");
   if (gallery) {
     type GImg = { url?: string; alt?: string };
-    const imgs = (gallery.content.images as GImg[] | undefined) ?? [];
-    const missing = imgs.filter(i => str(i.url) && !str(i.alt));
+    const imgs = Array.isArray(gallery.content.images) ? gallery.content.images as GImg[] : [];
+    const missing = imgs.filter(i => !!i && typeof i === "object" && str(i.url) && !str(i.alt));
     check(missing.length === 0, { id: "gallery-images-alt", category: "Images", severity: "warning", fixable: true, label: `${missing.length} gallery image${missing.length !== 1 ? "s" : ""} missing alt text`, description: "Alt text improves SEO and assistive technology support." });
   } else { totalChecks++; }
 
@@ -3889,18 +4457,26 @@ function checkAccessibilitySections(
 }
 
 router.post("/check-accessibility", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as {
+  const { sections, settings } = getWebsiteRequestBody(req.body) as {
     sections?: SectionInput[];
     settings?: Record<string, unknown>;
   };
 
   let finalSections = sections;
   let finalSettings = settings;
+
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
 
   if (!finalSections || !finalSettings) {
     const [config] = await db
@@ -3911,7 +4487,9 @@ router.post("/check-accessibility", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
   }
 
-  res.json(checkAccessibilitySections(finalSections, finalSettings));
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(checkAccessibilitySections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M15: Performance Analyzer ─────────────────────────────────────────────────
@@ -3947,22 +4525,27 @@ function analyzePerformanceSections(
     if (s.type === "about" || s.type === "meet-owner") { add(str(c.photoUrl), s.type); }
     if (s.type === "image")   { add(str(c.imageUrl), s.type); }
     if (s.type === "services") {
-      for (const item of (c.items as Array<{mediaType?:string;imageUrl?:string}>|undefined)??[]) {
-        if (item.mediaType === "image") add(str(item.imageUrl), s.type);
+      for (const item of (Array.isArray(c.items) ? c.items : []) as Array<{mediaType?:string;imageUrl?:string}>) {
+        if (item && typeof item === "object" && item.mediaType === "image") add(str(item.imageUrl), s.type);
       }
     }
     if (s.type === "gallery") {
-      for (const img of (c.images as Array<{url?:string}>|undefined)??[]) add(str(img.url), s.type);
+      for (const img of (Array.isArray(c.images) ? c.images : []) as Array<{url?:string}>) {
+        if (img && typeof img === "object") add(str(img.url), s.type);
+      }
     }
     if (s.type === "portfolio") {
-      for (const proj of (c.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]) {
-        for (const ph of proj.photos??[]) add(str(ph.url), s.type);
+      for (const proj of (Array.isArray(c.projects) ? c.projects : []) as Array<{photos?:Array<{url?:string}>}>) {
+        if (!proj || typeof proj !== "object") continue;
+        for (const ph of Array.isArray(proj.photos) ? proj.photos : []) {
+          if (ph && typeof ph === "object") add(str(ph.url), s.type);
+        }
       }
     }
     if (s.type === "before-after") { add(str(c.beforeUrl), s.type); add(str(c.afterUrl), s.type); }
     if (["featured-clients","partners","certifications"].includes(s.type)) {
-      for (const item of (c.items as Array<{imageUrl?:string;logoUrl?:string}>|undefined)??[]) {
-        add(str(item.imageUrl ?? item.logoUrl), s.type);
+      for (const item of (Array.isArray(c.items) ? c.items : []) as Array<{imageUrl?:string;logoUrl?:string}>) {
+        if (item && typeof item === "object") add(str(item.imageUrl ?? item.logoUrl), s.type);
       }
     }
   }
@@ -3983,7 +4566,7 @@ function analyzePerformanceSections(
 
   const gallery = enabled.find(s => s.type === "gallery");
   if (gallery) {
-    const gc = (gallery.content.images as Array<{url?:string}>|undefined)?.filter(i => str(i.url)).length ?? 0;
+    const gc = (Array.isArray(gallery.content.images) ? gallery.content.images as Array<{url?:string}> : []).filter(i => !!i && typeof i === "object" && str(i.url)).length;
     check(gc <= 6, { id: "gallery-image-count", category: "Images", severity: gc > 12 ? "error" : "warning", fixable: false, label: gc > 12 ? "Gallery loading too many images at once" : "Gallery has many images", current: `${gc} gallery images`, recommendation: "Keep 6–8 featured photos. Move extra to a Portfolio page." });
   } else { totalChecks++; }
 
@@ -4008,7 +4591,7 @@ function analyzePerformanceSections(
 
   const portfolio = enabled.find(s => s.type === "portfolio");
   if (portfolio) {
-    const totalPhotos = ((portfolio.content.projects as Array<{photos?:Array<{url?:string}>}>|undefined)??[]).reduce((s,p) => s + (p.photos?.filter(ph => str(ph.url)).length ?? 0), 0);
+    const totalPhotos = (Array.isArray(portfolio.content.projects) ? portfolio.content.projects as Array<{photos?:Array<{url?:string}>}> : []).reduce((s,p) => s + (p && typeof p === "object" && Array.isArray(p.photos) ? p.photos.filter(ph => !!ph && typeof ph === "object" && str(ph.url)).length : 0), 0);
     check(totalPhotos <= 12, { id: "portfolio-photo-count", category: "Loading", severity: "warning", fixable: false, label: "Portfolio has many photos", current: `${totalPhotos} portfolio photos`, recommendation: "Show 3–4 best projects × 3 photos each (12 total max)." });
   } else { totalChecks++; }
 
@@ -4027,12 +4610,20 @@ function analyzePerformanceSections(
 }
 
 router.post("/analyze-performance", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) return res.status(400).json({ error: "businessId required" });
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
 
-  const { sections, settings } = req.body as { sections?: SectionInput[]; settings?: Record<string, unknown> };
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: SectionInput[]; settings?: Record<string, unknown> };
   let finalSections = sections;
   let finalSettings = settings;
+
+  if (sections !== undefined && sections !== null || settings !== undefined && settings !== null) {
+    const validation = validateWebsiteAnalysisInput(
+      sections ?? [],
+      settings ?? {},
+    );
+    if (!validation.ok) return res.status(400).json({ error: validation.error });
+  }
 
   if (!finalSections || !finalSettings) {
     const [config] = await db
@@ -4043,7 +4634,9 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = (config?.settings ?? {}) as Record<string, unknown>;
   }
 
-  res.json(analyzePerformanceSections(finalSections, finalSettings));
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(analyzePerformanceSections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
@@ -4053,11 +4646,11 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
 router.get("/suggest-images", wrapAsync(async (req, res) => {
   const businessType = (req.query.businessType as string | undefined) ?? "";
   const sectionType  = (req.query.sectionType  as string | undefined) ?? "";
-  const businessId   = parseInt(req.query.businessId as string);
+  const businessId   = parsePositiveDatabaseId(req.query.businessId);
 
   // ── Own uploaded photos ─────────────────────────────────────────────────────
   let ownPhotos: Array<{ id: number; url: string; displayName: string | null; filename: string }> = [];
-  if (!isNaN(businessId) && businessId > 0) {
+  if (businessId) {
     const media = await db
       .select({
         id:          websiteMediaTable.id,
@@ -4323,12 +4916,12 @@ Return ONLY the formatted business card content. No explanation.`;
 // Returns: { id, type, content, createdAt }
 
 router.post("/generate-marketing", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, promoHint } = req.body as { type?: string; promoHint?: string };
+  const { type, promoHint } = getWebsiteRequestBody(req.body) as { type?: string; promoHint?: string };
   if (!type) return res.status(400).json({ error: "type required" });
 
   const validTypes: MarketingContentType[] = [
@@ -4349,11 +4942,11 @@ router.post("/generate-marketing", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const sections = (config?.sections ?? []) as SectionRow[];
+  const sections = getWebsiteSectionList(config?.sections) as SectionRow[];
   const settings = (config?.settings ?? {}) as Record<string, unknown>;
 
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   const footerSection = sections.find(s => s.type === "footer");
@@ -4402,8 +4995,8 @@ router.post("/generate-marketing", wrapAsync(async (req, res) => {
 // Returns: { items: [...] } — up to 30 most recent generations for this business
 
 router.get("/marketing-history", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4423,12 +5016,12 @@ router.get("/marketing-history", wrapAsync(async (req, res) => {
 // Renders a simple branded print layout for flyer, door-hanger, and business-card.
 
 router.post("/marketing-pdf", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, content } = req.body as { type?: string; content?: string };
+  const { type, content } = getWebsiteRequestBody(req.body) as { type?: string; content?: string };
   if (!type || !content) return res.status(400).json({ error: "type and content required" });
 
   const printTypes = ["flyer", "door-hanger", "business-card"];
@@ -4652,8 +5245,8 @@ function buildRefreshPrompt(
 }
 
 router.post("/refresh-analysis", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4662,7 +5255,7 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
     settings: clientSettings,
     businessContext,
     lastRefreshedAt,
-  } = req.body as {
+  } = getWebsiteRequestBody(req.body) as {
     sectionSummary?: SectionSummaryItem[];
     settings?: { brandColor?: string; fontFamily?: string; logoUrl?: string };
     businessContext?: { name?: string; businessType?: string; location?: string; services?: string[] } | null;
@@ -4733,8 +5326,8 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
 // ── GET /templates ────────────────────────────────────────────────────────────
 // Returns AI-generated templates saved by this business (+ any global ones).
 router.get("/templates", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const rows = await db.execute(sql`
@@ -4749,29 +5342,42 @@ router.get("/templates", wrapAsync(async (req, res) => {
 // ── POST /templates ────────────────────────────────────────────────────────────
 // Saves an AI-generated template (or any custom template) for this business.
 router.post("/templates", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
-  const { name, description, brandColor, settings, sections } = req.body as {
-    name: string;
-    description?: string;
-    brandColor?: string;
-    settings?: Record<string, unknown>;
-    sections?: unknown[];
+  const { name, description, brandColor, settings, sections } = getWebsiteRequestBody(req.body) as {
+    name?: unknown;
+    description?: unknown;
+    brandColor?: unknown;
+    settings?: unknown;
+    sections?: unknown;
   };
-  if (!name || !Array.isArray(sections)) {
-    return res.status(400).json({ error: "name and sections required" });
+  if (typeof name !== "string" || !name.trim() || [...name].length > 200) {
+    return res.status(400).json({ error: "Template name is required and must be 200 characters or fewer." });
   }
+  if (description !== undefined && typeof description !== "string") {
+    return res.status(400).json({ error: "Template description must be text." });
+  }
+  if (brandColor !== undefined && (typeof brandColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(brandColor))) {
+    return res.status(400).json({ error: "Template brand color must be a six-digit hex color." });
+  }
+  const sectionValidation = validateWebsiteSections(sections);
+  if (!sectionValidation.ok) return res.status(400).json({ error: sectionValidation.error });
+  const settingsValidation = settings === undefined
+    ? { ok: true as const, settings: {} }
+    : validateWebsiteSettings(settings);
+  if (!settingsValidation.ok) return res.status(400).json({ error: settingsValidation.error });
+  const validSections = sectionValidation.sections;
   const [row] = await db.execute(sql`
     INSERT INTO website_templates (business_id, name, description, brand_color, settings, sections, ai_generated)
     VALUES (
       ${businessId},
-      ${name},
-      ${description ?? ""},
-      ${brandColor ?? "#1a1a2e"},
-      ${JSON.stringify(settings ?? {})}::jsonb,
-      ${JSON.stringify(sections)}::jsonb,
+      ${name.trim()},
+      ${(description as string | undefined) ?? ""},
+      ${(brandColor as string | undefined) ?? "#1a1a2e"},
+      ${JSON.stringify(settingsValidation.settings)}::jsonb,
+      ${JSON.stringify(validSections)}::jsonb,
       true
     )
     RETURNING id, business_id, name, description, brand_color, settings, sections, ai_generated, created_at
@@ -4781,14 +5387,16 @@ router.post("/templates", wrapAsync(async (req, res) => {
 
 // ── DELETE /templates/:id ─────────────────────────────────────────────────────
 router.delete("/templates/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const templateId = parseInt(req.params.id as string);
-  if (!businessId || isNaN(businessId) || isNaN(templateId)) {
-    return res.status(400).json({ error: "businessId and id required" });
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const templateId = parsePositiveDatabaseId(req.params.id);
+  if (!businessId || !templateId) {
+    return res.status(400).json({ error: "Valid businessId and template ID required" });
   }
-  await db.execute(sql`
+  const deleted = await db.execute(sql`
     DELETE FROM website_templates WHERE id = ${templateId} AND business_id = ${businessId}
+    RETURNING id
   `);
+  if (!deleted.rows.length) return res.status(404).json({ error: "Template not found" });
   return res.json({ ok: true });
 }));
 
@@ -4874,13 +5482,19 @@ function buildGenerateTemplatePrompt(description: string, businessType?: string,
 }
 
 router.post("/generate-template", wrapAsync(async (req, res) => {
-  const { description, businessType, style } = req.body as {
+  const { description, businessType, style } = getWebsiteRequestBody(req.body) as {
     description: string;
     businessType?: string;
     style?: string;
   };
-  if (!description || description.trim().length < 5) {
-    return res.status(400).json({ error: "description required (min 5 chars)" });
+  if (typeof description !== "string" || description.trim().length < 5 || description.length > 2000) {
+    return res.status(400).json({ error: "Description must be between 5 and 2,000 characters." });
+  }
+  if (businessType !== undefined && typeof businessType !== "string") {
+    return res.status(400).json({ error: "Business type must be text." });
+  }
+  if (style !== undefined && typeof style !== "string") {
+    return res.status(400).json({ error: "Style must be text." });
   }
 
   const prompt = buildGenerateTemplatePrompt(description.trim(), businessType, style);
@@ -4923,6 +5537,8 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   }
   if (!template.name || typeof template.name !== "string" || !(template.name as string).trim()) {
     template.name = "AI Template";
+  } else {
+    template.name = (template.name as string).trim().slice(0, 200);
   }
   if (!template.description || typeof template.description !== "string") {
     template.description = "";
@@ -4930,7 +5546,7 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   if (
     !template.brandColor ||
     typeof template.brandColor !== "string" ||
-    !/^#[0-9A-Fa-f]{3,6}$/.test(template.brandColor as string)
+    !/^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(template.brandColor as string)
   ) {
     template.brandColor = "#1a1a2e";
   }
@@ -4939,9 +5555,12 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   if (!template.settings || typeof template.settings !== "object" || Array.isArray(template.settings)) {
     template.settings = {};
   }
-  // Ensure brandColor is mirrored inside settings
+  // Ensure settings only retain a valid CSS hex color.
+  const settingsBrandColor = (template.settings as Record<string, unknown>).brandColor;
   (template.settings as Record<string, unknown>).brandColor =
-    (template.settings as Record<string, unknown>).brandColor ?? template.brandColor;
+    typeof settingsBrandColor === "string" && /^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(settingsBrandColor)
+      ? settingsBrandColor
+      : template.brandColor;
 
   // sections must be a non-empty array
   if (!Array.isArray(template.sections)) {
@@ -4961,87 +5580,21 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
     });
   }
 
-  template.sections = rawSections.map((s, i) => ({
+  template.sections = ensureUniqueWebsiteSectionIds(rawSections.map((s, i) => ({
     ...s,
-    id: String(s.id || s.type || `s${i}`),
+    id: s.id,
     enabled: true,
     order: typeof s.order === "number" ? s.order : i - 1,
     // content must be an object
     content: (s.content && typeof s.content === "object" && !Array.isArray(s.content))
       ? s.content
       : {},
-  }));
+  })));
 
   return res.json(template);
 }));
 
-// ── POST /regenerate-section ──────────────────────────────────────────────────
-// Regenerates one section while leaving the rest of the client-side template
-// untouched. The caller supplies the current template as context so the copy
-// remains consistent with the selected business and visual direction.
-router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { sectionType, section, templateContext } = req.body as {
-    sectionType?: string;
-    section?: { id?: string; type?: string; enabled?: boolean; order?: number; content?: Record<string, unknown> };
-    templateContext?: { name?: string; description?: string; style?: string; brandColor?: string; sections?: unknown[] };
-  };
-  if (!sectionType || !VALID_SECTION_TYPES.includes(sectionType as typeof VALID_SECTION_TYPES[number])) {
-    return res.status(400).json({ error: "A valid sectionType is required." });
-  }
-  if (!section || typeof section !== "object") {
-    return res.status(400).json({ error: "section is required." });
-  }
-
-  const prompt = [
-    "You are refreshing one section of a contractor/business website template.",
-    `Template name: ${templateContext?.name ?? "Business website"}`,
-    `Template description: ${templateContext?.description ?? ""}`,
-    `Visual style: ${templateContext?.style ?? "not specified"}`,
-    `Brand color: ${templateContext?.brandColor ?? ""}`,
-    `All section types in the template: ${JSON.stringify(
-      Array.isArray(templateContext?.sections)
-        ? templateContext.sections.map((s: any) => s?.type).filter(Boolean)
-        : [],
-    )}`,
-    "",
-    `Regenerate ONLY the "${sectionType}" section.`,
-    "Return one JSON object with exactly: { id, type, enabled, order, content }.",
-    `The type MUST be "${sectionType}". Keep the content schema appropriate for this section type, with specific fresh copy (not placeholders).`,
-    `Current section to improve: ${JSON.stringify(section)}`,
-    "Do not return markdown, an array, or any other text.",
-  ].join("\n");
-
-  const completion = await openai.chat.completions.create({
-    model: BUILDPRO_AI_MINI_MODEL,
-    messages: [
-      { role: "system", content: "Return ONLY one valid JSON section object. No markdown or code fences." },
-      { role: "user", content: prompt },
-    ],
-    max_tokens: 1200,
-    temperature: 0.9,
-  });
-  const raw = (completion.choices[0]?.message?.content ?? "").trim();
-  let replacement: Record<string, unknown> | null = null;
-  try {
-    replacement = JSON.parse(raw);
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      try { replacement = JSON.parse(match[0]); } catch { /* handled below */ }
-    }
-  }
-  if (!replacement || typeof replacement !== "object" || Array.isArray(replacement)) {
-    return res.status(422).json({ error: "AI returned an invalid section. Please try again." });
-  }
-  if (replacement.type !== sectionType) replacement.type = sectionType;
-  replacement.id = section.id ?? replacement.id ?? sectionType;
-  replacement.enabled = typeof replacement.enabled === "boolean" ? replacement.enabled : section.enabled !== false;
-  replacement.order = typeof replacement.order === "number" ? replacement.order : section.order ?? 0;
-  replacement.content = replacement.content && typeof replacement.content === "object" && !Array.isArray(replacement.content)
-    ? replacement.content
-    : {};
-  return res.json(replacement);
-}));
+// The sole /regenerate-section handler is registered near the end of this file.
 
 // ── POST /generate-from-profile ──────────────────────────────────────────────
 // M20: AI Website Generator — one-click full site generation from business data.
@@ -5053,8 +5606,8 @@ router.post("/regenerate-section", wrapAsync(async (req, res) => {
 //   { type:"complete", sections:[...], settings:{...} }
 //   { type:"error", message:string }
 router.post("/generate-from-profile", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -5088,12 +5641,12 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       .where(eq(websiteConfigsTable.businessId, businessId));
 
     type ExRow = { type: string; content: Record<string, unknown> };
-    const existingSections = (config?.sections ?? []) as ExRow[];
+    const existingSections = getWebsiteSectionList(config?.sections) as ExRow[];
     const existingSettings = (config?.settings ?? {}) as Record<string, unknown>;
 
     // Extract services from existing sections
     const existingServicesSection = existingSections.find(s => s.type === "services");
-    const serviceItems = (existingServicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+    const serviceItems = getWebsiteSectionTextItems(existingServicesSection?.content?.items);
     const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
     // Extract coverage areas
@@ -5152,7 +5705,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       const copy = outcome.value;
 
       if (section.type === "services" && Array.isArray(copy.items)) {
-        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.items);
         const ci = copy.items as Array<{ title: string; description: string }>;
         const merged = ex.map((item, idx) => ({ ...item, title: ci[idx]?.title ?? item.title, description: ci[idx]?.description ?? item.description }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5167,7 +5720,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         return { ...section, content: { ...section.content, ...rest, items: faqItems } };
       }
       if (section.type === "process" && Array.isArray(copy.steps)) {
-        const ex = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.steps);
         const cs = copy.steps as Array<{ title: string; description: string }>;
         const merged = ex.map((step, idx) => ({ ...step, title: cs[idx]?.title ?? step.title, description: cs[idx]?.description ?? step.description }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5175,7 +5728,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         return { ...section, content: { ...section.content, ...rest, steps: merged } };
       }
       if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
-        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.items);
         const ci = copy.items as Array<{ title: string; description: string }>;
         const merged = ci.map((item, idx) => ({ id: (ex[idx] as any)?.id ?? `why-${idx + 1}`, icon: (ex[idx] as any)?.icon ?? "✓", ...item }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5195,7 +5748,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       let imageBuffer: Buffer | null = null;
       const logoObjectPath = existingSettings.logoObjectPath as string | undefined;
 
-      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+      if (isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
         try {
           const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
           const response = await objectStorageService.downloadObject(objectFile);
@@ -5212,12 +5765,8 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         } catch { /* non-fatal */ }
       }
 
-      if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
-        try {
-          const fr = await fetch(logoUrl);
-          if (fr.ok) imageBuffer = Buffer.from(await fr.arrayBuffer());
-        } catch { /* non-fatal */ }
-      }
+      // Do not fetch logoUrl here: it may be user-controlled and would create an SSRF path.
+      // If no stored logo object is available, the configured brand color is the safe fallback.
 
       let dominantColors: string[] = [];
       if (imageBuffer && imageBuffer.length > 0) {
@@ -5340,6 +5889,14 @@ const DEALER_BRANDS: Record<string, {
     productLines: ["Single-Section", "Double-Section", "Multi-Section", "Modular"],
   },
 };
+
+/** Keep dealer-page generation deterministic and prevent duplicate slugs in one request. */
+export function normalizeDealerManufacturerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id): id is string =>
+    typeof id === "string" && Object.prototype.hasOwnProperty.call(DEALER_BRANDS, id)
+  ))];
+}
 
 function uid7(): string {
   return Math.random().toString(36).slice(2, 9);
@@ -5507,12 +6064,12 @@ function assembleDealerPage(
 }
 
 router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { manufacturers, businessContext } = req.body as {
+  const { manufacturers, businessContext } = getWebsiteRequestBody(req.body) as {
     manufacturers?: string[];
     businessContext?: { businessName?: string; location?: string; phone?: string; email?: string; services?: string[] } | null;
   };
@@ -5521,8 +6078,8 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "manufacturers array required" });
   }
 
-  // Validate brand IDs
-  const validIds = manufacturers.filter(id => DEALER_BRANDS[id]);
+  // Validate and deduplicate brand IDs before checking conflicts or generating pages.
+  const validIds = normalizeDealerManufacturerIds(manufacturers);
   if (validIds.length === 0) {
     return res.status(400).json({ error: "No valid manufacturer IDs provided" });
   }
@@ -5537,8 +6094,8 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const siteSections = (config?.sections ?? []) as SectionRow[];
-  const existingPages = ((config?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const siteSections = getWebsiteSectionList(config?.sections) as SectionRow[];
+  const existingPages = getWebsitePageList(getWebsiteRequestBody(config?.settings).pages);
   const requestedSlugs = validIds.map(id => DEALER_BRANDS[id]!.slug);
   const conflicts = existingPages.filter(page => requestedSlugs.includes(normalizePageSlug(String(page.slug ?? ""))));
   if (conflicts.length > 0) {
@@ -5550,7 +6107,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
   }
 
   const servicesSection = siteSections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   const footerSection = siteSections.find(s => s.type === "footer");
@@ -5620,26 +6177,27 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
 // Body: { businessId, sectionType, sectionContent }
 // Response: { content } — the generated copy patch (merge into the existing section content)
 router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { businessId, sectionType, sectionContent } = req.body as {
-    businessId?: number;
+  const { businessId: rawBusinessId, sectionType, sectionContent } = getWebsiteRequestBody(req.body) as {
+    businessId?: unknown;
     sectionType?: string;
     sectionContent?: Record<string, unknown>;
   };
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
 
-  if (!businessId || isNaN(Number(businessId))) return res.status(400).json({ error: "businessId required" });
+  if (!businessId) return res.status(400).json({ error: "Valid businessId required" });
   if (!sectionType) return res.status(400).json({ error: "sectionType required" });
 
-  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, Number(businessId)));
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
   if (!biz) return res.status(404).json({ error: "Business not found" });
 
   // Fetch existing website config for service area context
   const [config] = await db
     .select({ sections: websiteConfigsTable.sections })
     .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, Number(businessId)));
+    .where(eq(websiteConfigsTable.businessId, businessId));
 
   type ExRow = { type: string; content: Record<string, unknown> };
-  const existingSections = (config?.sections ?? []) as ExRow[];
+  const existingSections = getWebsiteSectionList(config?.sections) as ExRow[];
   const serviceAreaSection = existingSections.find(s => s.type === "service-area");
   const coverageAreas = (serviceAreaSection?.content?.areas as string[] | undefined) ?? [];
   const cityState = [biz.city, biz.state].filter(Boolean).join(", ");

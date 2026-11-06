@@ -1,14 +1,30 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable } from "@workspace/db/schema";
+import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable, mfhClientPricingTable, productionPriceOverridesTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
-import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import {
   clientProfileRouteStopColumns,
   clientProfileSquarePaymentColumns,
 } from "../lib/client-profile-projections.js";
 
 const router = Router();
+
+async function resolveClientBusinessAssignment(value: unknown): Promise<{
+  businessId: number | null;
+  businessLine: string | null;
+} | undefined> {
+  if (value == null || value === "") return { businessId: null, businessLine: null };
+  if (typeof value !== "string") return undefined;
+  const requestedSlug = value.trim();
+  const slug = requestedSlug === "asphalt" ? "asphalt_sealing"
+    : requestedSlug === "contracting" ? "general_contracting"
+    : requestedSlug;
+  if (!slug) return { businessId: null, businessLine: null };
+  const [business] = await db.select({ id: businessesTable.id, slug: businessesTable.slug })
+    .from(businessesTable).where(eq(businessesTable.slug, slug)).limit(1);
+  return business ? { businessId: business.id, businessLine: business.slug } : undefined;
+}
 
 function scopedOwnerPredicate(
   columns: { businessId: any; businessLine: any },
@@ -24,12 +40,35 @@ function scopedOwnerPredicate(
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
-    const scope = await requestedBusiness(req);
-    if (!Number.isInteger(id)) return next();
-    if (!scope) return next();
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid client ID" });
+
+    const isMutation = ["PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase());
+    // businessLine on PUT/PATCH is the destination assignment. Resolve the
+    // source record owner from dedicated source fields or the query selector.
+    const scopeRequest = req.method === "PUT" || req.method === "PATCH"
+      ? {
+          ...req,
+          body: {
+            businessId: req.body?.sourceBusinessId,
+            businessLine: req.body?.sourceBusinessLine,
+          },
+        } as Request
+      : req;
+
+    let scope: Awaited<ReturnType<typeof requestedBusiness>>;
+    if (isMutation) {
+      const ownership = await resolveMutationBusiness(scopeRequest);
+      if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+      scope = ownership.business;
+    } else {
+      scope = await requestedBusiness(scopeRequest);
+      if (invalidBusinessScope(res, scope, hasRequestedBusiness(scopeRequest))) return;
+    }
+
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
     if (!client || !belongsToBusiness(client, scope)) return res.status(404).json({ error: "Client not found" });
     res.locals.businessScopedClient = client;
+    if (scope) res.locals.clientBusinessScope = scope;
     next();
   })().catch(next);
 });
@@ -41,6 +80,7 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
 router.get("/", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const clientScope = scopedOwnerPredicate(clientsTable, scope);
     const invoiceScope = scopedOwnerPredicate(invoicesTable, scope);
     const [clients, openInvoices] = await Promise.all([
@@ -81,15 +121,17 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, businessLine, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
+    const { name, email, phone, address, city, state, zip, notes, nextServiceDate, serviceIntervalMonths, reminderOptOut, mileageSurchargeEnabled, mileageSurchargeTriggerMiles, mileageSurchargeDailyRate } = req.body;
     if (!name) return res.status(400).json({ error: "Name is required" });
-    const scope = await requestedBusiness(req);
+    const ownership = await resolveMutationBusiness(req);
+    if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    const owner = ownership.business;
     const [client] = await db.insert(clientsTable).values({
       name, email, phone, address, city, state, zip, notes,
       nextServiceDate: nextServiceDate ?? null,
       serviceIntervalMonths: serviceIntervalMonths ?? null,
-      businessLine: businessLine ?? null,
-      businessId: scope?.id ?? null,
+      businessLine: owner.slug,
+      businessId: owner.id,
       reminderOptOut: reminderOptOut === true,
       mileageSurchargeEnabled: mileageSurchargeEnabled === true,
       mileageSurchargeTriggerMiles: mileageSurchargeTriggerMiles ?? null,
@@ -108,12 +150,15 @@ router.get("/:id/profile", async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
 
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
 
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
       db.select().from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))).orderBy(desc(jobsTable.createdAt)),
       db.select().from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))).orderBy(desc(invoicesTable.createdAt)),
+      // The legacy production table has no business_id column; access is scoped
+      // through the already-authorized client foreign key.
       db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
       db.select().from(prospectsTable).where(and(eq(prospectsTable.clientId, id), scopedOwnerPredicate(prospectsTable, scope))).orderBy(desc(prospectsTable.createdAt)),
       db.select(clientProfileRouteStopColumns).from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
@@ -182,14 +227,21 @@ router.put("/:id", async (req, res) => {
     if ("notes" in req.body) updates.notes = notes;
     if ("nextServiceDate" in req.body) updates.nextServiceDate = nextServiceDate ?? null;
     if ("serviceIntervalMonths" in req.body) updates.serviceIntervalMonths = serviceIntervalMonths ?? null;
-    if ("businessLine" in req.body) updates.businessLine = businessLine ?? null;
+    if ("businessLine" in req.body) {
+      const assignment = await resolveClientBusinessAssignment(businessLine);
+      if (!assignment) return res.status(400).json({ error: "Select a valid business." });
+      updates.businessLine = assignment.businessLine;
+      updates.businessId = assignment.businessId;
+    }
     if ("reminderOptOut" in req.body) updates.reminderOptOut = reminderOptOut === true;
     if ("mileageSurchargeEnabled" in req.body) updates.mileageSurchargeEnabled = mileageSurchargeEnabled === true;
     if ("mileageSurchargeTriggerMiles" in req.body) updates.mileageSurchargeTriggerMiles = mileageSurchargeTriggerMiles ?? null;
     if ("mileageSurchargeDailyRate" in req.body) updates.mileageSurchargeDailyRate = mileageSurchargeDailyRate ?? null;
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
     const [client] = await db.update(clientsTable)
       .set(updates)
-      .where(eq(clientsTable.id, id))
+      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
     res.json(formatClient(client));
@@ -205,14 +257,13 @@ router.patch("/:id/business-line", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
-    const { businessLine } = req.body;
-    const normalized = businessLine === undefined ? null : businessLine;
-    if (!VALID_BUSINESS_LINES.includes(normalized)) {
-      return res.status(400).json({ error: "Invalid business line. Must be 'asphalt', 'contracting', or null." });
-    }
+    const assignment = await resolveClientBusinessAssignment(req.body?.businessLine);
+    if (!assignment) return res.status(400).json({ error: "Select a valid business." });
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
     const [client] = await db.update(clientsTable)
-      .set({ businessLine: normalized })
-      .where(eq(clientsTable.id, id))
+      .set(assignment)
+      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
     res.json(formatClient(client));
@@ -226,12 +277,24 @@ router.get("/:id/link-counts", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
-    const [jobs, invoices, estimates] = await Promise.all([
-      db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.clientId, id)),
-      db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.clientId, id)),
-      db.select({ id: estimatesTable.id }).from(estimatesTable).where(eq(estimatesTable.clientId, id)),
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const [jobs, invoices, estimates, billingProfiles, mfhPricing, productionPricing] = await Promise.all([
+      db.select({ id: jobsTable.id }).from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))),
+      db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))),
+      db.select({ id: estimatesTable.id }).from(estimatesTable).where(and(eq(estimatesTable.clientId, id), scopedOwnerPredicate(estimatesTable, scope))),
+      db.select({ id: clientBillingProfilesTable.id }).from(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
+      db.select({ id: mfhClientPricingTable.id }).from(mfhClientPricingTable).where(eq(mfhClientPricingTable.clientId, id)),
+      db.select({ id: productionPriceOverridesTable.id }).from(productionPriceOverridesTable).where(eq(productionPriceOverridesTable.clientId, id)),
     ]);
-    res.json({ jobCount: jobs.length, invoiceCount: invoices.length, estimateCount: estimates.length });
+    res.json({
+      jobCount: jobs.length,
+      invoiceCount: invoices.length,
+      estimateCount: estimates.length,
+      billingProfileCount: billingProfiles.length,
+      mfhPricingCount: mfhPricing.length,
+      productionPricingCount: productionPricing.length,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch link counts" });
@@ -241,18 +304,51 @@ router.get("/:id/link-counts", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    // Nullify FK references on related records before deleting so the DELETE
-    // doesn't fail due to FK constraint violations.
-    await Promise.all([
-      db.update(prospectsTable).set({ clientId: null }).where(eq(prospectsTable.clientId, id)),
-      db.update(estimatesTable).set({ clientId: null }).where(eq(estimatesTable.clientId, id)),
-      db.update(invoicesTable).set({ clientId: null }).where(eq(invoicesTable.clientId, id)),
-      db.update(jobsTable).set({ clientId: null }).where(eq(jobsTable.clientId, id)),
-      // client_billing_profiles.client_id is NOT NULL so it cannot be nullified — delete the rows
-      db.delete(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
-    ]);
-    await db.delete(clientsTable).where(eq(clientsTable.id, id));
-    res.status(204).send();
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
+    // Lock the owner row while checking client-specific pricing. These rows
+    // cascade on client deletion, so a simple preflight outside the transaction
+    // could race with a concurrent pricing write and silently destroy settings.
+    const result = await db.transaction(async tx => {
+      const [lockedClient] = await tx.select().from(clientsTable)
+        .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
+        .for("update");
+      if (!lockedClient) return { status: "not_found" as const };
+
+      const billingProfiles = await tx.select({ id: clientBillingProfilesTable.id })
+        .from(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id));
+      const mfhPricing = await tx.select({ id: mfhClientPricingTable.id })
+        .from(mfhClientPricingTable).where(eq(mfhClientPricingTable.clientId, id));
+      const productionPricing = await tx.select({ id: productionPriceOverridesTable.id })
+        .from(productionPriceOverridesTable).where(eq(productionPriceOverridesTable.clientId, id));
+
+      if (billingProfiles.length || mfhPricing.length || productionPricing.length) {
+        return {
+          status: "blocked" as const,
+          billingProfileCount: billingProfiles.length,
+          mfhPricingCount: mfhPricing.length,
+          productionPricingCount: productionPricing.length,
+        };
+      }
+
+      // The repository's archive-first policy requires a recoverable client
+      // lifecycle. Until that workflow exists, do not detach history or delete
+      // the parent row even when no pricing dependency is present.
+      return { status: "archive_required" as const };
+    });
+
+    if (result.status === "blocked") {
+      return res.status(409).json({
+        error: "This client has saved billing or manufacturer pricing. Remove or transfer those settings before deleting the client.",
+        billingProfileCount: result.billingProfileCount,
+        mfhPricingCount: result.mfhPricingCount,
+        productionPricingCount: result.productionPricingCount,
+      });
+    }
+    if (result.status === "not_found") return res.status(404).json({ error: "Client not found" });
+    return res.status(409).json({
+      error: "Permanent client deletion is disabled until a client archive/restore workflow is available. No data was changed.",
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete client" });

@@ -116,6 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
+import { cancelWebsiteRenameBlurCommit, completeSectionBlockStyleUpload, consumeWebsiteRenameBlurCommit, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, removeWebsitePageAndNavigationLinks, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -197,7 +198,7 @@ function renderSection(
   isEditing: boolean,
   onChange: (content: Record<string, unknown>) => void,
   extras?: {
-    onAboutPhotoUpload?: (file: File) => Promise<void>;
+    onAboutPhotoUpload?: (sectionId: string, file: File) => Promise<void>;
     isAboutPhotoUploading?: boolean;
     onPortfolioPhotoUpload?: (projectId: string, photoId: string, file: File) => Promise<void>;
     uploadingPortfolioPhotoIds?: Set<string>;
@@ -257,7 +258,7 @@ function renderSection(
         onOpenMediaLibrary={extras?.onOpenMediaLibrary}
       />
     );
-    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={extras?.sectionId} />;
+    case "about":   return <AboutSection {...props} onPhotoUpload={extras?.onAboutPhotoUpload ? (file: File) => extras.onAboutPhotoUpload!(section.id, file) : undefined} isPhotoUploading={extras?.isAboutPhotoUploading} businessName={extras?.businessName} sectionId={section.id} />;
     case "contact": return <ContactFormSection {...props} businessId={extras?.businessId} />;
     case "footer":  return <FooterSection {...props} sectionId={extras?.sectionId} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} businessName={extras?.businessName} />;
     case "image":   return <ImageSection {...(props as any)} onOpenMediaLibrary={extras?.onOpenMediaLibrary as any} />;
@@ -609,23 +610,23 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
         active ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
       }`}
-      onClick={onActivate}
     >
       {leadingContent}
       <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={e => e.stopPropagation()}>
         <GripVertical className="w-3 h-3" />
       </div>
-      <span className={`flex-1 flex items-center gap-1 text-[11px] font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+      <button type="button" className={`flex-1 flex items-center gap-1 text-left text-[11px] font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`} onClick={onActivate}>
         <span className="opacity-50">{getSectionTypeIcons()[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
         {SECTION_LABELS[section.type] ?? section.type}
-      </span>
+      </button>
       <button
+        type="button"
         onClick={e => { e.stopPropagation(); onToggle(); }}
         className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-        title={section.enabled ? "Hide section" : "Show section"}
+        aria-label={section.enabled ? "Hide section" : "Show section"}
       >
         {section.enabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
       </button>
@@ -981,6 +982,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
   const isExpanded = expandedIds.has(node.id);
   const isActivePage = node.id === activePageId;
   const page = node.page!;
+  const pageRenameShouldCommitOnBlurRef = useRef(false);
   const lockedHeader = node.id === "home"
     ? (isActivePage ? activeSections : (page.sections ?? [])).find(s => s.type === "header")
     : null;
@@ -1006,10 +1008,9 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
       <div
-        className={`group flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors ${
+        className={`group flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors ${
           isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
         }`}
-        onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}
       >
         {node.id !== "home" && (
           <div
@@ -1022,37 +1023,51 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
             <GripVertical className="w-3 h-3" />
           </div>
         )}
-        <button type="button" className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+        <button type="button" aria-label={isExpanded ? "Collapse page" : "Expand page"} className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
           onClick={e => { e.stopPropagation(); onToggleExpand(node.id); }}>
           <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
         </button>
-        <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
         {editingPageId === node.id ? (
           <input type="text" value={editingPageName}
             onChange={e => setEditingPageName(e.target.value)}
-            onBlur={() => { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }}
+            onBlur={() => {
+              if (!consumeWebsiteRenameBlurCommit(pageRenameShouldCommitOnBlurRef)) return;
+              if (editingPageName.trim()) renamePage(node.id, editingPageName.trim());
+              setEditingPageId(null);
+            }}
             onKeyDown={e => {
-              if (e.key === "Enter") { if (editingPageName.trim()) renamePage(node.id, editingPageName.trim()); setEditingPageId(null); }
-              if (e.key === "Escape") setEditingPageId(null);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                cancelWebsiteRenameBlurCommit(pageRenameShouldCommitOnBlurRef);
+                setEditingPageId(null);
+              }
             }}
             className="flex-1 text-xs bg-transparent border-b border-primary focus:outline-none min-w-0"
             autoFocus onClick={e => e.stopPropagation()}
           />
         ) : (
-          <span className="flex-1 text-[11px] font-medium truncate">{node.label}</span>
+          <button type="button" className="flex-1 min-w-0 flex items-center gap-1 text-left text-[11px] font-medium"
+            onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}>
+            <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
+            <span className="truncate">{node.label}</span>
+          </button>
         )}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button type="button" onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
-            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Rename">
+          <button type="button" aria-label={`Rename ${node.label} page`} onClick={e => { e.stopPropagation(); pageRenameShouldCommitOnBlurRef.current = true; setEditingPageId(node.id); setEditingPageName(node.label); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground">
             <Pencil className="w-2.5 h-2.5" />
           </button>
-          <button type="button" onClick={e => { e.stopPropagation(); switchPage(node.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
-            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Replace page with template">
+          <button type="button" aria-label={`Replace ${node.label} page with a template`} onClick={e => { e.stopPropagation(); switchPage(node.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground">
             <LayoutTemplate className="w-2.5 h-2.5" />
           </button>
           {node.id !== "home" && (
-            <button type="button" onClick={e => { e.stopPropagation(); deletePage(node.id); }}
-              className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive" title="Delete page">
+            <button type="button" aria-label={`Delete ${node.label} page`} onClick={e => { e.stopPropagation(); deletePage(node.id); }}
+              className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
               <Trash2 className="w-2.5 h-2.5" />
             </button>
           )}
@@ -1062,8 +1077,8 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
       {isExpanded && (
         <div className="ml-3 mt-0.5 space-y-0.5">
           {lockedHeader && (
-            <div data-section-id={lockedHeader.id}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
+            <button type="button" data-section-id={lockedHeader.id}
+              className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
                 activeSection === lockedHeader.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
               }`}
               onClick={() => setActiveSection(lockedHeader.id)}
@@ -1071,7 +1086,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
               <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
               <span className="flex-1 text-[11px] font-medium text-foreground">Header</span>
               <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
-            </div>
+            </button>
           )}
 
           {isActivePage ? (
@@ -1116,8 +1131,8 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
   if (node.type === "item") {
     const isActive = !!activeCardId && activeCardId === node.id;
     return (
-      <div
-        className={`flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
+      <button type="button"
+        className={`w-full text-left flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1131,7 +1146,7 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
       >
         <span className="w-1 h-1 rounded-full bg-current flex-shrink-0 opacity-70" />
         <span className="flex-1 truncate">{node.label}</span>
-      </div>
+      </button>
     );
   }
 
@@ -1508,9 +1523,9 @@ function WebsiteEditor() {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [localPages, setLocalPages] = useState<SitePage[] | null>(null);
   const [localSettings, setLocalSettings] = useState<SiteSettings | null>(null);
-  const [activePageId, setActivePageId] = useState<string>(() => {
-    try { return localStorage.getItem("site-editor-last-page") ?? "home"; } catch { return "home"; }
-  });
+  const [activePageId, setActivePageId] = useState<string>(
+    () => readEditorPreference("site-editor-last-page") ?? "home"
+  );
   const [editingPageId, setEditingPageId] = useState<string | null>(null);
   const [editingPageName, setEditingPageName] = useState("");
   const [showAddPage, setShowAddPage] = useState(false);
@@ -1543,6 +1558,7 @@ function WebsiteEditor() {
   const [showRefreshPanel, setShowRefreshPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
+  const pendingWebsiteAssetUploadsRef = useRef(new Set<string>());
   const pagesRef = useRef<SitePage[]>([]);
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
   const activePageIdRef = useRef<string>("home");
@@ -1560,7 +1576,8 @@ function WebsiteEditor() {
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [viewport, setViewport] = useState<"desktop" | "tablet" | "mobile">(() => {
-    return (localStorage.getItem("website-editor-viewport") as "desktop" | "tablet" | "mobile") ?? "desktop";
+    const saved = readEditorPreference("website-editor-viewport");
+    return saved === "tablet" || saved === "mobile" ? saved : "desktop";
   });
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [pickerIsReset, setPickerIsReset] = useState(false);
@@ -1611,7 +1628,7 @@ function WebsiteEditor() {
   const [saveSectionName, setSaveSectionName] = useState("");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: ContextMenuGroup[] } | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(
-    () => localStorage.getItem("website-editor-left-collapsed") === "true"
+    () => readEditorPreference("website-editor-left-collapsed") === "true"
   );
   const [leftPanelTab, setLeftPanelTab] = useState<"structure" | "layers" | "assets" | "components">("structure");
   /** Active library-panel drag state — tracks ghost position and canvas drop target. */
@@ -1625,8 +1642,8 @@ function WebsiteEditor() {
   } | null>(null);
   const libraryDragRef = useRef<typeof libraryDrag>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>(() => {
-    const s = localStorage.getItem('website-inspector-mode');
-    return (s === 'pinned' || s === 'floating') ? s : 'auto';
+    const s = readEditorPreference("website-inspector-mode");
+    return (s === "pinned" || s === "floating") ? s : "auto";
   });
   /** Whether the right inspector drawer is currently open (default hidden). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -1639,11 +1656,26 @@ function WebsiteEditor() {
   const selectedSubElementRef = useRef<{ type: string; label: string } | null>(null);
   selectedSubElementRef.current = selectedSubElement;
   const [floatingPos, setFloatingPos] = useState<{ x: number; y: number }>(() => {
+    const fallback = {
+      x: typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 300),
+      y: 64,
+    };
+    const saved = readEditorPreference("website-inspector-float-pos");
+    if (!saved) return fallback;
     try {
-      const s = localStorage.getItem('website-inspector-float-pos');
-      if (s) return JSON.parse(s) as { x: number; y: number };
-    } catch {}
-    return { x: Math.max(0, window.innerWidth - 300), y: 64 };
+      const parsed = JSON.parse(saved) as { x?: unknown; y?: unknown };
+      if (typeof parsed.x !== "number" || !Number.isFinite(parsed.x) ||
+          typeof parsed.y !== "number" || !Number.isFinite(parsed.y)) return fallback;
+      const maxX = typeof window === "undefined" ? 0 : Math.max(0, window.innerWidth - 280);
+      // Keep the floating inspector's title bar reachable after a window resize.
+      const maxY = typeof window === "undefined" ? 0 : Math.max(0, window.innerHeight - 48);
+      return {
+        x: Math.min(maxX, Math.max(0, parsed.x)),
+        y: Math.min(maxY, Math.max(0, parsed.y)),
+      };
+    } catch {
+      return fallback;
+    }
   });
   const floatingDragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number } | null>(null);
   const [canvasZoom, setCanvasZoom] = useState(100);
@@ -1701,16 +1733,16 @@ function WebsiteEditor() {
 
   function changeViewport(v: "desktop" | "tablet" | "mobile") {
     setViewport(v);
-    localStorage.setItem("website-editor-viewport", v);
+    writeEditorPreference("website-editor-viewport", v);
   }
 
   useEffect(() => {
-    localStorage.setItem("website-editor-left-collapsed", String(leftCollapsed));
+    writeEditorPreference("website-editor-left-collapsed", String(leftCollapsed));
     leftCollapsedRef.current = leftCollapsed;
   }, [leftCollapsed]);
 
   useEffect(() => {
-    localStorage.setItem('website-inspector-mode', panelMode);
+    writeEditorPreference("website-inspector-mode", panelMode);
   }, [panelMode]);
 
   // Clear sub-element drill-down whenever the user switches to a different section.
@@ -1754,9 +1786,12 @@ function WebsiteEditor() {
   const businessSessionRef = useRef(0);
   const saveInFlightRef = useRef(false);
   const saveQueuedRef = useRef(false);
+  const saveInFlightPromiseRef = useRef<Promise<unknown> | null>(null);
   const saveErrorRevisionRef = useRef<number | null>(null);
 
   const bizId = activeBusiness?.id;
+  const bizIdRef = useRef<number | undefined>(bizId);
+  bizIdRef.current = bizId;
 
   // ── Saved AI templates query ───────────────────────────────────────────────
   const { data: savedTemplatesRaw, refetch: refetchSavedTemplates } = useQuery<unknown[]>({
@@ -1793,11 +1828,24 @@ function WebsiteEditor() {
   }));
 
   async function deleteSavedTemplate(id: string) {
-    await fetch(`${BASE}/api/website/templates/${id}?businessId=${bizId}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    refetchSavedTemplates();
+    try {
+      const res = await fetch(`${BASE}/api/website/templates/${encodeURIComponent(id)}?businessId=${bizId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to delete template.");
+      }
+      await refetchSavedTemplates();
+      toast({ title: "Template deleted" });
+    } catch (error) {
+      toast({
+        title: "Could not delete template",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   useEffect(() => {
@@ -1811,6 +1859,18 @@ function WebsiteEditor() {
     saveQueuedRef.current = false;
     saveErrorRevisionRef.current = null;
     setHasUnpublishedChanges(false);
+    setIsGenerating(false);
+    setGeneratingStep("");
+    setShowAIWizard(false);
+    setShowGeneratorScreen(false);
+    setDeletePageConfirm(null);
+    setBgUploading({});
+    setLogoUploading(false);
+    setFaviconUploading(false);
+    setAboutPhotoUploading(false);
+    setUploadingPortfolioPhotoIds(new Set());
+    setUploadingColumnImageKeys(new Set());
+    setUploadingGalleryImageIds(new Set());
     pickerShownRef.current = false;
     dataInitializedRef.current = false;
     history.reset();
@@ -2047,7 +2107,15 @@ function WebsiteEditor() {
     function onKeyDown(e: KeyboardEvent) {
       if (e.code !== "Space" || e.repeat) return;
       const tag = (document.activeElement as HTMLElement)?.tagName ?? "";
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(tag) || (document.activeElement as HTMLElement)?.isContentEditable) return;
+      const target = e.target as HTMLElement | null;
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isTextEntry = (element: HTMLElement | null) => !!element && (
+        ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) ||
+        element.isContentEditable ||
+        !!element.closest('[contenteditable="true"], [role="textbox"]')
+      );
+      // Space inserts a character during inline editing; it must never start canvas panning.
+      if (editingIdRef.current || isTextEntry(target) || isTextEntry(activeElement) || ["INPUT", "TEXTAREA", "SELECT"].includes(tag)) return;
       e.preventDefault();
       setSpaceHeld(true);
     }
@@ -2419,6 +2487,23 @@ function WebsiteEditor() {
     );
   }
 
+  function beginWebsiteAssetUpload() {
+    // A previously scheduled autosave must not capture the temporary blob URL.
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    const session = businessSessionRef.current;
+    const key = `${session}:${nanoid()}`;
+    pendingWebsiteAssetUploadsRef.current.add(key);
+    return { key, session, businessId: bizId, pageId: activePageIdRef.current, slug: activeBusiness?.slug };
+  }
+
+  function isCurrentWebsiteAssetUpload(upload: { session: number; businessId: number | undefined }) {
+    return bizIdRef.current === upload.businessId && businessSessionRef.current === upload.session;
+  }
+
+  function finishWebsiteAssetUpload(key: string) {
+    pendingWebsiteAssetUploadsRef.current.delete(key);
+  }
+
   useFontLoader(settings.headingFont, settings.bodyFont);
 
   useEffect(() => {
@@ -2490,10 +2575,7 @@ function WebsiteEditor() {
       revision: editorRevisionRef.current,
       payload: {
         sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
-        settings: {
-          ...settingsRef.current,
-          ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
-        },
+        settings: withWebsitePageList(settingsRef.current, additionalPages),
       },
     };
   }
@@ -2544,6 +2626,8 @@ function WebsiteEditor() {
   });
 
   function requestSave() {
+    // Manual shortcuts and queue callbacks must not persist temporary preview URLs.
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) return;
     const request = captureSaveRequest();
     if (!request) return;
     if (saveInFlightRef.current) {
@@ -2551,7 +2635,13 @@ function WebsiteEditor() {
       return;
     }
     saveInFlightRef.current = true;
-    saveMutation.mutate(request);
+    const pending = saveMutation.mutateAsync(request);
+    saveInFlightPromiseRef.current = pending;
+    void pending.finally(() => {
+      if (saveInFlightPromiseRef.current === pending) {
+        saveInFlightPromiseRef.current = null;
+      }
+    }).catch(() => undefined);
   }
 
   const createSavedSectionMutation = useMutation({
@@ -2575,10 +2665,14 @@ function WebsiteEditor() {
 
   const deleteSavedSectionMutation = useMutation({
     mutationFn: async (savedId: number) => {
-      await fetch(`${BASE}/api/website/saved-sections/${savedId}?businessId=${bizId}`, {
+      const res = await fetch(`${BASE}/api/website/saved-sections/${savedId}?businessId=${bizId}`, {
         method: "DELETE",
         credentials: "include",
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to delete saved section");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["saved-sections", bizId] });
@@ -2590,6 +2684,13 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!isDirtyRef.current) return;
     if (!bizId) return;
+    // Keep revisions moving while an upload is pending so an older in-flight
+    // save cannot mark newer local edits clean. Do not persist temporary blobs.
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) {
+      editorRevisionRef.current += 1;
+      setHasUnpublishedChanges(true);
+      return;
+    }
     // Each state change after initialization represents a new local revision.
     // Save requests capture this revision rather than reading mutable refs
     // after the request has started.
@@ -2603,13 +2704,38 @@ function WebsiteEditor() {
   }, [localPages, localSettings, bizId]);
 
   async function handlePublish() {
-    setPublishing(true);
-    const request = captureSaveRequest();
-    if (!request) {
-      setPublishing(false);
+    if (publishing) return;
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) {
+      toast({ title: "Wait for uploads to finish", description: "Your images are still uploading. Publish after they complete." });
       return;
     }
+    setPublishing(true);
     try {
+      // Publish only after the latest editor revision has finished saving.
+      // If a save is already running, queue one more snapshot so that the
+      // in-flight older request cannot overwrite the published revision.
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (isDirtyRef.current) requestSave();
+
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
+          saveQueuedRef.current = false;
+          requestSave();
+        },
+      });
+
+      if (isDirtyRef.current || saveErrorRevisionRef.current !== null) {
+        throw new Error("Save your latest changes before publishing.");
+      }
+
+      const request = captureSaveRequest();
+      if (!request) return;
       const res = await fetch(`${BASE}/api/website/publish?businessId=${request.businessId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2634,8 +2760,12 @@ function WebsiteEditor() {
       setShowPublished(true);
       setTimeout(() => setShowPublished(false), 5000);
       toast({ title: "Website published!" });
-    } catch {
-      toast({ title: "Publish failed", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Publish failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setPublishing(false);
     }
@@ -2720,15 +2850,10 @@ function WebsiteEditor() {
       textEditSessionRef.current.timer = null;
     }, 1500);
     isDirtyRef.current = true;
-    setLocalPages(prev => {
-      if (!prev) return prev;
-      return prev.map(p => {
-        if (p.sections.some(s => s.id === id)) {
-          return { ...p, sections: p.sections.map(s => s.id === id ? { ...s, content } : s) };
-        }
-        return p;
-      });
-    });
+    // Capture the page from this render so delayed callbacks cannot mutate a
+    // different page after the user switches the editor.
+    const pageId = activePageId;
+    setLocalPages(prev => patchWebsitePageSectionContent(prev, pageId, id, content));
   }
 
   /** Inserts a component from the library panel into a content section at the given index. */
@@ -2955,6 +3080,9 @@ function WebsiteEditor() {
     if (!bizId) return;
     const sec = sections.find(s => s.id === sectionId);
     if (!sec) return;
+    const requestSession = businessSessionRef.current;
+    const requestBusinessId = bizId;
+    const requestRevision = editorRevisionRef.current;
     try {
       const res = await fetch(`${BASE}/api/website/regenerate-section`, {
         method: "POST",
@@ -2969,7 +3097,12 @@ function WebsiteEditor() {
       }
       const { content: generated } = await res.json() as { content: Record<string, unknown> };
       if (!generated) return;
-      history.pushSnapshot({ sections: pagesRef.current, settings });
+      if (requestSession !== businessSessionRef.current || requestBusinessId !== bizIdRef.current) return;
+      if (requestRevision !== editorRevisionRef.current) {
+        toast({ title: "Section changed while AI was working", description: "Your edits were preserved. Run regeneration again if needed.", variant: "destructive" });
+        return;
+      }
+      history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
       updateContent(sectionId, { ...(sec.content as Record<string, unknown>), ...generated });
       isDirtyRef.current = true;
       toast({ title: "Section regenerated ✨", description: "AI copy applied to this section", duration: 2500 });
@@ -3056,6 +3189,9 @@ function WebsiteEditor() {
    * suggest-colors (M7) → apply to editor state.
    */
   async function handleAIGenerate(values: WizardFormValues, _prefill: BusinessProfilePrefill) {
+    const generationSession = businessSessionRef.current;
+    const generationBusinessId = bizId;
+    const generationRevision = editorRevisionRef.current;
     setShowAIWizard(false);
     setIsGenerating(true);
     try {
@@ -3131,6 +3267,14 @@ function WebsiteEditor() {
         }
       } catch { /* color generation is optional */ }
 
+      // Do not apply a long-running generation to a different business or
+      // overwrite edits made while the AI request was running.
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while AI was working", description: "Your edits were preserved. Start generation again when ready.", variant: "destructive" });
+        return;
+      }
+
       // ── 4. Apply everything to editor state ───────────────────────────────
       setGeneratingStep("Finalizing your website…");
 
@@ -3188,13 +3332,18 @@ function WebsiteEditor() {
         variant: "destructive",
       });
     } finally {
-      setIsGenerating(false);
-      setGeneratingStep("");
+      if (generationSession === businessSessionRef.current) {
+        setIsGenerating(false);
+        setGeneratingStep("");
+      }
     }
   }
 
   // ── M20: AI Website Generator complete handler ────────────────────────────────
   async function handleGeneratorComplete(data: GeneratedSiteData) {
+    const generationSession = businessSessionRef.current;
+    const generationBusinessId = bizId;
+    const generationRevision = editorRevisionRef.current;
     setShowGeneratorScreen(false);
     setIsGenerating(true);
     setGeneratingStep("Applying your website…");
@@ -3215,11 +3364,31 @@ function WebsiteEditor() {
         ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
       };
 
+      if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, generationSession)) {
+        toast({ title: "Wait for uploads to finish", description: "Finish your image uploads before applying the generated website." });
+        return;
+      }
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      // Apply generated content only after any earlier autosave has settled, so
+      // a slower save of the old site cannot overwrite this generated version.
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
+          saveQueuedRef.current = false;
+          requestSave();
+        },
+      });
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while generation was waiting", description: "Your edits were preserved. Review the generated site and apply it again if needed.", variant: "destructive" });
+        return;
+      }
 
       const payload = {
         sections: sections.map((s, i) => ({ ...s, order: i })),
-        settings: newSettings,
+        settings: withWebsitePageList(newSettings, []),
       };
 
       const saveRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
@@ -3228,6 +3397,12 @@ function WebsiteEditor() {
         credentials: "include",
         body: JSON.stringify(payload),
       });
+
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while generation was saving", description: "Your edits were preserved. Review the generated site before applying it again.", variant: "destructive" });
+        return;
+      }
 
       if (saveRes.ok) {
         setLocalPages([{ id: "home", name: "Home", slug: "home", sections }]);
@@ -3249,8 +3424,10 @@ function WebsiteEditor() {
       console.error("[AI Generator apply]", err);
       toast({ title: "Generation failed", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
-      setIsGenerating(false);
-      setGeneratingStep("");
+      if (generationSession === businessSessionRef.current) {
+        setIsGenerating(false);
+        setGeneratingStep("");
+      }
     }
   }
 
@@ -3435,15 +3612,21 @@ function WebsiteEditor() {
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Background image upload failed", variant: "destructive" });
+      return;
+    }
     setBgUploading(prev => ({ ...prev, [sectionId]: true }));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalBlockStyle = pagesRef.current
+      .find(page => page.id === upload.pageId)?.sections
+      .find(section => section.id === sectionId)?.blockStyle as Record<string, unknown> | undefined;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sections.map(s =>
-      s.id === sectionId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: blobUrl, bgType: "image" as const } } : s
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+      patchSectionBlockStyle(pageSections, sectionId, { bgImageUrl: blobUrl, bgType: "image" }),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-section-bg`, {
@@ -3460,35 +3643,41 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
       const bgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/section-bg/${bgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageObjectPath: objectPath, bgImageUrl: canonicalUrl, bgType: "image" as const } }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: `${canonicalUrl}?v=${Date.now()}` } }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Background image uploaded" });
+      const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/section-bg/${bgUuid}`;
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        // Apply only if this upload's preview is still current. Edits to the
+        // section, another background selection, and other pages are preserved.
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          completeSectionBlockStyleUpload(pageSections, sectionId, blobUrl, {
+            bgImageObjectPath: objectPath,
+            bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
+          }),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Background image uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        // Restore only the optimistic background fields; never restore a stale
+        // page snapshot or overwrite style edits made while the upload ran.
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          restoreSectionBlockStylePreview(pageSections, sectionId, blobUrl, originalBlockStyle),
+        ));
+        toast({ title: "Upload failed", variant: "destructive" });
+      }
     } finally {
-      setBgUploading(prev => {
-        const next = { ...prev };
-        delete next[sectionId];
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setBgUploading(prev => {
+          const next = { ...prev };
+          delete next[sectionId];
+          return next;
+        });
+      }
     }
   }
 
@@ -3503,10 +3692,7 @@ function WebsiteEditor() {
     const effectiveSettings = overrideSettings ?? settingsRef.current;
     const payload = {
       sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
-      settings: {
-        ...effectiveSettings,
-        ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
-      },
+      settings: withWebsitePageList(effectiveSettings, additionalPages),
     };
     const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
       method: "PUT",
@@ -3519,12 +3705,18 @@ function WebsiteEditor() {
   }
 
   async function handleLogoUpload(file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Logo upload failed", variant: "destructive" });
+      return;
+    }
     setLogoUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const settingsAtStart = settings;
-    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
+    const originalLogoUrl = settingsRef.current.logoUrl;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalSettings({ ...settingsAtStart, logoUrl: blobUrl } as SiteSettings);
+    setLocalSettings(prev => prev ? { ...prev, logoUrl: blobUrl } : prev);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-logo`, {
         method: "POST",
@@ -3540,32 +3732,47 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/logo`;
-      const savedSettings = { ...settingsAtStart, logoObjectPath: objectPath, logoUrl: canonicalUrl } as SiteSettings & { logoObjectPath: string };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(savedSettings);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      setLocalSettings({ ...savedSettings, logoUrl: `${canonicalUrl}?v=${Date.now()}` } as SiteSettings);
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Logo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/logo`;
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.logoUrl === blobUrl
+            ? { logoObjectPath: objectPath, logoUrl: `${canonicalUrl}?v=${Date.now()}` }
+            : {}),
+        } as SiteSettings : prev);
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        if (settingsRef.current.logoUrl === blobUrl) toast({ title: "Logo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalSettings(settingsAtStart);
-      toast({ title: "Logo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.logoUrl === blobUrl ? { logoUrl: originalLogoUrl } : {}),
+        } : prev);
+        toast({ title: "Logo upload failed", variant: "destructive" });
+      }
     } finally {
-      setLogoUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setLogoUploading(false);
     }
   }
 
   async function handleFaviconUpload(file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Favicon upload failed", variant: "destructive" });
+      return;
+    }
     setFaviconUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const settingsAtStart = settings;
-    history.pushSnapshot({ sections: pagesRef.current, settings: settingsAtStart });
+    const originalFaviconUrl = settingsRef.current.faviconUrl ?? "";
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalSettings({ ...settingsAtStart, faviconUrl: blobUrl });
+    setLocalSettings(prev => prev ? { ...prev, faviconUrl: blobUrl } : prev);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-favicon`, {
         method: "POST",
@@ -3581,35 +3788,51 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/favicon`;
-      const savedSettings = { ...settingsAtStart, faviconObjectPath: objectPath, faviconUrl: canonicalUrl };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(savedSettings);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      setLocalSettings({ ...savedSettings, faviconUrl: `${canonicalUrl}?v=${Date.now()}` });
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Favicon uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/favicon`;
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.faviconUrl === blobUrl
+            ? { faviconObjectPath: objectPath, faviconUrl: `${canonicalUrl}?v=${Date.now()}` }
+            : {}),
+        } : prev);
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        if (settingsRef.current.faviconUrl === blobUrl) toast({ title: "Favicon uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalSettings(settingsAtStart);
-      toast({ title: "Favicon upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalSettings(prev => prev ? {
+          ...prev,
+          ...(prev.faviconUrl === blobUrl ? { faviconUrl: originalFaviconUrl } : {}),
+        } : prev);
+        toast({ title: "Favicon upload failed", variant: "destructive" });
+      }
     } finally {
-      setFaviconUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setFaviconUploading(false);
     }
   }
 
-  async function handleAboutPhotoUpload(file: File) {
+  async function handleAboutPhotoUpload(sectionId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+      return;
+    }
     setAboutPhotoUploading(true);
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalPhotoUrl = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId && section.type === "about")?.content.photoUrl;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.type === "about" ? { ...s, content: { ...s.content, photoUrl: blobUrl } } : s
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+      pageSections.map(section => section.id === sectionId && section.type === "about"
+        ? { ...section, content: { ...section.content, photoUrl: blobUrl } }
+        : section),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-about-photo`, {
@@ -3626,30 +3849,35 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/about-photo`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.type === "about"
-          ? { ...s, content: { ...s.content, photoObjectPath: objectPath, photoUrl: canonicalUrl } }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.type === "about"
-          ? { ...s, content: { ...s.content, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Photo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/about-photo`;
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.id === sectionId && section.type === "about" && section.content.photoUrl === blobUrl
+            ? { ...section, content: { ...section.content, photoObjectPath: objectPath, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
+            : section),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Photo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Photo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          pageSections.map(section => {
+            if (section.id !== sectionId || section.type !== "about" || section.content.photoUrl !== blobUrl) return section;
+            const content = { ...section.content };
+            if (originalPhotoUrl === undefined) delete content.photoUrl;
+            else content.photoUrl = originalPhotoUrl;
+            return { ...section, content };
+          }),
+        ));
+        toast({ title: "Photo upload failed", variant: "destructive" });
+      }
     } finally {
-      setAboutPhotoUploading(false);
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) setAboutPhotoUploading(false);
     }
   }
 
@@ -3657,39 +3885,51 @@ function WebsiteEditor() {
     sectionList: Section[],
     projectId: string,
     photoId: string,
-    patch: Record<string, unknown>
+    patch: Record<string, unknown>,
+    expectedPreviewUrl?: string,
   ): Section[] {
-    return sectionList.map(s =>
-      s.type === "portfolio"
+    return sectionList.map(section =>
+      section.type === "portfolio"
         ? {
-            ...s,
+            ...section,
             content: {
-              ...s.content,
-              projects: ((s.content.projects as any[]) ?? []).map((proj: any) =>
-                proj.id === projectId
+              ...section.content,
+              projects: ((section.content.projects as any[]) ?? []).map((project: any) =>
+                project.id === projectId
                   ? {
-                      ...proj,
-                      photos: (proj.photos ?? []).map((p: any) =>
-                        p.id === photoId ? { ...p, ...patch } : p
+                      ...project,
+                      photos: (project.photos ?? []).map((photo: any) =>
+                        photo.id === photoId && (!expectedPreviewUrl || photo.photoUrl === expectedPreviewUrl)
+                          ? { ...photo, ...patch }
+                          : photo
                       ),
                     }
-                  : proj
+                  : project
               ),
             },
           }
-        : s
+        : section
     );
   }
 
   async function handlePortfolioPhotoUpload(projectId: string, photoId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Photo upload failed", variant: "destructive" });
+      return;
+    }
     setUploadingPortfolioPhotoIds(prev => new Set(prev).add(photoId));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalPhoto = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .filter(section => section.type === "portfolio")
+      .flatMap(section => (section.content.projects as any[]) ?? [])
+      .find(project => project.id === projectId)?.photos?.find((photo: any) => photo.id === photoId);
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoUrl: blobUrl }));
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+      patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: blobUrl }),
+    ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-portfolio-photo`, {
         method: "POST",
@@ -3705,53 +3945,87 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const photoUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/portfolio-photo/${photoUuid}`;
-      const savedSections = patchPortfolioPhoto(sectionsAtStart, projectId, photoId, { photoObjectPath: objectPath, photoUrl: canonicalUrl });
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(patchPortfolioPhoto(savedSections, projectId, photoId, { photoUrl: `${canonicalUrl}?v=${Date.now()}` }));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Photo uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const photoUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/portfolio-photo/${photoUuid}`;
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          patchPortfolioPhoto(pageSections, projectId, photoId, {
+            photoObjectPath: objectPath,
+            photoUrl: `${canonicalUrl}?v=${Date.now()}`,
+          }, blobUrl),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Photo uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Photo upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: originalPhoto?.photoUrl }, blobUrl),
+        ));
+        toast({ title: "Photo upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingPortfolioPhotoIds(prev => {
-        const next = new Set(prev);
-        next.delete(photoId);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingPortfolioPhotoIds(prev => {
+          const next = new Set(prev);
+          next.delete(photoId);
+          return next;
+        });
+      }
     }
   }
 
+  function patchColumnImageBlock(
+    sectionList: Section[],
+    sectionId: string,
+    colId: string,
+    blockId: string,
+    patch: Record<string, unknown>,
+    expectedPreviewUrl?: string,
+  ): Section[] {
+    return sectionList.map(section => section.id === sectionId
+      ? {
+          ...section,
+          content: {
+            ...section.content,
+            columns: ((section.content.columns as any[]) ?? []).map((column: any) =>
+              column.id === colId
+                ? {
+                    ...column,
+                    blocks: (column.blocks ?? []).map((block: any) =>
+                      block.id === blockId && (!expectedPreviewUrl || block.url === expectedPreviewUrl)
+                        ? { ...block, ...patch }
+                        : block
+                    ),
+                  }
+                : column
+            ),
+          },
+        }
+      : section);
+  }
+
   async function handleColumnImageUpload(sectionId: string, colId: string, blockId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Image upload failed", variant: "destructive" });
+      return;
+    }
     const key = `${colId}:${blockId}`;
     setUploadingColumnImageKeys(prev => new Set(prev).add(key));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalBlock = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId)?.content.columns as any[] | undefined;
+    const originalUrl = originalBlock?.find(column => column.id === colId)?.blocks?.find((block: any) => block.id === blockId)?.url;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.id === sectionId
-        ? {
-            ...s,
-            content: {
-              ...s.content,
-              columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                col.id === colId
-                  ? { ...col, blocks: (col.blocks ?? []).map((b: any) => b.id === blockId ? { ...b, url: blobUrl } : b) }
-                  : col
-              ),
-            },
-          }
-        : s
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+      patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: blobUrl }),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
@@ -3768,104 +4042,97 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const imgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                  col.id === colId
-                    ? {
-                        ...col,
-                        blocks: (col.blocks ?? []).map((b: any) =>
-                          b.id === blockId ? { ...b, objectPath, url: canonicalUrl } : b
-                        ),
-                      }
-                    : col
-                ),
-              },
-            }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                columns: ((s.content.columns as any[]) ?? []).map((col: any) =>
-                  col.id === colId
-                    ? {
-                        ...col,
-                        blocks: (col.blocks ?? []).map((b: any) =>
-                          b.id === blockId ? { ...b, url: `${canonicalUrl}?v=${Date.now()}` } : b
-                        ),
-                      }
-                    : col
-                ),
-              },
-            }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Image uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const imgUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          patchColumnImageBlock(pageSections, sectionId, colId, blockId, {
+            objectPath,
+            url: `${canonicalUrl}?v=${Date.now()}`,
+          }, blobUrl),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Image uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Image upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: originalUrl }, blobUrl),
+        ));
+        toast({ title: "Image upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingColumnImageKeys(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingColumnImageKeys(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
     }
   }
 
   async function handleContentComponentImageUpload(file: File): Promise<string> {
-    const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-    });
-    if (!urlRes.ok) throw new Error("Failed to get upload URL");
-    const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-    const uploadRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-    if (!uploadRes.ok) throw new Error("Upload failed");
-    const slug = activeBusiness!.slug;
-    const imgUuid = objectPath.split("/").pop()!;
-    return `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      throw new Error("Select a business before uploading an image.");
+    }
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      if (!isCurrentWebsiteAssetUpload(upload) || activePageIdRef.current !== upload.pageId) {
+        throw new Error("The editor changed while the image was uploading. Please select the image again.");
+      }
+      const imgUuid = objectPath.split("/").pop();
+      if (!imgUuid) throw new Error("Image upload returned an invalid storage path.");
+      return `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+    } finally {
+      finishWebsiteAssetUpload(upload.key);
+      // Autosaves are paused while any asset upload is pending. Resume saving
+      // edits made during this upload even if the caller rejects the result.
+      if (isCurrentWebsiteAssetUpload(upload) && isDirtyRef.current) requestSave();
+    }
   }
 
   async function handleGalleryImageUpload(sectionId: string, imageId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Image upload failed", variant: "destructive" });
+      return;
+    }
     setUploadingGalleryImageIds(prev => new Set(prev).add(imageId));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalUrl = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId)?.content.images as any[] | undefined;
+    const originalImageUrl = originalUrl?.find(image => image.id === imageId)?.url;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.id === sectionId
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+      pageSections.map(section => section.id === sectionId
         ? {
-            ...s,
+            ...section,
             content: {
-              ...s.content,
-              images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                img.id === imageId ? { ...img, url: blobUrl } : img
+              ...section.content,
+              images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                image.id === imageId ? { ...image, url: blobUrl } : image
               ),
             },
           }
-        : s
+        : section),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
@@ -3882,51 +4149,58 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const imgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                  img.id === imageId ? { ...img, objectPath, url: canonicalUrl } : img
-                ),
-              },
-            }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                  img.id === imageId ? { ...img, url: `${canonicalUrl}?v=${Date.now()}` } : img
-                ),
-              },
-            }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Image uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const imgUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.id === sectionId
+            ? {
+                ...section,
+                content: {
+                  ...section.content,
+                  images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                    image.id === imageId && image.url === blobUrl
+                      ? { ...image, objectPath, url: `${canonicalUrl}?v=${Date.now()}` }
+                      : image
+                  ),
+                },
+              }
+            : section),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Image uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Image upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.id === sectionId
+            ? {
+                ...section,
+                content: {
+                  ...section.content,
+                  images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                    image.id === imageId && image.url === blobUrl
+                      ? { ...image, url: originalImageUrl }
+                      : image
+                  ),
+                },
+              }
+            : section),
+        ));
+        toast({ title: "Image upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingGalleryImageIds(prev => {
-        const next = new Set(prev);
-        next.delete(imageId);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingGalleryImageIds(prev => {
+          const next = new Set(prev);
+          next.delete(imageId);
+          return next;
+        });
+      }
     }
   }
 
@@ -4257,9 +4531,15 @@ function WebsiteEditor() {
 
   function switchPage(pageId: string) {
     if (pageId === activePageId) return;
+    // Persist edits made on the outgoing page before moving the editor focus.
+    if (isDirtyRef.current) requestSave();
     setActivePageId(pageId);
     setActiveSection(null);
-    try { localStorage.setItem("site-editor-last-page", pageId); } catch { /* ignore */ }
+    setSelectedComponentState(null);
+    setSelectedRowState(null);
+    setSelectedCardState(null);
+    setSelectedCardData(null);
+    writeEditorPreference("site-editor-last-page", pageId);
   }
 
   function patchHomeHeaderNavLinks(allPages: SitePage[], updater: (links: any[]) => any[]): SitePage[] {
@@ -4273,8 +4553,13 @@ function WebsiteEditor() {
   }
 
   function addPage(name: string, customSlug?: string, prebuiltSections?: Section[]) {
-    const slug = (customSlug ?? name).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
-    const conflict = pagesRef.current.find(page => page.slug === slug || page.id === "home" && slug === "home");
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      toast({ title: "Page name is required", variant: "destructive" });
+      return;
+    }
+    const slug = (customSlug ?? normalizedName).toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "page";
+    const conflict = pagesRef.current.find(page => page.slug.toLowerCase() === slug || page.id === "home" && slug === "home");
     if (conflict) {
       toast({
         title: "Page slug already in use",
@@ -4283,10 +4568,10 @@ function WebsiteEditor() {
       });
       return;
     }
-    const id = "page-" + Math.random().toString(36).slice(2, 9);
-    const newPage: SitePage = { id, name, slug, sections: prebuiltSections ?? [] };
+    const id = "page-" + nanoid(10);
+    const newPage: SitePage = { id, name: normalizedName, slug, sections: prebuiltSections ?? [] };
     const siteSlug = activeBusiness?.slug ?? "";
-    const newLink = { id: nanoid(), label: name, href: `/site/${siteSlug}/${slug}`, pageId: id };
+    const newLink = { id: nanoid(), label: normalizedName, href: `/site/${siteSlug}/${slug}`, pageId: id };
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
@@ -4296,6 +4581,11 @@ function WebsiteEditor() {
     });
     setActivePageId(id);
     setActiveSection(null);
+    setSelectedComponentState(null);
+    setSelectedRowState(null);
+    setSelectedCardState(null);
+    setSelectedCardData(null);
+    writeEditorPreference("site-editor-last-page", id);
   }
 
   function addPageFromTemplate(tpl: PageTemplate, customName?: string) {
@@ -4335,37 +4625,52 @@ function WebsiteEditor() {
   }
 
   function deletePage(pageId: string) {
-    if (pageId === "home") return;
+    if (pageId === "home" || !pagesRef.current.some(page => page.id === pageId)) return;
     setDeletePageConfirm(pageId);
   }
 
   function doDeletePage(pageId: string) {
+    if (pageId === "home" || !pagesRef.current.some(page => page.id === pageId)) {
+      setDeletePageConfirm(null);
+      return;
+    }
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
-    setLocalPages(prev => {
-      const filtered = (prev ?? pages).filter(p => p.id !== pageId);
-      return patchHomeHeaderNavLinks(filtered, links =>
-        links.filter(link => (link as any).pageId !== pageId)
-      );
-    });
+    setLocalPages(prev => removeWebsitePageAndNavigationLinks(prev ?? pages, pageId));
     if (activePageId === pageId) {
       setActivePageId("home");
       setActiveSection(null);
+      setSelectedComponentState(null);
+      setSelectedRowState(null);
+      setSelectedCardState(null);
+      setSelectedCardData(null);
+      setSelectedSubElement(null);
+      writeEditorPreference("site-editor-last-page", "home");
     }
     setDeletePageConfirm(null);
   }
 
   function renamePage(pageId: string, name: string) {
-    const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "page";
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      toast({ title: "Page name is required", variant: "destructive" });
+      return;
+    }
+    const slug = normalizedName.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "") || "page";
+    const conflictingPage = pagesRef.current.find(page => page.id !== pageId && page.slug.toLowerCase() === slug);
+    if (conflictingPage) {
+      toast({ title: "Page slug already in use", description: `"${slug}" is already used by ${conflictingPage.name}. Choose a different page name.`, variant: "destructive" });
+      return;
+    }
     const siteSlug = activeBusiness?.slug ?? "";
     history.pushSnapshot({ sections: pagesRef.current, settings });
     isDirtyRef.current = true;
     setLocalPages(prev => {
-      const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name, slug } : p);
+      const updated = (prev ?? pages).map(p => p.id === pageId ? { ...p, name: normalizedName, slug } : p);
       return patchHomeHeaderNavLinks(updated, links =>
         links.map(link =>
           (link as any).pageId === pageId
-            ? { ...link, label: name, href: `/site/${siteSlug}/${slug}` }
+            ? { ...link, label: normalizedName, href: `/site/${siteSlug}/${slug}` }
             : link
         )
       );
@@ -4373,9 +4678,33 @@ function WebsiteEditor() {
   }
 
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
-    history.pushSnapshot({ sections: pagesRef.current, settings });
+    const operationSession = businessSessionRef.current;
+    const operationBusinessId = bizId;
+    const operationRevision = editorRevisionRef.current;
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, operationSession)) {
+      toast({ title: "Wait for uploads to finish", description: "Finish your image uploads before replacing the website with a template." });
+      return;
+    }
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     setApplyingTemplate(true);
     try {
+      // A template write must run after any autosave already sent to the server,
+      // otherwise a slower old autosave can finish last and restore the old site.
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
+          saveQueuedRef.current = false;
+          requestSave();
+        },
+      });
+      if (operationSession !== businessSessionRef.current || operationBusinessId !== bizIdRef.current) return;
+      if (operationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while template was waiting", description: "Your edits were preserved. Apply the template again if you still want to replace the page.", variant: "destructive" });
+        return;
+      }
       const appliedSections = t.sections.map(s => {
         if (s.type === "footer" && bizInfo) {
           return { ...s, content: { ...s.content, phone: bizInfo.phone ?? "", email: bizInfo.email ?? "", licenseNumber: bizInfo.licenseNumber ?? "", copyright: `© ${new Date().getFullYear()} ${bizInfo.name ?? ""}. All rights reserved.` } };
@@ -4390,10 +4719,9 @@ function WebsiteEditor() {
         ...(settings.faviconObjectPath ? { faviconObjectPath: settings.faviconObjectPath } : {}),
         ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
       };
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       const templatePayload = {
         sections: (appliedSections as any[]).map((s, i) => ({ ...s, order: i })),
-        settings: savedSettings,
+        settings: withWebsitePageList(savedSettings, []),
       };
       const templateRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
         method: "PUT",
@@ -4402,10 +4730,16 @@ function WebsiteEditor() {
         body: JSON.stringify(templatePayload),
       });
       if (!templateRes.ok) throw new Error("Failed to apply template");
+      if (operationSession !== businessSessionRef.current || operationBusinessId !== bizIdRef.current) return;
+      if (operationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while template was applying", description: "Your edits were preserved. Apply the template again if you still want to replace the page.", variant: "destructive" });
+        return;
+      }
       setLocalPages([{ id: "home", name: "Home", slug: "home", sections: appliedSections as any }]);
       setActivePageId("home");
       setLocalSettings(savedSettings);
       isDirtyRef.current = false;
+      setHasUnpublishedChanges(true);
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       setShowTemplatePicker(false);
       setShowApplyConfirm(false);
@@ -7004,16 +7338,18 @@ function WebsiteEditor() {
                 return (
                   <div key={sec.id} className="group/layer">
                     <div
-                      className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer transition-colors ${isActive ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted/50"} ${!sec.enabled ? "opacity-50" : ""}`}
-                      onClick={() => setActiveSection(sec.id)}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 text-xs transition-colors ${isActive ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted/50"} ${!sec.enabled ? "opacity-50" : ""}`}
                     >
-                      <span className="flex-shrink-0 opacity-60 [&>svg]:w-3 [&>svg]:h-3">{sectionIcons[sec.type]}</span>
-                      <span className="flex-1 truncate">{secLabel}</span>
+                      <button type="button" className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                        onClick={() => setActiveSection(sec.id)}>
+                        <span className="flex-shrink-0 opacity-60 [&>svg]:w-3 [&>svg]:h-3">{sectionIcons[sec.type]}</span>
+                        <span className="flex-1 truncate">{secLabel}</span>
+                      </button>
                       <button
                         type="button"
                         onClick={e => { e.stopPropagation(); toggleSection(sec.id); }}
                         className="p-0.5 rounded opacity-0 group-hover/layer:opacity-100 hover:bg-muted flex-shrink-0 transition-opacity"
-                        title={sec.enabled ? "Hide section" : "Show section"}
+                        aria-label={sec.enabled ? "Hide section" : "Show section"}
                       >
                         {sec.enabled ? <Eye className="w-3 h-3 text-muted-foreground" /> : <EyeOff className="w-3 h-3 text-orange-400" />}
                       </button>
@@ -7023,14 +7359,15 @@ function WebsiteEditor() {
                         {nestedComps.map(comp => {
                           const isCompActive = selectedComponentState?.sectionId === sec.id && selectedComponentState.componentId === comp.id;
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={comp.id}
-                              className={`flex items-center gap-1.5 px-1.5 py-1 text-[10px] rounded cursor-pointer transition-colors ${isCompActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
+                              className={`w-full text-left flex items-center gap-1.5 px-1.5 py-1 text-[10px] rounded cursor-pointer transition-colors ${isCompActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
                               onClick={() => { setActiveSection(sec.id); setSelectedComponentState({ sectionId: sec.id, componentId: comp.id }); }}
                             >
                               <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 flex-shrink-0" />
                               <span className="flex-1 truncate">{comp.label}</span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -7377,8 +7714,8 @@ function WebsiteEditor() {
           {!editorNarrow && activeTab === "editor" && !focusMode && !previewMode && panelMode !== 'floating' && (() => {
             const sec = activeSection ? sections.find(s => s.id === activeSection) : null;
             const hasValidSec = !!sec;
-            const _savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
-            const dockW = Math.max(240, Math.min(300, isNaN(_savedW) ? 280 : _savedW));
+            const _savedW = Number.parseInt(readEditorPreference("inspector-panel-width") ?? "280", 10);
+            const dockW = Math.max(240, Math.min(300, Number.isNaN(_savedW) ? 280 : _savedW));
             const dockVisible = panelMode === 'pinned' || (panelMode === 'auto' && hasValidSec && inspectorOpen);
 
             // Header section: show Header Builder instead of generic InspectorPanel
@@ -7750,8 +8087,8 @@ function WebsiteEditor() {
             if (!sec) return null;
             // Header section: show Header Builder in a floating window
             if (sec.type === "header") {
-              const savedW = parseInt(localStorage.getItem("inspector-panel-width") ?? "280", 10);
-              const floatW = Math.max(240, Math.min(300, isNaN(savedW) ? 280 : savedW));
+              const savedW = Number.parseInt(readEditorPreference("inspector-panel-width") ?? "280", 10);
+              const floatW = Math.max(240, Math.min(300, Number.isNaN(savedW) ? 280 : savedW));
               return (
                 <div
                   className="fixed z-[9990]"
@@ -7989,7 +8326,7 @@ function WebsiteEditor() {
                   onPointerUp={() => {
                     if (!floatingDragRef.current) return;
                     floatingDragRef.current = null;
-                    setFloatingPos(p => { localStorage.setItem('website-inspector-float-pos', JSON.stringify(p)); return p; });
+                    setFloatingPos(p => { writeEditorPreference("website-inspector-float-pos", JSON.stringify(p)); return p; });
                   }}
                   onPointerCancel={() => { floatingDragRef.current = null; }}
                 >
@@ -8495,6 +8832,32 @@ function WebsiteEditor() {
         onApply={handleRefreshApply}
       />
     )}
+
+    <AlertDialog
+      open={deletePageConfirm !== null}
+      onOpenChange={open => {
+        if (!open) setDeletePageConfirm(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete page?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {pages.find(page => page.id === deletePageConfirm)?.name ?? "This page"} will be removed from your website, along with its navigation link. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (deletePageConfirm) doDeletePage(deletePageConfirm);
+            }}
+          >
+            Delete page
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     {saveSectionTarget && (
       <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50">

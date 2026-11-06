@@ -1,0 +1,75 @@
+name: Audit branch validation
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches:
+      - "audit/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # These focused regression tests mock storage/database and do not need
+      # production credentials or a live PostgreSQL instance.
+      - name: Run audit regression tests
+        run: pnpm --filter @workspace/api-server run test:audit-regressions
+
+      # Keep subsequent checks running even when an earlier suite finds a regression.
+      - name: Run contractor app tests
+        id: contractor-tests
+        continue-on-error: true
+        run: pnpm --filter @workspace/contractor-app test
+
+      - name: Run typechecks
+        id: typechecks
+        continue-on-error: true
+        run: pnpm run typecheck
+
+      - name: Run production builds
+        id: production-builds
+        continue-on-error: true
+        env:
+          PORT: "5000"
+          BASE_PATH: "/"
+        run: pnpm -r --if-present run build
+
+      - name: Summarize validation result
+        if: always()
+        env:
+          CONTRACTOR_TESTS: ${{ steps.contractor-tests.outcome }}
+          TYPECHECKS: ${{ steps.typechecks.outcome }}
+          PRODUCTION_BUILDS: ${{ steps.production-builds.outcome }}
+        run: |
+          echo "Contractor tests: $CONTRACTOR_TESTS"
+          echo "Typechecks: $TYPECHECKS"
+          echo "Production builds: $PRODUCTION_BUILDS"
+          test "$CONTRACTOR_TESTS" = success
+          test "$TYPECHECKS" = success
+          test "$PRODUCTION_BUILDS" = success

@@ -2195,6 +2195,8 @@ components:
           type: string
           nullable: true
         businessLine: { type: string, nullable: true }
+        sourceBusinessId: { type: integer }
+        sourceBusinessLine: { type: string }
         nextServiceDate: { type: string, nullable: true }
         squareCustomerId: { type: string, nullable: true }
         reminderOptOut:

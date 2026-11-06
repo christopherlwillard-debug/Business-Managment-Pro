@@ -6,7 +6,7 @@ import {
   otherIncomeTable, businessesTable,
   settingsTable, subPaymentRecordsTable, jobSubcontractorsTable,
 } from "@workspace/db/schema";
-import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sum, count, ne, isNull, sql, inArray, or } from "drizzle-orm";
 import { summarizeMileageRecords, type MileageRatePeriod } from "../lib/irs-rates.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { calcInvoiceFromStored } from "./invoices.js";
@@ -161,8 +161,18 @@ export function scheduleCExpenseIsIncluded(expense: {
 // GET /api/tax-reports/schedule-c?year=2025&businessLine=general_contracting
 router.get("/schedule-c", async (req, res) => {
   try {
-    const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) {
+      return res.status(400).json({ error: "A valid tax year is required" });
+    }
+    const year = rawYear;
+    const rawBusinessLine = req.query.businessLine;
+    if (rawBusinessLine != null && typeof rawBusinessLine !== "string") {
+      return res.status(400).json({ error: "Invalid business selector" });
+    }
+    const blFilter = typeof rawBusinessLine === "string" && rawBusinessLine.trim()
+      ? rawBusinessLine.trim()
+      : null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
     const [taxSettings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
@@ -170,6 +180,9 @@ router.get("/schedule-c", async (req, res) => {
     const [selectedBusiness] = blFilter
       ? await db.select().from(businessesTable).where(eq(businessesTable.slug, blFilter)).limit(1)
       : [];
+    if (blFilter && !selectedBusiness) {
+      return res.status(400).json({ error: "Unknown business" });
+    }
     const taxOwnerId = selectedBusiness?.parentBusinessId ?? selectedBusiness?.id ?? null;
     const taxBusinesses = taxOwnerId
       ? await db.select({ id: businessesTable.id, slug: businessesTable.slug, name: businessesTable.name })
@@ -177,23 +190,32 @@ router.get("/schedule-c", async (req, res) => {
         .where(sql`${businessesTable.id} = ${taxOwnerId} OR ${businessesTable.parentBusinessId} = ${taxOwnerId}`)
       : [];
     const taxBusinessSlugs = taxBusinesses.map(b => b.slug);
+    const taxBusinessIds = taxBusinesses.map(b => b.id);
 
-    // Unassigned rows are intentionally excluded from a filtered business
-    // report. Without this strict predicate, every selected business would
-    // include the same null-owned invoice/expense/sub-payment rows.
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? (taxBusinessSlugs.length > 0 ? inArray(col, taxBusinessSlugs) : eq(col, blFilter)) : undefined;
+    // businessId is authoritative; businessLine is only a legacy fallback.
+    // Unassigned records are never included in a selected-business report.
+    const blWhere = (
+      businessLineColumn: any,
+      businessIdColumn?: any,
+      businessIdValues: Array<number | string> = taxBusinessIds,
+    ) => {
+      if (!blFilter) return undefined;
+      if (businessIdColumn && businessIdValues.length > 0) {
+        return or(
+          inArray(businessIdColumn, businessIdValues),
+          and(isNull(businessIdColumn), inArray(businessLineColumn, taxBusinessSlugs)),
+        );
+      }
+      return taxBusinessSlugs.length > 0
+        ? inArray(businessLineColumn, taxBusinessSlugs)
+        : eq(businessLineColumn, blFilter);
+    };
 
-    // Resolve businessId from slug for mileage isolation
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    // When a business filter is active, only include mileage explicitly tagged to that business.
-    // Logs with null businessId are unassigned and must NOT be pulled into a filtered total.
-    // When there is no filter at all, include everything (null businessId logs belong to no specific business but count globally).
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    // A selected tax owner includes its parent/child business family, but never
+    // unassigned mileage records or mileage owned by another business.
+    const mileageWhere = blFilter
+      ? (taxBusinessIds.length > 0 ? inArray(mileageLogsTable.businessId, taxBusinessIds) : sql`false`)
+      : undefined;
 
     // 1. Gross Receipts (Line 1) — cash basis: only paid invoices count as received income.
     // Draft, sent, overdue, and cancelled invoices are excluded because no cash has been received.
@@ -213,7 +235,7 @@ router.get("/schedule-c", async (req, res) => {
       .where(
         and(
           eq(invoicesTable.status, "paid"),
-          blWhere(invoicesTable.businessLine)
+          blWhere(invoicesTable.businessLine, invoicesTable.businessId)
         )
       );
 
@@ -234,7 +256,11 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(otherIncomeTable.date, startDate),
           lte(otherIncomeTable.date, endDate),
-          blWhere(otherIncomeTable.businessLine),
+          blWhere(
+            otherIncomeTable.businessLine,
+            otherIncomeTable.businessId,
+            [...taxBusinessIds.map(String), ...taxBusinessSlugs],
+          ),
           isNull(otherIncomeTable.voidedAt)
         )
       );
@@ -271,7 +297,7 @@ router.get("/schedule-c", async (req, res) => {
            // accrual expenses. Keep the source row intact, but exclude it from Schedule C
            // so contract labor is not counted twice. IS NOT TRUE preserves legacy NULL values.
            sql`${expensesTable.isWageAdvance} IS NOT TRUE`,
-          blWhere(expensesTable.businessLine),
+          blWhere(expensesTable.businessLine, expensesTable.businessId),
           isNull(expensesTable.voidedAt)
         )
       )
@@ -384,7 +410,7 @@ router.get("/schedule-c", async (req, res) => {
         lte(subPaymentRecordsTable.paymentDate, endDate),
         sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
         inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
-        blWhere(subPaymentRecordsTable.businessLine),
+        blWhere(subPaymentRecordsTable.businessLine, subPaymentRecordsTable.businessId),
       ));
 
     const contractLaborAmount = paymentData[0]?.totalPayments ? parseFloat(paymentData[0].totalPayments as any) : 0;

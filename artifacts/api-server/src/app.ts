@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { authMiddleware } from "./middlewares/authMiddleware";
@@ -12,15 +12,26 @@ const app: Express = express();
 app.use(cors({ credentials: true, origin: true }));
 app.use(cookieParser());
 
-app.use("/api/webhooks/square", squareWebhookRouter);
-
 // ── Root-level SEO crawl routes (sitemap.xml + robots.txt) ────────────────────
 // Registered before JSON body parsing and auth so that search-engine crawlers
 // on custom domains receive correct XML/plaintext instead of the SPA fallback.
 app.use(seoCrawlRouter);
 
-app.use(express.json({ limit: "25mb" }));
+app.use(express.json({
+  limit: "25mb",
+  verify: (req, _res, buffer) => {
+    // Square signs the exact request bytes, not a JSON re-serialization.
+    const request = req as Request & { rawBody?: string };
+    if (request.originalUrl.startsWith("/api/webhooks/square")) {
+      request.rawBody = buffer.toString("utf8");
+    }
+  },
+}));
 app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+
+// Public provider callback: parse JSON and retain the exact signed body first,
+// but keep this route ahead of the authenticated application router.
+app.use("/api/webhooks/square", squareWebhookRouter);
 
 // Public routes — no auth required
 app.use("/api/public", publicStatusRouter);

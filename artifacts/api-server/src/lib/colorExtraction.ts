@@ -99,7 +99,11 @@ export function kMeans(
  * @returns Hex color strings sorted by dominance (most common first).
  */
 export async function extractDominantColors(buffer: Buffer): Promise<string[]> {
-  const raw = await sharp(buffer)
+  const maxInputBytes = 5 * 1024 * 1024;
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0 || buffer.length > maxInputBytes) {
+    throw new Error("Logo image must be between 1 byte and 5 MB.");
+  }
+  const raw = await sharp(buffer, { limitInputPixels: 40_000_000 })
     .resize(60, 60, { fit: "cover" })
     .removeAlpha()
     .raw()

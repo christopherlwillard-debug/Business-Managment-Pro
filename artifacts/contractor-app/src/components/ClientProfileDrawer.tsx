@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
+import { getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -108,6 +109,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
         id: clientId,
         nextServiceDate: serviceDateVal || null,
         serviceIntervalMonths: serviceIntervalVal ? parseInt(serviceIntervalVal) : null,
+        ...getClientSourceBusinessFields(client ?? {}),
       },
       {
         onSuccess: () => {

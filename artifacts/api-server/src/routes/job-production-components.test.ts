@@ -287,6 +287,7 @@ vi.mock("@workspace/db", async () => {
 });
 
 vi.mock("../lib/business-scope.js", () => ({
+  hasRequestedBusiness: () => false,
   requestedBusiness: async () => h.scope,
   resolveMutationBusiness: async () => h.scope
     ? { ok: true, explicit: true, business: h.scope }

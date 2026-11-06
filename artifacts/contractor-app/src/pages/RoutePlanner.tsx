@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
+import { getMapCoordinateKey, getMapReadyStops, hasValidMapCoordinates } from "@/lib/routePlannerMap";
+import { findRoutePlannerJob } from "@/lib/routePlannerJobs";
 import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
@@ -205,8 +207,9 @@ function haversine(lat1: number, lon1: number, lat2: number, lon2: number): numb
 }
 
 function nearestNeighborRoute(stops: RouteStop[]): RouteStop[] {
-  const routable = stops.filter(s => s.lat !== null && s.lng !== null);
-  const nonGeo = stops.filter(s => s.lat === null || s.lng === null);
+  const routable = getMapReadyStops(stops);
+  const routableIds = new Set(routable.map(stop => stop.id));
+  const nonGeo = stops.filter(stop => !routableIds.has(stop.id));
   if (routable.length <= 1) return stops;
   const remaining = [...routable];
   const ordered: RouteStop[] = [remaining.shift()!];
@@ -253,16 +256,24 @@ function makeIcon(color: string, label?: string | number) {
 
 function MapFitter({ stops }: { stops: RouteStop[] }) {
   const map = useMap();
-  const geoStops = stops.filter(s => s.lat && s.lng);
+  const geoStops = getMapReadyStops(stops);
+  const geoStopsKey = getMapCoordinateKey(geoStops);
+
   useEffect(() => {
-    if (geoStops.length === 0) return;
-    if (geoStops.length === 1) {
-      map.setView([geoStops[0].lat!, geoStops[0].lng!], 14);
+    // Coordinates at (0, 0) are valid. The stable key also refits when
+    // geocoding changes coordinates without changing the number of stops.
+    const currentGeoStops = getMapReadyStops(stops);
+    if (currentGeoStops.length === 0) return;
+    if (currentGeoStops.length === 1) {
+      map.setView([currentGeoStops[0].lat, currentGeoStops[0].lng], 14);
     } else {
-      const bounds = L.latLngBounds(geoStops.map(s => [s.lat!, s.lng!] as [number, number]));
+      const bounds = L.latLngBounds(currentGeoStops.map(s => [s.lat, s.lng] as [number, number]));
       map.fitBounds(bounds, { padding: [40, 40] });
     }
-  }, [geoStops.length]);
+  // The key captures only map-relevant identity and coordinates, avoiding
+  // unnecessary refits when unrelated route-stop fields or parent renders change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, geoStopsKey]);
   return null;
 }
 
@@ -362,9 +373,10 @@ export default function RoutePlanner() {
   }, [asphaltJobs]);
 
   function pickJobForStop(stop: RouteStop) {
-    // If a specific job is directly linked, use it (exact match)
+    // Direct links must obey the same active-business selection as the
+    // client-based fallback below; otherwise a GC job can appear in Asphalt.
     if (stop.jobId != null) {
-      return allJobs.find(j => j.id === stop.jobId) ?? undefined;
+      return findRoutePlannerJob(stop.jobId, allJobs, activeBusiness?.slug);
     }
     // Fall back to clientId-based lookup
     if (stop.clientId == null) return undefined;
@@ -592,7 +604,7 @@ export default function RoutePlanner() {
 
   const createStop = useMutation({
     mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; clientId?: number | null; prospectId?: number | null; jobId?: number | null }) =>
-      apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
+      apiFetch("/route-stops", { method: "POST", body: JSON.stringify({ ...data, businessLine: activeBusiness?.slug ?? null }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       setShowAddForm(false);
@@ -605,7 +617,7 @@ export default function RoutePlanner() {
 
   const updateStop = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; sortOrder?: number } }) =>
-      apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify({ ...data, businessLine: activeBusiness?.slug ?? null }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       setEditingId(null);
@@ -640,7 +652,7 @@ export default function RoutePlanner() {
     onError: () => toast({ title: "Failed to fix map pins", variant: "destructive" }),
   });
 
-  const hasMissingPins = allStops.some(s => s.lat === null);
+  const hasMissingPins = allStops.some(s => s.lat == null || s.lng == null);
 
   function resetForm() {
     setForm({ title: "", address: "", notes: "", scheduledDate: selectedDateStr, estimatedDurationMinutes: 60, status: "scheduled" });
@@ -749,7 +761,7 @@ export default function RoutePlanner() {
       setIsSplitting(false);
     }
 
-    const geoCount = ordered.filter(s => s.lat && s.lng).length;
+    const geoCount = ordered.filter(hasValidMapCoordinates).length;
     toast({
       title: `Route optimized — ${ordered.length} stops${route ? `, ~${Math.round(route.durationSecs / 60)} min drive` : ""}`,
       description: geoCount < ordered.length ? `${ordered.length - geoCount} stop(s) couldn't be geocoded` : undefined,
@@ -897,7 +909,7 @@ export default function RoutePlanner() {
   const calWeeks: Date[][] = [];
   for (let i = 0; i < calDays.length; i += 7) calWeeks.push(calDays.slice(i, i + 7));
 
-  const geoStops = allStops.filter(s => s.lat && s.lng);
+  const geoStops = getMapReadyStops(allStops);
   const mapCenter: [number, number] = geoStops.length > 0
     ? [geoStops[0].lat!, geoStops[0].lng!]
     : [37.7719, -87.1111];
@@ -1886,7 +1898,7 @@ export default function RoutePlanner() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
           )}
-          <MapFitter stops={displayStops.filter(s => s.lat && s.lng)} />
+          <MapFitter stops={displayStops} />
 
           {routeCoords && routeCoords.length > 1 && (
             <Polyline positions={routeCoords} color="#1B3F8C" weight={4} opacity={0.75} dashArray="8 4" />

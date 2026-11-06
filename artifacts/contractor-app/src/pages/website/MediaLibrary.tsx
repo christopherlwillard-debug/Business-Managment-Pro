@@ -5,6 +5,7 @@ import {
   Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw, MapPin,
   Sparkles, Wand2,
 } from "lucide-react";
+import { consumeWebsiteRenameBlurCommit, partitionWebsiteMediaFiles } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -83,9 +84,13 @@ function displayLabel(item: MediaItem): string {
 export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }: MediaLibraryProps) {
   const qc = useQueryClient();
 
-  const [viewMode, setViewMode] = useState<"grid" | "list">(() =>
-    (localStorage.getItem("media-view-mode") as "grid" | "list") ?? "grid"
-  );
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
+    try {
+      return localStorage.getItem("media-view-mode") === "list" ? "list" : "grid";
+    } catch {
+      return "grid";
+    }
+  });
   const [folderFilter, setFolderFilter] = useState<number | "all">("all");
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -99,6 +104,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const [newFolderName, setNewFolderName] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState<number | null>(null);
   const [renameFolderValue, setRenameFolderValue] = useState("");
+  const folderRenameShouldCommitOnBlurRef = useRef(false);
 
   const [uploading, setUploading] = useState(false);
   const [replacing, setReplacing] = useState(false);
@@ -115,6 +121,21 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const [detailRenaming, setDetailRenaming] = useState(false);
   const [detailRenameValue, setDetailRenameValue] = useState("");
+
+  // A mounted library can be reused when the selected business changes. Never
+  // carry selections, dialogs, or item details across business boundaries.
+  useEffect(() => {
+    setFolderFilter("all");
+    setSearch("");
+    setSelectedIds(new Set());
+    setDetailItem(null);
+    setRenamingId(null);
+    setRenamingFolderId(null);
+    setDetailRenaming(false);
+    setDeleteConfirm(null);
+    setBulkDeleteConfirm(false);
+    setOperationNotice(null);
+  }, [businessId]);
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -138,21 +159,21 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     enabled: !!businessId,
   });
 
-  const { data: usageCounts = {} } = useQuery<Record<number, number>>({
+  const { data: usageCounts, isError: usageCountsFailed } = useQuery<Record<number, number>>({
     queryKey: ["website-media-usage", businessId],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/media/usage-counts?businessId=${businessId}`, { credentials: "include" });
-      if (!res.ok) return {};
+      if (!res.ok) throw new Error("Could not verify image usage.");
       return res.json();
     },
     enabled: !!businessId,
   });
 
-  const { data: usageDetails, isLoading: isLoadingDetails } = useQuery<{ locations: UsageLocation[]; total: number }>({
+  const { data: usageDetails, isLoading: isLoadingDetails, isError: usageDetailsFailed } = useQuery<{ locations: UsageLocation[]; total: number }>({
     queryKey: ["website-media-usage-details", businessId, detailItem?.id],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/media/${detailItem!.id}/usage-details?businessId=${businessId}`, { credentials: "include" });
-      if (!res.ok) return { locations: [], total: 0 };
+      if (!res.ok) throw new Error("Could not verify image usage.");
       return res.json();
     },
     enabled: !!detailItem && mode === "browse" && !!businessId,
@@ -187,22 +208,34 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   // ── Upload / Replace ──────────────────────────────────────────────────────
 
   async function handleUpload(files: FileList | File[]) {
-    const fileArr = Array.from(files).filter(f => f.type.startsWith("image/"));
-    if (!fileArr.length) return;
+    const { uploadable: fileArr, unsupported } = partitionWebsiteMediaFiles(Array.from(files));
+    if (!fileArr.length) {
+      if (unsupported.length) {
+        setOperationNotice({
+          tone: "error",
+          message: `No images uploaded. Unsupported files: ${unsupported.map(file => file.name).join(", ")}.`,
+        });
+      }
+      return;
+    }
+    // Keep every file in this batch in the folder selected when upload began,
+    // even if the user changes the folder while sequential uploads are running.
+    const destinationFolderId = folderFilter;
     setUploading(true);
     setOperationNotice(null);
     const succeeded: string[] = [];
-    const failed: string[] = [];
+    const failed: string[] = unsupported.map(file => `${file.name} (not an image file)`);
     try {
       for (const file of fileArr) {
         const formData = new FormData();
         formData.append("file", file);
-        if (folderFilter !== "all") formData.append("folderId", String(folderFilter));
+        if (destinationFolderId !== "all") formData.append("folderId", String(destinationFolderId));
         const res = await fetch(`${BASE}/api/website/media/upload?businessId=${businessId}`, {
           method: "POST", credentials: "include", body: formData,
         });
         if (!res.ok) {
-          failed.push(`${file.name} (${res.status})`);
+          const body = await res.json().catch(() => null) as { error?: string } | null;
+          failed.push(`${file.name} (${body?.error ?? `HTTP ${res.status}`})`);
           continue;
         }
         succeeded.push(file.name);
@@ -258,6 +291,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
+      if (usageCountsFailed || !usageCounts) {
+        throw new Error("Image usage could not be verified. Retry loading the Media Library before deleting images.");
+      }
       const res = await fetch(`${BASE}/api/website/media/${id}?businessId=${businessId}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error((await res.json().catch(() => null) as { error?: string } | null)?.error ?? "Delete failed");
       return res.json() as Promise<{ cleanupWarnings?: string[] }>;
@@ -265,6 +301,13 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     onSuccess: (result, id) => {
       invalidateAll();
       setDeleteConfirm(null);
+      setSelectedIds(prev => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (renamingId === id) setRenamingId(null);
       if (detailItem?.id === id) setDetailItem(null);
       setOperationNotice(result.cleanupWarnings?.length
         ? { tone: "error", message: `Image deleted, but cleanup needs attention: ${result.cleanupWarnings[0]}` }
@@ -275,6 +318,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
+      if (usageCountsFailed || !usageCounts) {
+        throw new Error("Image usage could not be verified. Retry loading the Media Library before deleting images.");
+      }
       const res = await fetch(`${BASE}/api/website/media/bulk-delete?businessId=${businessId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ ids }),
@@ -299,7 +345,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ displayName: displayName || null }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not rename image.");
+      }
       return res.json();
     },
     onSuccess: (updated: MediaItem) => {
@@ -308,6 +357,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       setDetailRenaming(false);
       if (detailItem?.id === updated.id) setDetailItem(updated);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const moveMutation = useMutation({
@@ -316,13 +366,17 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ folderId }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not move image.");
+      }
       return res.json();
     },
     onSuccess: (updated: MediaItem) => {
       invalidateAll();
       if (detailItem?.id === updated.id) setDetailItem(updated);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const createFolderMutation = useMutation({
@@ -331,7 +385,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not create folder.");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -339,6 +396,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       setShowNewFolder(false);
       setNewFolderName("");
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const renameFolderMutation = useMutation({
@@ -347,12 +405,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ name }),
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not rename folder.");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["website-media-folders", businessId] });
       setRenamingFolderId(null);
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   const deleteFolderMutation = useMutation({
@@ -360,12 +422,16 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
       const res = await fetch(`${BASE}/api/website/media/folders/${id}?businessId=${businessId}`, {
         method: "DELETE", credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not delete folder.");
+      }
     },
     onSuccess: () => {
       invalidateAll();
       if (folderFilter !== "all") setFolderFilter("all");
     },
+    onError: (error) => setOperationNotice({ tone: "error", message: error.message }),
   });
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -380,7 +446,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   function changeViewMode(m: "grid" | "list") {
     setViewMode(m);
-    localStorage.setItem("media-view-mode", m);
+    try { localStorage.setItem("media-view-mode", m); } catch { /* storage is optional */ }
   }
 
   function handleItemDragStart(itemId: number, e: React.DragEvent) {
@@ -404,7 +470,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     }
   }
 
-  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts[id] ?? 0) > 0).length;
+  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts?.[id] ?? 0) > 0).length;
   const currentFolderName = folderFilter === "all" ? null : folders.find(f => f.id === folderFilter)?.name ?? null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -515,15 +581,25 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                 <div className="px-2 py-1">
                   <input
                     autoFocus
+                    aria-label="Rename folder"
+                    maxLength={100}
                     value={renameFolderValue}
                     onChange={e => setRenameFolderValue(e.target.value)}
                     onBlur={() => {
+                      if (!consumeWebsiteRenameBlurCommit(folderRenameShouldCommitOnBlurRef)) return;
                       if (renameFolderValue.trim()) renameFolderMutation.mutate({ id: folder.id, name: renameFolderValue.trim() });
                       else setRenamingFolderId(null);
                     }}
                     onKeyDown={e => {
-                      if (e.key === "Enter" && renameFolderValue.trim()) renameFolderMutation.mutate({ id: folder.id, name: renameFolderValue.trim() });
-                      if (e.key === "Escape") setRenamingFolderId(null);
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        folderRenameShouldCommitOnBlurRef.current = false;
+                        setRenamingFolderId(null);
+                      }
                     }}
                     className="w-full text-xs border border-primary rounded px-1.5 py-0.5 focus:outline-none bg-background"
                   />
@@ -531,7 +607,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               ) : (
                 <button
                   onClick={() => setFolderFilter(folder.id)}
-                  onDoubleClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                  onDoubleClick={() => { folderRenameShouldCommitOnBlurRef.current = true; setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
                   onDragOver={e => { e.preventDefault(); if (isDraggingMediaRef.current) setDragOverFolderId(folder.id); }}
                   onDragLeave={() => setDragOverFolderId(null)}
                   onDrop={e => handleFolderDrop(e, folder.id)}
@@ -547,13 +623,15 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <span className="text-[10px] text-muted-foreground tabular-nums">{folder.itemCount}</span>
                 </button>
               )}
-              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0">
-                <button onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary" title="Rename">
+              <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden items-center gap-0 group-hover:flex group-focus-within:flex">
+                <button type="button" onClick={() => { folderRenameShouldCommitOnBlurRef.current = true; setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary"
+                  title="Rename" aria-label={`Rename ${folder.name} folder`}>
                   <Pencil className="w-2.5 h-2.5" />
                 </button>
-                <button onClick={() => deleteFolderMutation.mutate(folder.id)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-destructive" title="Delete">
+                <button type="button" onClick={() => deleteFolderMutation.mutate(folder.id)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-destructive"
+                  title="Delete" aria-label={`Delete ${folder.name} folder`}>
                   <X className="w-2.5 h-2.5" />
                 </button>
               </div>
@@ -565,6 +643,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               <div className="py-1">
                 <input
                   autoFocus
+                  aria-label="New folder name"
+                  maxLength={100}
                   value={newFolderName}
                   onChange={e => setNewFolderName(e.target.value)}
                   placeholder="Folder name"
@@ -636,7 +716,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <GridItem
                     key={item.id}
                     item={item}
-                    usageCount={usageCounts[item.id] ?? 0}
+                    usageCount={usageCounts?.[item.id] ?? 0}
                     selected={selectedIds.has(item.id)}
                     isActive={detailItem?.id === item.id}
                     isDeleteConfirm={deleteConfirm === item.id}
@@ -661,7 +741,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <ListItem
                     key={item.id}
                     item={item}
-                    usageCount={usageCounts[item.id] ?? 0}
+                    usageCount={usageCounts?.[item.id] ?? 0}
                     selected={selectedIds.has(item.id)}
                     isActive={detailItem?.id === item.id}
                     renamingId={renamingId}
@@ -678,6 +758,10 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     onRenameChange={setRenameValue}
                     onRenameCommit={() => renameMutation.mutate({ id: item.id, displayName: renameValue.trim() })}
                     onRenameCancel={() => setRenamingId(null)}
+                    isDeleteConfirm={deleteConfirm === item.id}
+                    deleting={deleteMutation.isPending && deleteConfirm === item.id}
+                    onDeleteRequest={() => setDeleteConfirm(item.id)}
+                    onDeleteCancel={() => setDeleteConfirm(null)}
                     onDelete={() => deleteMutation.mutate(item.id)}
                     onMoveToFolder={folderId => moveMutation.mutate({ id: item.id, folderId })}
                     onDragStart={e => handleItemDragStart(item.id, e)}
@@ -695,18 +779,22 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               item={detailItem}
               businessId={businessId}
               usageDetails={usageDetails ?? null}
+              usageDetailsFailed={usageDetailsFailed}
               isLoadingDetails={isLoadingDetails}
               folders={folders}
               replacing={replacing}
               detailRenaming={detailRenaming}
               detailRenameValue={detailRenameValue}
-              isDeleting={deleteMutation.isPending}
-              onClose={() => setDetailItem(null)}
+              isDeleting={deleteMutation.isPending && deleteConfirm === detailItem.id}
+              isDeleteConfirm={deleteConfirm === detailItem.id}
+              onClose={() => { setDetailItem(null); setDeleteConfirm(null); }}
               onStartRename={() => { setDetailRenaming(true); setDetailRenameValue(detailItem.displayName ?? detailItem.filename); }}
               onRenameChange={setDetailRenameValue}
               onRenameCommit={() => renameMutation.mutate({ id: detailItem.id, displayName: detailRenameValue.trim() })}
               onRenameCancel={() => setDetailRenaming(false)}
               onMoveToFolder={folderId => moveMutation.mutate({ id: detailItem.id, folderId })}
+              onDeleteRequest={() => setDeleteConfirm(detailItem.id)}
+              onDeleteCancel={() => setDeleteConfirm(null)}
               onDelete={() => deleteMutation.mutate(detailItem.id)}
               onReplace={() => replaceInputRef.current?.click()}
               onEnhanceDone={() => qc.invalidateQueries({ queryKey: ["website-media", businessId] })}
@@ -818,10 +906,15 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
       {isDeleteConfirm ? (
         <div className="absolute inset-0 bg-destructive/90 flex flex-col items-center justify-center gap-2 z-20">
           <p className="text-white text-[10px] font-medium text-center px-2">Delete this image?</p>
+          {usageCount > 0 && (
+            <p className="text-white/90 text-[9px] text-center px-2">
+              Used in {usageCount} site section{usageCount === 1 ? "" : "s"}.
+            </p>
+          )}
           <div className="flex gap-1.5">
-            <button onClick={onDelete} disabled={deleting}
-              className="px-2 py-0.5 bg-white text-destructive rounded text-[10px] font-semibold hover:bg-gray-100">
-              {deleting ? "…" : "Delete"}
+            <button onClick={onDelete} disabled={deleting || usageCount > 0}
+              className="px-2 py-0.5 bg-white text-destructive rounded text-[10px] font-semibold hover:bg-gray-100 disabled:opacity-50">
+              {deleting ? "…" : usageCount > 0 ? "In use" : "Delete"}
             </button>
             <button onClick={onDeleteCancel}
               className="px-2 py-0.5 bg-white/20 text-white rounded text-[10px] font-semibold hover:bg-white/30">
@@ -880,18 +973,20 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
 }
 
 function ListItem({ item, usageCount, selected, isActive, renamingId, renameValue, renameRef, folders, mode,
-  onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel, onDelete, onMoveToFolder,
-  onDragStart, onDragEnd }: {
+  isDeleteConfirm, deleting, onActivate, onToggleSelect, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
+  onDeleteRequest, onDeleteCancel, onDelete, onMoveToFolder, onDragStart, onDragEnd }: {
   item: MediaItem; usageCount: number; selected: boolean; isActive: boolean;
   renamingId: number | null; renameValue: string; renameRef: React.RefObject<HTMLInputElement>;
-  folders: MediaFolder[]; mode: string;
+  folders: MediaFolder[]; mode: string; isDeleteConfirm: boolean; deleting: boolean;
   onActivate: () => void; onToggleSelect: () => void;
   onStartRename: () => void; onRenameChange: (v: string) => void;
   onRenameCommit: () => void; onRenameCancel: () => void;
-  onDelete: () => void; onMoveToFolder: (folderId: number | null) => void;
+  onDeleteRequest: () => void; onDeleteCancel: () => void; onDelete: () => void;
+  onMoveToFolder: (folderId: number | null) => void;
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const isRenaming = renamingId === item.id;
+  const renameShouldCommitOnBlurRef = useRef(false);
   return (
     <div
       draggable
@@ -901,7 +996,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
         ${isActive ? "bg-primary/8 border border-primary/30" : selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
       onClick={onActivate}
     >
-      <button onClick={e => { e.stopPropagation(); onToggleSelect(); }} className="flex-shrink-0">
+      <button type="button" aria-label={selected ? "Deselect image" : "Select image"} onClick={e => { e.stopPropagation(); onToggleSelect(); }} className="flex-shrink-0">
         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors
           ${selected ? "bg-primary border-primary" : "border-border group-hover:border-muted-foreground"}`}>
           {selected && <Check className="w-2.5 h-2.5 text-white" />}
@@ -918,13 +1013,26 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             ref={renameRef}
             value={renameValue}
             onChange={e => onRenameChange(e.target.value)}
-            onBlur={onRenameCommit}
-            onKeyDown={e => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+            onBlur={() => {
+              if (consumeWebsiteRenameBlurCommit(renameShouldCommitOnBlurRef)) onRenameCommit();
+            }}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                renameShouldCommitOnBlurRef.current = false;
+                onRenameCancel();
+              }
+            }}
             onClick={e => e.stopPropagation()}
             className="w-full text-xs border border-primary rounded px-1.5 py-0.5 focus:outline-none bg-background"
           />
         ) : (
-          <p className="text-xs font-medium text-foreground truncate">{displayLabel(item)}</p>
+          <button type="button" onClick={e => { e.stopPropagation(); onActivate(); }}
+            className="block w-full text-left text-xs font-medium text-foreground truncate">{displayLabel(item)}</button>
         )}
         <p className="text-[10px] text-muted-foreground">{formatSize(item.size)} · {formatDate(item.uploadedAt)}</p>
       </div>
@@ -949,38 +1057,57 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             </select>
           </div>
         )}
-        <button onClick={e => { e.stopPropagation(); onStartRename(); }}
-          className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" title="Rename">
+        <button type="button" aria-label={`Rename ${displayLabel(item)}`} onClick={e => { e.stopPropagation(); renameShouldCommitOnBlurRef.current = true; onStartRename(); }}
+          className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
           <Pencil className="w-3 h-3" />
         </button>
-        <button onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete">
-          <Trash2 className="w-3 h-3" />
-        </button>
+        {isDeleteConfirm ? (
+          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+            <span className="text-[10px] text-destructive font-medium">Delete?</span>
+            {usageCount > 0 && <span className="text-[9px] text-amber-600">{usageCount} in use</span>}
+            <button type="button" onClick={onDelete} disabled={deleting || usageCount > 0}
+              className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-semibold disabled:opacity-60">
+              {deleting ? "…" : usageCount > 0 ? "In use" : "Yes"}
+            </button>
+            <button type="button" onClick={onDeleteCancel} disabled={deleting}
+              className="px-1.5 py-0.5 rounded border border-border text-[10px] disabled:opacity-60">
+              No
+            </button>
+          </div>
+        ) : (
+          <button type="button" onClick={e => { e.stopPropagation(); onDeleteRequest(); }}
+            className="p-1 rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" title="Delete" aria-label="Delete image">
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders, replacing,
-  detailRenaming, detailRenameValue, isDeleting,
+function DetailPanel({ item, businessId, usageDetails, usageDetailsFailed, isLoadingDetails, folders, replacing,
+  detailRenaming, detailRenameValue, isDeleting, isDeleteConfirm,
   onClose, onStartRename, onRenameChange, onRenameCommit, onRenameCancel,
-  onMoveToFolder, onDelete, onReplace, onEnhanceDone }: {
+  onMoveToFolder, onDeleteRequest, onDeleteCancel, onDelete, onReplace, onEnhanceDone }: {
   item: MediaItem;
   businessId: number;
   usageDetails: { locations: UsageLocation[]; total: number } | null;
+  usageDetailsFailed: boolean;
   isLoadingDetails: boolean;
   folders: MediaFolder[];
   replacing: boolean;
   detailRenaming: boolean;
   detailRenameValue: string;
   isDeleting: boolean;
+  isDeleteConfirm: boolean;
   onClose: () => void;
   onStartRename: () => void;
   onRenameChange: (v: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
   onMoveToFolder: (folderId: number | null) => void;
+  onDeleteRequest: () => void;
+  onDeleteCancel: () => void;
   onDelete: () => void;
   onReplace: () => void;
   onEnhanceDone: () => void;
@@ -999,6 +1126,7 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
   const [altGenerating, setAltGenerating] = useState(false);
   const [altError, setAltError]         = useState<string | null>(null);
   const [altSaved, setAltSaved]         = useState(false);
+  const renameShouldCommitOnBlurRef = useRef(false);
 
   async function handleSaveAlt() {
     if (altSaving) return;
@@ -1112,12 +1240,24 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
               autoFocus
               value={detailRenameValue}
               onChange={e => onRenameChange(e.target.value)}
-              onBlur={onRenameCommit}
-              onKeyDown={e => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+              onBlur={() => {
+                if (consumeWebsiteRenameBlurCommit(renameShouldCommitOnBlurRef)) onRenameCommit();
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  renameShouldCommitOnBlurRef.current = false;
+                  onRenameCancel();
+                }
+              }}
               className="w-full text-xs border border-primary rounded px-1.5 py-1 focus:outline-none bg-background"
             />
           ) : (
-            <button onClick={onStartRename} className="group/name flex items-center gap-1 w-full text-left" title="Click to rename">
+            <button onClick={() => { renameShouldCommitOnBlurRef.current = true; onStartRename(); }} className="group/name flex items-center gap-1 w-full text-left" title="Click to rename">
               <p className="text-xs text-foreground font-medium break-all line-clamp-2 flex-1">{displayLabel(item)}</p>
               <Pencil className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity" />
             </button>
@@ -1140,6 +1280,8 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
               <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
               <span className="text-[11px] text-muted-foreground">Checking…</span>
             </div>
+          ) : usageDetailsFailed ? (
+            <p className="text-[11px] text-destructive">Could not verify image usage. Try again before deleting.</p>
           ) : !usageDetails || usageDetails.total === 0 ? (
             <p className="text-[11px] text-muted-foreground italic">Not used on site</p>
           ) : (
@@ -1289,11 +1431,30 @@ function DetailPanel({ item, businessId, usageDetails, isLoadingDetails, folders
           {replacing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           {replacing ? "Replacing…" : "Replace everywhere"}
         </button>
-        <button onClick={onDelete} disabled={isDeleting}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60">
-          {isDeleting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-          Delete
-        </button>
+        {isDeleteConfirm ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 space-y-2">
+            <p className="text-[11px] font-medium text-destructive">Delete this image permanently?</p>
+            {usageDetails?.total ? (
+              <p className="text-[10px] text-destructive/80">It is currently used in {usageDetails.total} site section{usageDetails.total === 1 ? "" : "s"}.</p>
+            ) : null}
+            <div className="flex gap-2">
+              <button type="button" onClick={onDelete} disabled={isDeleting || isLoadingDetails || usageDetailsFailed || (usageDetails?.total ?? 0) > 0}
+                className="flex-1 px-2 py-1 text-[10px] font-semibold bg-destructive text-destructive-foreground rounded disabled:opacity-60">
+                {isDeleting ? "Deleting…" : isLoadingDetails ? "Checking…" : usageDetailsFailed ? "Usage unavailable" : (usageDetails?.total ?? 0) > 0 ? "In use" : "Delete"}
+              </button>
+              <button type="button" onClick={onDeleteCancel} disabled={isDeleting}
+                className="flex-1 px-2 py-1 text-[10px] border border-border rounded disabled:opacity-60">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={onDeleteRequest} disabled={isDeleting}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/5 transition-colors disabled:opacity-60">
+            <Trash2 className="w-3 h-3" />
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );

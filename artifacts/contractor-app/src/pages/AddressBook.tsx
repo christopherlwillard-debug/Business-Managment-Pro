@@ -12,6 +12,7 @@ import {
   type ContactInput,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 import { useSearchParams } from "wouter";
 import {
   Plus, Search, Edit2, Trash2, Phone, Mail, MapPin,
@@ -39,6 +40,8 @@ interface UnifiedEntry {
   state: string | null;
   zip: string | null;
   notes: string | null;
+  businessId?: unknown;
+  businessLine?: string | null;
   rawContact?: Contact;
 }
 
@@ -181,6 +184,7 @@ export default function AddressBook() {
             name:  quickForm.name.trim(),
             phone: quickForm.phone.trim() || null,
             email: quickForm.email.trim() || null,
+            ...getClientSourceBusinessFields(quickEditEntry),
           },
         });
       } else {
@@ -241,6 +245,8 @@ export default function AddressBook() {
         state: c.state ?? null,
         zip: c.zip ?? null,
         notes: null,
+        businessId: c.businessId,
+        businessLine: c.businessLine ?? null,
       });
     }
 

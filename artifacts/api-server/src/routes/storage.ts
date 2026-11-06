@@ -9,6 +9,57 @@ import { eq, and } from "drizzle-orm";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+const MAX_GENERIC_UPLOAD_BYTES = 25 * 1024 * 1024;
+const GENERIC_UPLOAD_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "text/plain",
+  "text/csv",
+  "application/csv",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+  "image/heic",
+  "image/heif",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/mp4",
+  "video/mp4",
+  "video/quicktime",
+]);
+
+function validateGenericUploadMetadata(value: unknown):
+  | { ok: true; metadata: { name: string; size: number; contentType: string } }
+  | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Upload details must be an object." };
+  }
+  const input = value as Record<string, unknown>;
+  if (typeof input.name !== "string" || !input.name.trim() || [...input.name].length > 255) {
+    return { ok: false, error: "Choose a valid filename (255 characters or fewer)." };
+  }
+  if (!Number.isSafeInteger(input.size) || (input.size as number) <= 0 || (input.size as number) > MAX_GENERIC_UPLOAD_BYTES) {
+    return { ok: false, error: "Files must be larger than 0 bytes and no larger than 25 MB." };
+  }
+  if (typeof input.contentType !== "string") {
+    return { ok: false, error: "A supported file content type is required." };
+  }
+  const contentType = input.contentType.split(";")[0].trim().toLowerCase();
+  if (!GENERIC_UPLOAD_CONTENT_TYPES.has(contentType)) {
+    return { ok: false, error: "This file type is not supported." };
+  }
+  return { ok: true, metadata: { name: input.name.trim(), size: input.size as number, contentType } };
+}
+
+
 /**
  * Determine required authorization for a private object path.
  *
@@ -79,15 +130,22 @@ async function canDownloadObject(req: Request, wildcardPath: string): Promise<bo
  * Then uploads the file directly to the returned presigned URL.
  */
 router.post("/storage/uploads/request-url", async (req: Request, res: Response): Promise<void> => {
-  const { name, size, contentType } = req.body ?? {};
-  if (!name || !size || !contentType) {
-    res.status(400).json({ error: "Missing required fields: name, size, contentType" });
+  const userId = getRequestUserId(req);
+  const ownerId = await getOwnerId();
+  if (!userId || userId !== ownerId) {
+    res.status(403).json({ error: "Owner access required" });
+    return;
+  }
+
+  const validation = validateGenericUploadMetadata(req.body);
+  if (!validation.ok) {
+    res.status(400).json({ error: validation.error });
     return;
   }
   try {
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-    res.json({ uploadURL, objectPath, metadata: { name, size, contentType } });
+    res.json({ uploadURL, objectPath, metadata: validation.metadata });
   } catch (error) {
     console.error("Error generating upload URL:", error);
     res.status(500).json({ error: "Failed to generate upload URL" });

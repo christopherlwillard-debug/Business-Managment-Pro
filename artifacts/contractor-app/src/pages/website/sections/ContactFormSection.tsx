@@ -108,13 +108,38 @@ function SubmissionsViewer({ businessId }: { businessId?: number }) {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    if (!businessId) return;
+    if (!businessId) {
+      setSubs([]);
+      setSearchQuery("");
+      setError("");
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setSubs([]);
+    setSearchQuery("");
+    setError("");
     setLoading(true);
-    fetch(`${BASE}/api/website/form-submissions?businessId=${businessId}`, { credentials: "include" })
-      .then(r => r.ok ? r.json() : Promise.reject("Failed"))
-      .then(data => setSubs(data))
-      .catch(() => setError("Could not load submissions."))
-      .finally(() => setLoading(false));
+
+    fetch(`${BASE}/api/website/form-submissions?businessId=${businessId}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(r => r.ok ? r.json() : Promise.reject(new Error("Failed to load submissions")))
+      .then(data => {
+        if (controller.signal.aborted) return;
+        if (!Array.isArray(data)) throw new Error("Invalid submissions response");
+        setSubs(data);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError("Could not load submissions.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [businessId]);
 
   const filtered = useMemo(() => {
@@ -316,7 +341,7 @@ export function ContactFormSection({ content, settings, isEditing, onChange, onS
                 onChangeEmail={e => setFieldsAndEmail(fields, e)}
               />
             ) : (
-              <SubmissionsViewer businessId={businessId} />
+              <SubmissionsViewer key={businessId ?? "no-business"} businessId={businessId} />
             )}
           </>
         ) : submitted ? (

@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { jobDailyPresenceTable, jobsTable } from "@workspace/db/schema";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getRequestUser } from "./guards";
-import { belongsToBusiness, invalidBusinessScope, requestedBusiness } from "../lib/business-scope.js";
+import { hasRequestedBusiness, belongsToBusiness, invalidBusinessScope, requestedBusiness } from "../lib/business-scope.js";
 import {
   isNotHereReason,
   isPresenceState,
@@ -132,7 +132,7 @@ router.get("/production-presence", async (req, res) => {
     }
 
     const { scope, jobs } = await scopedJobs(req, ids);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (jobs.length === 0) return res.json({ jobs: [] });
 
     const rows = await db
@@ -174,7 +174,7 @@ router.post("/:jobId/workday/start", async (req, res) => {
     }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const job = jobs[0];
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
@@ -275,7 +275,7 @@ router.post("/:jobId/workday/end", async (req, res) => {
     }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const job = jobs[0];
     if (!job) return res.status(404).json({ error: "Job not found" });
     if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
@@ -335,7 +335,7 @@ router.put("/:jobId/production-presence/:date", async (req, res) => {
     }
 
     const { scope, jobs } = await scopedJobs(req, [jobId]);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const job = jobs[0];
     if (!job) return res.status(404).json({ error: "Job not found" });
 

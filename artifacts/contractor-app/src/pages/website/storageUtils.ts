@@ -1,0 +1,296 @@
+/**
+ * Browser storage is a convenience for editor preferences, never a requirement
+ * for editing. Access can throw in private browsing, embedded, or restricted
+ * browser contexts, so callers must be able to fall back to defaults.
+ */
+export function readEditorPreference(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeEditorPreference(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Editor preferences are optional; storage failure must not break editing.
+  }
+}
+/**
+ * Wait until the editor's serialized save queue has fully drained. The
+ * callbacks keep this helper independent of React and make the ordering
+ * behavior straightforward to regression-test.
+ */
+export async function waitForWebsiteSaveQueue(options: {
+  isInFlight: () => boolean;
+  isQueued: () => boolean;
+  getPending: () => Promise<unknown> | null;
+  flushQueued: () => void;
+}): Promise<void> {
+  while (options.isInFlight() || options.isQueued()) {
+    const pending = options.getPending();
+    if (!pending) {
+      if (options.isQueued()) {
+        options.flushQueued();
+        continue;
+      }
+      return;
+    }
+    await pending.catch(() => undefined);
+  }
+}
+
+/** Apply a background-image patch to the latest section array without replacing unrelated edits. */
+export function patchSectionBlockStyle<T extends { id: string; blockStyle?: object }>(
+  sections: T[],
+  sectionId: string,
+  patch: object,
+): T[] {
+  return sections.map(section => section.id === sectionId
+    ? { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } as NonNullable<T["blockStyle"]> }
+    : section);
+}
+
+/** Apply a background-image result only while its own optimistic preview is still current. */
+export function completeSectionBlockStyleUpload<T extends { id: string; blockStyle?: { bgImageUrl?: string } & object }>(
+  sections: T[],
+  sectionId: string,
+  previewUrl: string,
+  patch: object,
+): T[] {
+  let changed = false;
+  const next = sections.map(section => {
+    if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
+    changed = true;
+    return { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } as NonNullable<T["blockStyle"]> };
+  });
+  return changed ? next : sections;
+}
+
+/** Roll back only this upload's optimistic background fields; preserve all concurrent style edits. */
+export function restoreSectionBlockStylePreview<T extends { id: string; blockStyle?: { bgImageUrl?: string; bgType?: string } & object }>(
+  sections: T[],
+  sectionId: string,
+  previewUrl: string,
+  originalBlockStyle: object | undefined,
+): T[] {
+  let changed = false;
+  const next = sections.map(section => {
+    if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
+    changed = true;
+    const nextStyle = { ...(section.blockStyle ?? {}) } as NonNullable<T["blockStyle"]>;
+    const originalStyle = originalBlockStyle as Record<string, unknown> | undefined;
+    if (originalStyle && Object.prototype.hasOwnProperty.call(originalStyle, "bgImageUrl")) {
+      nextStyle.bgImageUrl = originalStyle.bgImageUrl as typeof nextStyle.bgImageUrl;
+    } else {
+      delete nextStyle.bgImageUrl;
+    }
+    // Restore the previous mode only while this upload still owns the preview.
+    if (nextStyle.bgType === "image") {
+      if (originalStyle && Object.prototype.hasOwnProperty.call(originalStyle, "bgType")) {
+        nextStyle.bgType = originalStyle.bgType as typeof nextStyle.bgType;
+      } else {
+        delete nextStyle.bgType;
+      }
+    }
+    const restored = { ...section } as T;
+    if (Object.keys(nextStyle).length > 0) restored.blockStyle = nextStyle;
+    else delete restored.blockStyle;
+    return restored;
+  });
+  return changed ? next : sections;
+}
+
+/** Update one page using its latest section state, never a pre-upload snapshot. */
+export function patchWebsitePageSections<TPage extends { id: string; sections: unknown[] }>(
+  pages: TPage[] | null,
+  pageId: string,
+  update: (sections: TPage["sections"]) => TPage["sections"],
+): TPage[] | null {
+  if (!pages) return pages;
+  return pages.map(page => page.id === pageId ? { ...page, sections: update(page.sections) } : page);
+}
+
+/** Ignore unfinished uploads from a previous business/editor session. */
+export function hasPendingWebsiteAssetUploads(pending: Set<string>, session: number): boolean {
+  const prefix = `${session}:`;
+  for (const key of pending) if (key.startsWith(prefix)) return true;
+  return false;
+}
+
+/** Update section content only within its owning page; section IDs are page-local. */
+export function patchWebsitePageSectionContent<
+  TPage extends { id: string; sections: TSection[] },
+  TSection extends { id: string; content: Record<string, unknown> },
+>(
+  pages: TPage[] | null,
+  pageId: string,
+  sectionId: string,
+  content: Record<string, unknown>,
+): TPage[] | null {
+  if (!pages) return pages;
+  const targetPage = pages.find(page => page.id === pageId);
+  if (!targetPage || !targetPage.sections.some(section => section.id === sectionId)) return pages;
+  return pages.map(page => page.id !== pageId ? page : ({
+    ...page,
+    sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
+  }));
+}
+
+/** Persist the complete custom-page collection, including an explicit empty list after the last page is deleted. */
+export function withWebsitePageList<TSettings extends object, TPage>(
+  settings: TSettings,
+  pages: TPage[],
+): TSettings & { pages: TPage[] } {
+  return { ...settings, pages };
+}
+
+/** Remove a custom page and only the header links that target that page. */
+export function removeWebsitePageAndNavigationLinks<
+  TPage extends { id: string; sections: TSection[] },
+  TSection extends { type: string; content: Record<string, unknown> },
+>(pages: TPage[], pageId: string): TPage[] {
+  if (pageId === "home" || !pages.some(page => page.id === pageId)) return pages;
+
+  const remaining = pages.filter(page => page.id !== pageId);
+  return remaining.map(page => page.id !== "home" ? page : ({
+    ...page,
+    sections: page.sections.map(section => {
+      if (section.type !== "header") return section;
+      const links = Array.isArray(section.content.navLinks) ? section.content.navLinks : [];
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          navLinks: links.filter(link =>
+            !link || typeof link !== "object" || Array.isArray(link) ||
+            (link as Record<string, unknown>).pageId !== pageId
+          ),
+        },
+      };
+    }),
+  }));
+}
+
+/** Let the server inspect files with an unknown browser MIME type, but report known non-images instead of silently dropping them. */
+export function partitionWebsiteMediaFiles<T extends { type: string; name: string }>(files: T[]): {
+  uploadable: T[];
+  unsupported: T[];
+} {
+  const uploadable: T[] = [];
+  const unsupported: T[] = [];
+  for (const file of files) {
+    if (!file.type || file.type.startsWith("image/")) uploadable.push(file);
+    else unsupported.push(file);
+  }
+  return { uploadable, unsupported };
+}
+
+/** Consume the one-shot rename-on-blur permission; Escape cancels and Enter blurs to commit exactly once. */
+export function consumeWebsiteRenameBlurCommit(state: { current: boolean }): boolean {
+  const shouldCommit = state.current;
+  state.current = false;
+  return shouldCommit;
+}
+
+/** Disable the pending blur commit when the user explicitly cancels a rename with Escape. */
+export function cancelWebsiteRenameBlurCommit(state: { current: boolean }): void {
+  state.current = false;
+}
+
+/** Scope public-site cache entries to the requested page as well as the site and preview mode. */
+export function getPublicSiteQueryKey(
+  slug: string | undefined,
+  pageSlug: string | undefined,
+  isDraftPreview: boolean,
+  host: string,
+): readonly ["public-site", string, string, boolean] {
+  return ["public-site", slug ?? `__host__${host}`, pageSlug ?? "__home__", isDraftPreview];
+}
+
+/**
+ * Resolve public-site page routing for both app-hosted sites (/site/:slug/:page)
+ * and custom domains (/:page). A malformed or nested custom-domain path must
+ * not silently fall back to the homepage.
+ */
+export function resolvePublicSitePageRoute(
+  routeSlug: string | undefined,
+  routePageSlug: string | undefined,
+  pathname: string,
+): { pageSlug?: string; invalidPath: boolean } {
+  // App-hosted routes already identify the business and optional page explicitly.
+  if (routeSlug || routePageSlug) {
+    return {
+      ...(routePageSlug ? { pageSlug: routePageSlug } : {}),
+      invalidPath: false,
+    };
+  }
+
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return { invalidPath: false };
+  if (segments.length !== 1) return { invalidPath: true };
+
+  let pageSlug: string;
+  try {
+    pageSlug = decodeURIComponent(segments[0]);
+  } catch {
+    return { invalidPath: true };
+  }
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(pageSlug)) {
+    return { invalidPath: true };
+  }
+
+  return { pageSlug: pageSlug.toLowerCase(), invalidPath: false };
+}
+
+/** Accept only safe website navigation destinations from persisted editor content. */
+export function getSafeWebsiteHref(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const href = value.trim();
+  if (!href || href.includes("\\") || [...href].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) return null;
+  if (href.startsWith("#") || (href.startsWith("/") && !href.startsWith("//"))) return href;
+  if (/^(https?:|mailto:|tel:)/i.test(href)) return href;
+  return null;
+}
+
+/** Ignore malformed persisted navigation entries and supply stable fallback keys. */
+export function getSafePublicNavLinks(
+  value: unknown,
+  options: {
+    pages?: Array<{ id: string; slug: string }>;
+    businessSlug?: string;
+    customDomain?: boolean;
+  } = {},
+): Array<{ id: string; label: string; href: string }> {
+  if (!Array.isArray(value)) return [];
+  const links: Array<{ id: string; label: string; href: string }> = [];
+  value.forEach((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const link = item as Record<string, unknown>;
+    if (typeof link.label !== "string" || !link.label.trim()) return;
+
+    let href: string | null = null;
+    if (typeof link.pageId === "string" && Array.isArray(options.pages)) {
+      const page = options.pages.find(candidate => candidate?.id === link.pageId);
+      const pageSlug = typeof page?.slug === "string" ? page.slug.trim().toLowerCase() : "";
+      if (!pageSlug || pageSlug === "home" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(pageSlug)) return;
+
+      if (options.customDomain) {
+        href = `/${pageSlug}`;
+      } else if (typeof options.businessSlug === "string" && options.businessSlug.trim()) {
+        href = `/site/${encodeURIComponent(options.businessSlug.trim())}/${encodeURIComponent(pageSlug)}`;
+      }
+    }
+
+    // Legacy, anchor, and external links remain unchanged. Page-backed links use
+    // the current page record so renames and custom domains cannot retain stale
+    // application-hosted URLs.
+    href ??= getSafeWebsiteHref(link.href);
+    if (!href) return;
+    links.push({ id: typeof link.id === "string" && link.id.trim() ? link.id : `nav-link-${index}`, label: link.label, href });
+  });
+  return links;
+}

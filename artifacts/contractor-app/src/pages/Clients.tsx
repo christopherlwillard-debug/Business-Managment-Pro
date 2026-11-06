@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListClients, useCreateClient, useUpdateClient, useDeleteClient } from "@workspace/api-client-react";
+import { useListClients, useCreateClient, useUpdateClient } from "@workspace/api-client-react";
 import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, ChevronRight, Calendar, DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,6 +8,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useLocation } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
+import { getClientBusinessScopeQuery, getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -34,13 +35,11 @@ export default function Clients() {
   );
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
-  const deleteMutation = useDeleteClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number } | null>(null);
+  const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number; billingProfileCount: number; mfhPricingCount: number; productionPricingCount: number } | null>(null);
   const [isCheckingDelete, setIsCheckingDelete] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -59,6 +58,7 @@ export default function Clients() {
       mileageSurchargeEnabled: formData.get("mileageSurchargeEnabled") === "on",
       mileageSurchargeTriggerMiles: formData.get("mileageSurchargeTriggerMiles") ? Number(formData.get("mileageSurchargeTriggerMiles")) : null,
       mileageSurchargeDailyRate: formData.get("mileageSurchargeDailyRate") ? Number(formData.get("mileageSurchargeDailyRate")) : null,
+      ...(editingClient ? getClientSourceBusinessFields(editingClient) : {}),
     };
 
     try {
@@ -91,30 +91,17 @@ export default function Clients() {
     setIsCheckingDelete(true);
     setDeleteTarget(client);
     try {
-      const res = await fetch(`${BASE}/api/clients/${client.id}/link-counts`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/clients/${client.id}/link-counts${getClientBusinessScopeQuery(client)}`, { credentials: "include" });
       if (res.ok) {
         const counts = await res.json();
         setDeleteLinkCounts(counts);
       } else {
-        setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+        setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
       }
     } catch {
-      setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+      setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
     } finally {
       setIsCheckingDelete(false);
-    }
-  };
-
-  const handleDeleteConfirmed = async () => {
-    if (!deleteTarget) return;
-    setIsDeleting(true);
-    try {
-      await deleteMutation.mutateAsync({ id: deleteTarget.id });
-      refetch();
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
-      setDeleteLinkCounts(null);
     }
   };
 
@@ -356,18 +343,18 @@ export default function Clients() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h3 className="font-bold text-foreground text-base">Permanently delete client?</h3>
+                <h3 className="font-bold text-foreground text-base">Client deletion unavailable</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   <span className="font-semibold text-foreground">{deleteTarget.name}</span>
-                  {" "}will be{" "}
-                  <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+                  {" "}is being retained to protect its job, invoice, payment, and pricing history.
+                  Permanent deletion is disabled until a recoverable archive/restore workflow is available.
                 </p>
               </div>
             </div>
             {isCheckingDelete && (
               <div className="text-sm text-muted-foreground animate-pulse px-1">Checking linked records…</div>
             )}
-            {!isCheckingDelete && deleteLinkCounts && (deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0) && (
+            {!isCheckingDelete && deleteLinkCounts && (deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0 || deleteLinkCounts.billingProfileCount > 0 || deleteLinkCounts.mfhPricingCount > 0 || deleteLinkCounts.productionPricingCount > 0) && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
                 <p className="text-sm font-semibold text-amber-800">This client has linked records:</p>
                 <ul className="text-sm text-amber-700 list-disc list-inside space-y-0.5">
@@ -380,14 +367,28 @@ export default function Clients() {
                   {deleteLinkCounts.estimateCount > 0 && (
                     <li>{deleteLinkCounts.estimateCount} {deleteLinkCounts.estimateCount === 1 ? "estimate" : "estimates"}</li>
                   )}
+                  {deleteLinkCounts.billingProfileCount > 0 && (
+                    <li>{deleteLinkCounts.billingProfileCount} saved billing {deleteLinkCounts.billingProfileCount === 1 ? "profile" : "profiles"}</li>
+                  )}
+                  {deleteLinkCounts.mfhPricingCount > 0 && (
+                    <li>{deleteLinkCounts.mfhPricingCount} manufacturer-specific price {deleteLinkCounts.mfhPricingCount === 1 ? "override" : "overrides"}</li>
+                  )}
+                  {deleteLinkCounts.productionPricingCount > 0 && (
+                    <li>{deleteLinkCounts.productionPricingCount} production price {deleteLinkCounts.productionPricingCount === 1 ? "override" : "overrides"}</li>
+                  )}
                 </ul>
-                <p className="text-xs text-amber-600 mt-1">These records will remain but will no longer be associated with any client.</p>
+                {(deleteLinkCounts.billingProfileCount > 0 || deleteLinkCounts.mfhPricingCount > 0 || deleteLinkCounts.productionPricingCount > 0) && (
+                  <p className="text-xs text-red-700 mt-1">Deletion is blocked until saved billing and pricing settings are transferred or removed.</p>
+                )}
+                {(deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0) && (
+                  <p className="text-xs text-amber-600 mt-1">Linked jobs, invoices, and estimates will remain but will no longer be associated with this client.</p>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={handleDeleteCancel} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
-              <button onClick={handleDeleteConfirmed} disabled={isDeleting || isCheckingDelete} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                {isDeleting ? "Deleting…" : <><Trash2 className="w-4 h-4" /> Delete</>}
+              <button onClick={handleDeleteCancel} disabled={isCheckingDelete} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button disabled title="Archive/restore support is not available yet" className="px-4 py-2 rounded-xl font-medium bg-muted text-muted-foreground cursor-not-allowed">
+                Deletion disabled
               </button>
             </div>
           </div>

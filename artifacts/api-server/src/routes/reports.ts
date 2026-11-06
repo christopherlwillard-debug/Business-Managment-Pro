@@ -34,6 +34,65 @@ import {
 
 const router = Router();
 
+type ReportBusiness = { id: number; slug: string };
+
+/** Resolve optional report selectors once and fail closed for unknown businesses. */
+async function resolveReportBusiness(
+  rawSlug: unknown,
+  rawId: unknown,
+  res: any,
+): Promise<ReportBusiness | null | undefined> {
+  if (rawSlug != null && typeof rawSlug !== "string") {
+    res.status(400).json({ error: "Invalid business selector" });
+    return undefined;
+  }
+  const slug = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  let id: number | null = null;
+  if (rawId != null && String(rawId).trim() !== "") {
+    const text = String(rawId).trim();
+    if (!/^\d+$/.test(text)) {
+      res.status(400).json({ error: "Invalid business ID" });
+      return undefined;
+    }
+    id = Number(text);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid business ID" });
+      return undefined;
+    }
+  }
+  if (!slug && id == null) return null;
+  const [business] = await db.select({ id: businessesTable.id, slug: businessesTable.slug })
+    .from(businessesTable)
+    .where(id != null ? eq(businessesTable.id, id) : eq(businessesTable.slug, slug))
+    .limit(1);
+  if (!business || (slug && business.slug !== slug)) {
+    res.status(400).json({ error: "Unknown business" });
+    return undefined;
+  }
+  return business;
+}
+
+/** Prefer canonical ownership; only use businessLine for legacy null-owned rows. */
+function reportBusinessWhere(
+  business: ReportBusiness | null,
+  businessLineColumn: any,
+  businessIdColumn?: any,
+): any {
+  if (!business) return undefined;
+  if (!businessIdColumn) return eq(businessLineColumn, business.slug);
+  if (businessIdColumn === otherIncomeTable.businessId) {
+    return or(
+      eq(businessIdColumn, String(business.id)),
+      eq(businessIdColumn, business.slug),
+      and(isNull(businessIdColumn), eq(businessLineColumn, business.slug)),
+    );
+  }
+  return or(
+    eq(businessIdColumn, business.id),
+    and(isNull(businessIdColumn), eq(businessLineColumn, business.slug)),
+  );
+}
+
 const dashboardInvoiceSelection = {
   ...getTableColumns(invoicesTable),
   // Revenue attribution must come from append-only verified Gmail evidence,
@@ -158,27 +217,12 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     chartD.setMonth(chartD.getMonth() - 5);
     const chartStartDate = `${chartD.getFullYear()}-${String(chartD.getMonth() + 1).padStart(2, "0")}-01`;
 
-    // Accept any non-empty business slug — no hardcoded allowlist
-    let validBl = blFilter || null;
-    if (!validBl && businessIdFilter) {
-      const [selectedBusiness] = await db.select({ slug: businessesTable.slug })
-        .from(businessesTable)
-        .where(eq(businessesTable.id, Number(businessIdFilter)))
-        .limit(1);
-      validBl = selectedBusiness?.slug ?? null;
-    }
-
-    // Build optional DB-level business-line WHERE condition (returns undefined when no filter = AND ignores it)
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      validBl ? eq(col, validBl) : undefined;
-
-    // Resolve businessId from slug for mileage isolation (mileage_logs uses businessId FK, not businessLine)
-    let mileageBusinessId: number | null = null;
-    if (validBl) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, validBl));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const reportBusiness = await resolveReportBusiness(blFilter, businessIdFilter, res);
+    if (reportBusiness === undefined) return;
+    const validBl = reportBusiness?.slug ?? null;
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
 
     // Fetch KPI data with DB-level business-line WHERE when validBl is set,
     // plus full (unfiltered) data in parallel for the byBusinessLine breakdown.
@@ -189,20 +233,25 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // Dashboard revenue uses verified send date with issueDate as a legacy fallback.
       // Paid invoices remain unbounded here so JS can attribute a paid invoice to its
       // send period even when payment arrived in a later period.
-      db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+      db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
       // Non-paid invoices: issueDate-bounded so pending/overdue counts remain period-specific
-      db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
+      db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, expenseEndDate), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
       // Period-consistent mileage for the profit formula — matches the selected period.
       // subcontractorId IS NULL: exclude sub-portal mileage (James Willard, Dewayne Lamb, etc.)
       // which is job-tracking data, not the owner's Schedule C standard-mileage deduction.
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
-      db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
+      db.select().from(jobsTable).where(and(eq(jobsTable.status, "in_progress"), blWhere(jobsTable.businessLine, jobsTable.businessId))),
       // Recent rows — always unfiltered
-      db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).orderBy(desc(jobsTable.createdAt)).limit(5),
-      db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).orderBy(desc(invoicesTable.createdAt)).limit(5),
-      db.select().from(ownerCapitalEntriesTable).where(and(gte(ownerCapitalEntriesTable.date, startDate), lte(ownerCapitalEntriesTable.date, expenseEndDate), isNull(ownerCapitalEntriesTable.voidedAt))),
+      db.select({ id: jobsTable.id, title: jobsTable.title, description: jobsTable.description, clientId: jobsTable.clientId, clientName: clientsTable.name, status: jobsTable.status, jobType: jobsTable.jobType, address: jobsTable.address, city: jobsTable.city, state: jobsTable.state, startDate: jobsTable.startDate, endDate: jobsTable.endDate, notes: jobsTable.notes, createdAt: jobsTable.createdAt }).from(jobsTable).leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id)).where(blWhere(jobsTable.businessLine, jobsTable.businessId)).orderBy(desc(jobsTable.createdAt)).limit(5),
+      db.select({ id: invoicesTable.id, invoiceNumber: invoicesTable.invoiceNumber, clientId: invoicesTable.clientId, clientName: clientsTable.name, jobId: invoicesTable.jobId, status: invoicesTable.status, issueDate: invoicesTable.issueDate, dueDate: invoicesTable.dueDate, subtotal: invoicesTable.subtotal, taxRate: invoicesTable.taxRate, taxAmount: invoicesTable.taxAmount, total: invoicesTable.total, amountPaid: invoicesTable.amountPaid, notes: invoicesTable.notes, terms: invoicesTable.terms, lineItems: invoicesTable.lineItems, createdAt: invoicesTable.createdAt }).from(invoicesTable).leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id)).where(blWhere(invoicesTable.businessLine, invoicesTable.businessId)).orderBy(desc(invoicesTable.createdAt)).limit(5),
+      db.select().from(ownerCapitalEntriesTable).where(and(
+        gte(ownerCapitalEntriesTable.date, startDate),
+        lte(ownerCapitalEntriesTable.date, expenseEndDate),
+        isNull(ownerCapitalEntriesTable.voidedAt),
+        reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+      )),
       // Fixed/allocation sub payments — cash-basis cash out.
       // Date range covers the full 6-month chart window (chartStartDate) so that
       // subPayByMonth is populated for all chart months, not just the KPI period.
@@ -210,7 +259,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // No business-line filter at DB level so the result powers both KPI (filtered in JS) and byBusinessLine.
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — exclude them
       // to avoid double-counting with the expensesTable rows.
-      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessLine: subPaymentRecordsTable.businessLine })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessId: subPaymentRecordsTable.businessId, businessLine: subPaymentRecordsTable.businessLine })
         .from(subPaymentRecordsTable)
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
@@ -312,7 +361,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // reduce netCapitalInvested in the frontend ledger and must NOT be added
     // to ownerDrawTotal, which would deduct them a second time from equity.
     const ownerDrawTotal = kpiOwnerCapital
-      .filter(e => !validBl || e.businessId === mileageBusinessId)
+      .filter(e => !reportBusiness || e.businessId === reportBusiness.id)
       .reduce((sum, e) => {
         const amount = parseFloat(e.amount ?? "0");
         return sum + (amount < 0 ? Math.abs(amount) : 0);
@@ -329,6 +378,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       amountPaid:       jobSubcontractorsTable.amountPaid,
       paymentStatus:    jobSubcontractorsTable.paymentStatus,
       businessLine:     jobsTable.businessLine,
+      businessId:       jobsTable.businessId,
       compensationType: jobSubcontractorsTable.compensationType,
       allocationPct:    jobSubcontractorsTable.allocationPct,
       jobId:            jobSubcontractorsTable.jobId,
@@ -352,7 +402,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     let subContractorOwed = 0;
     let subContractorPaid = 0;
     for (const r of subPayRows) {
-      if (validBl && r.businessLine !== validBl) continue;
+      if (reportBusiness && !(r.businessId != null
+        ? r.businessId === reportBusiness.id
+        : r.businessLine === reportBusiness.slug)) continue;
       const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       subContractorPaid += paid;
       // Trust paymentStatus as authoritative — paid/overpaid rows have no outstanding liability.
@@ -474,11 +526,11 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       const lastDay = String(new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()).padStart(2, "0");
       const [monthlyPaidInv, monthlyNonPaidInv, monthlyExp, monthlyOther] = await Promise.all([
         // Paid invoices: no issueDate filter — JS attributes by send date below
-        db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+        db.select(dashboardInvoiceSelection).from(invoicesTable).where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
         // Non-paid: issueDate-bounded so outstanding counts remain month-specific
-        db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine))),
-        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
-        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
+        db.select().from(invoicesTable).where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, `${monthStr}-01`), lte(invoicesTable.issueDate, `${monthStr}-${lastDay}`), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
+        db.select().from(expensesTable).where(and(gte(expensesTable.date, `${monthStr}-01`), lte(expensesTable.date, `${monthStr}-${lastDay}`), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
+        db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, `${monthStr}-01`), lte(otherIncomeTable.date, `${monthStr}-${lastDay}`), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
       ]);
       // Filter paid to verified send date (or issueDate fallback) within this month so the revenue bar
       // and outstanding aggregate only reflect invoices that belong to this period.
@@ -562,13 +614,13 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
     const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= currentYear + 1
       ? requestedYear
       : currentYear;
-    const businessLine = typeof req.query.businessLine === "string" && req.query.businessLine.trim()
-      ? req.query.businessLine.trim()
-      : null;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const businessLine = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-    const businessWhere = (column: Parameters<typeof eq>[0]) =>
-      businessLine ? eq(column, businessLine) : undefined;
+    const businessWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
 
     const [paidInvoices, otherIncome] = await Promise.all([
       db.select(dashboardInvoiceSelection)
@@ -576,7 +628,7 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
         .where(and(
           eq(invoicesTable.status, "paid"),
           isNull(invoicesTable.voidedAt),
-          businessWhere(invoicesTable.businessLine),
+          businessWhere(invoicesTable.businessLine, invoicesTable.businessId),
         )),
       db.select({
         date: otherIncomeTable.date,
@@ -587,7 +639,7 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
           gte(otherIncomeTable.date, startDate),
           lte(otherIncomeTable.date, endDate),
           isNull(otherIncomeTable.voidedAt),
-          businessWhere(otherIncomeTable.businessLine),
+          businessWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId),
         )),
     ]);
 
@@ -691,22 +743,17 @@ router.get("/compliance", sectionGuard("compliance"), async (req, res) => {
 
 router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-
-    // Optional DB-level business-line filter — accepts any slug, no hardcoded allowlist
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    // Resolve businessId from slug for mileage isolation
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     // Accounting invoice columns — shared between the paid and non-paid fetches below
     const accInvoiceCols = {
@@ -737,19 +784,19 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
-        .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+        .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
       // Non-paid invoices: issueDate-bounded so pending/overdue revenue stays year-specific
       db.select(accInvoiceCols)
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
         .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
-        .where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine))),
-      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
+        .where(and(ne(invoicesTable.status, "paid"), gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
+      db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
       db.select().from(mileageLogsTable).where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
-      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
+      db.select().from(otherIncomeTable).where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
       // Fixed/allocation sub payments — cash-basis cash out (not in expenses after Task #892).
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — excluded here
       // via compensationType filter to avoid double-counting with the expensesTable rows.
@@ -821,15 +868,15 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // direct ownerCapitalEntries chain → [accOwnerContribRows] next.
     const [subsWithYtdAcc, depreciationDeduction, accWaterfall, accOwnerContribRows] = await Promise.all([
       Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
-      computeDepreciationForYear(year),
-      computeOwnerWaterfall(year, blFilter),
+      computeDepreciationForYear(year, reportBusiness ?? null),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
       db.select({ amount: ownerCapitalEntriesTable.amount, businessId: ownerCapitalEntriesTable.businessId })
         .from(ownerCapitalEntriesTable)
         .where(and(
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
     ]);
     const canonicalOwnerDrawTotal = accOwnerContribRows.reduce((sum, row) => {
@@ -1318,12 +1365,12 @@ const WATERFALL_TAX_PCT    = 0.25;
  */
 async function computeOwnerWaterfall(
   year: number,
-  blFilter: string | null,
+  reportBusiness: ReportBusiness | null,
 ): Promise<{ ownerAllocated: number; ownerTaxReserve: number }> {
   const startDate = `${year}-01-01`;
   const endDate   = `${year}-12-31`;
-  const blWhere = (col: Parameters<typeof eq>[0]) =>
-    blFilter ? eq(col, blFilter) : undefined;
+  const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+    reportBusinessWhere(reportBusiness, businessLineColumn, businessIdColumn);
 
   // No date WHERE — JS applies effective-payment-date gating after the fetch.
   const paidInvs = await db.select({
@@ -1336,7 +1383,7 @@ async function computeOwnerWaterfall(
     .from(invoicesTable)
     .where(and(
       eq(invoicesTable.status, "paid"),
-      blWhere(invoicesTable.businessLine),
+      blWhere(invoicesTable.businessLine, invoicesTable.businessId),
     ));
 
   // Attribute each invoice to a year by effective payment date.
@@ -1381,11 +1428,21 @@ async function computeOwnerWaterfall(
 // Used by /profit-loss and /accounting so every screen derives the same
 // depreciation number. calcAnnualDepreciation is a hoisted function declaration
 // (defined near the /year-end route below) and is accessible here at runtime.
-async function computeDepreciationForYear(year: number): Promise<number> {
-  const [assets, busUseRows] = await Promise.all([
+async function computeDepreciationForYear(
+  year: number,
+  reportBusiness: ReportBusiness | null = null,
+): Promise<number> {
+  const [allAssets, allBusUseRows] = await Promise.all([
     db.select().from(assetsTable),
     db.select().from(assetBusinessUseTable),
   ]);
+  const assets = reportBusiness
+    ? allAssets.filter(asset => asset.businessId === reportBusiness.id)
+    : allAssets;
+  const assetIds = new Set(assets.map(asset => asset.id));
+  const busUseRows = reportBusiness
+    ? allBusUseRows.filter(row => assetIds.has(row.assetId))
+    : allBusUseRows;
   const busUseMap = new Map<number, Map<number, number>>();
   for (const row of busUseRows) {
     if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
@@ -1455,25 +1512,22 @@ const PL_OPEX_LABELS: Record<string, string> = {
 
 router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate   = `${year}-12-31`;
-
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     const [invRows, expRows, mileRows, otherRows, plSubPayRows] = await Promise.all([
        db.select({ status: invoicesTable.status, total: invoicesTable.total, issueDate: invoicesTable.issueDate, stripePaidAt: invoicesTable.stripePaidAt, squarePaidAt: invoicesTable.squarePaidAt })
         .from(invoicesTable)
-         .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+         .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
       db.select({
         category: expensesTable.category,
         amount: expensesTable.amount,
@@ -1482,14 +1536,14 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         isWageAdvance: expensesTable.isWageAdvance,
       })
         .from(expensesTable)
-        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
       db.select({ miles: mileageLogsTable.miles, classification: mileageLogsTable.classification, date: mileageLogsTable.date })
         .from(mileageLogsTable)
         .where(and(eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageWhere)),
       db.select({ amount: otherIncomeTable.amount })
         .from(otherIncomeTable)
-        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
       // Fixed/allocation sub payments — cash-basis cash out. Hourly subs already have
       // auto-expense records (jobSubHoursId IS NOT NULL), so we only add fixed/allocation here
       // to avoid double-counting.
@@ -1656,19 +1710,19 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     //   then the outer Promise.all calls .then() on the two direct chains → [ownerContribRows, settingsRows]
     // Final order: [7] assets, [8] busUseRows, [9] waterfallPaidInvs, [10] ownerContribRows, [11] settingsRows
     const [depreciationDeduction, ownerContribRows, settingsRows, plWaterfall] = await Promise.all([
-      computeDepreciationForYear(year),
+      computeDepreciationForYear(year, reportBusiness ?? null),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
         .where(and(
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
         .limit(1),
-      computeOwnerWaterfall(year, blFilter),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);
     // Sign convention: positive owner_capital_entries = contributions (cash into business).
     const ownerContributionsTotal = ownerContribRows.reduce((s, r) => {
@@ -1763,26 +1817,17 @@ function calcAnnualDepreciation(asset: {
 
 router.get("/year-end", ownerGuard(), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    // Mirror Schedule C rule (Task #919):
-    // • No business filter → include ALL mileage (null businessId logs count globally)
-    // • Business filter active + slug resolved → only logs tagged to that business (strict eq, no null fallback)
-    // • Business filter active + slug not found → match nothing (safer than returning global totals for an invalid slug)
-    const mileageWhere = blFilter
-      ? (mileageBusinessId != null ? eq(mileageLogsTable.businessId, mileageBusinessId) : eq(mileageLogsTable.businessId, -1))
-      : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     const [
       invoices,
@@ -1813,17 +1858,21 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       })
         .from(invoicesTable)
         .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-        .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine))),
+        .where(and(eq(invoicesTable.status, "paid"), blWhere(invoicesTable.businessLine, invoicesTable.businessId))),
       db.select().from(expensesTable)
-        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine), isNull(expensesTable.voidedAt))),
+        .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
       // subcontractorId IS NULL: owner vehicle mileage only — excludes sub-portal tracking logs.
       db.select().from(mileageLogsTable)
         .where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
       db.select().from(otherIncomeTable)
-        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine), isNull(otherIncomeTable.voidedAt))),
-      db.select().from(assetsTable),
+        .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
+      db.select().from(assetsTable)
+        .where(reportBusiness ? eq(assetsTable.businessId, reportBusiness.id) : undefined),
       db.select().from(estimatedTaxPaymentsTable)
-        .where(eq(estimatedTaxPaymentsTable.year, year)),
+        .where(and(
+          eq(estimatedTaxPaymentsTable.year, year),
+          reportBusiness ? eq(estimatedTaxPaymentsTable.businessId, reportBusiness.id) : undefined,
+        )),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
       db.select().from(assetBusinessUseTable),
@@ -1855,9 +1904,14 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         )),
     ]);
 
+    // Assets are business-scoped above; only attach usage records belonging to those assets.
+    const reportAssetIds = new Set(assets.map(asset => asset.id));
+    const scopedBusUseRows = reportBusiness
+      ? busUseRows.filter(row => reportAssetIds.has(row.assetId))
+      : busUseRows;
     // Build lookup: assetId → year → businessUsePct
     const busUseMap = new Map<number, Map<number, number>>();
-    for (const row of busUseRows) {
+    for (const row of scopedBusUseRows) {
       if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
       busUseMap.get(row.assetId)!.set(row.year, row.businessUsePct);
     }
@@ -2158,9 +2212,9 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
-      computeOwnerWaterfall(year, blFilter),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);
     // Sign convention: positive entries = capital contributions (cash in).
     const yeOwnerContributionsTotal = yeOwnerContribRows.reduce((s, r) => {

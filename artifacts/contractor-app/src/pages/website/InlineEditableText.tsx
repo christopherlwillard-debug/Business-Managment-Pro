@@ -103,6 +103,10 @@ export function InlineEditableText({
   function handleSelectedKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      // Do not let the activation key reach the window-level canvas shortcuts.
+      // In particular, the Space-pan listener runs before React's state update
+      // has made editingIdRef current, which can swallow the first typed space.
+      e.stopPropagation();
       ctx?.startEditing(id, value, onCommit, enterBehavior, escapeBehavior);
     }
   }
@@ -138,9 +142,12 @@ export function InlineEditableText({
         style={style}
         contentEditable
         suppressContentEditableWarning
-        onInput={(e: React.FormEvent<HTMLElement>) =>
-          ctx!.updateDraft(e.currentTarget.textContent ?? "")
-        }
+        onInput={(e: React.FormEvent<HTMLElement>) => {
+          // contentEditable creates block nodes for Enter in most browsers.
+          // textContent concatenates those blocks, while innerText preserves line breaks.
+          const text = e.currentTarget.innerText;
+          ctx!.updateDraft(typeof text === "string" ? text : e.currentTarget.textContent ?? "");
+        }}
         onKeyDown={handleEditingKeyDown}
         onBlur={() => ctx?.commitEdit()}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}

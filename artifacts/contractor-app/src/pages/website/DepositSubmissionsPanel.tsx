@@ -31,6 +31,14 @@ function StatusBadge({ status }: { status: string }) {
       </span>
     );
   }
+  if (status === "failed" || status === "error") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+        <AlertCircle className="w-2.5 h-2.5" />
+        Failed
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
       <AlertCircle className="w-2.5 h-2.5" />

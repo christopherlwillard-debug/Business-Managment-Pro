@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
-import { buildThemeCssVarBlock } from "./themes";
+import { buildThemeCssVarBlock, sanitizeWebsiteFontFamily } from "./themes";
+import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, resolvePublicSitePageRoute } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
+import { getWebsiteViewTrackingKey } from "./publicViewTracking";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -212,7 +214,9 @@ function renderBodySection(
 export default function PublicSite() {
   const params = useParams<{ slug?: string; page?: string }>();
   const slug = params.slug;
-  const pageSlug = params.page;
+  const pageRoute = resolvePublicSitePageRoute(params.slug, params.page, window.location.pathname);
+  const pageSlug = pageRoute.pageSlug;
+  const invalidPagePath = pageRoute.invalidPath;
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -222,8 +226,9 @@ export default function PublicSite() {
   const isDraftPreview = new URLSearchParams(window.location.search).get("draft") === "1";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
-    queryKey: ["public-site", slug ?? `__host__${window.location.host}`, isDraftPreview],
+    queryKey: getPublicSiteQueryKey(slug, invalidPagePath ? "__invalid_path__" : pageSlug, isDraftPreview, window.location.host),
     queryFn: async () => {
+      if (invalidPagePath) throw new Error("Not found");
       if (isDraftPreview && slug) {
         const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
         const res = await fetch(`${BASE}/api/website/preview-by-slug/${slug}${query}`, { credentials: "include" });
@@ -246,13 +251,15 @@ export default function PublicSite() {
 
   const resolvedSlug = data?.businessSlug ?? slug ?? "";
 
-  const trackedRef = useRef(false);
+  const trackedRef = useRef<string | null>(null);
   useEffect(() => {
     const s = data?.businessSlug;
-    if (!s || trackedRef.current || isDraftPreview) return;
-    trackedRef.current = true;
+    if (!s || isDraftPreview) return;
+    const trackingKey = getWebsiteViewTrackingKey(s, pageSlug);
+    if (trackedRef.current === trackingKey) return;
+    trackedRef.current = trackingKey;
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
-  }, [data?.businessSlug, isDraftPreview]);
+  }, [data?.businessSlug, pageSlug, isDraftPreview]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -319,39 +326,60 @@ export default function PublicSite() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
         <div className="text-center max-w-md">
-          <div className="text-6xl mb-6">{pageSlug ? "🔎" : "🚧"}</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">{pageSlug ? "Page not found" : "Coming Soon"}</h1>
+          <div className="text-6xl mb-6">{pageSlug || invalidPagePath ? "🔎" : "🚧"}</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">{pageSlug || invalidPagePath ? "Page not found" : "Coming Soon"}</h1>
           <p className="text-gray-500">
-            {pageSlug ? "The page you requested doesn’t exist on this website." : "This website is being set up. Check back soon."}
+            {pageSlug || invalidPagePath ? "The page you requested doesn’t exist on this website." : "This website is being set up. Check back soon."}
           </p>
         </div>
       </div>
     );
   }
 
-  const { sections, settings, businessName } = data;
-  const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
+  const { sections, businessName } = data;
+  const settings: SiteSettings = Object.assign(
+    { brandColor: "#2563eb", fontFamily: "Inter", logoUrl: "" },
+    data.settings && typeof data.settings === "object" && !Array.isArray(data.settings) ? data.settings : {},
+  );
+  // Public sites can outlive older or partially migrated configs. Keep malformed
+  // JSON from crashing the entire published page while the owner repairs it.
+  const safeSections = Array.isArray(sections)
+    ? sections.filter((section): section is Section => !!section && typeof section === "object" && typeof section.type === "string" && !!section.content && typeof section.content === "object" && !Array.isArray(section.content))
+    : [];
+  const sorted = [...safeSections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
   const headerSec = sorted.find(s => s.type === "header");
   const homeBodySections = sorted.filter(s => s.type !== "header");
 
-  const additionalPages: SitePage[] = settings.pages ?? [];
+  const additionalPages: SitePage[] = Array.isArray(settings?.pages)
+    ? settings.pages.filter((page): page is SitePage => !!page && typeof page === "object" && typeof page.slug === "string")
+    : [];
 
   let bodySections: Section[];
   if (pageSlug) {
     const targetPage = additionalPages.find(p => p.slug === pageSlug);
-    bodySections = targetPage ? targetPage.sections.filter(s => s.enabled) : [];
+    bodySections = targetPage && Array.isArray(targetPage.sections)
+      ? targetPage.sections.filter(s => !!s && s.enabled && typeof s.type === "string" && !!s.content && typeof s.content === "object" && !Array.isArray(s.content))
+      : [];
   } else {
     bodySections = homeBodySections;
   }
 
   const headerContent = headerSec?.content as any;
-  const navLinks: Array<{ id: string; label: string; href: string }> = headerContent?.navLinks ?? [];
-  const headerPhone: string = headerContent?.phone ?? "";
-  const headerEmail: string = headerContent?.email ?? "";
-  const ctaLabel: string = headerContent?.ctaLabel ?? "Get a Quote";
-  const ctaUrl: string = headerContent?.ctaConfig?.url ?? "#contact";
-  const isSticky: boolean = headerContent?.sticky ?? true;
+  const navLinks = getSafePublicNavLinks(headerContent?.navLinks, {
+    pages: additionalPages,
+    businessSlug: resolvedSlug,
+    customDomain: !slug,
+  });
+  const rawPhone = typeof headerContent?.phone === "string" ? headerContent.phone.trim() : "";
+  const rawEmail = typeof headerContent?.email === "string" ? headerContent.email.trim() : "";
+  const headerPhone = rawPhone.slice(0, 100);
+  const headerEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail) ? rawEmail.slice(0, 320) : "";
+  const ctaLabel = typeof headerContent?.ctaLabel === "string" && headerContent.ctaLabel.trim()
+    ? headerContent.ctaLabel.trim().slice(0, 100)
+    : "Get a Quote";
+  const ctaUrl: string = getSafeWebsiteHref(headerContent?.ctaConfig?.url) ?? "#contact";
+  const isSticky: boolean = headerContent?.sticky !== false;
   const showPhone: boolean = headerContent?.showPhone !== false;
   const showCta: boolean = headerContent?.showCta !== false;
   const showLogo: boolean = headerContent?.showLogo !== false;
@@ -360,7 +388,10 @@ export default function PublicSite() {
   const showEmail: boolean = headerContent?.showEmail === true && !!headerEmail;
   const showVeteranBadge: boolean = headerContent?.showVeteranBadge === true;
   const showSdvosbBadge: boolean = headerContent?.showSdvosbBadge === true;
-  const logoAlignment: "left" | "center" | "right" = headerContent?.logoAlignment ?? "left";
+  const logoAlignment: "left" | "center" | "right" =
+    headerContent?.logoAlignment === "center" || headerContent?.logoAlignment === "right"
+      ? headerContent.logoAlignment
+      : "left";
   const logoHeightPx: number = resolveLogoHeightPx(headerContent?.logoSize);
 
   const GOOGLE_FONT_SET = new Set(["Oswald","Montserrat","Playfair Display","Raleway","Roboto Slab","Lato","Open Sans","Merriweather","Source Sans 3","Nunito"]);
@@ -372,7 +403,10 @@ export default function PublicSite() {
     : null;
 
   // content.headerStyle (set via the header toolbar's Style tab) overrides the site-level setting
-  const headerStyle = (headerContent?.headerStyle as "light" | "dark" | "transparent" | undefined) ?? settings.headerStyle ?? "light";
+  const requestedHeaderStyle = headerContent?.headerStyle ?? settings.headerStyle;
+  const headerStyle = requestedHeaderStyle === "dark" || requestedHeaderStyle === "transparent"
+    ? requestedHeaderStyle
+    : "light";
   const isDarkHeader = headerStyle === "dark" || headerStyle === "transparent";
   const headerBg =
     headerStyle === "dark" ? "bg-gray-900/95 backdrop-blur" :
@@ -419,8 +453,14 @@ export default function PublicSite() {
   // ── FAQ JSON-LD: build if any FAQ sections are rendered on this page ─────────
   const faqItems = bodySections
     .filter(s => s.type === "faq" && s.enabled)
-    .flatMap(s => (s.content.items as Array<{ question?: string; answer?: string }> | undefined) ?? [])
-    .filter(i => i.question && i.answer);
+    .flatMap(s => Array.isArray(s.content.items) ? s.content.items : [])
+    .filter((item): item is { question: string; answer: string } =>
+      !!item && typeof item === "object" &&
+      typeof (item as { question?: unknown }).question === "string" &&
+      typeof (item as { answer?: unknown }).answer === "string" &&
+      !!(item as { question: string }).question.trim() &&
+      !!(item as { answer: string }).answer.trim()
+    );
   const faqJsonLd = faqItems.length > 0
     ? JSON.stringify({
         "@context": "https://schema.org",
@@ -445,8 +485,8 @@ export default function PublicSite() {
       {createPortal(
         <>
           {googleFontsHref && <link rel="stylesheet" href={googleFontsHref} />}
-          {settings.headingFont && (
-            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${settings.headingFont}',system-ui,sans-serif}`}</style>
+          {sanitizeWebsiteFontFamily(settings.headingFont) && (
+            <style>{`h1,h2,h3,h4,h5,h6{font-family:'${sanitizeWebsiteFontFamily(settings.headingFont)}',system-ui,sans-serif}`}</style>
           )}
           <style>{buildThemeCssVarBlock(settings.themeId, {
             brandColor: settings.brandColor,

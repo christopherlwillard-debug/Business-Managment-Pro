@@ -19,6 +19,45 @@
 
 import sharp from "sharp";
 
+/** Cap decoded image dimensions to prevent compressed uploads exhausting server memory. */
+export const WEBSITE_MEDIA_MAX_PIXELS = 40_000_000;
+
+export function isWithinWebsiteMediaPixelLimit(width: unknown, height: unknown): boolean {
+  return Number.isSafeInteger(width) && Number.isSafeInteger(height) &&
+    (width as number) > 0 && (height as number) > 0 &&
+    (width as number) * (height as number) <= WEBSITE_MEDIA_MAX_PIXELS;
+}
+
+const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  tiff: "image/tiff",
+  svg: "image/svg+xml",
+};
+
+/**
+ * Detect a supported image format from its bytes, not the client-supplied MIME
+ * type. SVG is retained for image use; every public Website Studio image route
+ * applies a sandbox CSP so an SVG opened directly cannot execute active content.
+ * Returns null for malformed or unsupported formats.
+ */
+export async function detectWebsiteMediaMimeType(inputBuffer: Buffer): Promise<string | null> {
+  try {
+    const metadata = await sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS }).metadata();
+    if (!isWithinWebsiteMediaPixelLimit(metadata.width, metadata.height)) return null;
+    if (metadata.format === "heif") {
+      if (metadata.compression === "av1") return "image/avif";
+      if (metadata.compression === "hevc") return "image/heic";
+      return null;
+    }
+    return WEBSITE_MEDIA_MIME_TYPES[metadata.format ?? ""] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface MediaVariants {
@@ -42,11 +81,16 @@ export interface EnhancementOptions {
 
 /**
  * Generate three size/format variants from a raw upload buffer.
- * Always auto-rotates from EXIF so all variants are correctly oriented.
+ * Auto-rotates from EXIF so all uploaded variants are correctly oriented.
  */
+/** Animated GIFs must keep their original bytes; a default Sharp conversion would flatten them to one frame. */
+export function shouldGenerateWebsiteMediaVariants(mimetype: string): boolean {
+  return mimetype.startsWith("image/") && mimetype !== "image/svg+xml" && mimetype !== "image/gif";
+}
+
 export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVariants> {
   // Always fix EXIF orientation first so all variants are upright.
-  const base = await sharp(inputBuffer).rotate().toBuffer();
+  const base = await sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS }).rotate().toBuffer();
 
   const [webpBuffer, thumbBuffer, displayBuffer] = await Promise.all([
     // Full-resolution WebP
@@ -74,7 +118,8 @@ export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVar
 
 /**
  * Apply Willard's chosen enhancements to an image buffer.
- * Returns the enhanced image as a JPEG or WebP buffer (preserves input format).
+ * Returns the enhanced image as WebP. EXIF orientation is applied only when
+ * the user selects the Straighten option.
  *
  * Originals must never be passed here — always operate on a copy.
  */
@@ -82,8 +127,9 @@ export async function applyEnhancements(
   inputBuffer: Buffer,
   opts: EnhancementOptions,
 ): Promise<Buffer> {
-  // Step 1 — always auto-rotate from EXIF
-  let base = await sharp(inputBuffer).rotate().toBuffer();
+  // Step 1 — correct EXIF orientation only when explicitly requested.
+  const source = sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS });
+  const base = await (opts.straighten ? source.rotate() : source).toBuffer();
 
   // Step 2 — get dimensions of the (now correctly-oriented) image
   const meta = await sharp(base).metadata();
@@ -140,4 +186,48 @@ export function cropRatioLabel(ratio: CropRatio): string {
     "1:1":  "Square (1:1)",
   };
   return labels[ratio];
+}
+
+
+/**
+ * Validate untrusted enhancement options before they reach Sharp. In particular,
+ * a truthy but unsupported crop value must never reach applyEnhancements,
+ * where it would otherwise cause an opaque server error.
+ */
+export type EnhancementOptionsValidation =
+  | { ok: true; options: EnhancementOptions }
+  | { ok: false; error: string };
+
+export function validateEnhancementOptions(value: unknown): EnhancementOptionsValidation {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Enhancements must be an object." };
+  }
+
+  const input = value as Record<string, unknown>;
+  for (const key of ["brighten", "straighten", "removeBackground"] as const) {
+    if (input[key] !== undefined && typeof input[key] !== "boolean") {
+      return { ok: false, error: `${key} must be true or false.` };
+    }
+  }
+
+  if (input.removeBackground === true) {
+    return { ok: false, error: "Background removal is not available yet." };
+  }
+
+  if (input.crop !== undefined && input.crop !== null &&
+      !(CROP_RATIOS as readonly unknown[]).includes(input.crop)) {
+    return { ok: false, error: "Crop must be 16:9, 4:3, or 1:1." };
+  }
+
+  const options: EnhancementOptions = {
+    brighten: input.brighten as boolean | undefined,
+    straighten: input.straighten as boolean | undefined,
+    crop: input.crop as CropRatio | null | undefined,
+  };
+
+  if (!options.brighten && !options.straighten && !options.crop) {
+    return { ok: false, error: "Choose at least one supported enhancement." };
+  }
+
+  return { ok: true, options };
 }

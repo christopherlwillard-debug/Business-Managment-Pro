@@ -104,6 +104,7 @@ vi.mock("./material-lists", () => ({
   syncMaterialsToJobInvoice: vi.fn(),
 }));
 vi.mock("../lib/business-scope.js", () => ({
+  hasRequestedBusiness: () => false,
   requestedBusiness: async () => null,
   resolveMutationBusiness: async () => h.mutationResolution,
   canonicalRecordBusiness: async () => h.canonicalOwner,

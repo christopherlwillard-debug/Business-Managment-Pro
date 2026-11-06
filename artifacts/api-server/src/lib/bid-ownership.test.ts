@@ -18,8 +18,7 @@ beforeAll(async () => {
       source: "federal",
     })
     .returning({ id: bidOpportunitiesTable.id });
-  orphanId = row.id;
-});
+  orphanId = row.id;});
 
 afterAll(async () => {
   await db.delete(bidOpportunitiesTable).where(eq(bidOpportunitiesTable.id, orphanId));

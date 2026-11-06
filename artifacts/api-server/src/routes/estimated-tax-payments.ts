@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import { db, estimatedTaxPaymentsTable, invoicesTable, expensesTable, mileageLogsTable, otherIncomeTable, settingsTable } from "@workspace/db";
-import { eq, and, gte, lte, sum } from "drizzle-orm";
+import { eq, and, gte, lte, sum, or, isNull } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
-import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, mutationBusinessPredicate, type BusinessScope } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -42,6 +42,25 @@ interface EstimatedTaxPaymentRow {
   paymentMethod: string | null;
   notes: string | null;
   createdAt: Date;
+}
+
+/** Parse a non-negative amount within the database's NUMERIC(12,2) range. */
+export function parseEstimatedTaxMoney(value: unknown, allowEmpty = false): string | null | undefined {
+  if (value == null || value === "") return allowEmpty ? null : undefined;
+  const text = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(text)) return undefined;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 9_999_999_999.99) return undefined;
+  return amount.toFixed(2);
+}
+
+export function isValidOptionalIsoDate(value: unknown): boolean {
+  if (value == null || value === "") return true;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function nextBusinessDay(d: Date): Date {
@@ -89,19 +108,33 @@ interface YearTaxData {
   assumptionsUsed: ReturnType<typeof getTaxAssumptions>;
 }
 
-async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
+async function computeTaxData(year: number, ytd = false, scope: BusinessScope | null = null): Promise<YearTaxData> {
   const startDate = `${year}-01-01`;
   const today = new Date().toISOString().slice(0, 10);
   const endDate = ytd ? (today < `${year}-12-31` ? today : `${year}-12-31`) : `${year}-12-31`;
+  const invoiceOwner = scope
+    ? or(eq(invoicesTable.businessId, scope.id), and(isNull(invoicesTable.businessId), eq(invoicesTable.businessLine, scope.slug)))
+    : undefined;
+  const expenseOwner = scope
+    ? or(eq(expensesTable.businessId, scope.id), and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, scope.slug)))
+    : undefined;
+  const otherIncomeOwner = scope
+    ? or(
+        eq(otherIncomeTable.businessId, String(scope.id)),
+        eq(otherIncomeTable.businessId, scope.slug),
+        and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+      )
+    : undefined;
+  const mileageOwner = scope ? eq(mileageLogsTable.businessId, scope.id) : undefined;
 
   const [invoicesResult, expensesResult, mileageResult, otherIncomeResult] = await Promise.all([
-    db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate))),
-    db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate))),
+    db.select().from(invoicesTable).where(and(gte(invoicesTable.issueDate, startDate), lte(invoicesTable.issueDate, endDate), invoiceOwner)),
+    db.select().from(expensesTable).where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), expenseOwner)),
     db.select({ date: mileageLogsTable.date, miles: mileageLogsTable.miles, classification: mileageLogsTable.classification }).from(mileageLogsTable).where(
-      and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate))
+      and(eq(mileageLogsTable.classification, "business"), gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), mileageOwner)
     ),
     db.select({ total: sum(otherIncomeTable.amount) }).from(otherIncomeTable).where(
-      and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate))
+      and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), otherIncomeOwner)
     ),
   ]);
   const [settings] = await db.select({ taxAssumptions: settingsTable.taxAssumptions }).from(settingsTable).limit(1);
@@ -125,13 +158,22 @@ async function computeTaxData(year: number, ytd = false): Promise<YearTaxData> {
 
 // GET /api/estimated-tax-payments?year=YYYY
 router.get("/", wrapAsync(async (req, res) => {
-  const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+  const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+  if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) {
+    res.status(400).json({ error: "A valid tax year is required" });
+    return;
+  }
+  const year = rawYear;
+  const scope = await requestedBusiness(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
   const currentCalendarYear = new Date().getFullYear();
+  const paymentConditions = [eq(estimatedTaxPaymentsTable.year, year)];
+  if (scope) paymentConditions.push(eq(estimatedTaxPaymentsTable.businessId, scope.id));
   const [payments, currentYearData, priorYearData] = await Promise.all([
-    db.select().from(estimatedTaxPaymentsTable).where(eq(estimatedTaxPaymentsTable.year, year)),
-    computeTaxData(year, year === currentCalendarYear),
-    computeTaxData(year - 1),
+    db.select().from(estimatedTaxPaymentsTable).where(and(...paymentConditions)),
+    computeTaxData(year, year === currentCalendarYear, scope),
+    computeTaxData(year - 1, false, scope),
   ]);
 
   const { fullYearFederalTax, fullYearKyTax } = currentYearData;
@@ -227,12 +269,14 @@ router.get("/", wrapAsync(async (req, res) => {
 
 // POST /api/estimated-tax-payments
 router.post("/", wrapAsync(async (req, res) => {
-  const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body;
-  if (!year || !quarter || !level) {
-    res.status(400).json({ error: "year, quarter, and level are required" });
+  const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body ?? {};
+  const parsedYear = typeof year === "number" ? year : typeof year === "string" && /^\d{4}$/.test(year) ? Number(year) : NaN;
+  const parsedQuarter = typeof quarter === "number" ? quarter : typeof quarter === "string" && /^\d+$/.test(quarter) ? Number(quarter) : NaN;
+  if (!Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > 2200) {
+    res.status(400).json({ error: "A valid tax year is required" });
     return;
   }
-  if (![1, 2, 3, 4].includes(parseInt(quarter))) {
+  if (![1, 2, 3, 4].includes(parsedQuarter)) {
     res.status(400).json({ error: "quarter must be 1–4" });
     return;
   }
@@ -240,15 +284,33 @@ router.post("/", wrapAsync(async (req, res) => {
     res.status(400).json({ error: "level must be federal, state, or combined" });
     return;
   }
+  const parsedDue = parseEstimatedTaxMoney(amountDue, true);
+  const parsedPaid = amountPaid == null || amountPaid === "" ? "0.00" : parseEstimatedTaxMoney(amountPaid);
+  if (parsedDue === undefined || parsedPaid === undefined) {
+    res.status(400).json({ error: "Tax payment amounts must be non-negative dollars with no more than two decimal places" });
+    return;
+  }
+  if (!isValidOptionalIsoDate(paidDate)) {
+    res.status(400).json({ error: "paidDate must be a valid YYYY-MM-DD date" });
+    return;
+  }
+  if (paymentMethod != null && (typeof paymentMethod !== "string" || paymentMethod.length > 80)) {
+    res.status(400).json({ error: "paymentMethod is invalid" });
+    return;
+  }
+  if (notes != null && (typeof notes !== "string" || notes.length > 2000)) {
+    res.status(400).json({ error: "notes must be 2,000 characters or fewer" });
+    return;
+  }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const [row] = await db.insert(estimatedTaxPaymentsTable).values({
     businessId: ownership.business.id,
-    year: parseInt(year),
-    quarter: parseInt(quarter),
+    year: parsedYear,
+    quarter: parsedQuarter,
     level,
-    amountDue: amountDue ? String(amountDue) : null,
-    amountPaid: amountPaid ? String(amountPaid) : null,
+    amountDue: parsedDue,
+    amountPaid: parsedPaid,
     paidDate: paidDate || null,
     paymentMethod: paymentMethod || null,
     notes: notes || null,
@@ -258,14 +320,34 @@ router.post("/", wrapAsync(async (req, res) => {
 
 // PUT /api/estimated-tax-payments/:id
 router.put("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
-  const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body;
+  const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body ?? {};
+  if (amountDue !== undefined) {
+    const parsed = parseEstimatedTaxMoney(amountDue, true);
+    if (parsed === undefined) { res.status(400).json({ error: "amountDue must be a non-negative dollar amount with no more than two decimal places" }); return; }
+  }
+  if (amountPaid !== undefined) {
+    const parsed = parseEstimatedTaxMoney(amountPaid);
+    if (parsed === undefined) { res.status(400).json({ error: "amountPaid must be a non-negative dollar amount with no more than two decimal places" }); return; }
+  }
+  if (paidDate !== undefined && !isValidOptionalIsoDate(paidDate)) {
+    res.status(400).json({ error: "paidDate must be a valid YYYY-MM-DD date" }); return;
+  }
+  if (level !== undefined && !["federal", "state", "combined"].includes(level)) {
+    res.status(400).json({ error: "level must be federal, state, or combined" }); return;
+  }
+  if (paymentMethod !== undefined && paymentMethod != null && (typeof paymentMethod !== "string" || paymentMethod.length > 80)) {
+    res.status(400).json({ error: "paymentMethod is invalid" }); return;
+  }
+  if (notes !== undefined && notes != null && (typeof notes !== "string" || notes.length > 2000)) {
+    res.status(400).json({ error: "notes must be 2,000 characters or fewer" }); return;
+  }
   const updates: Partial<typeof estimatedTaxPaymentsTable.$inferInsert> = {};
-  if (amountDue !== undefined) updates.amountDue = String(amountDue);
-  if (amountPaid !== undefined) updates.amountPaid = String(amountPaid);
+  if (amountDue !== undefined) updates.amountDue = parseEstimatedTaxMoney(amountDue, true) ?? null;
+  if (amountPaid !== undefined) updates.amountPaid = parseEstimatedTaxMoney(amountPaid) as string;
   if (paidDate !== undefined) updates.paidDate = paidDate;
   if (paymentMethod !== undefined) updates.paymentMethod = paymentMethod;
   if (notes !== undefined) updates.notes = notes;
@@ -279,8 +361,8 @@ router.put("/:id", wrapAsync(async (req, res) => {
 
 // DELETE /api/estimated-tax-payments/:id
 router.delete("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   await db.delete(estimatedTaxPaymentsTable)

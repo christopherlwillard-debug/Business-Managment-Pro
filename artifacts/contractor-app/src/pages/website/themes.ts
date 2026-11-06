@@ -221,11 +221,54 @@ function resolveButtonShadow(v: boolean | undefined): string {
 }
 
 function resolveHeadingScale(scale: string | undefined): { h1: string; h2: string; h3: string } | undefined {
-  return scale ? HEADING_SCALES[scale] : undefined;
+  return scale && Object.prototype.hasOwnProperty.call(HEADING_SCALES, scale)
+    ? HEADING_SCALES[scale]
+    : undefined;
 }
 
 function resolveBodySize(size: string | undefined): string | undefined {
-  return size ? BODY_SIZES[size] : undefined;
+  return size && Object.prototype.hasOwnProperty.call(BODY_SIZES, size)
+    ? BODY_SIZES[size]
+    : undefined;
+}
+
+
+/** Restrict persisted style values before interpolating them into a public <style> block. */
+export function sanitizeWebsiteCssColor(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const color = value.trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
+  if (/^(?:rgb|rgba|hsl|hsla)\(\s*[\d.%\s,/-]+\)$/i.test(color)) return color;
+  if (/^(?:transparent|currentcolor|[a-z]{1,24})$/i.test(color)) return color;
+  return undefined;
+}
+
+export function sanitizeWebsiteFontFamily(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const font = value.trim();
+  return font.length <= 80 && /^[a-z0-9][a-z0-9 ,_-]*$/i.test(font) ? font : undefined;
+}
+
+function sanitizeWebsiteCssLength(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const length = value.trim();
+  return /^(?:0|\d+(?:\.\d+)?(?:px|rem|em|%)?)$/i.test(length) ? length : undefined;
+}
+
+function sanitizeWebsiteCssShadow(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const shadow = value.trim();
+  if (shadow === "none") return shadow;
+  const length = "-?(?:0|\\d+(?:\\.\\d+)?(?:px|rem|em))";
+  const color = "(?:rgba?\\(\\s*[\\d.%\\s,]+\\)|#[0-9a-f]{3,8}|[a-z]{1,24})";
+  const pattern = new RegExp("^(?:" + length + "\\s+){2,4}" + color + "$", "i");
+  return pattern.test(shadow) ? shadow : undefined;
+}
+
+function sanitizeWebsiteFontWeight(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const weight = value.trim();
+  return /^(?:[1-9]00|normal|bold|bolder|lighter)$/i.test(weight) ? weight : undefined;
 }
 
 export function buildThemeCssVarBlock(
@@ -234,30 +277,30 @@ export function buildThemeCssVarBlock(
 ): string {
   const theme = themeId ? SITE_THEMES.find(t => t.id === themeId) : null;
 
-  const primary = overrides?.brandColor ?? theme?.brandColor;
-  const secondary = overrides?.secondaryColor ?? theme?.secondaryColor;
-  const accent = overrides?.accentColor ?? theme?.accentColor;
-  const bg = overrides?.bgColor ?? theme?.bgColor;
-  const surface = overrides?.surfaceColor ?? theme?.surfaceColor;
-  const text = overrides?.textColor ?? theme?.textColor;
-  const textMuted = overrides?.textMutedColor ?? theme?.textMutedColor;
-  const headingFont = overrides?.headingFont ?? theme?.headingFont;
-  const bodyFont = overrides?.bodyFont ?? theme?.bodyFont;
-  const btnRadius = overrides?.buttonRadius ?? theme?.buttonRadius;
-  const btnFontWeight = overrides?.buttonFontWeight ?? theme?.buttonFontWeight;
+  const primary = sanitizeWebsiteCssColor(overrides?.brandColor) ?? theme?.brandColor;
+  const secondary = sanitizeWebsiteCssColor(overrides?.secondaryColor) ?? theme?.secondaryColor;
+  const accent = sanitizeWebsiteCssColor(overrides?.accentColor) ?? theme?.accentColor;
+  const bg = sanitizeWebsiteCssColor(overrides?.bgColor) ?? theme?.bgColor;
+  const surface = sanitizeWebsiteCssColor(overrides?.surfaceColor) ?? theme?.surfaceColor;
+  const text = sanitizeWebsiteCssColor(overrides?.textColor) ?? theme?.textColor;
+  const textMuted = sanitizeWebsiteCssColor(overrides?.textMutedColor) ?? theme?.textMutedColor;
+  const headingFont = sanitizeWebsiteFontFamily(overrides?.headingFont) ?? theme?.headingFont;
+  const bodyFont = sanitizeWebsiteFontFamily(overrides?.bodyFont) ?? theme?.bodyFont;
+  const btnRadius = sanitizeWebsiteCssLength(overrides?.buttonRadius) ?? theme?.buttonRadius;
+  const btnFontWeight = sanitizeWebsiteFontWeight(overrides?.buttonFontWeight) ?? theme?.buttonFontWeight;
   const btnShadowBool = overrides?.buttonShadow !== undefined ? overrides.buttonShadow : theme?.buttonShadow;
-  const cardRadius = overrides?.cardRadius ?? theme?.cardRadius;
-  const cardShadow = overrides?.cardShadow ?? theme?.cardShadow;
+  const cardRadius = sanitizeWebsiteCssLength(overrides?.cardRadius) ?? theme?.cardRadius;
+  const cardShadow = sanitizeWebsiteCssShadow(overrides?.cardShadow) ?? theme?.cardShadow;
   const cardBorderBool = overrides?.cardBorder !== undefined ? overrides.cardBorder : theme?.cardBorder;
-  const inputRadius = overrides?.inputRadius ?? theme?.inputRadius;
+  const inputRadius = sanitizeWebsiteCssLength(overrides?.inputRadius) ?? theme?.inputRadius;
   const headingScale = resolveHeadingScale(overrides?.headingSizeScale ?? theme?.headingSizeScale);
   const bodySize = resolveBodySize(overrides?.baseFontSize ?? theme?.baseFontSize);
-  const headerBg = overrides?.headerBgColor;
-  const headerText = overrides?.headerTextColor;
-  const headerLink = overrides?.headerLinkColor;
-  const footerText = overrides?.footerTextColor;
-  const footerLink = overrides?.footerLinkColor;
-  const focusRing = overrides?.focusRingColor;
+  const headerBg = sanitizeWebsiteCssColor(overrides?.headerBgColor);
+  const headerText = sanitizeWebsiteCssColor(overrides?.headerTextColor);
+  const headerLink = sanitizeWebsiteCssColor(overrides?.headerLinkColor);
+  const footerText = sanitizeWebsiteCssColor(overrides?.footerTextColor);
+  const footerLink = sanitizeWebsiteCssColor(overrides?.footerLinkColor);
+  const focusRing = sanitizeWebsiteCssColor(overrides?.focusRingColor);
 
   if (!primary && !secondary && !bg && !headingFont && !btnRadius && !cardRadius) return "";
 

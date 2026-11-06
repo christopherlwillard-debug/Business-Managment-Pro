@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { HeaderFloatingToolbar, type TabId } from "./HeaderFloatingToolbar";
+import { getSafePublicNavLinks } from "../storageUtils";
 
 export interface NavLink {
   id: string;
@@ -205,7 +206,7 @@ export function HeaderPreviewBar({
   const darkFallbackText = isDark ? "#ffffff" : "#111111";
   const darkFallbackLink = isDark ? "rgba(255,255,255,0.7)" : "#4b5563";
 
-  const navLinks = content.navLinks ?? [];
+  const navLinks = getSafePublicNavLinks(content.navLinks);
   const phone = content.phone ?? "";
   const email = content.email ?? "";
   const ctaLabel = content.ctaLabel ?? "Get a Quote";
@@ -274,8 +275,18 @@ export function HeaderPreviewBar({
   }
 
   // ── Zone-based rendering ────────────────────────────────────────────────────
+  const rawZones = content.blockZones as unknown;
   const effectiveZones: { left: string[]; center: string[]; right: string[] } =
-    content.blockZones ?? DEFAULT_HEADER_ZONES;
+    rawZones && typeof rawZones === "object" && !Array.isArray(rawZones) &&
+    Array.isArray((rawZones as { left?: unknown }).left) &&
+    Array.isArray((rawZones as { center?: unknown }).center) &&
+    Array.isArray((rawZones as { right?: unknown }).right)
+      ? {
+          left: (rawZones as { left: unknown[] }).left.filter((id): id is string => typeof id === "string"),
+          center: (rawZones as { center: unknown[] }).center.filter((id): id is string => typeof id === "string"),
+          right: (rawZones as { right: unknown[] }).right.filter((id): id is string => typeof id === "string"),
+        }
+      : DEFAULT_HEADER_ZONES;
 
   /** Renders one header block by ID. Returns null when the block is hidden. */
   function renderZoneBlock(blockId: string): React.ReactNode {

@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { useBusiness } from "@/contexts/BusinessContext";
+import { getClientBusinessScopeQuery, getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 import { useSearchParams } from "wouter";
 const SubcontractorsTab = lazy(() => import("./Subcontractors"));
 const ContactsTab = lazy(() => import("./AddressBook"));
@@ -19,7 +20,6 @@ import {
   useListClients,
   useCreateClient,
   useUpdateClient,
-  useDeleteClient,
 } from "@workspace/api-client-react";
 import type { Client } from "@workspace/api-client-react";
 import { ProspectDrawer } from "@/components/ProspectDrawer";
@@ -265,7 +265,6 @@ export default function PeopleAndProperties() {
   const convertMutation = useConvertProspectToClient();
   const createClient = useCreateClient();
   const updateClient = useUpdateClient();
-  const deleteClient = useDeleteClient();
 
   const [convertingId, setConvertingId] = useState<number | null>(null);
   const [openLineDropdown, setOpenLineDropdown] = useState<number | null>(null);
@@ -574,7 +573,6 @@ export default function PeopleAndProperties() {
   const [clientPrefillAddress, setClientPrefillAddress] = useState("");
   const [clientDialogKey, setClientDialogKey] = useState(0);
   const [deleteClientTarget, setDeleteClientTarget] = useState<Client | null>(null);
-  const [isDeletingClient, setIsDeletingClient] = useState(false);
   const [clientFormLine, setClientFormLine] = useState<string>("");
   const [clientFormLineError, setClientFormLineError] = useState(false);
 
@@ -671,6 +669,7 @@ export default function PeopleAndProperties() {
       zip: formData.get("zip") as string || null,
       notes: formData.get("notes") as string || null,
       businessLine: clientFormLine,
+      ...(editingClient ? getClientSourceBusinessFields(editingClient) : {}),
     };
     try {
       if (editingClient) {
@@ -686,25 +685,13 @@ export default function PeopleAndProperties() {
     }
   }
 
-  async function handleDeleteClient() {
-    if (!deleteClientTarget) return;
-    setIsDeletingClient(true);
-    try {
-      await deleteClient.mutateAsync({ id: deleteClientTarget.id });
-      refetchClients();
-    } catch {
-      toast({ title: "Error deleting client", variant: "destructive" });
-    } finally {
-      setIsDeletingClient(false);
-      setDeleteClientTarget(null);
-    }
-  }
-
   async function handleQuickAssignLine(clientId: number, line: string) {
     setAssigningLineId(clientId);
     setOpenLineDropdown(null);
     try {
-      const res = await fetch(`${BASE}/api/clients/${clientId}/business-line`, {
+      const sourceClient = clients?.find(client => client.id === clientId);
+      const sourceQuery = sourceClient ? getClientBusinessScopeQuery(sourceClient) : "";
+      const res = await fetch(`${BASE}/api/clients/${clientId}/business-line${sourceQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1978,18 +1965,15 @@ export default function PeopleAndProperties() {
                 <AlertTriangle className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h3 className="font-bold text-foreground text-base">Permanently delete client?</h3>
+                <h3 className="font-bold text-foreground text-base">Client deletion unavailable</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  <span className="font-semibold text-foreground">{deleteClientTarget.name}</span> will be{" "}
-                  <span className="font-semibold text-red-600">permanently deleted</span> and cannot be recovered.
+                  <span className="font-semibold text-foreground">{deleteClientTarget.name}</span> is being retained to protect its job, invoice, payment, and pricing history. Permanent deletion is disabled until a recoverable archive/restore workflow is available.
                 </p>
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setDeleteClientTarget(null)} disabled={isDeletingClient} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
-              <button onClick={handleDeleteClient} disabled={isDeletingClient} className="px-4 py-2 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                {isDeletingClient ? "Deleting…" : <><Trash2 className="w-4 h-4" />Delete</>}
-              </button>
+              <button onClick={() => setDeleteClientTarget(null)} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors">Close</button>
+              <button disabled title="Archive/restore support is not available yet" className="px-4 py-2 rounded-xl font-medium bg-muted text-muted-foreground cursor-not-allowed">Deletion disabled</button>
             </div>
           </div>
         </div>

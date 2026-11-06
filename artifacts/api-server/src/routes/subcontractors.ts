@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable, jobMileageReimbursementsTable } from "@workspace/db/schema";
-import { eq, and, sql, inArray, ne, gte, lte } from "drizzle-orm";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable, jobMileageReimbursementsTable, businessesTable } from "@workspace/db/schema";
+import { eq, and, or, isNull, sql, inArray, ne, gte, lte } from "drizzle-orm";
 
 const router = Router();
 
@@ -57,7 +57,21 @@ type PaymentHistoryJobWithSubcontractor = PaymentHistoryJob & {
   effectiveDate: string | null;
 };
 
-async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<PaymentHistoryJobWithSubcontractor[]> {
+type PaymentHistoryPeriod = {
+  year: number | null;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export async function loadPaymentHistoryJobs(
+  subcontractorId?: number,
+  period: PaymentHistoryPeriod = { year: null, startDate: null, endDate: null },
+): Promise<PaymentHistoryJobWithSubcontractor[]> {
+  const paymentDateFilter = period.startDate && period.endDate
+    ? sql`AND spr.payment_date >= ${period.startDate} AND spr.payment_date <= ${period.endDate}`
+    : period.year !== null
+      ? sql`AND spr.payment_date >= ${`${period.year}-01-01`} AND spr.payment_date <= ${`${period.year}-12-31`}`
+      : sql``;
   const rows = await db
     .select({
       subcontractorId: subcontractorsTable.id,
@@ -71,12 +85,16 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
       amountOwedOverride: jobSubcontractorsTable.amountOwed,
       fixedAmount: jobSubcontractorsTable.fixedAmount,
       allocationPct: jobSubcontractorsTable.allocationPct,
+      hasLedgerRecords: sql<boolean>`EXISTS (
+        SELECT 1 FROM sub_payment_records spr
+        WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+          AND spr.subcontractor_id = ${subcontractorsTable.id}
+      )`,
       amountPaid: sql<string>`CASE
         WHEN EXISTS (
           SELECT 1 FROM sub_payment_records spr
           WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
             AND spr.subcontractor_id = ${subcontractorsTable.id}
-            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
         )
         THEN COALESCE((
           SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
@@ -84,10 +102,26 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
           WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
             AND spr.subcontractor_id = ${subcontractorsTable.id}
             AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+            ${paymentDateFilter}
         ), 0)
         ELSE COALESCE(${jobSubcontractorsTable.amountPaid}, 0)
       END`,
-      paidDate: jobSubcontractorsTable.paidDate,
+      paidDate: sql<string | null>`CASE
+        WHEN EXISTS (
+          SELECT 1 FROM sub_payment_records spr
+          WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+            AND spr.subcontractor_id = ${subcontractorsTable.id}
+        )
+        THEN (
+          SELECT MAX(spr.payment_date)
+          FROM sub_payment_records spr
+          WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+            AND spr.subcontractor_id = ${subcontractorsTable.id}
+            AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+            ${paymentDateFilter}
+        )
+        ELSE ${jobSubcontractorsTable.paidDate}
+      END`,
       paidNotes: jobSubcontractorsTable.paidNotes,
       paymentStatus: jobSubcontractorsTable.paymentStatus,
       paidAt: jobSubcontractorsTable.paidAt,
@@ -125,7 +159,9 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
     const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
     const paidDate = r.paidDate;
     const startDate = r.jobStartDate;
-    const effectiveDate = paidDate || startDate;
+    // Canonical ledger entries are event-dated. Do not substitute job start
+    // when a ledger exists but has no active payment in the selected period.
+    const effectiveDate = r.hasLedgerRecords ? paidDate : (paidDate || startDate);
     const effectiveYear = effectiveDate ? parseInt(effectiveDate.substring(0, 4)) : null;
 
     return {
@@ -141,8 +177,14 @@ async function loadPaymentHistoryJobs(subcontractorId?: number): Promise<Payment
       amountPaid,
       paidDate,
       paidNotes: r.paidNotes,
-      paymentStatus: r.paymentStatus ?? "unpaid",
-      paidAt: r.paidAt ?? null,
+      paymentStatus: r.hasLedgerRecords
+        ? amountPaid <= 0
+          ? "unpaid"
+          : amountOwed != null
+            ? amountPaid + 0.005 >= amountOwed ? "paid" : "partial"
+            : (r.paymentStatus ?? "paid")
+        : (r.paymentStatus ?? "unpaid"),
+      paidAt: r.hasLedgerRecords ? (paidDate ?? null) : (r.paidAt ?? null),
       effectiveYear,
       effectiveDate,
     };
@@ -259,9 +301,21 @@ async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean
 export async function computeYtd(subcontractorId: number, year: number, businessLine?: string | null): Promise<number> {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
+  const normalizedBusinessLine = businessLine === "asphalt" ? "asphalt_sealing"
+    : businessLine === "contracting" ? "general_contracting"
+    : businessLine ?? null;
+  let businessId: number | null = null;
+  if (normalizedBusinessLine) {
+    const [business] = await db.select({ id: businessesTable.id })
+      .from(businessesTable)
+      .where(eq(businessesTable.slug, normalizedBusinessLine))
+      .limit(1);
+    if (!business) return 0;
+    businessId = business.id;
+  }
 
   // sub_payment_records: pay-worker payments (new path). Exclude reversals.
-  // Filter by businessLine when provided so cross-entity totals aren't combined.
+  // Canonical businessId is authoritative; businessLine is only a legacy fallback.
   const [sprRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)` })
     .from(subPaymentRecordsTable)
@@ -271,7 +325,12 @@ export async function computeYtd(subcontractorId: number, year: number, business
         gte(subPaymentRecordsTable.paymentDate, startDate),
         lte(subPaymentRecordsTable.paymentDate, endDate),
         sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-        businessLine ? eq(subPaymentRecordsTable.businessLine, businessLine) : undefined,
+        businessId != null
+          ? or(
+              eq(subPaymentRecordsTable.businessId, businessId),
+              and(isNull(subPaymentRecordsTable.businessId), eq(subPaymentRecordsTable.businessLine, normalizedBusinessLine!)),
+            )
+          : undefined,
       )
     );
 
@@ -289,23 +348,26 @@ export async function computeYtd(subcontractorId: number, year: number, business
         gte(expensesTable.date, startDate),
         lte(expensesTable.date, endDate),
         sql`${expensesTable.jobSubHoursId} IS NULL`,
-        businessLine ? eq(expensesTable.businessLine, businessLine) : undefined,
+        businessId != null
+          ? or(
+              eq(expensesTable.businessId, businessId),
+              and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, normalizedBusinessLine!)),
+            )
+          : undefined,
       )
     );
 
-  // paymentsTable: legacy direct/manual payments. This table predates multi-business
-  // support and has no businessLine column, so these records are always included in
-  // the YTD total regardless of the businessLine filter. New payments use
-  // subPaymentRecordsTable (which does carry businessLine) and old-path manual
-  // expenses also carry businessLine, so only truly legacy paymentsTable rows
-  // remain unscoped. This is an accepted limitation documented in Task #1884.
+  // Legacy direct/manual payments also carry businessId. Do not include
+  // null-owned payments in a selected-business YTD total because they cannot be
+  // attributed safely to one business.
   const [payRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
     .where(
       and(
         eq(paymentsTable.subcontractorId, subcontractorId),
-        eq(paymentsTable.year, year)
+        eq(paymentsTable.year, year),
+        businessId != null ? eq(paymentsTable.businessId, businessId) : undefined,
       )
     );
 
@@ -759,7 +821,7 @@ router.get("/payment-history/all", async (req, res) => {
     if (dateRange.error) return res.status(400).json({ error: dateRange.error });
     const year = dateRange.startDate ? null : (req.query.year ? parseInt(req.query.year as string) : null);
     const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
-    const rows = await loadPaymentHistoryJobs();
+    const rows = await loadPaymentHistoryJobs(undefined, { year, startDate: dateRange.startDate, endDate: dateRange.endDate });
     const jobs = filterPaymentHistoryJobs(rows, year, businessLine, dateRange.startDate, dateRange.endDate);
 
     if (req.query.format === "csv") {
@@ -786,7 +848,7 @@ router.get("/:id/payment-history", async (req, res) => {
     const year = dateRange.startDate ? null : (req.query.year ? parseInt(req.query.year as string) : null);
     const businessLine = req.query.businessLine ? (req.query.businessLine as string) : null;
     const allJobs = filterPaymentHistoryJobs(
-      await loadPaymentHistoryJobs(subId),
+      await loadPaymentHistoryJobs(subId, { year, startDate: dateRange.startDate, endDate: dateRange.endDate }),
       year,
       businessLine,
       dateRange.startDate,

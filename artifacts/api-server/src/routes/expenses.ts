@@ -7,7 +7,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { reconcileExpense } from "../lib/matchingEngine.js";
-import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { settingsTable } from "@workspace/db/schema";
 
@@ -20,7 +20,9 @@ function isOwnerPayCategory(category: unknown): boolean {
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid expense ID" });
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
     if (!expense || !belongsToBusiness(expense, scope)) return res.status(404).json({ error: "Expense not found" });
     res.locals.businessScopedExpense = expense;
@@ -149,6 +151,7 @@ const allocationSelect = {
 router.get("/job-allocations", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const conditions: any[] = [];
     if (scope) conditions.push(eq(jobExpenseAllocationsTable.businessId, scope.id));
     if (req.query.jobId) conditions.push(eq(jobExpenseAllocationsTable.jobId, parseInt(String(req.query.jobId))));
@@ -167,7 +170,9 @@ router.get("/job-allocations", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const { category, jobId, startDate, endDate, businessId } = req.query;
+    const { category, jobId, startDate, endDate } = req.query;
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     // Exclude auto-expenses linked to sub hours (jobSubHoursId IS NOT NULL).
     // Those are internal job-cost entries used for P&L math; actual cash paid
     // to hourly subs is captured by sub_payment_records rows (shown below).
@@ -176,7 +181,10 @@ router.get("/", async (req, res) => {
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
-    if (businessId) conditions.push(or(eq(expensesTable.businessId, parseInt(businessId as string)), isNull(expensesTable.businessId)));
+    if (scope) conditions.push(or(
+      eq(expensesTable.businessId, scope.id),
+      and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, scope.slug)),
+    ));
 
     // sub_payment_records should appear alongside expenses for reconciliation.
     // Only include them when the category filter is absent or set to "Subcontractor".
@@ -208,6 +216,10 @@ router.get("/", async (req, res) => {
           .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
           .where(and(
             sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
+            ...(scope ? [or(
+              eq(subPaymentRecordsTable.businessId, scope.id),
+              and(isNull(subPaymentRecordsTable.businessId), eq(subPaymentRecordsTable.businessLine, scope.slug)),
+            )] : []),
             ...(jobId ? [eq(subPaymentRecordsTable.jobId, parseInt(jobId as string))] : []),
             ...(startDate ? [gte(subPaymentRecordsTable.paymentDate, startDate as string)] : []),
             ...(endDate ? [lte(subPaymentRecordsTable.paymentDate, endDate as string)] : []),
@@ -295,6 +307,7 @@ router.put("/job-allocations/:allocationId", async (req, res) => {
   try {
     const allocationId = Number(req.params.allocationId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [allocation] = await db.select().from(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
     if (!allocation || (scope && allocation.businessId !== scope.id)) return res.status(404).json({ error: "Job allocation not found" });
 
@@ -322,6 +335,7 @@ router.delete("/job-allocations/:allocationId", async (req, res) => {
   try {
     const allocationId = Number(req.params.allocationId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [allocation] = await db.select().from(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
     if (!allocation || (scope && allocation.businessId !== scope.id)) return res.status(404).json({ error: "Job allocation not found" });
     await db.delete(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.id, allocationId));
@@ -434,7 +448,7 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const [expense] = await buildExpenseQuery().where(eq(expensesTable.id, id));
     if (!expense) return res.status(404).json({ error: "Expense not found" });
     res.json(formatExpense(expense, expense.jobTitle, expense.subcontractorName));
@@ -446,7 +460,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
        excludeFromNetProfit, countsTowardJobProfit,
@@ -576,8 +590,8 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/spr/:sprId", async (req, res) => {
   try {
-    const sprId = parseInt(req.params.sprId as string);
-    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    const sprId = Number(req.params.sprId);
+    if (!Number.isSafeInteger(sprId) || sprId <= 0) return res.status(400).json({ error: "Invalid id" });
     return res.status(409).json({ error: "Posted subcontractor payments cannot be deleted. Use the reversal action to preserve payment history." });
   } catch (err) {
     console.error(err);
@@ -587,9 +601,9 @@ router.delete("/spr/:sprId", async (req, res) => {
 
 router.post("/spr/:sprId/reverse", async (req, res) => {
   try {
-    const sprId = parseInt(req.params.sprId as string);
+    const sprId = Number(req.params.sprId);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-    if (isNaN(sprId)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isSafeInteger(sprId) || sprId <= 0) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A reversal reason is required" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
@@ -620,9 +634,9 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/void", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid id" });
     if (!reason) return res.status(400).json({ error: "A void reason is required" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });

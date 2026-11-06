@@ -1,5 +1,6 @@
 import { Phone } from "lucide-react";
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
+import { getSafeWebsiteHref } from "../storageUtils";
 
 export interface StickyCTAContent {
   primaryLabel: string;
@@ -36,10 +37,11 @@ interface StickyCTASectionProps {
   sectionId?: string;
 }
 
-function buildHref(action: string, type?: string): string {
-  if (!action) return "#";
-  if (type === "phone") return action.startsWith("tel:") ? action : `tel:${action}`;
-  return action;
+function buildHref(action: unknown, type?: unknown): string {
+  if (typeof action !== "string" || !action.trim()) return "#";
+  const value = action.trim();
+  const candidate = type === "phone" && !/^tel:/i.test(value) ? `tel:${value}` : value;
+  return getSafeWebsiteHref(candidate) ?? "#";
 }
 
 export function StickyCTASection({ content, settings, isEditing, onChange, blockStyle }: StickyCTASectionProps) {

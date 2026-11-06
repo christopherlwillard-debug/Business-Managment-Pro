@@ -31,6 +31,14 @@ function shiftDate(dateStr: string, days: number): string {
 
 const router = Router();
 
+/** Keep Plaid invoice status aligned with the canonical invoice lifecycle vocabulary. */
+export function getPlaidInvoicePaymentStatus(
+  amountPaid: number,
+  invoiceTotal: number,
+): "paid" | "partiallyPaid" {
+  return amountPaid >= invoiceTotal ? "paid" : "partiallyPaid";
+}
+
 function requireOwnerMiddleware() {
   return wrapAsync(async (req, res, next) => {
     const userId = getRequestUserId(req);
@@ -732,7 +740,7 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
       if (!alreadyPaid) {
         const depositAmount = parseFloat(txn.amount ?? "0");
         const newAmountPaid = existingPaid + depositAmount;
-        const newStatus = newAmountPaid >= total ? "paid" : "partial";
+        const newStatus = getPlaidInvoicePaymentStatus(newAmountPaid, total);
 
         await tx
           .update(invoicesTable)

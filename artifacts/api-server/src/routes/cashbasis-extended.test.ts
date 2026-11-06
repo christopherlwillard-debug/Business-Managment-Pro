@@ -181,6 +181,29 @@ function monthAgo(n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+describe("Report business selector validation", () => {
+  it.each([
+    "/reports/dashboard?businessLine=not-a-real-business",
+    "/reports/accounting?businessLine=not-a-real-business",
+    "/reports/profit-loss?businessLine=not-a-real-business",
+    "/reports/year-end?businessLine=not-a-real-business",
+  ])("rejects unknown report business selectors before loading financial totals: %s", async url => {
+    h.selectQueue.push([]); // business lookup returns no matching business
+    const res = await request(app).get(url);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Unknown business");
+    expect(h.consumedSlots).toBe(1);
+    expect(h.selectQueue).toHaveLength(0);
+  });
+
+  it("rejects malformed dashboard business IDs instead of falling back to all businesses", async () => {
+    const res = await request(app).get("/reports/dashboard?businessId=12oops");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Invalid business ID");
+    expect(h.consumedSlots).toBe(0);
+  });
+});
+
 // ── P&L cash-basis tests ──────────────────────────────────────────────────────
 
 describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment inclusion", () => {

@@ -103,6 +103,7 @@ afterEach(() => {
 
 describe("mileage surcharge settings and route qualification", () => {
   it("accepts and returns enabled, threshold, and daily-rate settings", async () => {
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
     h.insertReturnQueue.push([client]);
     const created = await request(app).post("/clients").send({
       name: client.name,
@@ -118,8 +119,12 @@ describe("mileage surcharge settings and route qualification", () => {
     });
     expect(h.updates).toHaveLength(0);
 
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+    h.selectQueue.push([client]);
     h.updateReturnQueue.push([client]);
     const updated = await request(app).put("/clients/7").send({
+      sourceBusinessId: 1,
+      sourceBusinessLine: "general_contracting",
       mileageSurchargeEnabled: true,
       mileageSurchargeTriggerMiles: 60,
       mileageSurchargeDailyRate: 150,

@@ -10,14 +10,31 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import sharp from "sharp";
 import {
   createMediaVariants,
   applyEnhancements,
+  detectWebsiteMediaMimeType,
   CROP_RATIOS,
   cropRatioLabel,
+  validateEnhancementOptions,
+  shouldGenerateWebsiteMediaVariants,
+  WEBSITE_MEDIA_MAX_PIXELS,
+  isWithinWebsiteMediaPixelLimit,
 } from "../lib/imageProcessor";
 
 // ── imageProcessor — module-level tests ──────────────────────────────────────
+
+describe("imageProcessor — decoded image size limits", () => {
+  it("accepts normal dimensions and rejects invalid or excessive pixel counts", () => {
+    expect(WEBSITE_MEDIA_MAX_PIXELS).toBe(40_000_000);
+    expect(isWithinWebsiteMediaPixelLimit(6000, 6000)).toBe(true);
+    expect(isWithinWebsiteMediaPixelLimit(8000, 6000)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit(0, 100)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit(Number.MAX_SAFE_INTEGER, 2)).toBe(false);
+    expect(isWithinWebsiteMediaPixelLimit("100", 100)).toBe(false);
+  });
+});
 
 describe("imageProcessor — createMediaVariants", () => {
   it("exports createMediaVariants as a function", () => {
@@ -42,11 +59,90 @@ describe("imageProcessor — createMediaVariants", () => {
   });
 });
 
+// ── Website media upload validation ─────────────────────────────────────────
+
+describe("imageProcessor — photo enhancement behavior", () => {
+  it("applies EXIF orientation only when Straighten is selected", async () => {
+    const orientedPng = await sharp({
+      create: { width: 2, height: 3, channels: 3, background: { r: 80, g: 120, b: 160 } },
+    }).png().withMetadata({ orientation: 6 }).toBuffer();
+
+    const unchanged = await applyEnhancements(orientedPng, { brighten: true });
+    const straightened = await applyEnhancements(orientedPng, { straighten: true });
+
+    const unchangedMetadata = await sharp(unchanged).metadata();
+    const straightenedMetadata = await sharp(straightened).metadata();
+
+    expect(unchangedMetadata.width).toBe(2);
+    expect(unchangedMetadata.height).toBe(3);
+    expect(straightenedMetadata.width).toBe(3);
+    expect(straightenedMetadata.height).toBe(2);
+  });
+});
+
+describe("imageProcessor — website media upload validation", () => {
+  it("detects the stored MIME type from image bytes", async () => {
+    const png = await sharp({
+      create: { width: 1, height: 1, channels: 3, background: { r: 255, g: 255, b: 255 } },
+    }).png().toBuffer();
+    await expect(detectWebsiteMediaMimeType(png)).resolves.toBe("image/png");
+  });
+
+  it("recognizes SVG while public response CSP keeps its active content sandboxed", async () => {
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><script>alert(1)</script><rect width="1" height="1"/></svg>');
+    await expect(detectWebsiteMediaMimeType(svg)).resolves.toBe("image/svg+xml");
+  });
+
+  it("rejects images whose decoded dimensions exceed the processing limit", async () => {
+    const hugeSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100000" height="100000"><rect width="100%" height="100%"/></svg>');
+    await expect(detectWebsiteMediaMimeType(hugeSvg)).resolves.toBeNull();
+  });
+
+  it("rejects malformed and non-image file bytes", async () => {
+    await expect(detectWebsiteMediaMimeType(Buffer.from("<html><script>alert(1)</script></html>"))).resolves.toBeNull();
+    await expect(detectWebsiteMediaMimeType(Buffer.from("not an image"))).resolves.toBeNull();
+  });
+});
+
 // ── Enhancement option validation (pure logic, no sharp needed) ──────────────
 
 describe("imageProcessor — EnhancementOptions validation logic", () => {
   const VALID_CROPS = ["16:9", "4:3", "1:1"];
   const INVALID_CROPS = ["9:16", "21:9", "2:3", "", "none", "auto"];
+
+
+  it("accepts valid supported enhancement combinations", () => {
+    expect(validateEnhancementOptions({ brighten: true })).toEqual({
+      ok: true, options: { brighten: true, straighten: undefined, crop: undefined },
+    });
+    expect(validateEnhancementOptions({ crop: "4:3", brighten: true })).toEqual({
+      ok: true, options: { brighten: true, straighten: undefined, crop: "4:3" },
+    });
+  });
+
+  it("rejects malformed option payloads and non-boolean flags", () => {
+    expect(validateEnhancementOptions(null).ok).toBe(false);
+    expect(validateEnhancementOptions([]).ok).toBe(false);
+    expect(validateEnhancementOptions({ brighten: "yes" }).ok).toBe(false);
+  });
+
+  it("rejects unsupported crop ratios before image processing", () => {
+    expect(validateEnhancementOptions({ brighten: true, crop: "9:16" })).toEqual({
+      ok: false, error: "Crop must be 16:9, 4:3, or 1:1.",
+    });
+  });
+
+  it("does not silently accept the not-yet-available background removal option", () => {
+    expect(validateEnhancementOptions({ brighten: true, removeBackground: true })).toEqual({
+      ok: false, error: "Background removal is not available yet.",
+    });
+  });
+
+  it("rejects requests that do not select a supported enhancement", () => {
+    expect(validateEnhancementOptions({ brighten: false, straighten: false, crop: null })).toEqual({
+      ok: false, error: "Choose at least one supported enhancement.",
+    });
+  });
 
   it("valid crop ratios are all in CROP_RATIOS", () => {
     VALID_CROPS.forEach(r => expect(CROP_RATIOS).toContain(r));
@@ -159,19 +255,18 @@ describe("media-image serve — WebP content negotiation", () => {
 // ── Background processing — fire-and-forget guard ────────────────────────────
 
 describe("background variant generation — eligibility logic", () => {
-  const isEligible = (mimetype: string) =>
-    mimetype.startsWith("image/") && mimetype !== "image/svg+xml";
-
-  it("JPEG images are eligible", () => expect(isEligible("image/jpeg")).toBe(true));
-  it("PNG images are eligible",  () => expect(isEligible("image/png")).toBe(true));
-  it("WebP images are eligible", () => expect(isEligible("image/webp")).toBe(true));
-  it("GIF images are eligible",  () => expect(isEligible("image/gif")).toBe(true));
-  it("AVIF images are eligible", () => expect(isEligible("image/avif")).toBe(true));
-  it("SVG images are NOT eligible (skip WebP conversion)", () => expect(isEligible("image/svg+xml")).toBe(false));
-  it("non-image files are NOT eligible", () => {
-    expect(isEligible("application/pdf")).toBe(false);
-    expect(isEligible("video/mp4")).toBe(false);
-    expect(isEligible("text/plain")).toBe(false);
+  it("generates variants for supported static raster images", () => {
+    for (const type of ["image/jpeg", "image/png", "image/webp", "image/avif"]) {
+      expect(shouldGenerateWebsiteMediaVariants(type)).toBe(true);
+    }
+  });
+  it("preserves animated GIF originals instead of flattening them into a WebP frame", () => {
+    expect(shouldGenerateWebsiteMediaVariants("image/gif")).toBe(false);
+  });
+  it("skips SVG and non-image files", () => {
+    for (const type of ["image/svg+xml", "application/pdf", "video/mp4", "text/plain"]) {
+      expect(shouldGenerateWebsiteMediaVariants(type)).toBe(false);
+    }
   });
 });
 

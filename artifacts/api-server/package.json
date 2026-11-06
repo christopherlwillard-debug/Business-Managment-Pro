@@ -27,7 +27,8 @@
     "verify:mileage-route-recovery": "tsx ./scripts/e2e-mileage-route-recovery-verify.ts",
     "verify:public-site-seo": "tsx ./scripts/e2e-public-site-seo-verify.ts",
     "verify:year-end-1099": "tsx ./scripts/e2e-year-end-1099-verify.ts",
-    "postinstall": "node node_modules/puppeteer/install.mjs"
+    "postinstall": "node node_modules/puppeteer/install.mjs",
+    "test:audit-regressions": "vitest run src/routes/square-webhook.test.ts src/routes/subcontractors-ytd.test.ts"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",

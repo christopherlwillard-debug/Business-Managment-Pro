@@ -7,6 +7,7 @@ import {
 import { BlockStyleWrapper, type BlockStyle } from "./BlockStyleWrapper";
 import { InlineEditableText } from "../InlineEditableText";
 import { STATE_CODE_TO_NAME } from "./USMapData";
+import { getSafeWebsiteHref } from "../storageUtils";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -188,6 +189,11 @@ export function defaultFooterContent(): FooterContent {
 
 // ── BLOCK RENDERERS (public view) ─────────────────────────────────────────────
 
+function getSafeSocialHref(value: unknown): string | null {
+  const href = getSafeWebsiteHref(value);
+  return href && /^https?:\/\//i.test(href) ? href : null;
+}
+
 function SocialRow({
   links,
   footerLink,
@@ -197,16 +203,19 @@ function SocialRow({
   footerLink?: string;
   onSocialClick?: (platform: string) => void;
 }) {
-  const active = getSocialPlatforms().filter(p => links.some(l => l.platform === p.key && l.url));
+  const active = getSocialPlatforms().filter(p => links.some(l =>
+    l.platform === p.key && (onSocialClick ? typeof l.url === "string" && !!l.url.trim() : !!getSafeSocialHref(l.url))
+  ));
   if (!active.length) return null;
   return (
     <div className="flex items-center gap-3 mt-3">
       {active.map(({ key, label, Icon }) => {
-        const url = links.find(l => l.platform === key)?.url ?? "";
+        const url = getSafeSocialHref(links.find(l => l.platform === key)?.url);
         return (
           <a
             key={key}
-            href={onSocialClick ? undefined : url}
+            href={onSocialClick ? undefined : url ?? undefined}
+            aria-label={label}
             target={onSocialClick ? undefined : "_blank"}
             rel="noopener noreferrer"
             title={label}
@@ -388,7 +397,7 @@ function renderLinksBlock(
             ) : (
               // Public view: full working anchor with href
               <a
-                href={link.href || "#"}
+                href={getSafeWebsiteHref(link.href) ?? "#"}
                 className="text-sm hover:opacity-100 transition-opacity"
                 style={{ color: linkColor, textDecoration: "none", opacity: 0.8 }}
               >
@@ -1054,6 +1063,8 @@ export function FooterSection({
   const textColor = `var(--theme-footer-text, ${settings.footerTextColor ?? "#ffffff"})`;
   const copyrightYear = new Date().getFullYear();
   const copyrightFallback = `© ${copyrightYear} ${businessName ?? "Your Business"}. All rights reserved.`;
+  const privacyPolicyHref = getSafeWebsiteHref(content.privacyPolicyUrl);
+  const termsHref = getSafeWebsiteHref(content.termsUrl);
 
   function update(patch: Partial<FooterContent>) {
     onChange?.({ ...content, ...patch });
@@ -1162,13 +1173,13 @@ export function FooterSection({
         {!content.copyright && <span className="opacity-50">{copyrightFallback}</span>}
       </p>
       <div className="flex items-center gap-4">
-        {content.privacyPolicyUrl && (
-          <a href={content.privacyPolicyUrl} className="text-xs opacity-40 hover:opacity-70 transition-opacity" style={{ color: textColor }}>
+        {privacyPolicyHref && (
+          <a href={privacyPolicyHref} className="text-xs opacity-40 hover:opacity-70 transition-opacity" style={{ color: textColor }}>
             Privacy Policy
           </a>
         )}
-        {content.termsUrl && (
-          <a href={content.termsUrl} className="text-xs opacity-40 hover:opacity-70 transition-opacity" style={{ color: textColor }}>
+        {termsHref && (
+          <a href={termsHref} className="text-xs opacity-40 hover:opacity-70 transition-opacity" style={{ color: textColor }}>
             Terms
           </a>
         )}

@@ -11,7 +11,7 @@ import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAlloca
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
-import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { hasRequestedBusiness, requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import {
   buildJobProfitResponse,
@@ -186,6 +186,7 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id));
     // Permit the edit form to claim a completely unassigned legacy job for
@@ -610,7 +611,7 @@ router.get("/trim-out-catalog", async (req, res): Promise<void> => {
     }
 
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const conditions = [
       inArray(jobsTable.status, ["completed", "invoiced", "closed"]),
       sql`${jobsTable.mfhManufacturerId} is not null`,
@@ -742,7 +743,7 @@ router.get("/", async (req, res) => {
     const { status, clientId } = req.query;
     const conditions = [];
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) {
       conditions.push(or(
         eq(jobsTable.businessId, scope.id),
@@ -1734,7 +1735,7 @@ router.get("/profit-summary", async (req, res) => {
 router.get("/financials-summary", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     const jobConditions = [ne(jobsTable.status, "closed")];
     if (scope) {
@@ -2656,7 +2657,7 @@ router.get("/:id/readiness", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const conditions = await db.select().from(jobReadinessConditionsTable)
@@ -2673,7 +2674,7 @@ router.post("/:id/readiness", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const reason = req.body?.reason;
@@ -2701,7 +2702,7 @@ router.post("/:id/readiness/:conditionId/clear", async (req, res) => {
     const id = Number(req.params.id);
     const conditionId = Number(req.params.conditionId);
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const [condition] = await db.select().from(jobReadinessConditionsTable).where(and(
