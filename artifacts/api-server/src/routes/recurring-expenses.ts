@@ -18,6 +18,31 @@ export function parseRecurringExpenseBusinessId(value: unknown): number | null |
   const id = Number(text);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
+export function parseRecurringExpenseAmount(value: unknown): string | null {
+  const text = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(text)) return null;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 9_999_999_999.99) return null;
+  return amount.toFixed(2);
+}
+
+export function isValidRecurringExpenseDate(value: unknown, allowEmpty = false): boolean {
+  if (value == null || value === "") return allowEmpty;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(\`\${value}T00:00:00.000Z\`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+export function parseRecurringExpenseJobId(value: unknown): number | null | undefined {
+  if (value == null || value === "") return null;
+  const text = String(value).trim();
+  if (!/^\d+$/.test(text)) return undefined;
+  const id = Number(text);
+  return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
 
 export function localDateStr(d: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -71,19 +96,31 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate } = req.body;
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate } = req.body ?? {};
     if (!description || !amount || !category || !frequency || !startDate) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-    if (!FREQUENCIES.includes(frequency)) {
-      return res.status(400).json({ error: "Invalid frequency" });
+    if (typeof description !== "string" || !description.trim() || description.length > 500 ||
+        typeof category !== "string" || !category.trim() || category.length > 100) {
+      return res.status(400).json({ error: "Description or category is invalid" });
     }
+    const parsedAmount = parseRecurringExpenseAmount(amount);
+    if (!parsedAmount) return res.status(400).json({ error: "Amount must be a positive dollar value with no more than two decimal places" });
+    if (!FREQUENCIES.includes(frequency)) return res.status(400).json({ error: "Invalid frequency" });
+    if (!isValidRecurringExpenseDate(startDate) || !isValidRecurringExpenseDate(endDate, true) ||
+        (typeof endDate === "string" && endDate && endDate < startDate)) {
+      return res.status(400).json({ error: "Start and end dates must be valid calendar dates" });
+    }
+    const parsedJobId = parseRecurringExpenseJobId(jobId);
+    if (parsedJobId === undefined) return res.status(400).json({ error: "Job ID must be a positive integer" });
+    if (vendor != null && (typeof vendor !== "string" || vendor.length > 160)) return res.status(400).json({ error: "Vendor is too long or invalid" });
+    if (notes != null && (typeof notes !== "string" || notes.length > 2000)) return res.status(400).json({ error: "Notes are too long or invalid" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const owner = ownership.business;
-    if (jobId) {
+    if (parsedJobId != null) {
       const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
-        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+        .from(jobsTable).where(eq(jobsTable.id, parsedJobId)).limit(1);
       if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
     }
 
@@ -91,8 +128,8 @@ router.post("/", async (req, res) => {
     let nextDueDate = startDate;
 
     const [template] = await db.insert(recurringExpensesTable).values({
-      description, amount: amount.toString(), category,
-      vendor: vendor || null, jobId: jobId || null, notes: notes || null,
+      description: description.trim(), amount: parsedAmount, category: category.trim(),
+      vendor: vendor || null, jobId: parsedJobId, notes: notes || null,
       frequency, startDate, endDate: endDate || null, nextDueDate, active: true,
        businessId: owner.id,
     }).returning();
@@ -155,21 +192,43 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, active } = req.body;
+    const { description, amount, category, vendor, jobId, notes, frequency, startDate, endDate, active } = req.body ?? {};
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const owner = ownership.business;
     const [current] = await db.select().from(recurringExpensesTable)
       .where(and(eq(recurringExpensesTable.id, id), eq(recurringExpensesTable.businessId, owner.id)));
     if (!current) return res.status(404).json({ error: "Recurring expense not found" });
-    if (jobId) {
+    if (parsedJobId !== undefined && parsedJobId != null) {
       const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
-        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+        .from(jobsTable).where(eq(jobsTable.id, parsedJobId)).limit(1);
       if (!job || !belongsToBusiness(job, owner)) return res.status(404).json({ error: "Job not found" });
     }
-    if (frequency && !FREQUENCIES.includes(frequency)) {
+    if (frequency !== undefined && !FREQUENCIES.includes(frequency)) {
       return res.status(400).json({ error: "Invalid frequency" });
     }
+    const parsedAmount = amount !== undefined ? parseRecurringExpenseAmount(amount) : undefined;
+    if (amount !== undefined && !parsedAmount) return res.status(400).json({ error: "Amount must be a positive dollar value with no more than two decimal places" });
+    if (description !== undefined && (typeof description !== "string" || !description.trim() || description.length > 500)) {
+      return res.status(400).json({ error: "Description is invalid" });
+    }
+    if (category !== undefined && (typeof category !== "string" || !category.trim() || category.length > 100)) {
+      return res.status(400).json({ error: "Category is invalid" });
+    }
+    if (vendor !== undefined && vendor != null && (typeof vendor !== "string" || vendor.length > 160)) {
+      return res.status(400).json({ error: "Vendor is invalid" });
+    }
+    if (notes !== undefined && notes != null && (typeof notes !== "string" || notes.length > 2000)) {
+      return res.status(400).json({ error: "Notes are invalid" });
+    }
+    if (active !== undefined && typeof active !== "boolean") return res.status(400).json({ error: "Active must be a boolean" });
+    const parsedJobId = jobId !== undefined ? parseRecurringExpenseJobId(jobId) : undefined;
+    if (jobId !== undefined && parsedJobId === undefined) return res.status(400).json({ error: "Job ID must be a positive integer" });
+    if (startDate !== undefined && !isValidRecurringExpenseDate(startDate)) return res.status(400).json({ error: "Start date must be a valid YYYY-MM-DD date" });
+    if (endDate !== undefined && !isValidRecurringExpenseDate(endDate, true)) return res.status(400).json({ error: "End date must be a valid YYYY-MM-DD date" });
+    const effectiveStartDate = startDate ?? current.startDate;
+    const effectiveEndDate = endDate !== undefined ? endDate : current.endDate;
+    if (effectiveEndDate && effectiveEndDate < effectiveStartDate) return res.status(400).json({ error: "End date cannot be before start date" });
 
     const scheduleChanged = frequency !== undefined || startDate !== undefined;
     let nextDueDate: string | undefined;
@@ -186,10 +245,10 @@ router.put("/:id", async (req, res) => {
 
     const [updated] = await db.update(recurringExpensesTable).set({
       ...(description !== undefined && { description }),
-      ...(amount !== undefined && { amount: amount.toString() }),
+      ...(amount !== undefined && { amount: parsedAmount }),
       ...(category !== undefined && { category }),
       ...(vendor !== undefined && { vendor: vendor || null }),
-      ...(jobId !== undefined && { jobId: jobId || null }),
+      ...(jobId !== undefined && { jobId: parsedJobId }),
       ...(notes !== undefined && { notes: notes || null }),
       ...(frequency !== undefined && { frequency }),
       ...(startDate !== undefined && { startDate }),
