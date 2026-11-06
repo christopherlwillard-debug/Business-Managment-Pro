@@ -1298,12 +1298,12 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
   let redirectUrl: string | undefined;
-  if (returnUrl) {
+  if (safeReturnUrl) {
     try {
       const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
       const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
       const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(returnUrl);
+      const parsed = new URL(safeReturnUrl);
       if (parsed.origin.toLowerCase() === requestOrigin) {
         redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
       }
@@ -1339,6 +1339,12 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     returnUrl?: string;
   };
 
+  const safeCustomerName = getWebsiteContactText(customerName, 200);
+  const safeCustomerEmail = getWebsiteContactText(customerEmail, 320);
+  const safeCustomerPhone = getWebsiteContactText(customerPhone, 100);
+  const safeCustomerNotes = getWebsiteContactText(customerNotes, 5000);
+  const safeReturnUrl = getWebsiteContactText(returnUrl, 2048);
+
   const [biz] = await db
     .select({ id: businessesTable.id, name: businessesTable.name })
     .from(businessesTable)
@@ -1367,21 +1373,21 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   const fPhone = (depositSection.content.fieldPhone as FieldCfg | undefined) ?? { show: false, required: false };
   const fNotes = (depositSection.content.fieldNotes as FieldCfg | undefined) ?? { show: false, required: false };
 
-  if (fName.show !== false && fName.required !== false && !customerName?.trim()) {
+  if (fName.show !== false && fName.required !== false && !safeCustomerName) {
     return res.status(400).json({ error: "Name is required." });
   }
   if (fEmail.show !== false && fEmail.required !== false) {
-    if (!customerEmail?.trim()) return res.status(400).json({ error: "Email is required." });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+    if (!safeCustomerEmail) return res.status(400).json({ error: "Email is required." });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeCustomerEmail)) {
       return res.status(400).json({ error: "A valid email address is required." });
     }
-  } else if (customerEmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+  } else if (safeCustomerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
     return res.status(400).json({ error: "Please enter a valid email address." });
   }
-  if (fPhone.show !== false && fPhone.required !== false && !customerPhone?.trim()) {
+  if (fPhone.show !== false && fPhone.required !== false && !safeCustomerPhone) {
     return res.status(400).json({ error: "Phone number is required." });
   }
-  if (fNotes.show !== false && fNotes.required !== false && !customerNotes?.trim()) {
+  if (fNotes.show !== false && fNotes.required !== false && !safeCustomerNotes) {
     return res.status(400).json({ error: "Notes are required." });
   }
 
@@ -1415,10 +1421,10 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   const [submission] = await db.insert(depositSubmissionsTable).values({
     businessId: biz.id,
     siteConfigId: config.id,
-    customerName: customerName?.trim() || "",
-    customerEmail: customerEmail?.trim().toLowerCase() || "",
-    customerPhone: customerPhone?.trim() || null,
-    customerNotes: customerNotes?.trim() || null,
+    customerName: safeCustomerName || "",
+    customerEmail: safeCustomerEmail?.toLowerCase() || "",
+    customerPhone: safeCustomerPhone || null,
+    customerNotes: safeCustomerNotes || null,
     amount: (amountCents / 100).toFixed(2),
     paymentStatus: "pending",
   }).returning();
@@ -1428,7 +1434,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     currency: "USD",
     productName: `${biz.name}: ${heading}`,
     referenceId: `website_deposit_${slug}_${submission.id}`,
-    customerEmail: customerEmail?.trim() || undefined,
+    customerEmail: safeCustomerEmail || undefined,
     redirectUrl,
   });
 
