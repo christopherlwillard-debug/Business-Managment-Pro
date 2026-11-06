@@ -148,3 +148,17 @@ export function withWebsitePageList<T extends Record<string, unknown>>(
 ): T & { pages: unknown[] } {
   return { ...settings, pages };
 }
+
+/** Let the server inspect files with an unknown browser MIME type, but report known non-images instead of silently dropping them. */
+export function partitionWebsiteMediaFiles<T extends { type: string; name: string }>(files: T[]): {
+  uploadable: T[];
+  unsupported: T[];
+} {
+  const uploadable: T[] = [];
+  const unsupported: T[] = [];
+  for (const file of files) {
+    if (!file.type || file.type.startsWith("image/")) uploadable.push(file);
+    else unsupported.push(file);
+  }
+  return { uploadable, unsupported };
+}
