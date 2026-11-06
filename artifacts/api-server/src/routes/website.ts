@@ -63,7 +63,7 @@ export function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
 /** Only resolve logo objects through the app's own object-storage namespace. */
 export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
   if (typeof value !== "string" || !value.startsWith("/objects/uploads/")) return false;
-  if (/[\\\\?#\\u0000-\\u001f]/.test(value)) return false;
+  if (value.includes("\\") || value.includes("%") || value.includes("?") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32)) return false;
   return value.slice("/objects/uploads/".length).split("/").every(segment => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
