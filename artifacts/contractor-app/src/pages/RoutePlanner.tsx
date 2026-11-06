@@ -604,7 +604,7 @@ export default function RoutePlanner() {
 
   const createStop = useMutation({
     mutationFn: (data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; clientId?: number | null; prospectId?: number | null; jobId?: number | null }) =>
-      apiFetch("/route-stops", { method: "POST", body: JSON.stringify(data) }),
+      apiFetch("/route-stops", { method: "POST", body: JSON.stringify({ ...data, businessLine: activeBusiness?.slug ?? null }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       setShowAddForm(false);
@@ -617,7 +617,7 @@ export default function RoutePlanner() {
 
   const updateStop = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<EditFormState> & { lat?: number | null; lng?: number | null; sortOrder?: number } }) =>
-      apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+      apiFetch(`/route-stops/${id}`, { method: "PUT", body: JSON.stringify({ ...data, businessLine: activeBusiness?.slug ?? null }) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/route-stops"] });
       setEditingId(null);
