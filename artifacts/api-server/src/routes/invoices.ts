@@ -25,7 +25,7 @@ import {
   syncMaterialsToInvoice,
   syncMaterialsToJobInvoice,
 } from "./material-lists.js";
-import { requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
@@ -58,6 +58,7 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, id));
     if (!invoice || !belongsToBusiness(invoice, scope)) return res.status(404).json({ error: "Invoice not found" });
@@ -434,6 +435,7 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [inv] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     if (!inv) return res.status(404).json({ error: "Invoice not found" });
     if (!belongsToBusiness(inv, scope)) return res.status(404).json({ error: "Invoice not found" });
