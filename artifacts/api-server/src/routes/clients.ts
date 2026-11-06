@@ -133,13 +133,17 @@ router.get("/:id/profile", async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
 
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
 
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
       db.select().from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))).orderBy(desc(jobsTable.createdAt)),
       db.select().from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))).orderBy(desc(invoicesTable.createdAt)),
-      db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
+      db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(and(
+        eq(squarePaymentsTable.clientId, id),
+        scope ? eq(squarePaymentsTable.businessId, scope.id) : undefined,
+      )).orderBy(desc(squarePaymentsTable.paidAt)),
       db.select().from(prospectsTable).where(and(eq(prospectsTable.clientId, id), scopedOwnerPredicate(prospectsTable, scope))).orderBy(desc(prospectsTable.createdAt)),
       db.select(clientProfileRouteStopColumns).from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
       db.select().from(otherIncomeTable).where(and(eq(otherIncomeTable.clientId, id), scopedOwnerPredicate(otherIncomeTable, scope))).orderBy(desc(otherIncomeTable.date)),
@@ -253,10 +257,12 @@ router.get("/:id/link-counts", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [jobs, invoices, estimates] = await Promise.all([
-      db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.clientId, id)),
-      db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.clientId, id)),
-      db.select({ id: estimatesTable.id }).from(estimatesTable).where(eq(estimatesTable.clientId, id)),
+      db.select({ id: jobsTable.id }).from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))),
+      db.select({ id: invoicesTable.id }).from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))),
+      db.select({ id: estimatesTable.id }).from(estimatesTable).where(and(eq(estimatesTable.clientId, id), scopedOwnerPredicate(estimatesTable, scope))),
     ]);
     res.json({ jobCount: jobs.length, invoiceCount: invoices.length, estimateCount: estimates.length });
   } catch (err) {
