@@ -330,7 +330,10 @@ export default function PublicSite() {
     );
   }
 
-  const { sections, settings, businessName } = data;
+  const { sections, businessName } = data;
+  const settings: SiteSettings = data.settings && typeof data.settings === "object" && !Array.isArray(data.settings)
+    ? { brandColor: "#2563eb", fontFamily: "Inter", logoUrl: "", ...data.settings }
+    : { brandColor: "#2563eb", fontFamily: "Inter", logoUrl: "" };
   // Public sites can outlive older or partially migrated configs. Keep malformed
   // JSON from crashing the entire published page while the owner repairs it.
   const safeSections = Array.isArray(sections)
