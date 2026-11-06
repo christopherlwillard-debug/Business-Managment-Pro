@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
+import { getMapCoordinateKey, getMapReadyStops } from "@/lib/routePlannerMap";
 import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
@@ -253,16 +254,24 @@ function makeIcon(color: string, label?: string | number) {
 
 function MapFitter({ stops }: { stops: RouteStop[] }) {
   const map = useMap();
-  const geoStops = stops.filter(s => s.lat && s.lng);
+  const geoStops = getMapReadyStops(stops);
+  const geoStopsKey = getMapCoordinateKey(geoStops);
+
   useEffect(() => {
-    if (geoStops.length === 0) return;
-    if (geoStops.length === 1) {
-      map.setView([geoStops[0].lat!, geoStops[0].lng!], 14);
+    // Coordinates at (0, 0) are valid. The stable key also refits when
+    // geocoding changes coordinates without changing the number of stops.
+    const currentGeoStops = getMapReadyStops(stops);
+    if (currentGeoStops.length === 0) return;
+    if (currentGeoStops.length === 1) {
+      map.setView([currentGeoStops[0].lat, currentGeoStops[0].lng], 14);
     } else {
-      const bounds = L.latLngBounds(geoStops.map(s => [s.lat!, s.lng!] as [number, number]));
+      const bounds = L.latLngBounds(currentGeoStops.map(s => [s.lat, s.lng] as [number, number]));
       map.fitBounds(bounds, { padding: [40, 40] });
     }
-  }, [geoStops.length]);
+  // The key captures only map-relevant identity and coordinates, avoiding
+  // unnecessary refits when unrelated route-stop fields or parent renders change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, geoStopsKey]);
   return null;
 }
 
