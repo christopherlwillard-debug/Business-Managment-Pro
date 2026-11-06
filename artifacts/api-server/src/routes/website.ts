@@ -359,8 +359,8 @@ function normalizeSections(existing: SectionRow[]): SectionRow[] {
 // writes back to any settings table.
 
 router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -456,8 +456,8 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
 }));
 
 router.get("/", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -496,8 +496,8 @@ router.get("/", wrapAsync(async (req, res) => {
 }));
 
 router.put("/", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -552,8 +552,8 @@ router.put("/", wrapAsync(async (req, res) => {
 }));
 
 router.post("/publish", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -1252,8 +1252,8 @@ router.get("/contact-prefill-token", wrapAsync(async (req, res) => {
 }));
 
 router.get("/deposit-submissions", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const subs = await db
@@ -1266,8 +1266,8 @@ router.get("/deposit-submissions", wrapAsync(async (req, res) => {
 }));
 
 router.get("/form-submissions", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const subs = await db
@@ -1280,8 +1280,8 @@ router.get("/form-submissions", wrapAsync(async (req, res) => {
 }));
 
 router.get("/analytics", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -1557,7 +1557,7 @@ router.post("/improve-copy", wrapAsync(async (req, res) => {
 //   5. Return SeoSettings object ready to be stored in settings.seo
 
 router.post("/generate-seo", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   // Load business row
@@ -2057,8 +2057,8 @@ const LAYOUT_SUGGESTION_SCHEMA = {
 };
 
 router.post("/suggest-layout", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -2297,7 +2297,7 @@ router.post("/upload-card-image", wrapAsync(async (req, res) => {
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { businessId: rawBusinessId } = getWebsiteRequestBody(req.body) as { businessId?: number };
   const businessId = Number(rawBusinessId);
-  if (!businessId || isNaN(businessId)) {
+  if (!businessId) {
     return res.status(400).json({ error: "Valid businessId required" });
   }
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.id, businessId));
@@ -2522,7 +2522,7 @@ async function uploadMediaAssets(
 }
 
 router.get("/media", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const items = await db
     .select()
@@ -2533,7 +2533,7 @@ router.get("/media", wrapAsync(async (req, res) => {
 }));
 
 router.post("/media/upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
   const { originalname, buffer, size } = req.file;
@@ -2586,7 +2586,7 @@ router.post("/media", (_req, res) => {
 });
 
 router.delete("/media/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const [item] = await db
@@ -2614,7 +2614,7 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
 // ── Media PATCH (rename / move to folder / set alt text) ──────────────────────
 
 router.patch("/media/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const validation = validateWebsiteMediaPatch(req.body);
@@ -2642,7 +2642,7 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
 // Uses the filename and business context to generate accurate alt text.
 
 router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
@@ -2685,7 +2685,7 @@ router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
 // in the media library. The original is shown with an "Original" label alongside.
 
 router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
@@ -2750,7 +2750,7 @@ router.post("/media/:id/replace", (_req, res) => {
 });
 
 router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
@@ -2813,7 +2813,7 @@ router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync
 // ── Media bulk delete ──────────────────────────────────────────────────────
 
 router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const validation = validateWebsiteMediaIds((req.body as { ids?: unknown } | undefined)?.ids);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
@@ -2850,7 +2850,7 @@ router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
 // ── Media usage counts ─────────────────────────────────────────────────────
 
 router.get("/media/usage-counts", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   const items = await db.select({ id: websiteMediaTable.id, url: websiteMediaTable.url })
@@ -2875,7 +2875,7 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
 // ── Media usage details (which sections use this image) ────────────────────
 
 router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
@@ -2908,7 +2908,7 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
 // ── Media folders ──────────────────────────────────────────────────────────
 
 router.get("/media/folders", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   const folderRows = await db.select().from(websiteMediaFoldersTable)
@@ -2930,7 +2930,7 @@ router.get("/media/folders", wrapAsync(async (req, res) => {
 }));
 
 router.post("/media/folders", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
@@ -2941,7 +2941,7 @@ router.post("/media/folders", wrapAsync(async (req, res) => {
 }));
 
 router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const folderId = parseInt(req.params.folderId as string);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
@@ -2955,7 +2955,7 @@ router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
 }));
 
 router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   const folderId = parseInt(req.params.folderId as string);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   await db.update(websiteMediaTable)
@@ -3074,7 +3074,7 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
 // ── Saved Sections — CRUD ─────────────────────────────────────────────────────
 
 router.get("/saved-sections", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
   const rows = await db
     .select()
@@ -3229,8 +3229,8 @@ function lpUid(): string {
 }
 
 router.post("/generate-landing-page", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -3660,8 +3660,8 @@ Generate specific, realistic content — no placeholder text.
 `;
 
 router.post("/build-section", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -3858,8 +3858,8 @@ function scoreSections(sections: SectionInput[], settings: Record<string, unknow
 }
 
 router.post("/score", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4012,8 +4012,8 @@ function checkAccessibilitySections(
 }
 
 router.post("/check-accessibility", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4165,8 +4165,8 @@ function analyzePerformanceSections(
 }
 
 router.post("/analyze-performance", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) return res.status(400).json({ error: "businessId required" });
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) return res.status(400).json({ error: "businessId required" });
 
   const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: SectionInput[]; settings?: Record<string, unknown> };
   let finalSections = sections;
@@ -4201,7 +4201,7 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
 router.get("/suggest-images", wrapAsync(async (req, res) => {
   const businessType = (req.query.businessType as string | undefined) ?? "";
   const sectionType  = (req.query.sectionType  as string | undefined) ?? "";
-  const businessId   = parseInt(req.query.businessId as string);
+  const businessId   = parsePositiveDatabaseId(req.query.businessId);
 
   // ── Own uploaded photos ─────────────────────────────────────────────────────
   let ownPhotos: Array<{ id: number; url: string; displayName: string | null; filename: string }> = [];
@@ -4471,8 +4471,8 @@ Return ONLY the formatted business card content. No explanation.`;
 // Returns: { id, type, content, createdAt }
 
 router.post("/generate-marketing", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4550,8 +4550,8 @@ router.post("/generate-marketing", wrapAsync(async (req, res) => {
 // Returns: { items: [...] } — up to 30 most recent generations for this business
 
 router.get("/marketing-history", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4571,8 +4571,8 @@ router.get("/marketing-history", wrapAsync(async (req, res) => {
 // Renders a simple branded print layout for flyer, door-hanger, and business-card.
 
 router.post("/marketing-pdf", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4800,8 +4800,8 @@ function buildRefreshPrompt(
 }
 
 router.post("/refresh-analysis", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -4881,8 +4881,8 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
 // ── GET /templates ────────────────────────────────────────────────────────────
 // Returns AI-generated templates saved by this business (+ any global ones).
 router.get("/templates", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const rows = await db.execute(sql`
@@ -4897,8 +4897,8 @@ router.get("/templates", wrapAsync(async (req, res) => {
 // ── POST /templates ────────────────────────────────────────────────────────────
 // Saves an AI-generated template (or any custom template) for this business.
 router.post("/templates", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
   const { name, description, brandColor, settings, sections } = getWebsiteRequestBody(req.body) as {
@@ -5216,8 +5216,8 @@ router.post("/regenerate-section", wrapAsync(async (req, res) => {
 //   { type:"complete", sections:[...], settings:{...} }
 //   { type:"error", message:string }
 router.post("/generate-from-profile", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
@@ -5674,8 +5674,8 @@ function assembleDealerPage(
 }
 
 router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  if (!businessId || isNaN(businessId)) {
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  if (!businessId) {
     return res.status(400).json({ error: "businessId required" });
   }
 
