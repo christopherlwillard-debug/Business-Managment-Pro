@@ -5307,7 +5307,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       let imageBuffer: Buffer | null = null;
       const logoObjectPath = existingSettings.logoObjectPath as string | undefined;
 
-      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+      if (isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
         try {
           const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
           const response = await objectStorageService.downloadObject(objectFile);
