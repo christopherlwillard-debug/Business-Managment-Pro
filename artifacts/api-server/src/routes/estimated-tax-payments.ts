@@ -44,6 +44,25 @@ interface EstimatedTaxPaymentRow {
   createdAt: Date;
 }
 
+/** Parse a non-negative amount within the database's NUMERIC(12,2) range. */
+export function parseEstimatedTaxMoney(value: unknown, allowEmpty = false): string | null | undefined {
+  if (value == null || value === "") return allowEmpty ? null : undefined;
+  const text = typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : typeof value === "string" ? value.trim() : "";
+  if (!/^(?:0|[1-9]\\d{0,9})(?:\\.\\d{1,2})?$/.test(text)) return undefined;
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 9_999_999_999.99) return undefined;
+  return amount.toFixed(2);
+}
+
+function isValidOptionalIsoDate(value: unknown): boolean {
+  if (value == null || value === "") return true;
+  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 function nextBusinessDay(d: Date): Date {
   const result = new Date(d);
   const day = result.getUTCDay();
@@ -250,12 +269,14 @@ router.get("/", wrapAsync(async (req, res) => {
 
 // POST /api/estimated-tax-payments
 router.post("/", wrapAsync(async (req, res) => {
-  const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body;
-  if (!year || !quarter || !level) {
-    res.status(400).json({ error: "year, quarter, and level are required" });
+  const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body ?? {};
+  const parsedYear = typeof year === "number" ? year : typeof year === "string" && /^\\d{4}$/.test(year) ? Number(year) : NaN;
+  const parsedQuarter = typeof quarter === "number" ? quarter : typeof quarter === "string" && /^\\d+$/.test(quarter) ? Number(quarter) : NaN;
+  if (!Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > 2200) {
+    res.status(400).json({ error: "A valid tax year is required" });
     return;
   }
-  if (![1, 2, 3, 4].includes(parseInt(quarter))) {
+  if (![1, 2, 3, 4].includes(parsedQuarter)) {
     res.status(400).json({ error: "quarter must be 1–4" });
     return;
   }
@@ -263,15 +284,33 @@ router.post("/", wrapAsync(async (req, res) => {
     res.status(400).json({ error: "level must be federal, state, or combined" });
     return;
   }
+  const parsedDue = parseEstimatedTaxMoney(amountDue, true);
+  const parsedPaid = amountPaid == null || amountPaid === "" ? "0.00" : parseEstimatedTaxMoney(amountPaid);
+  if (parsedDue === undefined || parsedPaid === undefined) {
+    res.status(400).json({ error: "Tax payment amounts must be non-negative dollars with no more than two decimal places" });
+    return;
+  }
+  if (!isValidOptionalIsoDate(paidDate)) {
+    res.status(400).json({ error: "paidDate must be a valid YYYY-MM-DD date" });
+    return;
+  }
+  if (paymentMethod != null && (typeof paymentMethod !== "string" || paymentMethod.length > 80)) {
+    res.status(400).json({ error: "paymentMethod is invalid" });
+    return;
+  }
+  if (notes != null && (typeof notes !== "string" || notes.length > 2000)) {
+    res.status(400).json({ error: "notes must be 2,000 characters or fewer" });
+    return;
+  }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const [row] = await db.insert(estimatedTaxPaymentsTable).values({
     businessId: ownership.business.id,
-    year: parseInt(year),
-    quarter: parseInt(quarter),
+    year: parsedYear,
+    quarter: parsedQuarter,
     level,
-    amountDue: amountDue ? String(amountDue) : null,
-    amountPaid: amountPaid ? String(amountPaid) : null,
+    amountDue: parsedDue,
+    amountPaid: parsedPaid,
     paidDate: paidDate || null,
     paymentMethod: paymentMethod || null,
     notes: notes || null,
@@ -285,10 +324,30 @@ router.put("/:id", wrapAsync(async (req, res) => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
-  const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body;
+  const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body ?? {};
+  if (amountDue !== undefined) {
+    const parsed = parseEstimatedTaxMoney(amountDue, true);
+    if (parsed === undefined) { res.status(400).json({ error: "amountDue must be a non-negative dollar amount with no more than two decimal places" }); return; }
+  }
+  if (amountPaid !== undefined) {
+    const parsed = parseEstimatedTaxMoney(amountPaid);
+    if (parsed === undefined) { res.status(400).json({ error: "amountPaid must be a non-negative dollar amount with no more than two decimal places" }); return; }
+  }
+  if (paidDate !== undefined && !isValidOptionalIsoDate(paidDate)) {
+    res.status(400).json({ error: "paidDate must be a valid YYYY-MM-DD date" }); return;
+  }
+  if (level !== undefined && !["federal", "state", "combined"].includes(level)) {
+    res.status(400).json({ error: "level must be federal, state, or combined" }); return;
+  }
+  if (paymentMethod !== undefined && paymentMethod != null && (typeof paymentMethod !== "string" || paymentMethod.length > 80)) {
+    res.status(400).json({ error: "paymentMethod is invalid" }); return;
+  }
+  if (notes !== undefined && notes != null && (typeof notes !== "string" || notes.length > 2000)) {
+    res.status(400).json({ error: "notes must be 2,000 characters or fewer" }); return;
+  }
   const updates: Partial<typeof estimatedTaxPaymentsTable.$inferInsert> = {};
-  if (amountDue !== undefined) updates.amountDue = String(amountDue);
-  if (amountPaid !== undefined) updates.amountPaid = String(amountPaid);
+  if (amountDue !== undefined) updates.amountDue = parseEstimatedTaxMoney(amountDue, true) ?? null;
+  if (amountPaid !== undefined) updates.amountPaid = parseEstimatedTaxMoney(amountPaid) as string;
   if (paidDate !== undefined) updates.paidDate = paidDate;
   if (paymentMethod !== undefined) updates.paymentMethod = paymentMethod;
   if (notes !== undefined) updates.notes = notes;
