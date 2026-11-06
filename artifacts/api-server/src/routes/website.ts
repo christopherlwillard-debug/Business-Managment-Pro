@@ -2513,6 +2513,16 @@ async function cleanupMediaObjects(paths: Array<string | null | undefined>): Pro
  * Callers only write the DB row after this resolves, so a failed variant
  * cannot leave a library item that silently has incomplete derivatives.
  */
+/** Never derive object-storage path extensions from an uploaded filename. */
+export function getWebsiteMediaStorageFilename(mimetype: string): string {
+  const extensions: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+    "image/gif": "gif", "image/tiff": "tiff", "image/svg+xml": "svg",
+    "image/heic": "heic", "image/avif": "avif",
+  };
+  return `website-media.${extensions[mimetype] ?? "img"}`;
+}
+
 async function uploadMediaAssets(
   buffer: Buffer,
   mimetype: string,
@@ -2521,7 +2531,7 @@ async function uploadMediaAssets(
 ): Promise<MediaAssetPaths> {
   const uploaded: string[] = [];
   try {
-    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", filename);
+    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", getWebsiteMediaStorageFilename(mimetype));
     uploaded.push(objectPath);
     const assets: MediaAssetPaths = { objectPath };
 
