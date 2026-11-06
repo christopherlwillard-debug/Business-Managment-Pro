@@ -93,6 +93,45 @@ export function getWebsiteContactText(value: unknown, maxLength = 5000): string 
   return normalized ? normalized.slice(0, maxLength) : undefined;
 }
 
+/** Validate required and typed values against the published contact-form definition. */
+export function getWebsiteContactFieldError(
+  configuredFields: unknown,
+  values: Record<string, string>,
+): string | null {
+  const fields = Array.isArray(configuredFields)
+    ? configuredFields
+    : [{ id: "name", label: "Full Name", type: "text", required: true }];
+
+  for (const rawField of fields) {
+    if (!rawField || typeof rawField !== "object" || Array.isArray(rawField)) continue;
+    const field = rawField as Record<string, unknown>;
+    const id = getWebsiteContactText(field.id, 100);
+    if (!id) continue;
+
+    const label = getWebsiteContactText(field.label, 100) || "This field";
+    const value = getWebsiteContactText(values[id]);
+    const type = field.type;
+
+    if (field.required === true && (!value || (type === "checkbox" && value !== "true"))) {
+      return `${label} is required.`;
+    }
+    if (!value) continue;
+
+    if (type === "email" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)) {
+      return `${label} must be a valid email address.`;
+    }
+
+    if (type === "dropdown" && Array.isArray(field.options)) {
+      const options = field.options.filter((option): option is string => typeof option === "string");
+      if (options.length > 0 && !options.includes(value)) {
+        return `${label} must be one of the available options.`;
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Bound arbitrary visitor-defined labels and values before storing or emailing them. */
 export function getSafeWebsiteSubmissionFields(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -1338,6 +1377,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
       eq(websiteConfigsTable.published, true),
     ));
   if (!publishedConfig) return res.status(404).json({ error: "Website not published" });
+  const contactSection = getWebsiteSectionList(publishedConfig.sections).find(section => section.type === "contact");
 
   const { name, phone, email, serviceType, message, fieldValues, labeledFields } = getWebsiteRequestBody(req.body) as {
     name?: string; phone?: string; email?: string; serviceType?: string; message?: string;
@@ -1346,6 +1386,9 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   };
 
   const safeFieldValues = getSafeWebsiteSubmissionFields(fieldValues);
+  const fieldError = getWebsiteContactFieldError(contactSection?.content?.fields, safeFieldValues);
+  if (fieldError) return res.status(400).json({ error: fieldError });
+
   const normName = getWebsiteContactText(name) ?? safeFieldValues.name;
   const normPhone = getWebsiteContactText(phone, 100) ?? safeFieldValues.phone;
   const normEmail = getWebsiteContactText(email, 320) ?? safeFieldValues.email;
@@ -1396,8 +1439,6 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     .returning({ id: prospectsTable.id });
 
   try {
-    const sections = getWebsiteSectionList(publishedConfig.sections);
-    const contactSection = sections.find(s => s.type === "contact");
     const notifEmail = contactSection?.content?.notificationEmail as string | undefined;
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (notifEmail && EMAIL_RE.test(notifEmail)) {
