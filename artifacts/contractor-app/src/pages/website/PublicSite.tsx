@@ -6,6 +6,7 @@ import { useParams, Link } from "wouter";
 import { buildThemeCssVarBlock, sanitizeWebsiteFontFamily } from "./themes";
 import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, resolvePublicSitePageRoute } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
+import { getWebsiteViewTrackingKey } from "./publicViewTracking";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { AboutSection } from "./sections/AboutSection";
@@ -253,10 +254,12 @@ export default function PublicSite() {
   const trackedRef = useRef<string | null>(null);
   useEffect(() => {
     const s = data?.businessSlug;
-    if (!s || trackedRef.current === s || isDraftPreview) return;
-    trackedRef.current = s;
+    if (!s || isDraftPreview) return;
+    const trackingKey = getWebsiteViewTrackingKey(s, pageSlug);
+    if (trackedRef.current === trackingKey) return;
+    trackedRef.current = trackingKey;
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
-  }, [data?.businessSlug, isDraftPreview]);
+  }, [data?.businessSlug, pageSlug, isDraftPreview]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
