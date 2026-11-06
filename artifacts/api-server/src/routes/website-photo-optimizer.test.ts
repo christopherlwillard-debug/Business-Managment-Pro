@@ -18,6 +18,7 @@ import {
   CROP_RATIOS,
   cropRatioLabel,
   validateEnhancementOptions,
+  shouldGenerateWebsiteMediaVariants,
 } from "../lib/imageProcessor";
 
 // ── imageProcessor — module-level tests ──────────────────────────────────────
@@ -236,19 +237,18 @@ describe("media-image serve — WebP content negotiation", () => {
 // ── Background processing — fire-and-forget guard ────────────────────────────
 
 describe("background variant generation — eligibility logic", () => {
-  const isEligible = (mimetype: string) =>
-    mimetype.startsWith("image/") && mimetype !== "image/svg+xml";
-
-  it("JPEG images are eligible", () => expect(isEligible("image/jpeg")).toBe(true));
-  it("PNG images are eligible",  () => expect(isEligible("image/png")).toBe(true));
-  it("WebP images are eligible", () => expect(isEligible("image/webp")).toBe(true));
-  it("GIF images are eligible",  () => expect(isEligible("image/gif")).toBe(true));
-  it("AVIF images are eligible", () => expect(isEligible("image/avif")).toBe(true));
-  it("SVG images are NOT eligible (skip WebP conversion)", () => expect(isEligible("image/svg+xml")).toBe(false));
-  it("non-image files are NOT eligible", () => {
-    expect(isEligible("application/pdf")).toBe(false);
-    expect(isEligible("video/mp4")).toBe(false);
-    expect(isEligible("text/plain")).toBe(false);
+  it("generates variants for supported static raster images", () => {
+    for (const type of ["image/jpeg", "image/png", "image/webp", "image/avif"]) {
+      expect(shouldGenerateWebsiteMediaVariants(type)).toBe(true);
+    }
+  });
+  it("preserves animated GIF originals instead of flattening them into a WebP frame", () => {
+    expect(shouldGenerateWebsiteMediaVariants("image/gif")).toBe(false);
+  });
+  it("skips SVG and non-image files", () => {
+    for (const type of ["image/svg+xml", "application/pdf", "video/mp4", "text/plain"]) {
+      expect(shouldGenerateWebsiteMediaVariants(type)).toBe(false);
+    }
   });
 });
 
