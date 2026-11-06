@@ -14,7 +14,7 @@ export function parseRecurringExpenseBusinessId(value: unknown): number | null |
   const text = typeof value === "number" && Number.isSafeInteger(value)
     ? String(value)
     : typeof value === "string" ? value.trim() : "";
-  if (!/^\\d+$/.test(text)) return undefined;
+  if (!/^\d+$/.test(text)) return undefined;
   const id = Number(text);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
