@@ -5,7 +5,7 @@ import {
   Folder, FolderPlus, FolderOpen, Pencil, AlertTriangle, RefreshCw, MapPin,
   Sparkles, Wand2,
 } from "lucide-react";
-import { partitionWebsiteMediaFiles } from "./storageUtils";
+import { consumeWebsiteRenameBlurCommit, partitionWebsiteMediaFiles } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -104,6 +104,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
   const [newFolderName, setNewFolderName] = useState("");
   const [renamingFolderId, setRenamingFolderId] = useState<number | null>(null);
   const [renameFolderValue, setRenameFolderValue] = useState("");
+  const folderRenameShouldCommitOnBlurRef = useRef(false);
 
   const [uploading, setUploading] = useState(false);
   const [replacing, setReplacing] = useState(false);
@@ -585,12 +586,20 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                     value={renameFolderValue}
                     onChange={e => setRenameFolderValue(e.target.value)}
                     onBlur={() => {
+                      if (!consumeWebsiteRenameBlurCommit(folderRenameShouldCommitOnBlurRef)) return;
                       if (renameFolderValue.trim()) renameFolderMutation.mutate({ id: folder.id, name: renameFolderValue.trim() });
                       else setRenamingFolderId(null);
                     }}
                     onKeyDown={e => {
-                      if (e.key === "Enter" && renameFolderValue.trim()) renameFolderMutation.mutate({ id: folder.id, name: renameFolderValue.trim() });
-                      if (e.key === "Escape") setRenamingFolderId(null);
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        e.currentTarget.blur();
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        folderRenameShouldCommitOnBlurRef.current = false;
+                        setRenamingFolderId(null);
+                      }
                     }}
                     className="w-full text-xs border border-primary rounded px-1.5 py-0.5 focus:outline-none bg-background"
                   />
@@ -598,7 +607,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               ) : (
                 <button
                   onClick={() => setFolderFilter(folder.id)}
-                  onDoubleClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                  onDoubleClick={() => { folderRenameShouldCommitOnBlurRef.current = true; setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
                   onDragOver={e => { e.preventDefault(); if (isDraggingMediaRef.current) setDragOverFolderId(folder.id); }}
                   onDragLeave={() => setDragOverFolderId(null)}
                   onDrop={e => handleFolderDrop(e, folder.id)}
@@ -615,7 +624,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                 </button>
               )}
               <div className="absolute right-0.5 top-1/2 -translate-y-1/2 hidden items-center gap-0 group-hover:flex group-focus-within:flex">
-                <button type="button" onClick={() => { setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
+                <button type="button" onClick={() => { folderRenameShouldCommitOnBlurRef.current = true; setRenamingFolderId(folder.id); setRenameFolderValue(folder.name); }}
                   className="p-0.5 rounded text-muted-foreground hover:text-primary"
                   title="Rename" aria-label={`Rename ${folder.name} folder`}>
                   <Pencil className="w-2.5 h-2.5" />
@@ -977,6 +986,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
   onDragStart: (e: React.DragEvent) => void; onDragEnd: () => void;
 }) {
   const isRenaming = renamingId === item.id;
+  const renameShouldCommitOnBlurRef = useRef(false);
   return (
     <div
       draggable
@@ -1003,8 +1013,20 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             ref={renameRef}
             value={renameValue}
             onChange={e => onRenameChange(e.target.value)}
-            onBlur={onRenameCommit}
-            onKeyDown={e => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+            onBlur={() => {
+              if (consumeWebsiteRenameBlurCommit(renameShouldCommitOnBlurRef)) onRenameCommit();
+            }}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                renameShouldCommitOnBlurRef.current = false;
+                onRenameCancel();
+              }
+            }}
             onClick={e => e.stopPropagation()}
             className="w-full text-xs border border-primary rounded px-1.5 py-0.5 focus:outline-none bg-background"
           />
@@ -1035,7 +1057,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             </select>
           </div>
         )}
-        <button type="button" aria-label={`Rename ${displayLabel(item)}`} onClick={e => { e.stopPropagation(); onStartRename(); }}
+        <button type="button" aria-label={`Rename ${displayLabel(item)}`} onClick={e => { e.stopPropagation(); renameShouldCommitOnBlurRef.current = true; onStartRename(); }}
           className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
           <Pencil className="w-3 h-3" />
         </button>
@@ -1104,6 +1126,7 @@ function DetailPanel({ item, businessId, usageDetails, usageDetailsFailed, isLoa
   const [altGenerating, setAltGenerating] = useState(false);
   const [altError, setAltError]         = useState<string | null>(null);
   const [altSaved, setAltSaved]         = useState(false);
+  const renameShouldCommitOnBlurRef = useRef(false);
 
   async function handleSaveAlt() {
     if (altSaving) return;
@@ -1217,12 +1240,24 @@ function DetailPanel({ item, businessId, usageDetails, usageDetailsFailed, isLoa
               autoFocus
               value={detailRenameValue}
               onChange={e => onRenameChange(e.target.value)}
-              onBlur={onRenameCommit}
-              onKeyDown={e => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+              onBlur={() => {
+                if (consumeWebsiteRenameBlurCommit(renameShouldCommitOnBlurRef)) onRenameCommit();
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  renameShouldCommitOnBlurRef.current = false;
+                  onRenameCancel();
+                }
+              }}
               className="w-full text-xs border border-primary rounded px-1.5 py-1 focus:outline-none bg-background"
             />
           ) : (
-            <button onClick={onStartRename} className="group/name flex items-center gap-1 w-full text-left" title="Click to rename">
+            <button onClick={() => { renameShouldCommitOnBlurRef.current = true; onStartRename(); }} className="group/name flex items-center gap-1 w-full text-left" title="Click to rename">
               <p className="text-xs text-foreground font-medium break-all line-clamp-2 flex-1">{displayLabel(item)}</p>
               <Pencil className="w-2.5 h-2.5 text-muted-foreground flex-shrink-0 opacity-0 group-hover/name:opacity-100 transition-opacity" />
             </button>

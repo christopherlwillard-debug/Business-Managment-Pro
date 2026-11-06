@@ -163,6 +163,13 @@ export function partitionWebsiteMediaFiles<T extends { type: string; name: strin
   return { uploadable, unsupported };
 }
 
+/** Consume the one-shot rename-on-blur permission; Escape cancels and Enter blurs to commit exactly once. */
+export function consumeWebsiteRenameBlurCommit(state: { current: boolean }): boolean {
+  const shouldCommit = state.current;
+  state.current = false;
+  return shouldCommit;
+}
+
 /** Scope public-site cache entries to the requested page as well as the site and preview mode. */
 export function getPublicSiteQueryKey(
   slug: string | undefined,

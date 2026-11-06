@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
 
@@ -30,6 +30,21 @@ describe("Website Studio public navigation safety", () => {
       { id: "nav-link-1", label: "Services", href: "/services" },
     ]);
     expect(getSafePublicNavLinks({ navLinks: [] })).toEqual([]);
+  });
+});
+
+describe("Website Studio rename blur handling", () => {
+  it("commits once when Enter moves focus away from a rename field", () => {
+    const shouldCommitOnBlur = { current: true };
+    expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(true);
+    expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(false);
+  });
+
+  it("does not commit when Escape cancels a rename", () => {
+    const shouldCommitOnBlur = { current: false };
+    expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(false);
+    shouldCommitOnBlur.current = true;
+    expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(true);
   });
 });
 
