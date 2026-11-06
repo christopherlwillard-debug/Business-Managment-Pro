@@ -553,7 +553,7 @@ router.post("/publish", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections?: unknown; settings?: unknown };
+  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
   let validatedSections: Array<Record<string, unknown>> | undefined;
   let validatedSettings: Record<string, unknown> | undefined;
   if (sections !== undefined && sections !== null) {
@@ -951,7 +951,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
   const [biz] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
-  const { name, phone, email, serviceType, message, fieldValues, labeledFields } = req.body as {
+  const { name, phone, email, serviceType, message, fieldValues, labeledFields } = getWebsiteRequestBody(req.body) as {
     name?: string; phone?: string; email?: string; serviceType?: string; message?: string;
     fieldValues?: Record<string, string>;
     labeledFields?: Record<string, string>;
@@ -1065,7 +1065,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
 
   const heading = (depositSection.content.heading as string) || "Deposit";
 
-  const { returnUrl, customAmount } = req.body as { returnUrl?: string; customAmount?: number };
+  const { returnUrl, customAmount } = getWebsiteRequestBody(req.body) as { returnUrl?: string; customAmount?: number };
 
   let amount = configuredAmount;
   if (customAmount !== undefined) {
@@ -1117,7 +1117,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "Payments are not configured for this site." });
   }
 
-  const { customerName, customerEmail, customerPhone, customerNotes, customAmount, returnUrl } = req.body as {
+  const { customerName, customerEmail, customerPhone, customerNotes, customAmount, returnUrl } = getWebsiteRequestBody(req.body) as {
     customerName?: string;
     customerEmail?: string;
     customerPhone?: string;
@@ -1371,7 +1371,7 @@ Return ONLY the copy text, no quotes, no explanation, no markdown.`;
  *   2. Structured: { field, businessContext, currentText? } — returns { result }
  */
 router.post("/generate-copy", wrapAsync(async (req, res) => {
-  const body = req.body as {
+  const body = getWebsiteRequestBody(req.body) as {
     prompt?: string;
     field?: string;
     businessContext?: BusinessContext;
@@ -1498,7 +1498,7 @@ const IMPROVE_TONE_INSTRUCTIONS: Record<string, string> = {
 const VALID_TONES = new Set(Object.keys(IMPROVE_TONE_INSTRUCTIONS));
 
 router.post("/improve-copy", wrapAsync(async (req, res) => {
-  const { text, tone, context } = req.body as {
+  const { text, tone, context } = getWebsiteRequestBody(req.body) as {
     text?: string;
     tone?: string;
     context?: BusinessContext;
@@ -1916,7 +1916,7 @@ Return JSON with: heading.`;
  * Response: { sections }
  */
 router.post("/generate-site-copy", wrapAsync(async (req, res) => {
-  const { sections, businessContext } = req.body as {
+  const { sections, businessContext } = getWebsiteRequestBody(req.body) as {
     sections?: SectionForCopy[];
     businessContext?: BusinessContext;
   };
@@ -2054,7 +2054,7 @@ router.post("/suggest-layout", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, businessName } = req.body as { sections?: any[]; businessName?: string };
+  const { sections, businessName } = getWebsiteRequestBody(req.body) as { sections?: any[]; businessName?: string };
   if (!Array.isArray(sections) || sections.length === 0) {
     return res.status(400).json({ error: "sections array required" });
   }
@@ -2156,7 +2156,7 @@ router.get("/industry-profiles", wrapAsync(async (_req, res) => {
  * Response: { profile, sections, settings }
  */
 router.post("/generate-full-site", wrapAsync(async (req, res) => {
-  const { businessType, businessName, phone, email, includeOptional } = req.body as {
+  const { businessType, businessName, phone, email, includeOptional } = getWebsiteRequestBody(req.body) as {
     businessType?: string;
     businessName?: string;
     phone?: string;
@@ -2287,7 +2287,7 @@ router.post("/upload-favicon", wrapAsync(async (req, res) => {
 router.post("/upload-card-image", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "image");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
-  const { businessId: rawBusinessId } = req.body as { businessId?: number };
+  const { businessId: rawBusinessId } = getWebsiteRequestBody(req.body) as { businessId?: number };
   const businessId = Number(rawBusinessId);
   if (!businessId || isNaN(businessId)) {
     return res.status(400).json({ error: "Valid businessId required" });
@@ -3088,7 +3088,7 @@ router.get("/saved-sections", wrapAsync(async (req, res) => {
 
 router.post("/saved-sections", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.body.businessId);
-  const { name, sectionType, content, blockStyle } = req.body as {
+  const { name, sectionType, content, blockStyle } = getWebsiteRequestBody(req.body) as {
     name: string; sectionType: string;
     content: Record<string, unknown>; blockStyle?: Record<string, unknown>;
   };
@@ -3117,7 +3117,7 @@ router.post("/saved-sections", wrapAsync(async (req, res) => {
 router.patch("/saved-sections/:id", wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id as string);
   const businessId = parseInt(req.body.businessId);
-  const { name } = req.body as { name: string };
+  const { name } = getWebsiteRequestBody(req.body) as { name: string };
   if (!name?.trim()) return res.status(400).json({ error: "name required" });
   const [row] = await db
     .update(savedSectionsTable)
@@ -3222,7 +3222,7 @@ router.post("/generate-landing-page", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, customDescription, businessContext: ctxBody } = req.body as {
+  const { type, customDescription, businessContext: ctxBody } = getWebsiteRequestBody(req.body) as {
     type: string;
     customDescription?: string;
     businessContext?: BusinessContext;
@@ -3653,7 +3653,7 @@ router.post("/build-section", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { prompt: userPrompt, businessContext: ctxBody } = req.body as {
+  const { prompt: userPrompt, businessContext: ctxBody } = getWebsiteRequestBody(req.body) as {
     prompt?: string;
     businessContext?: BusinessContext;
   };
@@ -4005,7 +4005,7 @@ router.post("/check-accessibility", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as {
+  const { sections, settings } = getWebsiteRequestBody(req.body) as {
     sections?: SectionInput[];
     settings?: Record<string, unknown>;
   };
@@ -4464,7 +4464,7 @@ router.post("/generate-marketing", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, promoHint } = req.body as { type?: string; promoHint?: string };
+  const { type, promoHint } = getWebsiteRequestBody(req.body) as { type?: string; promoHint?: string };
   if (!type) return res.status(400).json({ error: "type required" });
 
   const validTypes: MarketingContentType[] = [
@@ -4564,7 +4564,7 @@ router.post("/marketing-pdf", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { type, content } = req.body as { type?: string; content?: string };
+  const { type, content } = getWebsiteRequestBody(req.body) as { type?: string; content?: string };
   if (!type || !content) return res.status(400).json({ error: "type and content required" });
 
   const printTypes = ["flyer", "door-hanger", "business-card"];
@@ -4798,7 +4798,7 @@ router.post("/refresh-analysis", wrapAsync(async (req, res) => {
     settings: clientSettings,
     businessContext,
     lastRefreshedAt,
-  } = req.body as {
+  } = getWebsiteRequestBody(req.body) as {
     sectionSummary?: SectionSummaryItem[];
     settings?: { brandColor?: string; fontFamily?: string; logoUrl?: string };
     businessContext?: { name?: string; businessType?: string; location?: string; services?: string[] } | null;
@@ -4889,7 +4889,7 @@ router.post("/templates", wrapAsync(async (req, res) => {
   if (!businessId || isNaN(businessId)) {
     return res.status(400).json({ error: "businessId required" });
   }
-  const { name, description, brandColor, settings, sections } = req.body as {
+  const { name, description, brandColor, settings, sections } = getWebsiteRequestBody(req.body) as {
     name: string;
     description?: string;
     brandColor?: string;
@@ -5010,7 +5010,7 @@ function buildGenerateTemplatePrompt(description: string, businessType?: string,
 }
 
 router.post("/generate-template", wrapAsync(async (req, res) => {
-  const { description, businessType, style } = req.body as {
+  const { description, businessType, style } = getWebsiteRequestBody(req.body) as {
     description: string;
     businessType?: string;
     style?: string;
@@ -5116,7 +5116,7 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
 // untouched. The caller supplies the current template as context so the copy
 // remains consistent with the selected business and visual direction.
 router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { sectionType, section, templateContext } = req.body as {
+  const { sectionType, section, templateContext } = getWebsiteRequestBody(req.body) as {
     sectionType?: string;
     section?: { id?: string; type?: string; enabled?: boolean; order?: number; content?: Record<string, unknown> };
     templateContext?: { name?: string; description?: string; style?: string; brandColor?: string; sections?: unknown[] };
@@ -5652,7 +5652,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { manufacturers, businessContext } = req.body as {
+  const { manufacturers, businessContext } = getWebsiteRequestBody(req.body) as {
     manufacturers?: string[];
     businessContext?: { businessName?: string; location?: string; phone?: string; email?: string; services?: string[] } | null;
   };
@@ -5760,7 +5760,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
 // Body: { businessId, sectionType, sectionContent }
 // Response: { content } — the generated copy patch (merge into the existing section content)
 router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { businessId, sectionType, sectionContent } = req.body as {
+  const { businessId, sectionType, sectionContent } = getWebsiteRequestBody(req.body) as {
     businessId?: number;
     sectionType?: string;
     sectionContent?: Record<string, unknown>;
