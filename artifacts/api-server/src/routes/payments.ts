@@ -11,21 +11,21 @@ export function parseSubcontractorPaymentAmount(value: unknown): string | null {
   const text = typeof value === "number" && Number.isFinite(value)
     ? String(value)
     : typeof value === "string" ? value.trim() : "";
-  if (!/^(?:0|[1-9]\\d{0,9})(?:\\.\\d{1,2})?$/.test(text)) return null;
+  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(text)) return null;
   const amount = Number(text);
   if (!Number.isFinite(amount) || amount <= 0 || amount > 9_999_999_999.99) return null;
   return amount.toFixed(2);
 }
 
 export function isValidPaymentDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 function parsePaymentYear(value: unknown): number | null {
   const year = typeof value === "number" ? value
-    : typeof value === "string" && /^\\d{4}$/.test(value) ? Number(value)
+    : typeof value === "string" && /^\d{4}$/.test(value) ? Number(value)
     : NaN;
   return Number.isInteger(year) && year >= 2000 && year <= 2200 ? year : null;
 }
@@ -227,12 +227,6 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-
-        ...(description !== undefined && { description: description || null }),
-        ...(invoiceNumber !== undefined && { invoiceNumber: invoiceNumber || null }),
-        ...(notes !== undefined && { notes: notes || null }),
-        ...(paymentMethod !== undefined && { paymentMethod: paymentMethod || null }),
-      })
 
 
 // DELETE /api/payments/:id - delete payment
