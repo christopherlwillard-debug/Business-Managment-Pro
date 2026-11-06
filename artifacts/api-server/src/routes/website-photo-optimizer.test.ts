@@ -93,6 +93,11 @@ describe("imageProcessor — website media upload validation", () => {
     await expect(detectWebsiteMediaMimeType(svg)).resolves.toBe("image/svg+xml");
   });
 
+  it("rejects images whose decoded dimensions exceed the processing limit", async () => {
+    const hugeSvg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="100000" height="100000"><rect width="100%" height="100%"/></svg>');
+    await expect(detectWebsiteMediaMimeType(hugeSvg)).resolves.toBeNull();
+  });
+
   it("rejects malformed and non-image file bytes", async () => {
     await expect(detectWebsiteMediaMimeType(Buffer.from("<html><script>alert(1)</script></html>"))).resolves.toBeNull();
     await expect(detectWebsiteMediaMimeType(Buffer.from("not an image"))).resolves.toBeNull();
