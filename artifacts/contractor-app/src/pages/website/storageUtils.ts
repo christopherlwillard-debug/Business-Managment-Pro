@@ -46,7 +46,7 @@ export async function waitForWebsiteSaveQueue(options: {
 export function patchSectionBlockStyle<T extends { id: string; blockStyle?: object }>(
   sections: T[],
   sectionId: string,
-  patch: Partial<NonNullable<T["blockStyle"]>>,
+  patch: object,
 ): T[] {
   return sections.map(section => section.id === sectionId
     ? { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } as NonNullable<T["blockStyle"]> }
@@ -58,7 +58,7 @@ export function completeSectionBlockStyleUpload<T extends { id: string; blockSty
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  patch: Partial<NonNullable<T["blockStyle"]>>,
+  patch: object,
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
@@ -74,22 +74,23 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  originalBlockStyle: T["blockStyle"],
+  originalBlockStyle: object | undefined,
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     changed = true;
     const nextStyle = { ...(section.blockStyle ?? {}) } as NonNullable<T["blockStyle"]>;
-    if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgImageUrl")) {
-      nextStyle.bgImageUrl = originalBlockStyle.bgImageUrl;
+    const originalStyle = originalBlockStyle as Record<string, unknown> | undefined;
+    if (originalStyle && Object.prototype.hasOwnProperty.call(originalStyle, "bgImageUrl")) {
+      nextStyle.bgImageUrl = originalStyle.bgImageUrl as typeof nextStyle.bgImageUrl;
     } else {
       delete nextStyle.bgImageUrl;
     }
     // Restore the previous mode only while this upload still owns the preview.
     if (nextStyle.bgType === "image") {
-      if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgType")) {
-        nextStyle.bgType = originalBlockStyle.bgType;
+      if (originalStyle && Object.prototype.hasOwnProperty.call(originalStyle, "bgType")) {
+        nextStyle.bgType = originalStyle.bgType as typeof nextStyle.bgType;
       } else {
         delete nextStyle.bgType;
       }
