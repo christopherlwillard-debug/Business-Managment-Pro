@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -94,5 +94,18 @@ describe("Website Studio page input validation", () => {
     expect(validatePageSlugs(undefined)).toEqual({ ok: true, pages: [] });
     expect(validatePageSlugs(null)).toEqual({ ok: true, pages: [] });
     expect(validatePageSlugs([])).toEqual({ ok: true, pages: [] });
+  });
+});
+
+describe("Website Studio dealer page inputs", () => {
+  it("filters unknown IDs and deduplicates manufacturer selections", () => {
+    expect(normalizeDealerManufacturerIds([
+      "clayton-homes", "cavco", "clayton-homes", "unknown", 42, null,
+    ])).toEqual(["clayton-homes", "cavco"]);
+  });
+
+  it("returns no manufacturers for malformed input", () => {
+    expect(normalizeDealerManufacturerIds("clayton-homes")).toEqual([]);
+    expect(normalizeDealerManufacturerIds(null)).toEqual([]);
   });
 });
