@@ -340,7 +340,9 @@ export default function PublicSite() {
   let bodySections: Section[];
   if (pageSlug) {
     const targetPage = additionalPages.find(p => p.slug === pageSlug);
-    bodySections = targetPage ? targetPage.sections.filter(s => s.enabled) : [];
+    bodySections = targetPage && Array.isArray(targetPage.sections)
+      ? targetPage.sections.filter(s => s.enabled)
+      : [];
   } else {
     bodySections = homeBodySections;
   }
