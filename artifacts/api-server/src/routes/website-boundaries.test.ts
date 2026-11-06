@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -97,6 +97,29 @@ describe("Website Studio persisted section boundaries", () => {
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { projects: [null, { photos: [null, { photoObjectPath: objectPath }] }] } }], objectPath)).toBe(true);
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: "bad" } }], objectPath)).toBe(false);
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [{ photoObjectPath: objectPath }] } }], "https://example.com/image.png")).toBe(false);
+  });
+});
+
+describe("Website Studio public manifest safety", () => {
+  it("uses safe defaults for malformed settings and ignores unsafe logo URLs", () => {
+    const biz = { name: "Example Business", slug: "example-business" };
+    const empty = buildManifest(biz, null);
+    expect(empty.theme_color).toBe("#1a1a2e");
+    expect(empty.background_color).toBe("#1a1a2e");
+    expect(empty.icons).toEqual([{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any maskable" }]);
+    const unsafe = buildManifest(biz, { logoUrl: "javascript:alert(1)", brandColor: "red" });
+    expect(unsafe.theme_color).toBe("#1a1a2e");
+    expect(unsafe.icons).toHaveLength(1);
+  });
+
+  it("keeps safe relative and HTTPS logo URLs", () => {
+    const relative = buildManifest({ name: "Site", slug: "site" }, { logoUrl: "/logo.png", brandColor: "#123abc" });
+    expect(relative.theme_color).toBe("#123abc");
+    expect(relative.icons).toHaveLength(2);
+    const remote = buildManifest({ name: "Site", slug: "site" }, { logoUrl: "https://cdn.example.com/logo.png" });
+    expect(remote.icons).toHaveLength(2);
+    const malformed = buildManifest({ name: "Site", slug: "site" }, { logoUrl: "/\\\\evil.example/logo.png" });
+    expect(malformed.icons).toHaveLength(1);
   });
 });
 
