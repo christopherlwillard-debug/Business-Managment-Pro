@@ -4901,24 +4901,37 @@ router.post("/templates", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
   const { name, description, brandColor, settings, sections } = getWebsiteRequestBody(req.body) as {
-    name: string;
-    description?: string;
-    brandColor?: string;
-    settings?: Record<string, unknown>;
-    sections?: unknown[];
+    name?: unknown;
+    description?: unknown;
+    brandColor?: unknown;
+    settings?: unknown;
+    sections?: unknown;
   };
-  if (!name || !Array.isArray(sections)) {
-    return res.status(400).json({ error: "name and sections required" });
+  if (typeof name !== "string" || !name.trim() || [...name].length > 255) {
+    return res.status(400).json({ error: "Template name is required and must be 255 characters or fewer." });
   }
+  if (description !== undefined && typeof description !== "string") {
+    return res.status(400).json({ error: "Template description must be text." });
+  }
+  if (brandColor !== undefined && (typeof brandColor !== "string" || !/^#[0-9a-fA-F]{6}$/.test(brandColor))) {
+    return res.status(400).json({ error: "Template brand color must be a six-digit hex color." });
+  }
+  const sectionValidation = validateWebsiteSections(sections);
+  if (!sectionValidation.ok) return res.status(400).json({ error: sectionValidation.error });
+  const settingsValidation = settings === undefined
+    ? { ok: true as const, settings: {} }
+    : validateWebsiteSettings(settings);
+  if (!settingsValidation.ok) return res.status(400).json({ error: settingsValidation.error });
+  const validSections = sectionValidation.sections;
   const [row] = await db.execute(sql`
     INSERT INTO website_templates (business_id, name, description, brand_color, settings, sections, ai_generated)
     VALUES (
       ${businessId},
-      ${name},
-      ${description ?? ""},
-      ${brandColor ?? "#1a1a2e"},
-      ${JSON.stringify(settings ?? {})}::jsonb,
-      ${JSON.stringify(sections)}::jsonb,
+      ${name.trim()},
+      ${(description as string | undefined) ?? ""},
+      ${(brandColor as string | undefined) ?? "#1a1a2e"},
+      ${JSON.stringify(settingsValidation.settings)}::jsonb,
+      ${JSON.stringify(validSections)}::jsonb,
       true
     )
     RETURNING id, business_id, name, description, brand_color, settings, sections, ai_generated, created_at
@@ -4928,14 +4941,16 @@ router.post("/templates", wrapAsync(async (req, res) => {
 
 // ── DELETE /templates/:id ─────────────────────────────────────────────────────
 router.delete("/templates/:id", wrapAsync(async (req, res) => {
-  const businessId = parseInt(req.query.businessId as string);
-  const templateId = parseInt(req.params.id as string);
-  if (!businessId || isNaN(businessId) || isNaN(templateId)) {
-    return res.status(400).json({ error: "businessId and id required" });
+  const businessId = parsePositiveDatabaseId(req.query.businessId);
+  const templateId = parsePositiveDatabaseId(req.params.id);
+  if (!businessId || !templateId) {
+    return res.status(400).json({ error: "Valid businessId and template ID required" });
   }
-  await db.execute(sql`
+  const deleted = await db.execute(sql`
     DELETE FROM website_templates WHERE id = ${templateId} AND business_id = ${businessId}
+    RETURNING id
   `);
+  if (!deleted.rows.length) return res.status(404).json({ error: "Template not found" });
   return res.json({ ok: true });
 }));
 
