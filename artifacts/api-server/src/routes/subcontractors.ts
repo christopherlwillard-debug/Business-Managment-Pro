@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable, jobMileageReimbursementsTable } from "@workspace/db/schema";
-import { eq, and, sql, inArray, ne, gte, lte } from "drizzle-orm";
+import { subcontractorsTable, settingsTable, expensesTable, paymentsTable, generated1099sTable, mileageLogsTable, jobsTable, jobSubHoursTable, jobSubcontractorsTable, invoicesTable, subPaymentRecordsTable, jobMileageReimbursementsTable, businessesTable } from "@workspace/db/schema";
+import { eq, and, or, isNull, sql, inArray, ne, gte, lte } from "drizzle-orm";
 
 const router = Router();
 
@@ -259,9 +259,21 @@ async function computeHasLinkedRecords(subcontractorId: number): Promise<boolean
 export async function computeYtd(subcontractorId: number, year: number, businessLine?: string | null): Promise<number> {
   const startDate = `${year}-01-01`;
   const endDate = `${year}-12-31`;
+  const normalizedBusinessLine = businessLine === "asphalt" ? "asphalt_sealing"
+    : businessLine === "contracting" ? "general_contracting"
+    : businessLine ?? null;
+  let businessId: number | null = null;
+  if (normalizedBusinessLine) {
+    const [business] = await db.select({ id: businessesTable.id })
+      .from(businessesTable)
+      .where(eq(businessesTable.slug, normalizedBusinessLine))
+      .limit(1);
+    if (!business) return 0;
+    businessId = business.id;
+  }
 
   // sub_payment_records: pay-worker payments (new path). Exclude reversals.
-  // Filter by businessLine when provided so cross-entity totals aren't combined.
+  // Canonical businessId is authoritative; businessLine is only a legacy fallback.
   const [sprRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)), 0)` })
     .from(subPaymentRecordsTable)
@@ -271,7 +283,12 @@ export async function computeYtd(subcontractorId: number, year: number, business
         gte(subPaymentRecordsTable.paymentDate, startDate),
         lte(subPaymentRecordsTable.paymentDate, endDate),
         sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-        businessLine ? eq(subPaymentRecordsTable.businessLine, businessLine) : undefined,
+        businessId != null
+          ? or(
+              eq(subPaymentRecordsTable.businessId, businessId),
+              and(isNull(subPaymentRecordsTable.businessId), eq(subPaymentRecordsTable.businessLine, normalizedBusinessLine!)),
+            )
+          : undefined,
       )
     );
 
@@ -289,23 +306,26 @@ export async function computeYtd(subcontractorId: number, year: number, business
         gte(expensesTable.date, startDate),
         lte(expensesTable.date, endDate),
         sql`${expensesTable.jobSubHoursId} IS NULL`,
-        businessLine ? eq(expensesTable.businessLine, businessLine) : undefined,
+        businessId != null
+          ? or(
+              eq(expensesTable.businessId, businessId),
+              and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, normalizedBusinessLine!)),
+            )
+          : undefined,
       )
     );
 
-  // paymentsTable: legacy direct/manual payments. This table predates multi-business
-  // support and has no businessLine column, so these records are always included in
-  // the YTD total regardless of the businessLine filter. New payments use
-  // subPaymentRecordsTable (which does carry businessLine) and old-path manual
-  // expenses also carry businessLine, so only truly legacy paymentsTable rows
-  // remain unscoped. This is an accepted limitation documented in Task #1884.
+  // Legacy direct/manual payments also carry businessId. Do not include
+  // null-owned payments in a selected-business YTD total because they cannot be
+  // attributed safely to one business.
   const [payRow] = await db
     .select({ total: sql<string>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
     .from(paymentsTable)
     .where(
       and(
         eq(paymentsTable.subcontractorId, subcontractorId),
-        eq(paymentsTable.year, year)
+        eq(paymentsTable.year, year),
+        businessId != null ? eq(paymentsTable.businessId, businessId) : undefined,
       )
     );
 
