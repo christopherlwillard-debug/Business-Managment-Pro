@@ -185,6 +185,52 @@ export function getWebsiteSectionTextItems(value: unknown): Array<{ title: strin
   );
 }
 
+/** Normalize string arrays from saved profile sections before using them in the website wizard. */
+export function getWebsiteStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, maxItems).flatMap(item => {
+    if (typeof item !== "string") return [];
+    const text = item.trim().slice(0, maxLength);
+    return text ? [text] : [];
+  });
+}
+
+/** Keep only structurally valid social links from saved website sections. */
+export function getWebsiteSocialLinks(value: unknown): Array<{ platform: string; url: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const link = item as Record<string, unknown>;
+    const platform = getWebsiteContactText(link.platform, 40);
+    const url = getWebsiteContactText(link.url, 2048);
+    if (!platform || !url) return [];
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return [];
+    } catch {
+      return [];
+    }
+    return [{ platform, url }];
+  });
+}
+
+/** Normalize business-hours rows so malformed legacy settings cannot break wizard prefill. */
+export function getWebsiteWorkingHours(value: unknown): Array<{ day: string; open: string; close: string; closed: boolean }> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 7).flatMap(item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const row = item as Record<string, unknown>;
+    const day = getWebsiteContactText(row.day, 20);
+    if (!day) return [];
+    return [{
+      day,
+      open: getWebsiteContactText(row.open, 20) ?? "",
+      close: getWebsiteContactText(row.close, 20) ?? "",
+      closed: typeof row.closed === "boolean" ? row.closed : false,
+    }];
+  });
+}
+
 /** Check a portfolio photo reference without trusting persisted nested array shapes. */
 export function hasWebsitePortfolioPhoto(sectionsValue: unknown, objectPath: unknown): boolean {
   if (!isWebsiteStoredObjectPath(objectPath, "/objects/uploads/website-portfolio-photos/")) return false;
@@ -585,7 +631,7 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
 
   type SectionRow = { type: string; content: Record<string, unknown> };
   const sections = getWebsiteSectionList(config?.sections) as SectionRow[];
-  const settings = (config?.settings ?? {}) as Record<string, unknown>;
+  const settings = getWebsiteRequestBody(config?.settings);
 
   // ── 3. Extract from sections ───────────────────────────────────────────────
   // Services section items
@@ -595,25 +641,24 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
 
   // Service-area section
   const serviceAreaSection = sections.find(s => s.type === "service-area");
-  const coverageAreas  = (serviceAreaSection?.content?.areas          as string[] | undefined) ?? [];
-  const coverageStates = (serviceAreaSection?.content?.selectedStates as string[] | undefined) ?? [];
+  const coverageAreas = getWebsiteStringList(serviceAreaSection?.content?.areas);
+  const coverageStates = getWebsiteStringList(serviceAreaSection?.content?.selectedStates, 60, 80);
 
   // Footer section — social links
   const footerSection = sections.find(s => s.type === "footer");
-  type SocialLink = { platform: string; url: string };
-  const socialLinks = (footerSection?.content?.socialLinks as SocialLink[] | undefined) ?? [];
+  const socialLinks = getWebsiteSocialLinks(footerSection?.content?.socialLinks);
 
   // Business-hours section
-  type DayHours = { day: string; open: string; close: string; closed: boolean };
   const hoursSection = sections.find(s => s.type === "business-hours");
-  const workingHours = (hoursSection?.content?.hours as DayHours[] | undefined) ?? null;
+  const normalizedWorkingHours = getWebsiteWorkingHours(hoursSection?.content?.hours);
+  const workingHours = normalizedWorkingHours.length > 0 ? normalizedWorkingHours : null;
 
   // ── 4. Brand settings ──────────────────────────────────────────────────────
-  const brandColor = (settings.brandColor as string | undefined) ?? null;
-  const fontFamily = (settings.fontFamily as string | undefined) ?? null;
-  const themeId    = (settings.themeId    as string | undefined) ?? null;
+  const brandColor = getWebsiteContactText(settings.brandColor, 20) ?? null;
+  const fontFamily = getWebsiteContactText(settings.fontFamily, 80) ?? null;
+  const themeId = getWebsiteContactText(settings.themeId, 100) ?? null;
   // Prefer website logoUrl from settings; fall back to the business row
-  const logoUrl    = (settings.logoUrl as string | undefined) || biz.logoUrl || null;
+  const logoUrl = getWebsiteContactText(settings.logoUrl, 2048) || biz.logoUrl || null;
 
   // ── 5. Build address string ────────────────────────────────────────────────
   // Assemble full address: street + city/state + zip (omit blank parts)
@@ -1801,8 +1846,8 @@ router.post("/generate-seo", wrapAsync(async (req, res) => {
 
   // Extract contact info from footer or business record
   const footerSection = sections.find(s => s.type === "footer");
-  const phone = (footerSection?.content?.phone as string | undefined) || biz.phone || "";
-  const email = (footerSection?.content?.email as string | undefined) || biz.email || "";
+  const phone = getWebsiteContactText(footerSection?.content?.phone, 100) || biz.phone || "";
+  const email = getWebsiteContactText(footerSection?.content?.email, 320) || biz.email || "";
 
   const location = [biz.city, biz.state].filter(Boolean).join(", ");
 
