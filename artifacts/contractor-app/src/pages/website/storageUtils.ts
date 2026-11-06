@@ -43,10 +43,13 @@ export async function waitForWebsiteSaveQueue(options: {
 }
 
 /** Apply a background-image patch to the latest section array without replacing unrelated edits. */
-export function patchSectionBlockStyle<T extends { id: string; blockStyle?: Record<string, unknown> }>(
+export function patchSectionBlockStyle<
+  T extends { id: string; blockStyle?: S },
+  S extends object,
+>(
   sections: T[],
   sectionId: string,
-  patch: Record<string, unknown>,
+  patch: Partial<S>,
 ): T[] {
   return sections.map(section => section.id === sectionId
     ? { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } }
@@ -54,11 +57,14 @@ export function patchSectionBlockStyle<T extends { id: string; blockStyle?: Reco
 }
 
 /** Apply a background-image result only while its own optimistic preview is still current. */
-export function completeSectionBlockStyleUpload<T extends { id: string; blockStyle?: Record<string, unknown> }>(
+export function completeSectionBlockStyleUpload<
+  T extends { id: string; blockStyle?: S },
+  S extends { bgImageUrl?: string },
+>(
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  patch: Record<string, unknown>,
+  patch: Partial<S>,
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
@@ -70,17 +76,20 @@ export function completeSectionBlockStyleUpload<T extends { id: string; blockSty
 }
 
 /** Roll back only this upload's optimistic background fields; preserve all concurrent style edits. */
-export function restoreSectionBlockStylePreview<T extends { id: string; blockStyle?: Record<string, unknown> }>(
+export function restoreSectionBlockStylePreview<
+  T extends { id: string; blockStyle?: S },
+  S extends { bgImageUrl?: string; bgType?: string },
+>(
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  originalBlockStyle: Record<string, unknown> | undefined,
+  originalBlockStyle: S | undefined,
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     changed = true;
-    const nextStyle = { ...(section.blockStyle ?? {}) };
+    const nextStyle = { ...(section.blockStyle ?? {}) } as S;
     if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgImageUrl")) {
       nextStyle.bgImageUrl = originalBlockStyle.bgImageUrl;
     } else {
