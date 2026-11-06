@@ -914,7 +914,7 @@ export function buildManifest(biz: { name: string; slug: string }, settingsValue
     : "#1a1a2e";
   const logoUrl = typeof settings.logoUrl === "string" ? settings.logoUrl : "";
   const isSafeLogoUrl = logoUrl.startsWith("https://") ||
-    (logoUrl.startsWith("/") && !logoUrl.startsWith("//") && !logoUrl.includes("\\\\"));
+    (logoUrl.startsWith("/") && !logoUrl.startsWith("//") && !logoUrl.includes("\\") && !/[\u0000-\u001f\u007f]/.test(logoUrl));
   const icons: unknown[] = [];
   if (logoUrl && isSafeLogoUrl) {
     icons.push({ src: logoUrl, sizes: "any", type: "image/png", purpose: "any" });
