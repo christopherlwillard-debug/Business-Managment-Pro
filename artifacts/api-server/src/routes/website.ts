@@ -69,6 +69,42 @@ export function parseWebsiteMediaFolderId(value: unknown): number | null | undef
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
 }
 
+/** Validate media metadata edits before sending values to varchar/integer columns. */
+export function validateWebsiteMediaPatch(value: unknown):
+  | { ok: true; update: { displayName?: string | null; alt?: string | null; folderId?: number | null } }
+  | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Media update must be an object." };
+  }
+  const input = value as Record<string, unknown>;
+  const update: { displayName?: string | null; alt?: string | null; folderId?: number | null } = {};
+  if ("displayName" in input) {
+    if (input.displayName !== null && typeof input.displayName !== "string") {
+      return { ok: false, error: "Display name must be text or null." };
+    }
+    if (typeof input.displayName === "string" && [...input.displayName].length > 255) {
+      return { ok: false, error: "Display names must be 255 characters or fewer." };
+    }
+    update.displayName = typeof input.displayName === "string" && input.displayName.length > 0 ? input.displayName : null;
+  }
+  if ("alt" in input) {
+    if (input.alt !== null && typeof input.alt !== "string") {
+      return { ok: false, error: "Alt text must be text or null." };
+    }
+    if (typeof input.alt === "string" && [...input.alt].length > 255) {
+      return { ok: false, error: "Alt text must be 255 characters or fewer." };
+    }
+    update.alt = typeof input.alt === "string" && input.alt.length > 0 ? input.alt : null;
+  }
+  if ("folderId" in input) {
+    if (input.folderId !== null && (!Number.isSafeInteger(input.folderId) || (input.folderId as number) <= 0)) {
+      return { ok: false, error: "Folder ID must be a positive integer or null." };
+    }
+    update.folderId = input.folderId as number | null;
+  }
+  if (Object.keys(update).length === 0) return { ok: false, error: "Nothing to update." };
+  return { ok: true, update };
+}
 /** Validate folder names against the database's varchar(100) column before writing. */
 export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name: string } | { ok: false; error: string } {
   if (typeof value !== "string") return { ok: false, error: "Folder name must be text." };
@@ -2537,25 +2573,15 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const { displayName, folderId, alt } = req.body as {
-    displayName?: string | null;
-    folderId?: number | null;
-    /** Accessibility alt text (max 255 chars). */
-    alt?: string | null;
-  };
-  const updateValues: Record<string, unknown> = {};
-  if (displayName !== undefined) updateValues.displayName = displayName || null;
-  if (alt !== undefined) updateValues.alt = alt ? alt.slice(0, 255) : null;
-  if (folderId !== undefined) {
-    if (folderId !== null) {
-      const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
-        .from(websiteMediaFoldersTable)
-        .where(and(eq(websiteMediaFoldersTable.id, folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
-      if (!folder) return res.status(400).json({ error: "Invalid folder" });
-    }
-    updateValues.folderId = folderId ?? null;
+  const validation = validateWebsiteMediaPatch(req.body);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const updateValues = validation.update;
+  if (updateValues.folderId !== undefined && updateValues.folderId !== null) {
+    const [folder] = await db.select({ id: websiteMediaFoldersTable.id })
+      .from(websiteMediaFoldersTable)
+      .where(and(eq(websiteMediaFoldersTable.id, updateValues.folderId), eq(websiteMediaFoldersTable.businessId, businessId)));
+    if (!folder) return res.status(400).json({ error: "Invalid folder" });
   }
-  if (Object.keys(updateValues).length === 0) return res.status(400).json({ error: "Nothing to update" });
   const [updated] = await db
     .update(websiteMediaTable)
     .set(updateValues as any)
