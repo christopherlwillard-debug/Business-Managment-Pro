@@ -2216,10 +2216,11 @@ import { generateColorPalettes } from "../lib/colorPalette";
  * unbounded response bodies.
  */
 router.post("/suggest-colors", wrapAsync(async (req, res) => {
-  const { businessId, baseColor } = getWebsiteRequestBody(req.body) as {
-    businessId?: number;
+  const { businessId: rawBusinessId, baseColor } = getWebsiteRequestBody(req.body) as {
+    businessId?: unknown;
     baseColor?: string;
   };
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
 
   let dominantColors: string[] = [];
 
@@ -2308,7 +2309,7 @@ router.post("/upload-card-image", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "image");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   const { businessId: rawBusinessId } = getWebsiteRequestBody(req.body) as { businessId?: number };
-  const businessId = Number(rawBusinessId);
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
   if (!businessId) {
     return res.status(400).json({ error: "Valid businessId required" });
   }
@@ -5810,23 +5811,24 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
 // Body: { businessId, sectionType, sectionContent }
 // Response: { content } — the generated copy patch (merge into the existing section content)
 router.post("/regenerate-section", wrapAsync(async (req, res) => {
-  const { businessId, sectionType, sectionContent } = getWebsiteRequestBody(req.body) as {
-    businessId?: number;
+  const { businessId: rawBusinessId, sectionType, sectionContent } = getWebsiteRequestBody(req.body) as {
+    businessId?: unknown;
     sectionType?: string;
     sectionContent?: Record<string, unknown>;
   };
+  const businessId = parsePositiveDatabaseId(rawBusinessId);
 
-  if (!businessId || isNaN(Number(businessId))) return res.status(400).json({ error: "businessId required" });
+  if (!businessId) return res.status(400).json({ error: "Valid businessId required" });
   if (!sectionType) return res.status(400).json({ error: "sectionType required" });
 
-  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, Number(businessId)));
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
   if (!biz) return res.status(404).json({ error: "Business not found" });
 
   // Fetch existing website config for service area context
   const [config] = await db
     .select({ sections: websiteConfigsTable.sections })
     .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, Number(businessId)));
+    .where(eq(websiteConfigsTable.businessId, businessId));
 
   type ExRow = { type: string; content: Record<string, unknown> };
   const existingSections = (config?.sections ?? []) as ExRow[];
