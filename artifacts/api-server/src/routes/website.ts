@@ -323,9 +323,23 @@ function defaultSettings() {
 
 type SectionRow = { id: string; type: string; enabled: boolean; order: number; content: Record<string, unknown> };
 
-function normalizeSections(existing: SectionRow[]): SectionRow[] {
+export function normalizeSections(existing: unknown): SectionRow[] {
   const defaults = defaultSections() as SectionRow[];
-  const result = existing.map(s => {
+  const validExisting = Array.isArray(existing)
+    ? existing.filter((section): section is SectionRow =>
+        !!section && typeof section === "object" && !Array.isArray(section) &&
+        typeof section.type === "string" && !!section.type.trim() &&
+        !!section.content && typeof section.content === "object" && !Array.isArray(section.content)
+      )
+    : [];
+  const result = validExisting.map((raw, index) => {
+    const s: SectionRow = {
+      ...raw,
+      id: typeof raw.id === "string" && raw.id.trim() ? raw.id : `section-${index}`,
+      enabled: typeof raw.enabled === "boolean" ? raw.enabled : true,
+      order: typeof raw.order === "number" && Number.isFinite(raw.order) ? raw.order : index,
+      content: raw.content,
+    };
     if (s.type === "portfolio") {
       const c = s.content as any;
       if (!Array.isArray(c.projects)) {
