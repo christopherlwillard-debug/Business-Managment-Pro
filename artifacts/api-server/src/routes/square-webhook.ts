@@ -46,6 +46,12 @@ export function squareInvoiceBusinessCondition(
     : eq(invoicesTable.businessId, businessId);
 }
 
+/** Never choose an arbitrary client when a provider identifier is ambiguous. */
+export function chooseUniqueSquareClient<T>(matches: T[]): { client: T | undefined; ambiguous: boolean } {
+  if (matches.length === 1) return { client: matches[0], ambiguous: false };
+  return { client: undefined, ambiguous: matches.length > 1 };
+}
+
 /** Apply a Square receipt to the existing invoice aggregate using integer cents. */
 export function calculateSquareInvoicePayment(
   invoiceTotal: string | number | null,
@@ -364,16 +370,32 @@ async function handleSquarePayment(opts: {
   if (!recognized && squarePaymentId && amountMoney !== null) {
     // Try to match a client: Square customer ID → buyer email → client name
     let client: typeof clientsTable.$inferSelect | undefined;
+    let clientMatchAmbiguous = false;
     if (customerId) {
-      [client] = await tx.select().from(clientsTable).where(eq(clientsTable.squareCustomerId, customerId));
+      const matches = await tx.select().from(clientsTable)
+        .where(eq(clientsTable.squareCustomerId, customerId)).limit(2);
+      const match = chooseUniqueSquareClient(matches);
+      client = match.client;
+      clientMatchAmbiguous = match.ambiguous;
     }
-    if (!client && buyerEmail) {
+    if (!client && !clientMatchAmbiguous && buyerEmail) {
       const emailLower = buyerEmail.trim().toLowerCase();
-      [client] = await tx.select().from(clientsTable).where(ilike(clientsTable.email, emailLower));
+      const matches = await tx.select().from(clientsTable)
+        .where(ilike(clientsTable.email, emailLower)).limit(2);
+      const match = chooseUniqueSquareClient(matches);
+      client = match.client;
+      clientMatchAmbiguous = match.ambiguous;
     }
-    if (!client && buyerName) {
+    if (!client && !clientMatchAmbiguous && buyerName) {
       const nameLower = buyerName.trim();
-      [client] = await tx.select().from(clientsTable).where(ilike(clientsTable.name, nameLower));
+      const matches = await tx.select().from(clientsTable)
+        .where(ilike(clientsTable.name, nameLower)).limit(2);
+      const match = chooseUniqueSquareClient(matches);
+      client = match.client;
+      clientMatchAmbiguous = match.ambiguous;
+    }
+    if (clientMatchAmbiguous) {
+      console.warn(`Square payment ${squarePaymentId} has ambiguous client identity; recording as unassigned business income`);
     }
 
     const clientId = client?.id ?? null;
