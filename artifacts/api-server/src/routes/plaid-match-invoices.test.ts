@@ -107,7 +107,7 @@ vi.mock("./guards.js", () => ({
   getRequestUserId: (_req: any) => "user-1",
 }));
 
-const { default: plaidRouter } = await import("./plaid.js");
+const { default: plaidRouter, getPlaidInvoicePaymentStatus } = await import("./plaid.js");
 
 const app = express();
 app.use(express.json());
@@ -348,5 +348,17 @@ describe("POST /transactions/:txnId/match-invoices", () => {
       .send({ invoiceIds: [1, 2] });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/cannot match/i);
+  });
+});
+
+
+describe("Plaid invoice payment status vocabulary", () => {
+  it("uses partiallyPaid for an invoice with an outstanding balance", () => {
+    expect(getPlaidInvoicePaymentStatus(125, 500)).toBe("partiallyPaid");
+  });
+
+  it("uses paid only when the collected amount covers the invoice total", () => {
+    expect(getPlaidInvoicePaymentStatus(500, 500)).toBe("paid");
+    expect(getPlaidInvoicePaymentStatus(550, 500)).toBe("paid");
   });
 });
