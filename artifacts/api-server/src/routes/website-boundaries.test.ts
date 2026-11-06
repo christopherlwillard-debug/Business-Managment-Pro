@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -66,6 +66,32 @@ describe("Website Studio deposit validation", () => {
       { type: "deposit", enabled: false, content: { amount: 50 } },
       { type: "deposit", enabled: true, content: { amount: 75 } },
     ])).toEqual({ content: { amount: 75 } });
+  });
+});
+
+describe("Website Studio sitemap safety", () => {
+  it("filters and normalizes persisted sitemap page slugs", () => {
+    expect(getWebsiteSitemapPages([
+      null,
+      { slug: 42 },
+      { slug: "  About Us! " },
+      { slug: "home" },
+      { slug: "<script>alert(1)</script>" },
+    ])).toEqual([{ slug: "about-us", name: "about-us" }, { slug: "scriptalert1script", name: "scriptalert1script" }]);
+  });
+
+  it("escapes XML text and rejects non-host custom domain values", () => {
+    expect(escapeWebsiteXml("<site & 'name'>")).toBe("&lt;site &amp; &apos;name&apos;&gt;");
+    expect(getSafeWebsiteCustomDomain(" Example.COM. ")).toBe("example.com");
+    for (const value of ["https://example.com", "example.com/path", "evil.com\\r\\nInjected: yes", "localhost", null]) {
+      expect(getSafeWebsiteCustomDomain(value)).toBeNull();
+    }
+  });
+
+  it("normalizes sitemap slugs before serializing XML", () => {
+    const xml = buildSitemapXml("https://example.com", [{ slug: "../private", name: "Private" }, { slug: "About Us", name: "About" }]);
+    expect(xml).toContain("https://example.com/about-us");
+    expect(xml).not.toContain("../private");
   });
 });
 
