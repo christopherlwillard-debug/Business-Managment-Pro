@@ -3625,7 +3625,7 @@ function WebsiteEditor() {
       .find(section => section.id === sectionId)?.blockStyle as Record<string, unknown> | undefined;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
       patchSectionBlockStyle(pageSections, sectionId, { bgImageUrl: blobUrl, bgType: "image" }),
     ));
     try {
@@ -3649,7 +3649,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         // Apply only if this upload's preview is still current. Edits to the
         // section, another background selection, and other pages are preserved.
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           completeSectionBlockStyleUpload(pageSections, sectionId, blobUrl, {
             bgImageObjectPath: objectPath,
             bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
@@ -3663,7 +3663,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         // Restore only the optimistic background fields; never restore a stale
         // page snapshot or overwrite style edits made while the upload ran.
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           restoreSectionBlockStylePreview(pageSections, sectionId, blobUrl, originalBlockStyle),
         ));
         toast({ title: "Upload failed", variant: "destructive" });
@@ -3829,7 +3829,7 @@ function WebsiteEditor() {
       .find(section => section.id === sectionId && section.type === "about")?.content.photoUrl;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
       pageSections.map(section => section.id === sectionId && section.type === "about"
         ? { ...section, content: { ...section.content, photoUrl: blobUrl } }
         : section),
@@ -3852,7 +3852,7 @@ function WebsiteEditor() {
       finishWebsiteAssetUpload(upload.key);
       if (isCurrentWebsiteAssetUpload(upload)) {
         const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/about-photo`;
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           pageSections.map(section => section.id === sectionId && section.type === "about" && section.content.photoUrl === blobUrl
             ? { ...section, content: { ...section.content, photoObjectPath: objectPath, photoUrl: `${canonicalUrl}?v=${Date.now()}` } }
             : section),
@@ -3863,7 +3863,7 @@ function WebsiteEditor() {
     } catch {
       finishWebsiteAssetUpload(upload.key);
       if (isCurrentWebsiteAssetUpload(upload)) {
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           pageSections.map(section => {
             if (section.id !== sectionId || section.type !== "about" || section.content.photoUrl !== blobUrl) return section;
             const content = { ...section.content };
@@ -3927,7 +3927,7 @@ function WebsiteEditor() {
       .find(project => project.id === projectId)?.photos?.find((photo: any) => photo.id === photoId);
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
       patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: blobUrl }),
     ));
     try {
@@ -3949,7 +3949,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         const photoUuid = objectPath.split("/").pop()!;
         const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/portfolio-photo/${photoUuid}`;
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           patchPortfolioPhoto(pageSections, projectId, photoId, {
             photoObjectPath: objectPath,
             photoUrl: `${canonicalUrl}?v=${Date.now()}`,
@@ -3961,7 +3961,7 @@ function WebsiteEditor() {
     } catch {
       finishWebsiteAssetUpload(upload.key);
       if (isCurrentWebsiteAssetUpload(upload)) {
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           patchPortfolioPhoto(pageSections, projectId, photoId, { photoUrl: originalPhoto?.photoUrl }, blobUrl),
         ));
         toast({ title: "Photo upload failed", variant: "destructive" });
@@ -4024,7 +4024,7 @@ function WebsiteEditor() {
     const originalUrl = originalBlock?.find(column => column.id === colId)?.blocks?.find((block: any) => block.id === blockId)?.url;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
       patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: blobUrl }),
     ));
     try {
@@ -4046,7 +4046,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         const imgUuid = objectPath.split("/").pop()!;
         const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           patchColumnImageBlock(pageSections, sectionId, colId, blockId, {
             objectPath,
             url: `${canonicalUrl}?v=${Date.now()}`,
@@ -4058,7 +4058,7 @@ function WebsiteEditor() {
     } catch {
       finishWebsiteAssetUpload(upload.key);
       if (isCurrentWebsiteAssetUpload(upload)) {
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           patchColumnImageBlock(pageSections, sectionId, colId, blockId, { url: originalUrl }, blobUrl),
         ));
         toast({ title: "Image upload failed", variant: "destructive" });
@@ -4121,7 +4121,7 @@ function WebsiteEditor() {
     const originalImageUrl = originalUrl?.find(image => image.id === imageId)?.url;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+    setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
       pageSections.map(section => section.id === sectionId
         ? {
             ...section,
@@ -4153,7 +4153,7 @@ function WebsiteEditor() {
       if (isCurrentWebsiteAssetUpload(upload)) {
         const imgUuid = objectPath.split("/").pop()!;
         const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           pageSections.map(section => section.id === sectionId
             ? {
                 ...section,
@@ -4174,7 +4174,7 @@ function WebsiteEditor() {
     } catch {
       finishWebsiteAssetUpload(upload.key);
       if (isCurrentWebsiteAssetUpload(upload)) {
-        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+        setLocalPages(prev => patchWebsitePageSections<SitePage>(prev, upload.pageId, pageSections =>
           pageSections.map(section => section.id === sectionId
             ? {
                 ...section,
@@ -4713,7 +4713,6 @@ function WebsiteEditor() {
       });
       const savedSettings: SiteSettings = {
         ...t.settings,
-        pages: [],
         logoUrl: settings.logoUrl || "",
         ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : {}),
         ...(settings.faviconUrl ? { faviconUrl: settings.faviconUrl } : {}),
@@ -4722,7 +4721,7 @@ function WebsiteEditor() {
       };
       const templatePayload = {
         sections: (appliedSections as any[]).map((s, i) => ({ ...s, order: i })),
-        settings: savedSettings,
+        settings: withWebsitePageList(savedSettings, []),
       };
       const templateRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
         method: "PUT",
