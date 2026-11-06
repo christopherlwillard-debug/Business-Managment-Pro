@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, sho
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
+import { countWebsiteMediaUrlReferences, truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -2586,6 +2586,16 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
     .from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
   if (!item) return res.status(404).json({ error: "Not found" });
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+  const usageCount = countWebsiteMediaUrlReferences(configs, item.url);
+  if (usageCount > 0) {
+    return res.status(409).json({
+      error: "This image is still used on your website. Remove or replace those references before deleting it.",
+      usageCount,
+    });
+  }
   await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
   const cleanupWarnings = await cleanupMediaObjects([
     item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
@@ -2801,12 +2811,26 @@ router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   const ids = validation.ids;
   const items = await db.select({
+    id: websiteMediaTable.id,
+    url: websiteMediaTable.url,
     objectPath: websiteMediaTable.objectPath,
     webpObjectPath: websiteMediaTable.webpObjectPath,
     thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
     displayObjectPath: websiteMediaTable.displayObjectPath,
   }).from(websiteMediaTable)
     .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
+  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+    .from(websiteConfigsTable)
+    .where(eq(websiteConfigsTable.businessId, businessId));
+  const inUse = items
+    .map(item => ({ id: item.id, usageCount: countWebsiteMediaUrlReferences(configs, item.url) }))
+    .filter(item => item.usageCount > 0);
+  if (inUse.length > 0) {
+    return res.status(409).json({
+      error: "One or more selected images are still used on your website. Remove or replace those references before deleting them.",
+      inUse,
+    });
+  }
   await db.delete(websiteMediaTable)
     .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
   const cleanupWarnings = (await Promise.all(items.map(item => cleanupMediaObjects([
