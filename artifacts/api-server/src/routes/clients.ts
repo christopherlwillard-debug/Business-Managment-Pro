@@ -331,17 +331,10 @@ router.delete("/:id", async (req, res) => {
         };
       }
 
-      // Keep linked operational/financial records in the same business boundary.
-      await Promise.all([
-        tx.update(prospectsTable).set({ clientId: null }).where(and(eq(prospectsTable.clientId, id), mutationBusinessPredicate(prospectsTable, scope))),
-        tx.update(estimatesTable).set({ clientId: null }).where(and(eq(estimatesTable.clientId, id), mutationBusinessPredicate(estimatesTable, scope))),
-        tx.update(invoicesTable).set({ clientId: null }).where(and(eq(invoicesTable.clientId, id), mutationBusinessPredicate(invoicesTable, scope))),
-        tx.update(jobsTable).set({ clientId: null }).where(and(eq(jobsTable.clientId, id), mutationBusinessPredicate(jobsTable, scope))),
-      ]);
-      const [deleted] = await tx.delete(clientsTable)
-        .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
-        .returning();
-      return deleted ? { status: "deleted" as const } : { status: "not_found" as const };
+      // The repository's archive-first policy requires a recoverable client
+      // lifecycle. Until that workflow exists, do not detach history or delete
+      // the parent row even when no pricing dependency is present.
+      return { status: "archive_required" as const };
     });
 
     if (result.status === "blocked") {
@@ -353,7 +346,9 @@ router.delete("/:id", async (req, res) => {
       });
     }
     if (result.status === "not_found") return res.status(404).json({ error: "Client not found" });
-    res.status(204).send();
+    return res.status(409).json({
+      error: "Permanent client deletion is disabled until a client archive/restore workflow is available. No data was changed.",
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete client" });
