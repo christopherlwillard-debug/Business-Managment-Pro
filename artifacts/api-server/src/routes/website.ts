@@ -3671,8 +3671,8 @@ router.post("/build-section", wrapAsync(async (req, res) => {
     businessContext?: BusinessContext;
   };
 
-  if (!userPrompt?.trim()) {
-    return res.status(400).json({ error: "prompt required" });
+  if (typeof userPrompt !== "string" || !userPrompt.trim() || userPrompt.length > 2000) {
+    return res.status(400).json({ error: "Prompt is required and must be 2,000 characters or fewer." });
   }
 
   // Resolve business context — prefer caller-supplied; fall back to DB
@@ -5043,8 +5043,14 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
     businessType?: string;
     style?: string;
   };
-  if (!description || description.trim().length < 5) {
-    return res.status(400).json({ error: "description required (min 5 chars)" });
+  if (typeof description !== "string" || description.trim().length < 5 || description.length > 2000) {
+    return res.status(400).json({ error: "Description must be between 5 and 2,000 characters." });
+  }
+  if (businessType !== undefined && typeof businessType !== "string") {
+    return res.status(400).json({ error: "Business type must be text." });
+  }
+  if (style !== undefined && typeof style !== "string") {
+    return res.status(400).json({ error: "Style must be text." });
   }
 
   const prompt = buildGenerateTemplatePrompt(description.trim(), businessType, style);
