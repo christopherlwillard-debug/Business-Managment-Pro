@@ -55,7 +55,7 @@ vi.mock("../lib/business-scope.js", () => ({
   mutationBusinessPredicate: () => ({ scoped: true }),
 }));
 
-const { default: paymentsRouter } = await import("./payments");
+const { default: paymentsRouter, parseSubcontractorPaymentAmount, isValidPaymentDate } = await import("./payments");
 const app = express();
 app.use(express.json());
 app.use((req, _res, next) => {
@@ -72,6 +72,23 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.clearAllMocks());
+
+describe("subcontractor payment input validation", () => {
+  it("normalizes valid payment amounts and rejects malformed values", () => {
+    expect(parseSubcontractorPaymentAmount("125.5")).toBe("125.50");
+    expect(parseSubcontractorPaymentAmount(20)).toBe("20.00");
+    for (const value of ["0", "-5", "10junk", "1e3", "1.999", "10000000000.00", "Infinity"]) {
+      expect(parseSubcontractorPaymentAmount(value)).toBeNull();
+    }
+  });
+
+  it("accepts only real calendar dates", () => {
+    expect(isValidPaymentDate("2026-11-06")).toBe(true);
+    expect(isValidPaymentDate("2026-02-30")).toBe(false);
+    expect(isValidPaymentDate("2026-13-01")).toBe(false);
+    expect(isValidPaymentDate("2026-2-01")).toBe(false);
+  });
+});
 
 describe("subcontractor payment read business scope", () => {
   it("adds the selected business predicate to payment list reads", async () => {
