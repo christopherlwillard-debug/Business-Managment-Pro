@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
