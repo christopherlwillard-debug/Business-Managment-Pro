@@ -173,6 +173,18 @@ export function getWebsiteSectionList(value: unknown): Array<{
   });
 }
 
+/** Extract only usable titled items from a section's optional content array. */
+export function getWebsiteSectionTextItems(value: unknown): Array<{ title: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item =>
+    item && typeof item === "object" && !Array.isArray(item) &&
+    typeof (item as { title?: unknown }).title === "string" &&
+    (item as { title: string }).title.trim()
+      ? [{ title: (item as { title: string }).title.trim() }]
+      : []
+  );
+}
+
 /** Check a portfolio photo reference without trusting persisted nested array shapes. */
 export function hasWebsitePortfolioPhoto(sectionsValue: unknown, objectPath: unknown): boolean {
   if (!isWebsiteStoredObjectPath(objectPath, "/objects/uploads/website-portfolio-photos/")) return false;
@@ -578,7 +590,7 @@ router.get("/business-profile-prefill", wrapAsync(async (req, res) => {
   // ── 3. Extract from sections ───────────────────────────────────────────────
   // Services section items
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   // Service-area section
@@ -1768,11 +1780,11 @@ router.post("/generate-seo", wrapAsync(async (req, res) => {
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
 
-  const sections = (config?.sections ?? []) as Array<{ type: string; content: Record<string, unknown> }>;
+  const sections = getWebsiteSectionList(config?.sections);
 
   // Extract services from services section
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean).slice(0, 6);
 
   // Extract contact info from footer or business record
@@ -2606,8 +2618,15 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   const found = sections
     .filter(s => s.type === "columns")
     .some(s => {
-      const cols = (s.content?.columns as Array<{ blocks: Array<{ objectPath?: string }> }>) ?? [];
-      return cols.some(col => col.blocks?.some(b => b.objectPath === expectedObjectPath));
+      const cols = Array.isArray(s.content.columns) ? s.content.columns : [];
+      return cols.some(column => {
+        if (!column || typeof column !== "object" || Array.isArray(column)) return false;
+        const blocks = (column as Record<string, unknown>).blocks;
+        return Array.isArray(blocks) && blocks.some(block =>
+          !!block && typeof block === "object" && !Array.isArray(block) &&
+          (block as Record<string, unknown>).objectPath === expectedObjectPath
+        );
+      });
     });
   if (!found) return res.status(404).json({ error: "Image not found" });
 
@@ -4711,11 +4730,11 @@ router.post("/generate-marketing", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const sections = (config?.sections ?? []) as SectionRow[];
+  const sections = getWebsiteSectionList(config?.sections) as SectionRow[];
   const settings = (config?.settings ?? {}) as Record<string, unknown>;
 
   const servicesSection = sections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   const footerSection = sections.find(s => s.type === "footer");
@@ -5410,12 +5429,12 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       .where(eq(websiteConfigsTable.businessId, businessId));
 
     type ExRow = { type: string; content: Record<string, unknown> };
-    const existingSections = (config?.sections ?? []) as ExRow[];
+    const existingSections = getWebsiteSectionList(config?.sections) as ExRow[];
     const existingSettings = (config?.settings ?? {}) as Record<string, unknown>;
 
     // Extract services from existing sections
     const existingServicesSection = existingSections.find(s => s.type === "services");
-    const serviceItems = (existingServicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+    const serviceItems = getWebsiteSectionTextItems(existingServicesSection?.content?.items);
     const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
     // Extract coverage areas
@@ -5863,7 +5882,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type SectionRow = { type: string; content: Record<string, unknown> };
-  const siteSections = (config?.sections ?? []) as SectionRow[];
+  const siteSections = getWebsiteSectionList(config?.sections) as SectionRow[];
   const existingPages = ((config?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
   const requestedSlugs = validIds.map(id => DEALER_BRANDS[id]!.slug);
   const conflicts = existingPages.filter(page => requestedSlugs.includes(normalizePageSlug(String(page.slug ?? ""))));
@@ -5876,7 +5895,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
   }
 
   const servicesSection = siteSections.find(s => s.type === "services");
-  const serviceItems = (servicesSection?.content?.items as Array<{ title?: string }> | undefined) ?? [];
+  const serviceItems = getWebsiteSectionTextItems(servicesSection?.content?.items);
   const services = serviceItems.map(i => i.title ?? "").filter(Boolean);
 
   const footerSection = siteSections.find(s => s.type === "footer");
@@ -5966,7 +5985,7 @@ router.post("/regenerate-section", wrapAsync(async (req, res) => {
     .where(eq(websiteConfigsTable.businessId, businessId));
 
   type ExRow = { type: string; content: Record<string, unknown> };
-  const existingSections = (config?.sections ?? []) as ExRow[];
+  const existingSections = getWebsiteSectionList(config?.sections) as ExRow[];
   const serviceAreaSection = existingSections.find(s => s.type === "service-area");
   const coverageAreas = (serviceAreaSection?.content?.areas as string[] | undefined) ?? [];
   const cityState = [biz.city, biz.state].filter(Boolean).join(", ");
