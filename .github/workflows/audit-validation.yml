@@ -55,6 +55,9 @@ jobs:
       - name: Run production builds
         id: production-builds
         continue-on-error: true
+        env:
+          PORT: "5000"
+          BASE_PATH: "/"
         run: pnpm -r --if-present run build
 
       - name: Summarize validation result
