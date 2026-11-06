@@ -4907,8 +4907,8 @@ router.post("/templates", wrapAsync(async (req, res) => {
     settings?: unknown;
     sections?: unknown;
   };
-  if (typeof name !== "string" || !name.trim() || [...name].length > 255) {
-    return res.status(400).json({ error: "Template name is required and must be 255 characters or fewer." });
+  if (typeof name !== "string" || !name.trim() || [...name].length > 200) {
+    return res.status(400).json({ error: "Template name is required and must be 200 characters or fewer." });
   }
   if (description !== undefined && typeof description !== "string") {
     return res.status(400).json({ error: "Template description must be text." });
