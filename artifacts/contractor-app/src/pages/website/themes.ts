@@ -221,11 +221,15 @@ function resolveButtonShadow(v: boolean | undefined): string {
 }
 
 function resolveHeadingScale(scale: string | undefined): { h1: string; h2: string; h3: string } | undefined {
-  return scale ? HEADING_SCALES[scale] : undefined;
+  return scale && Object.prototype.hasOwnProperty.call(HEADING_SCALES, scale)
+    ? HEADING_SCALES[scale]
+    : undefined;
 }
 
 function resolveBodySize(size: string | undefined): string | undefined {
-  return size ? BODY_SIZES[size] : undefined;
+  return size && Object.prototype.hasOwnProperty.call(BODY_SIZES, size)
+    ? BODY_SIZES[size]
+    : undefined;
 }
 
 
