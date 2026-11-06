@@ -36,6 +36,12 @@ router.get("/", async (req, res) => {
     const { year, subcontractorId } = req.query;
     const scope = await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const parsedYear = year === undefined ? null : parsePaymentYear(year);
+    const parsedSubcontractorId = subcontractorId === undefined ? null : Number(subcontractorId);
+    if (year !== undefined && parsedYear == null) return res.status(400).json({ error: "A valid tax year is required" });
+    if (subcontractorId !== undefined && (!Number.isSafeInteger(parsedSubcontractorId) || parsedSubcontractorId! <= 0)) {
+      return res.status(400).json({ error: "A valid subcontractor ID is required" });
+    }
 
     let query: any = db
       .select({
@@ -57,10 +63,10 @@ router.get("/", async (req, res) => {
     const conditions: any[] = [];
     if (scope) conditions.push(eq(paymentsTable.businessId, scope.id));
     if (year) {
-      conditions.push(eq(paymentsTable.year, parseInt(year as string)));
+      conditions.push(eq(paymentsTable.year, parsedYear!));
     }
     if (subcontractorId) {
-      conditions.push(eq(paymentsTable.subcontractorId, parseInt(subcontractorId as string)));
+      conditions.push(eq(paymentsTable.subcontractorId, parsedSubcontractorId!));
     }
 
     if (conditions.length > 0) {
@@ -232,7 +238,8 @@ router.put("/:id", async (req, res) => {
 // DELETE /api/payments/:id - delete payment
 router.delete("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid payment ID" });
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const [deleted] = await db
