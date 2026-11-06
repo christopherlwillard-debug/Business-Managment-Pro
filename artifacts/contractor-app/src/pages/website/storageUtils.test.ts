@@ -410,7 +410,7 @@ describe("Website Studio background image upload state", () => {
 
   it("updates the target page from its latest sections only", async () => {
     const { patchWebsitePageSections } = await import("./storageUtils");
-    const pages = [
+    const pages: { id: string; sections: { id: string; content: Record<string, unknown> }[] }[] = [
       { id: "home", sections: [{ id: "hero", content: { headline: "Latest" } }] },
       { id: "about", sections: [{ id: "about", content: { body: "Keep" } }] },
     ];
