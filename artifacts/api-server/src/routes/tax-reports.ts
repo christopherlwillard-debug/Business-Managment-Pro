@@ -194,11 +194,15 @@ router.get("/schedule-c", async (req, res) => {
 
     // businessId is authoritative; businessLine is only a legacy fallback.
     // Unassigned records are never included in a selected-business report.
-    const blWhere = (businessLineColumn: any, businessIdColumn?: any) => {
+    const blWhere = (
+      businessLineColumn: any,
+      businessIdColumn?: any,
+      businessIdValues: Array<number | string> = taxBusinessIds,
+    ) => {
       if (!blFilter) return undefined;
-      if (businessIdColumn && taxBusinessIds.length > 0) {
+      if (businessIdColumn && businessIdValues.length > 0) {
         return or(
-          inArray(businessIdColumn, taxBusinessIds),
+          inArray(businessIdColumn, businessIdValues),
           and(isNull(businessIdColumn), inArray(businessLineColumn, taxBusinessSlugs)),
         );
       }
@@ -252,7 +256,11 @@ router.get("/schedule-c", async (req, res) => {
         and(
           gte(otherIncomeTable.date, startDate),
           lte(otherIncomeTable.date, endDate),
-          blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId),
+          blWhere(
+            otherIncomeTable.businessLine,
+            otherIncomeTable.businessId,
+            [...taxBusinessIds.map(String), ...taxBusinessSlugs],
+          ),
           isNull(otherIncomeTable.voidedAt)
         )
       );
