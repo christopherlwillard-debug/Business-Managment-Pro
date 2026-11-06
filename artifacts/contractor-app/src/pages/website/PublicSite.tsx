@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
 import { buildThemeCssVarBlock } from "./themes";
+import { getPublicSiteQueryKey } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
@@ -222,7 +223,7 @@ export default function PublicSite() {
   const isDraftPreview = new URLSearchParams(window.location.search).get("draft") === "1";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
-    queryKey: ["public-site", slug ?? `__host__${window.location.host}`, isDraftPreview],
+    queryKey: getPublicSiteQueryKey(slug, pageSlug, isDraftPreview, window.location.host),
     queryFn: async () => {
       if (isDraftPreview && slug) {
         const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
