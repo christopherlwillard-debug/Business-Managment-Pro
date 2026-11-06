@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { readEditorPreference, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
+import { patchSectionBlockStyle, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1544,6 +1544,7 @@ function WebsiteEditor() {
   const [showRefreshPanel, setShowRefreshPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
+  const pendingBackgroundUploadsRef = useRef(new Set<string>());
   const pagesRef = useRef<SitePage[]>([]);
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
   const activePageIdRef = useRef<string>("home");
@@ -2626,6 +2627,9 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!isDirtyRef.current) return;
     if (!bizId) return;
+    // Do not persist temporary blob: preview URLs. The final object URL (or a
+    // selective rollback) will trigger this effect when the upload settles.
+    if (pendingBackgroundUploadsRef.current.size > 0) return;
     // Each state change after initialization represents a new local revision.
     // Save requests capture this revision rather than reading mutable refs
     // after the request has started.
@@ -3498,14 +3502,17 @@ function WebsiteEditor() {
   async function handleSectionBgUpload(sectionId: string, file: File) {
     setBgUploading(prev => ({ ...prev, [sectionId]: true }));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const uploadKey = `${activePageIdRef.current}:${sectionId}`;
+    const targetPageId = activePageIdRef.current;
+    const originalBlockStyle = sections.find(section => section.id === sectionId)?.blockStyle as Record<string, unknown> | undefined;
+    pendingBackgroundUploadsRef.current.add(uploadKey);
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sections.map(s =>
-      s.id === sectionId ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: blobUrl, bgType: "image" as const } } : s
-    ));
+    setLocalPages(prev => prev
+      ? prev.map(page => page.id === targetPageId
+          ? { ...page, sections: patchSectionBlockStyle(page.sections, sectionId, { bgImageUrl: blobUrl, bgType: "image" }) }
+          : page)
+      : prev);
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-section-bg`, {
         method: "POST",
@@ -3524,25 +3531,30 @@ function WebsiteEditor() {
       const slug = activeBusiness!.slug;
       const bgUuid = objectPath.split("/").pop()!;
       const canonicalUrl = `${BASE}/api/public/site/${slug}/section-bg/${bgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageObjectPath: objectPath, bgImageUrl: canonicalUrl, bgType: "image" as const } }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
+      pendingBackgroundUploadsRef.current.delete(uploadKey);
+      // Merge into the latest page/section, preserving edits made during upload.
+      setLocalPages(prev => prev
+        ? prev.map(page => page.id === targetPageId
+            ? { ...page, sections: patchSectionBlockStyle(page.sections, sectionId, {
+                bgImageObjectPath: objectPath,
+                bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
+                bgType: "image",
+              }) }
+            : page)
+        : prev);
       URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgImageUrl: `${canonicalUrl}?v=${Date.now()}` } }
-          : s
-      ));
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       toast({ title: "Background image uploaded" });
     } catch {
+      pendingBackgroundUploadsRef.current.delete(uploadKey);
       URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
+      // Revert only this upload's preview if it is still present. Never replace
+      // the current page collection with a stale snapshot.
+      setLocalPages(prev => prev
+        ? prev.map(page => page.id === targetPageId
+            ? { ...page, sections: restoreSectionBlockStylePreview(page.sections, sectionId, blobUrl, originalBlockStyle) }
+            : page)
+        : prev);
       toast({ title: "Upload failed", variant: "destructive" });
     } finally {
       setBgUploading(prev => {
