@@ -177,8 +177,12 @@ export async function loadPaymentHistoryJobs(
       amountPaid,
       paidDate,
       paidNotes: r.paidNotes,
-      paymentStatus: r.hasLedgerRecords && amountPaid <= 0
-        ? "unpaid"
+      paymentStatus: r.hasLedgerRecords
+        ? amountPaid <= 0
+          ? "unpaid"
+          : amountOwed != null
+            ? amountPaid + 0.005 >= amountOwed ? "paid" : "partial"
+            : (r.paymentStatus ?? "paid")
         : (r.paymentStatus ?? "unpaid"),
       paidAt: r.hasLedgerRecords ? (paidDate ?? null) : (r.paidAt ?? null),
       effectiveYear,
