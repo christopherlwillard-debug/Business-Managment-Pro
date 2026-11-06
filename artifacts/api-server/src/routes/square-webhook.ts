@@ -62,6 +62,9 @@ async function handleSquarePayment(opts: {
   paidAt: Date;
 }) {
   const { referenceId, squarePaymentId, amountMoney, customerId, buyerEmail, buyerName, paidAt } = opts;
+  if (squarePaymentId && amountMoney !== null && (!Number.isSafeInteger(amountMoney) || amountMoney <= 0)) {
+    throw new Error("Square payment amount must be a positive integer number of cents");
+  }
 
   await db.transaction(async (tx) => {
 
@@ -219,7 +222,7 @@ async function handleSquarePayment(opts: {
     // Try to link to an existing prospect by buyer email, then by name
     let matchedProspectId: number | null = null;
     if (buyerEmail) {
-      const [prospect] = await db
+      const [prospect] = await tx
         .select({ id: prospectsTable.id })
         .from(prospectsTable)
         .where(ilike(prospectsTable.contactEmail, buyerEmail.trim()))
@@ -227,7 +230,7 @@ async function handleSquarePayment(opts: {
       if (prospect) matchedProspectId = prospect.id;
     }
     if (matchedProspectId === null && buyerName) {
-      const [prospect] = await db
+      const [prospect] = await tx
         .select({ id: prospectsTable.id })
         .from(prospectsTable)
         .where(ilike(prospectsTable.contactName, buyerName.trim()))
