@@ -237,7 +237,7 @@ The existing `amountPaid` and provider timestamp fields remain aggregate/snapsho
 |---|---|---|---|---|---|---|
 | SUB-PAY-001 | High | Subcontractors → payment-history year/date filters and CSV | loadPaymentHistoryJobs sums all active sub_payment_records for a job/subcontractor but derives its one effectiveDate from job_subcontractors.paid_date or jobs.start_date. The pay-worker route writes the actual event date to sub_payment_records.payment_date and updates paidAt/lastPaidAt, not paidDate. A job that started in one year and received payments in another is therefore filtered using the job start/legacy paid date while the displayed amount includes every payment. Partial installments across years cannot be represented accurately by this job-level aggregate. | **Found; financial-reporting repair gated under Constitution Rule 55** | — | Requires event-level or correctly grouped payment-date reporting from the canonical ledger; do not substitute the latest payment date for all installments. |
 | SUB-PAY-002 | High | Subcontractors → reversed payment history | POST /expenses/spr/:sprId/reverse marks the canonical sub_payment_records row is_reversal=true but does not update the cached job_subcontractors.amount_paid. loadPaymentHistoryJobs tests for an existing non-reversal ledger row; when every row for a job/subcontractor has been reversed, it falls back to the stale cached amount_paid, causing the reversed payment to remain visible as paid. | **Found; financial-reporting repair gated under Constitution Rule 55** | — | Fix the fallback predicate so “ledger exists but all entries are reversed” is distinct from “legacy job has no ledger rows”; add reversal regression coverage before changing reporting. |
-| AUTH-001 | Medium | Authentication → OIDC access-token refresh | refreshIfExpired catches every error from discovery/token refresh and returns null. authMiddleware then deletes the persisted session and clears the cookie. A transient network/provider outage or temporary OIDC configuration failure is therefore treated the same as a revoked/invalid refresh token, unnecessarily logging the user out. | **Found; error-classification and concurrency tests needed** | — | A safe fix must distinguish permanent invalid_grant from transient/provider/configuration errors and avoid duplicate concurrent refresh-token rotation. No session or auth behavior was changed in this batch. |
+| AUTH-001 | Medium | Authentication → OIDC access-token refresh | refreshIfExpired previously caught every discovery/token-refresh error and returned null; authMiddleware then deleted the persisted session. Transient outages were treated like revoked refresh tokens. Concurrent requests could also race rotating refresh tokens. | **Fixed in code; eight focused regression cases authored, not target-tested** | `33cd8976`, `f3ca7a58`, `9582f886`, `b38d3b6c` | Cross-process rotation is handled by re-reading the persisted session after invalid_grant; distributed locking is not introduced. Retryable failures leave the user unauthenticated for that request while preserving the session for a later retry. |
 
 ### Evidence traced
 
@@ -257,6 +257,18 @@ SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals.
 - Source paths and callers were traced; no production payroll rows, session records, or provider credentials were accessed.
 - No tests, TypeScript checks, or runtime authentication exercises were run in this environment. No validation pass is claimed.
 - The audit branch remains isolated from master; no merge, deployment, or production data change was made.
+
+### Authentication repair details
+
+- `openid-client` is pinned at `6.8.2`; its `ResponseBodyError` exposes the OAuth response's `error` code. Only an explicit `invalid_grant` is treated as a definitive rejected refresh token. Discovery errors, network errors, provider errors such as `server_error`, and session-store failures are treated as retryable.
+- A retryable refresh failure does **not** authenticate the current request with an expired access token, but it also does not delete the session or clear the cookie. A later request can retry after the provider/session store recovers.
+- An expired session without a refresh token, or one receiving a definitive `invalid_grant`, is still cleared.
+- Added per-session in-process single-flight refresh so simultaneous requests share one token refresh. If a separate server process wins a rotating refresh-token race, the losing process reloads the session and uses the newer unexpired access token rather than deleting it.
+- Expiry timestamp `0` is now treated as expired rather than as a missing expiry value.
+- Added eight middleware regression cases: transient network failure, temporary OAuth server error, definitive invalid_grant, cross-process token rotation, successful token persistence, concurrent same-session refresh, zero expiry, and missing refresh token.
+- No session schema, cookie policy, OIDC provider settings, or authorization rules were changed.
+
+**Validation:** The eight tests were authored and source-reviewed. Tests, TypeScript checks, builds, and live OIDC exercises were not run because this session has no local package runtime. No runtime pass is claimed.
 
 
 ## Route Planner map rendering correctness — 2026-11-06
@@ -290,4 +302,4 @@ SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals.
 - `STO-001`: Generic presigned uploads need a confirmed authorization and actual object-size/content-type enforcement policy.
 - `SQR-008`: Square's generic client matching must not silently pick an invoice from another business.
 - `SUB-PAY-001` and `SUB-PAY-002`: Payroll payment-date and reversal history defects remain gated because they change financial reporting.
-- `AUTH-001`: OIDC refresh failure classification and refresh-token concurrency remain unresolved.
+- `AUTH-001`: OIDC transient-refresh logout and refresh-token concurrency defect is fixed in code; runtime validation remains pending.
