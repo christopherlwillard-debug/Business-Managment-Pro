@@ -190,3 +190,40 @@ The existing `amountPaid` and provider timestamp fields remain aggregate/snapsho
 - Added five focused Square invoice-allocation assertions, a completed-payment missing-ID ingress test, and two Plaid canonical-status assertions; **tests, TypeScript checks, and builds were not executed** because this session has no repository checkout/package runtime.
 - GitHub Actions returned no workflow runs and the commit had no combined status checks at the time of inspection. No test pass is claimed.
 - The audit branch remains separate from `master`; no merge, deployment, credentials, or production data were changed.
+
+
+## Route Planner reliability and storage-boundary review — 2026-11-06
+
+**Branch checkpoint:** `master` remained at `135a42696556ef9df91417b3dfe0a87b06cb05ca`. The audit branch was 440 commits ahead and 0 behind; no open pull request was present. The latest reviewed code includes the Square/Plaid invoice fixes recorded above plus this Route Planner batch. No production data or credentials were accessed or changed.
+
+### Findings and repair status
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Fix commits | Residual risk |
+|---|---|---|---|---|---|---|
+| RTE-002 | Medium | Route Planner → split daily stops into crew blocks | `POST /route-stops/split-blocks` updated rows with independent `Promise.all` writes. A failure midway could leave one day with mixed old/new block assignments. The handler also accepted non-integer values; `NaN` could reach integer columns and fail after some sibling writes had already committed. | **Fixed in code; five focused regression cases authored, not target-tested** | `4ae5af56`, `fbd1447b`, `87e53c05`, `0cd524ca`, `ad470241` | The mocked test verifies the transaction boundary and request validation, but actual PostgreSQL rollback behavior has not been exercised. |
+| RTE-003 | Medium | Route Planner → repair missing geocodes | `POST /route-stops/fix-geocoding` selected only rows with null latitude. A row with latitude present and longitude null was never retried, even though the map and route calculations require both coordinates. | **Fixed in code; focused regression case authored, not target-tested** | `b2ba39d9`, `5fa4efa5` | Existing partially geocoded rows are not bulk-repaired; the owner must run the existing repair action. |
+| RTE-004 | Medium | Route Planner → active-business visibility and linked jobs | `route_stops` has no canonical `business_id`; its API is owner-only but does not accept/apply a business selector. The page fetches every route stop and builds the day list without filtering by active business. Its linked-job lookup can return any job from `allJobs`, even though the job picker separately filters `asphaltJobs` by the active business. This can mix General Contracting / manufactured-home jobs into the asphalt route view. | **Found; architecture/ownership repair gated under Constitution Rule 55** | — | Decide whether route stops are intentionally all-business operational data or should inherit a job/client owner. A scoped fix may require schema/API changes and a legacy-row strategy; no record assignment or schema change was made. |
+| STO-001 | Medium | Object Storage → presigned upload capability | `POST /storage/uploads/request-url` is mounted after global authentication/approval checks but has no owner or section edit guard. It only checks that `name`, `size`, and `contentType` are truthy; the declared size/type are returned as metadata and are not bound to the signed PUT URL. Any approved user can therefore mint an upload URL without an edit permission, with no effective size/type enforcement in this route. Code search found the generated API client but no current application-page caller. | **Found; authorization/limit policy needs confirmation before changing the existing upload contract** | — | Potential storage-cost abuse by approved non-owner users. Do not claim the declared metadata limits the actual GCS upload; it does not. |
+| SQR-008 | Medium | Square Tap-to-Pay → automatic invoice matching | The generic fallback resolves a client by Square customer ID/email/name, then selects the oldest open invoice using `clientId` alone. It does not constrain the candidate invoice to the client's canonical business or resolve ambiguity when the same client has open invoices in multiple business lines. The selected invoice's business is then copied onto the Square mirror, so a cross-business match would misattribute the receipt. | **Found; financial/ownership repair gated under Constitution Rule 55** | — | Exposure depends on whether a client can have simultaneous open invoices across businesses. No production data was queried. Add explicit multi-business fixtures before any allocation change. |
+
+### Route Planner code changes
+
+- Made the entire daily block assignment one database transaction; row updates now execute sequentially inside it so a failed update rolls back the whole day's split.
+- Validate the date format and require an integer block size from 1 through 1000 before opening the transaction.
+- Treat a missing request body as a normal validation error instead of a server error.
+- Geocoding repair now selects rows where either latitude or longitude is null.
+- Added five cases to `artifacts/api-server/src/routes/route-stops.test.ts`: invalid block size, malformed date, empty request, all-row transactional split, and a row with only longitude missing.
+
+### Architecture and validation boundaries
+
+- Re-read the system registry, business-isolation memory, route-stop schema, route-stop router, RoutePlanner page, route registration, storage route, object-storage service, auth middleware, and section/owner guards before recording the findings.
+- Route Planner is mounted behind `requireOwner`; RTE-004 is a business-view/record-assignment consistency issue, not an unauthenticated exposure.
+- Storage's generic presigned-upload endpoint is distinct from the guarded server-side upload routes used by receipts, asset receipts, compliance files, and website media. No caller was found for the generic generated endpoint; intended access policy remains unconfirmed.
+- Five focused Route Planner tests were added/updated. **No tests, TypeScript checks, builds, or PostgreSQL integration checks were executed**: this environment has GitHub file/commit access but no local repository checkout or package runtime. No test pass is claimed.
+- No architecture registry, schema, production data, credentials, `master`, merge, or deployment was changed.
+
+### Next risk-based batches
+
+1. Resolve RTE-004 and STO-001 authorization/ownership policy before changing their contracts.
+2. Trace SQR-008 against multi-business client/invoice fixtures; preserve the existing cash-basis limitation for partial receipts and event-year attribution.
+3. Continue authentication/section-permission coverage across all API mounts, then audit estimate/job/checklist, subcontractor payroll, manufactured-home, asphalt, Plaid, imports/exports, and background-worker workflows.
