@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { patchSectionBlockStyle, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
+import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1544,7 +1544,7 @@ function WebsiteEditor() {
   const [showRefreshPanel, setShowRefreshPanel] = useState(false);
   const history = useEditorHistory<SitePage, SiteSettings>();
   const { contextValue, editingId, editingIdRef } = useInlineEdit();
-  const pendingBackgroundUploadsRef = useRef(new Set<string>());
+  const pendingWebsiteAssetUploadsRef = useRef(new Set<string>());
   const pagesRef = useRef<SitePage[]>([]);
   const settingsRef = useRef<SiteSettings>({ brandColor: "#1a1a2e", fontFamily: "Inter", logoUrl: "" });
   const activePageIdRef = useRef<string>("home");
@@ -1776,6 +1776,8 @@ function WebsiteEditor() {
   const saveErrorRevisionRef = useRef<number | null>(null);
 
   const bizId = activeBusiness?.id;
+  const bizIdRef = useRef<number | undefined>(bizId);
+  bizIdRef.current = bizId;
 
   // ── Saved AI templates query ───────────────────────────────────────────────
   const { data: savedTemplatesRaw, refetch: refetchSavedTemplates } = useQuery<unknown[]>({
@@ -1830,6 +1832,13 @@ function WebsiteEditor() {
     saveQueuedRef.current = false;
     saveErrorRevisionRef.current = null;
     setHasUnpublishedChanges(false);
+    setBgUploading({});
+    setLogoUploading(false);
+    setFaviconUploading(false);
+    setAboutPhotoUploading(false);
+    setUploadingPortfolioPhotoIds(new Set());
+    setUploadingColumnImageKeys(new Set());
+    setUploadingGalleryImageIds(new Set());
     pickerShownRef.current = false;
     dataInitializedRef.current = false;
     history.reset();
@@ -2446,6 +2455,21 @@ function WebsiteEditor() {
     );
   }
 
+  function beginWebsiteAssetUpload() {
+    const session = businessSessionRef.current;
+    const key = `${session}:${nanoid()}`;
+    pendingWebsiteAssetUploadsRef.current.add(key);
+    return { key, session, businessId: bizId, pageId: activePageIdRef.current, slug: activeBusiness?.slug };
+  }
+
+  function isCurrentWebsiteAssetUpload(upload: { session: number; businessId: number | undefined }) {
+    return bizIdRef.current === upload.businessId && businessSessionRef.current === upload.session;
+  }
+
+  function finishWebsiteAssetUpload(key: string) {
+    pendingWebsiteAssetUploadsRef.current.delete(key);
+  }
+
   useFontLoader(settings.headingFont, settings.bodyFont);
 
   useEffect(() => {
@@ -2629,7 +2653,7 @@ function WebsiteEditor() {
     if (!bizId) return;
     // Do not persist temporary blob: preview URLs. The final object URL (or a
     // selective rollback) will trigger this effect when the upload settles.
-    if (pendingBackgroundUploadsRef.current.size > 0) return;
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) return;
     // Each state change after initialization represents a new local revision.
     // Save requests capture this revision rather than reading mutable refs
     // after the request has started.
