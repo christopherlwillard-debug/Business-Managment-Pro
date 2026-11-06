@@ -157,11 +157,11 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     enabled: !!businessId,
   });
 
-  const { data: usageCounts = {} } = useQuery<Record<number, number>>({
+  const { data: usageCounts, isError: usageCountsFailed } = useQuery<Record<number, number>>({
     queryKey: ["website-media-usage", businessId],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/website/media/usage-counts?businessId=${businessId}`, { credentials: "include" });
-      if (!res.ok) return {};
+      if (!res.ok) throw new Error("Could not verify image usage.");
       return res.json();
     },
     enabled: !!businessId,
@@ -281,6 +281,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
+      if (usageCountsFailed || !usageCounts) {
+        throw new Error("Image usage could not be verified. Retry loading the Media Library before deleting images.");
+      }
       const res = await fetch(`${BASE}/api/website/media/${id}?businessId=${businessId}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error((await res.json().catch(() => null) as { error?: string } | null)?.error ?? "Delete failed");
       return res.json() as Promise<{ cleanupWarnings?: string[] }>;
@@ -305,6 +308,9 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
 
   const bulkDeleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
+      if (usageCountsFailed || !usageCounts) {
+        throw new Error("Image usage could not be verified. Retry loading the Media Library before deleting images.");
+      }
       const res = await fetch(`${BASE}/api/website/media/bulk-delete?businessId=${businessId}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ ids }),
@@ -454,7 +460,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
     }
   }
 
-  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts[id] ?? 0) > 0).length;
+  const selectedWithUsage = Array.from(selectedIds).filter(id => (usageCounts?.[id] ?? 0) > 0).length;
   const currentFolderName = folderFilter === "all" ? null : folders.find(f => f.id === folderFilter)?.name ?? null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -692,7 +698,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <GridItem
                     key={item.id}
                     item={item}
-                    usageCount={usageCounts[item.id] ?? 0}
+                    usageCount={usageCounts?.[item.id] ?? 0}
                     selected={selectedIds.has(item.id)}
                     isActive={detailItem?.id === item.id}
                     isDeleteConfirm={deleteConfirm === item.id}
@@ -717,7 +723,7 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                   <ListItem
                     key={item.id}
                     item={item}
-                    usageCount={usageCounts[item.id] ?? 0}
+                    usageCount={usageCounts?.[item.id] ?? 0}
                     selected={selectedIds.has(item.id)}
                     isActive={detailItem?.id === item.id}
                     renamingId={renamingId}
