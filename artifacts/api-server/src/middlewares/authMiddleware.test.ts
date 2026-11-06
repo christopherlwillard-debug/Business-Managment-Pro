@@ -122,6 +122,30 @@ describe("OIDC session refresh reliability", () => {
     expect(h.clearSession).not.toHaveBeenCalled();
   });
 
+  it("treats a zero expiry timestamp as expired", async () => {
+    h.session = { ...expiredSession(), expires_at: 0 };
+    vi.mocked(oidc.refreshTokenGrant).mockResolvedValueOnce({
+      access_token: "new-access-token",
+      refresh_token: "new-refresh-token",
+      expiresIn: () => 3600,
+    } as any);
+
+    const response = await request(createApp()).get("/");
+
+    expect(response.body.authenticated).toBe(true);
+    expect(oidc.refreshTokenGrant).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears an expired session that has no refresh token", async () => {
+    h.session = { ...expiredSession(), refresh_token: undefined };
+
+    const response = await request(createApp()).get("/");
+
+    expect(response.body.authenticated).toBe(false);
+    expect(oidc.refreshTokenGrant).not.toHaveBeenCalled();
+    expect(h.clearSession).toHaveBeenCalledTimes(1);
+  });
+
   it("stores newly rotated tokens after a successful refresh", async () => {
     vi.mocked(oidc.refreshTokenGrant).mockResolvedValueOnce({
       access_token: "new-access-token",
