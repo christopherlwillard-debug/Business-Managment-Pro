@@ -275,6 +275,23 @@ describe("Website Studio public page list recovery", () => {
     expect(getWebsitePageList("about")).toEqual([]);
   });
 
+  it("repairs duplicate page slugs, missing metadata, and malformed nested sections", () => {
+    const pages = getWebsitePageList([
+      { slug: "About Us", sections: [null, { type: "hero", content: { headline: "Welcome" } }, { type: 42, content: {} }] },
+      { id: "duplicate", name: "Duplicate", slug: "about-us", sections: [] },
+      { id: "page-contact", name: "Contact", slug: "contact", sections: [
+        { id: "same", type: "hero", content: {} },
+        { id: "same", type: "text", content: {} },
+      ] },
+    ]);
+    expect(pages).toHaveLength(2);
+    expect(pages[0]).toMatchObject({ id: "page-1", name: "about-us", slug: "about-us" });
+    expect(pages[0].sections).toEqual([
+      { id: "hero-2", type: "hero", enabled: true, order: 1, content: { headline: "Welcome" } },
+    ]);
+    expect(pages[1].sections?.map(section => (section as { id: string }).id)).toEqual(["same", "same-2"]);
+  });
+
   it("filters malformed entries before public route slug lookups", () => {
     expect(getWebsitePageList([
       null,
