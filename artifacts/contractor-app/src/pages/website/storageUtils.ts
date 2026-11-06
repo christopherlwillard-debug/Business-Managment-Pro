@@ -60,11 +60,15 @@ export function completeSectionBlockStyleUpload<T extends { id: string; blockSty
   previewUrl: string,
   patch: Record<string, unknown>,
 ): T[] {
-  return sections.map(section => section.id !== sectionId
-    || section.blockStyle?.bgImageUrl !== previewUrl
-    || section.blockStyle?.bgType !== "image"
-    ? section
-    : { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } });
+  let changed = false;
+  const next = sections.map(section => {
+    if (section.id !== sectionId
+      || section.blockStyle?.bgImageUrl !== previewUrl
+      || section.blockStyle?.bgType !== "image") return section;
+    changed = true;
+    return { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } };
+  });
+  return changed ? next : sections;
 }
 
 /** Roll back only this upload's optimistic background fields; preserve all concurrent style edits. */
@@ -74,8 +78,10 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
   previewUrl: string,
   originalBlockStyle: Record<string, unknown> | undefined,
 ): T[] {
-  return sections.map(section => {
+  let changed = false;
+  const next = sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
+    changed = true;
     const nextStyle = { ...(section.blockStyle ?? {}) };
     if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgImageUrl")) {
       nextStyle.bgImageUrl = originalBlockStyle.bgImageUrl;
@@ -96,6 +102,7 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
     else delete restored.blockStyle;
     return restored;
   });
+  return changed ? next : sections;
 }
 
 /** Update one page using its latest section state, never a pre-upload snapshot. */
