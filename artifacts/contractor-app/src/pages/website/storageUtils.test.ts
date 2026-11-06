@@ -211,3 +211,23 @@ describe("Website Studio background image upload state", () => {
     expect(restoreSectionBlockStylePreview(latest, "hero", "blob:older", undefined)).toBe(latest);
   });
 });
+
+describe("page-scoped section content updates", () => {
+  it("does not update a different page when section IDs collide", async () => {
+    const { patchWebsitePageSectionContent } = await import("./storageUtils");
+    const pages = [
+      { id: "home", sections: [{ id: "shared", content: { headline: "Home" } }] },
+      { id: "about", sections: [{ id: "shared", content: { headline: "About" } }] },
+    ];
+    const result = patchWebsitePageSectionContent(pages, "about", "shared", { headline: "Updated About" });
+    expect(result?.[0].sections[0].content).toEqual({ headline: "Home" });
+    expect(result?.[1].sections[0].content).toEqual({ headline: "Updated About" });
+  });
+
+  it("leaves other pages and missing sections unchanged", async () => {
+    const { patchWebsitePageSectionContent } = await import("./storageUtils");
+    const pages = [{ id: "home", sections: [{ id: "hero", content: { headline: "Home" } }] }];
+    expect(patchWebsitePageSectionContent(pages, "missing", "hero", {})).toBe(pages);
+    expect(patchWebsitePageSectionContent(pages, "home", "missing", {} )?.[0].sections[0].content).toEqual({ headline: "Home" });
+  });
+});
