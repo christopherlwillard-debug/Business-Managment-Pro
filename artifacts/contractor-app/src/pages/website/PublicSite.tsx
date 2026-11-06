@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
 import { buildThemeCssVarBlock } from "./themes";
-import { getPublicSiteQueryKey } from "./storageUtils";
+import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
@@ -356,11 +356,11 @@ export default function PublicSite() {
   }
 
   const headerContent = headerSec?.content as any;
-  const navLinks: Array<{ id: string; label: string; href: string }> = headerContent?.navLinks ?? [];
+  const navLinks = getSafePublicNavLinks(headerContent?.navLinks);
   const headerPhone: string = headerContent?.phone ?? "";
   const headerEmail: string = headerContent?.email ?? "";
   const ctaLabel: string = headerContent?.ctaLabel ?? "Get a Quote";
-  const ctaUrl: string = headerContent?.ctaConfig?.url ?? "#contact";
+  const ctaUrl: string = getSafeWebsiteHref(headerContent?.ctaConfig?.url) ?? "#contact";
   const isSticky: boolean = headerContent?.sticky ?? true;
   const showPhone: boolean = headerContent?.showPhone !== false;
   const showCta: boolean = headerContent?.showCta !== false;
