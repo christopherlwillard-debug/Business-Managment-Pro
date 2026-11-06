@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable } from "@workspace/db/schema";
 import { and, eq, desc, isNull, or } from "drizzle-orm";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 import {
   clientProfileRouteStopColumns,
   clientProfileSquarePaymentColumns,
@@ -41,18 +41,34 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid client ID" });
-    // For updates, body.businessLine is the destination assignment, not the
-    // source record's current scope. Only query selectors may constrain this lookup.
+
+    const isMutation = ["PUT", "PATCH", "DELETE"].includes(req.method.toUpperCase());
+    // businessLine on PUT/PATCH is the destination assignment. Resolve the
+    // source record owner from dedicated source fields or the query selector.
     const scopeRequest = req.method === "PUT" || req.method === "PATCH"
-      ? { ...req, body: {} } as Request
+      ? {
+          ...req,
+          body: {
+            businessId: req.body?.sourceBusinessId,
+            businessLine: req.body?.sourceBusinessLine,
+          },
+        } as Request
       : req;
-    const scope = await requestedBusiness(scopeRequest);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(scopeRequest))) return;
-    if (!Number.isInteger(id)) return next();
-    if (!scope) return next();
+
+    let scope: Awaited<ReturnType<typeof requestedBusiness>>;
+    if (isMutation) {
+      const ownership = await resolveMutationBusiness(scopeRequest);
+      if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+      scope = ownership.business;
+    } else {
+      scope = await requestedBusiness(scopeRequest);
+      if (invalidBusinessScope(res, scope, hasRequestedBusiness(scopeRequest))) return;
+    }
+
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
     if (!client || !belongsToBusiness(client, scope)) return res.status(404).json({ error: "Client not found" });
     res.locals.businessScopedClient = client;
+    if (scope) res.locals.clientBusinessScope = scope;
     next();
   })().catch(next);
 });
@@ -221,9 +237,11 @@ router.put("/:id", async (req, res) => {
     if ("mileageSurchargeEnabled" in req.body) updates.mileageSurchargeEnabled = mileageSurchargeEnabled === true;
     if ("mileageSurchargeTriggerMiles" in req.body) updates.mileageSurchargeTriggerMiles = mileageSurchargeTriggerMiles ?? null;
     if ("mileageSurchargeDailyRate" in req.body) updates.mileageSurchargeDailyRate = mileageSurchargeDailyRate ?? null;
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
     const [client] = await db.update(clientsTable)
       .set(updates)
-      .where(eq(clientsTable.id, id))
+      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
     res.json(formatClient(client));
@@ -241,9 +259,11 @@ router.patch("/:id/business-line", async (req, res) => {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
     const assignment = await resolveClientBusinessAssignment(req.body?.businessLine);
     if (!assignment) return res.status(400).json({ error: "Select a valid business." });
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
     const [client] = await db.update(clientsTable)
       .set(assignment)
-      .where(eq(clientsTable.id, id))
+      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
       .returning();
     if (!client) return res.status(404).json({ error: "Client not found" });
     res.json(formatClient(client));
@@ -274,17 +294,22 @@ router.get("/:id/link-counts", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    // Nullify FK references on related records before deleting so the DELETE
-    // doesn't fail due to FK constraint violations.
+    const scope = res.locals.clientBusinessScope;
+    if (!scope) return res.status(400).json({ error: "Client business scope is required" });
+    // Keep related records in the same business boundary as the client. The
+    // final parent DELETE is also scoped to protect against a concurrent reassignment.
     await Promise.all([
-      db.update(prospectsTable).set({ clientId: null }).where(eq(prospectsTable.clientId, id)),
-      db.update(estimatesTable).set({ clientId: null }).where(eq(estimatesTable.clientId, id)),
-      db.update(invoicesTable).set({ clientId: null }).where(eq(invoicesTable.clientId, id)),
-      db.update(jobsTable).set({ clientId: null }).where(eq(jobsTable.clientId, id)),
-      // client_billing_profiles.client_id is NOT NULL so it cannot be nullified — delete the rows
+      db.update(prospectsTable).set({ clientId: null }).where(and(eq(prospectsTable.clientId, id), mutationBusinessPredicate(prospectsTable, scope))),
+      db.update(estimatesTable).set({ clientId: null }).where(and(eq(estimatesTable.clientId, id), mutationBusinessPredicate(estimatesTable, scope))),
+      db.update(invoicesTable).set({ clientId: null }).where(and(eq(invoicesTable.clientId, id), mutationBusinessPredicate(invoicesTable, scope))),
+      db.update(jobsTable).set({ clientId: null }).where(and(eq(jobsTable.clientId, id), mutationBusinessPredicate(jobsTable, scope))),
+      // Billing profiles are client-owned and are removed with their client.
       db.delete(clientBillingProfilesTable).where(eq(clientBillingProfilesTable.clientId, id)),
     ]);
-    await db.delete(clientsTable).where(eq(clientsTable.id, id));
+    const [deleted] = await db.delete(clientsTable)
+      .where(and(eq(clientsTable.id, id), mutationBusinessPredicate(clientsTable, scope)))
+      .returning();
+    if (!deleted) return res.status(404).json({ error: "Client not found" });
     res.status(204).send();
   } catch (err) {
     console.error(err);
