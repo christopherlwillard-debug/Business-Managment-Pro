@@ -227,3 +227,33 @@ The existing `amountPaid` and provider timestamp fields remain aggregate/snapsho
 1. Resolve RTE-004 and STO-001 authorization/ownership policy before changing their contracts.
 2. Trace SQR-008 against multi-business client/invoice fixtures; preserve the existing cash-basis limitation for partial receipts and event-year attribution.
 3. Continue authentication/section-permission coverage across all API mounts, then audit estimate/job/checklist, subcontractor payroll, manufactured-home, asphalt, Plaid, imports/exports, and background-worker workflows.
+
+
+## Payroll history and authentication reliability review — 2026-11-06
+
+### Findings
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Fix commit | Residual risk |
+|---|---|---|---|---|---|---|
+| SUB-PAY-001 | High | Subcontractors → payment-history year/date filters and CSV | loadPaymentHistoryJobs sums all active sub_payment_records for a job/subcontractor but derives its one effectiveDate from job_subcontractors.paid_date or jobs.start_date. The pay-worker route writes the actual event date to sub_payment_records.payment_date and updates paidAt/lastPaidAt, not paidDate. A job that started in one year and received payments in another is therefore filtered using the job start/legacy paid date while the displayed amount includes every payment. Partial installments across years cannot be represented accurately by this job-level aggregate. | **Found; financial-reporting repair gated under Constitution Rule 55** | — | Requires event-level or correctly grouped payment-date reporting from the canonical ledger; do not substitute the latest payment date for all installments. |
+| SUB-PAY-002 | High | Subcontractors → reversed payment history | POST /expenses/spr/:sprId/reverse marks the canonical sub_payment_records row is_reversal=true but does not update the cached job_subcontractors.amount_paid. loadPaymentHistoryJobs tests for an existing non-reversal ledger row; when every row for a job/subcontractor has been reversed, it falls back to the stale cached amount_paid, causing the reversed payment to remain visible as paid. | **Found; financial-reporting repair gated under Constitution Rule 55** | — | Fix the fallback predicate so “ledger exists but all entries are reversed” is distinct from “legacy job has no ledger rows”; add reversal regression coverage before changing reporting. |
+| AUTH-001 | Medium | Authentication → OIDC access-token refresh | refreshIfExpired catches every error from discovery/token refresh and returns null. authMiddleware then deletes the persisted session and clears the cookie. A transient network/provider outage or temporary OIDC configuration failure is therefore treated the same as a revoked/invalid refresh token, unnecessarily logging the user out. | **Found; error-classification and concurrency tests needed** | — | A safe fix must distinguish permanent invalid_grant from transient/provider/configuration errors and avoid duplicate concurrent refresh-token rotation. No session or auth behavior was changed in this batch. |
+
+### Evidence traced
+
+- Subcontractor payment-history loader and filters in artifacts/api-server/src/routes/subcontractors.ts.
+- Canonical pay-worker insert in artifacts/api-server/src/routes/jobs.ts: event paymentDate, plus cached amountPaid, paidAt, and lastPaidAt.
+- Reversal route in artifacts/api-server/src/routes/expenses.ts: marks the original ledger row reversed; it does not clear the job assignment's cached paid amount.
+- Existing payment-history tests cover CSV escaping and pure date filtering, but not event-date aggregation or the all-records-reversed fallback.
+- OIDC refresh and session deletion in artifacts/api-server/src/middlewares/authMiddleware.ts; no dedicated auth-middleware refresh test file was found during this pass.
+- .agents/memory/sub-pay-dual-rates.md and .agents/memory/sub-payment-ledger.md confirm that sub_payment_records is the canonical payroll event ledger and that the pay-worker route stores net amount plus applied advanceAmount; those invariants were preserved.
+
+### Scope decision
+
+SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals. They are recorded, not changed, because the architecture constitution requires explicit approval before altering financial calculations. AUTH-001 needs a provider-error contract and concurrency-safe test design before implementation; clearing sessions on unknown failures is unsafe, but keeping an invalid session indefinitely would also be wrong.
+
+### Validation
+
+- Source paths and callers were traced; no production payroll rows, session records, or provider credentials were accessed.
+- No tests, TypeScript checks, or runtime authentication exercises were run in this environment. No validation pass is claimed.
+- The audit branch remains isolated from master; no merge, deployment, or production data change was made.
