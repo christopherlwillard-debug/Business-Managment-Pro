@@ -40,7 +40,7 @@ export default function Clients() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
-  const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number } | null>(null);
+  const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number; billingProfileCount: number; mfhPricingCount: number; productionPricingCount: number } | null>(null);
   const [isCheckingDelete, setIsCheckingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
@@ -99,7 +99,7 @@ export default function Clients() {
         const counts = await res.json();
         setDeleteLinkCounts(counts);
       } else {
-        setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+        setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
       }
     } catch {
       setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
@@ -379,7 +379,7 @@ export default function Clients() {
             {isCheckingDelete && (
               <div className="text-sm text-muted-foreground animate-pulse px-1">Checking linked records…</div>
             )}
-            {!isCheckingDelete && deleteLinkCounts && (deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0) && (
+            {!isCheckingDelete && deleteLinkCounts && (deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0 || deleteLinkCounts.billingProfileCount > 0 || deleteLinkCounts.mfhPricingCount > 0 || deleteLinkCounts.productionPricingCount > 0) && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-1">
                 <p className="text-sm font-semibold text-amber-800">This client has linked records:</p>
                 <ul className="text-sm text-amber-700 list-disc list-inside space-y-0.5">
@@ -392,8 +392,22 @@ export default function Clients() {
                   {deleteLinkCounts.estimateCount > 0 && (
                     <li>{deleteLinkCounts.estimateCount} {deleteLinkCounts.estimateCount === 1 ? "estimate" : "estimates"}</li>
                   )}
+                  {deleteLinkCounts.billingProfileCount > 0 && (
+                    <li>{deleteLinkCounts.billingProfileCount} saved billing {deleteLinkCounts.billingProfileCount === 1 ? "profile" : "profiles"}</li>
+                  )}
+                  {deleteLinkCounts.mfhPricingCount > 0 && (
+                    <li>{deleteLinkCounts.mfhPricingCount} manufacturer-specific price {deleteLinkCounts.mfhPricingCount === 1 ? "override" : "overrides"}</li>
+                  )}
+                  {deleteLinkCounts.productionPricingCount > 0 && (
+                    <li>{deleteLinkCounts.productionPricingCount} production price {deleteLinkCounts.productionPricingCount === 1 ? "override" : "overrides"}</li>
+                  )}
                 </ul>
-                <p className="text-xs text-amber-600 mt-1">These records will remain but will no longer be associated with any client.</p>
+                {(deleteLinkCounts.billingProfileCount > 0 || deleteLinkCounts.mfhPricingCount > 0 || deleteLinkCounts.productionPricingCount > 0) && (
+                  <p className="text-xs text-red-700 mt-1">Deletion is blocked until saved billing and pricing settings are transferred or removed.</p>
+                )}
+                {(deleteLinkCounts.jobCount > 0 || deleteLinkCounts.invoiceCount > 0 || deleteLinkCounts.estimateCount > 0) && (
+                  <p className="text-xs text-amber-600 mt-1">Linked jobs, invoices, and estimates will remain but will no longer be associated with this client.</p>
+                )}
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2">
