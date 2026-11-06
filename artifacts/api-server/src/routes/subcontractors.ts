@@ -63,7 +63,7 @@ type PaymentHistoryPeriod = {
   endDate: string | null;
 };
 
-async function loadPaymentHistoryJobs(
+export async function loadPaymentHistoryJobs(
   subcontractorId?: number,
   period: PaymentHistoryPeriod = { year: null, startDate: null, endDate: null },
 ): Promise<PaymentHistoryJobWithSubcontractor[]> {
