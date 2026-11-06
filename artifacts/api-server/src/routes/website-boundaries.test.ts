@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -164,6 +164,32 @@ describe("Website Studio stored logo paths", () => {
     for (const value of ["https://example.com/logo.png", "http://127.0.0.1/logo.png", "/objects/uploads/../secrets", "/objects/uploads/%2e%2e/secrets", "/objects/uploads/logo.png?redirect=http://127.0.0.1", "/objects/uploads\\\\logo.png", null, 42]) {
       expect(isTrustedWebsiteLogoObjectPath(value)).toBe(false);
     }
+  });
+});
+
+describe("Website Studio section identity", () => {
+  it("repairs missing and duplicate section IDs without changing unique IDs", () => {
+    expect(ensureUniqueWebsiteSectionIds([
+      { id: "hero", type: "hero" },
+      { id: "hero", type: "hero" },
+      { type: "services" },
+      { id: "footer", type: "footer" },
+    ])).toEqual([
+      { id: "hero", type: "hero" },
+      { id: "hero-2", type: "hero" },
+      { id: "services-3", type: "services" },
+      { id: "footer", type: "footer" },
+    ]);
+  });
+
+  it("also normalizes duplicate IDs in saved sections before the editor receives them", () => {
+    const result = normalizeSections([
+      { id: "duplicate", type: "hero", content: { headline: "One" } },
+      { id: "duplicate", type: "text", content: { body: "Two" } },
+    ]);
+    expect(result[0].id).toBe("duplicate");
+    expect(result[1].id).toBe("duplicate-2");
+    expect(new Set(result.map(section => section.id)).size).toBe(result.length);
   });
 });
 
