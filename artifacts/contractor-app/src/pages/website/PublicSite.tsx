@@ -247,11 +247,11 @@ export default function PublicSite() {
 
   const resolvedSlug = data?.businessSlug ?? slug ?? "";
 
-  const trackedRef = useRef(false);
+  const trackedRef = useRef<string | null>(null);
   useEffect(() => {
     const s = data?.businessSlug;
-    if (!s || trackedRef.current || isDraftPreview) return;
-    trackedRef.current = true;
+    if (!s || trackedRef.current === s || isDraftPreview) return;
+    trackedRef.current = s;
     fetch(`${BASE}/api/public/site/${s}/view`, { method: "POST", keepalive: true }).catch(() => {});
   }, [data?.businessSlug, isDraftPreview]);
 
