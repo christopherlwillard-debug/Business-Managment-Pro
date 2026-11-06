@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { paymentsTable, subcontractorsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -10,6 +10,8 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const { year, subcontractorId } = req.query;
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     let query: any = db
       .select({
@@ -29,6 +31,7 @@ router.get("/", async (req, res) => {
       .leftJoin(subcontractorsTable, eq(paymentsTable.subcontractorId, subcontractorsTable.id));
 
     const conditions: any[] = [];
+    if (scope) conditions.push(eq(paymentsTable.businessId, scope.id));
     if (year) {
       conditions.push(eq(paymentsTable.year, parseInt(year as string)));
     }
@@ -64,11 +67,16 @@ router.get("/", async (req, res) => {
 // GET /api/payments/:id - get single payment
 router.get("/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid payment ID" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const conditions = [eq(paymentsTable.id, id)];
+    if (scope) conditions.push(eq(paymentsTable.businessId, scope.id));
     const [payment] = await db
       .select()
       .from(paymentsTable)
-      .where(eq(paymentsTable.id, id));
+      .where(and(...conditions));
 
     if (!payment) {
       return res.status(404).json({ error: "Payment not found" });
