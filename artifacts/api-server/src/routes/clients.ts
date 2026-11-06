@@ -40,8 +40,13 @@ function scopedOwnerPredicate(
 router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    // For updates, body.businessLine is the destination assignment, not the
+    // source record's current scope. Only query selectors may constrain this lookup.
+    const scopeRequest = req.method === "PUT" || req.method === "PATCH"
+      ? { ...req, body: {} } as Request
+      : req;
+    const scope = await requestedBusiness(scopeRequest);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(scopeRequest))) return;
     if (!Number.isInteger(id)) return next();
     if (!scope) return next();
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
