@@ -361,7 +361,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // reduce netCapitalInvested in the frontend ledger and must NOT be added
     // to ownerDrawTotal, which would deduct them a second time from equity.
     const ownerDrawTotal = kpiOwnerCapital
-      .filter(e => !validBl || e.businessId === mileageBusinessId)
+      .filter(e => !reportBusiness || e.businessId === reportBusiness.id)
       .reduce((sum, e) => {
         const amount = parseFloat(e.amount ?? "0");
         return sum + (amount < 0 ? Math.abs(amount) : 0);
@@ -875,7 +875,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
     ]);
     const canonicalOwnerDrawTotal = accOwnerContribRows.reduce((sum, row) => {
@@ -1716,7 +1716,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
@@ -2202,7 +2202,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
+          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
         )),
       computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);
