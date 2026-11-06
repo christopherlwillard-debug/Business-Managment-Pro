@@ -109,3 +109,19 @@ describe("Website Studio dealer page inputs", () => {
     expect(normalizeDealerManufacturerIds(null)).toEqual([]);
   });
 });
+
+describe("Website Studio page shape validation", () => {
+  it("rejects non-text page metadata and malformed nested sections", () => {
+    expect(validatePageSlugs([{ slug: 12 }]).ok).toBe(false);
+    expect(validatePageSlugs([{ slug: "about", name: { value: "bad" } }]).ok).toBe(false);
+    expect(validatePageSlugs([{ slug: "about", id: 12 }]).ok).toBe(false);
+    expect(validatePageSlugs([{ slug: "about", sections: {} }]).ok).toBe(false);
+  });
+
+  it("accepts valid page metadata and section arrays", () => {
+    expect(validatePageSlugs([{ id: "about-1", name: "About", slug: "about", sections: [] }])).toMatchObject({
+      ok: true,
+      pages: [{ id: "about-1", name: "About", slug: "about", sections: [] }],
+    });
+  });
+});
