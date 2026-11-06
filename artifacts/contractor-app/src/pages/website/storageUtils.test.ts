@@ -1,8 +1,36 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPublicSiteQueryKey, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
 
+
+
+describe("Website Studio public navigation safety", () => {
+  it("rejects unsafe and malformed navigation destinations", () => {
+    expect(getSafeWebsiteHref("javascript:void")).toBeNull();
+    expect(getSafeWebsiteHref("//attacker.example/path")).toBeNull();
+    expect(getSafeWebsiteHref("data:text/html,unsafe")).toBeNull();
+    expect(getSafeWebsiteHref("  /services  ")).toBe("/services");
+    expect(getSafeWebsiteHref("#contact")).toBe("#contact");
+    expect(getSafeWebsiteHref("https://example.com")).toBe("https://example.com");
+    expect(getSafeWebsiteHref("mailto:hello@example.com")).toBe("mailto:hello@example.com");
+  });
+
+  it("filters malformed nav entries and creates stable IDs when missing", () => {
+    expect(getSafePublicNavLinks([
+      { id: "home", label: "Home", href: "/" },
+      { label: "Services", href: "/services" },
+      { id: "bad", label: "Unsafe", href: "javascript:void" },
+      { id: "empty", label: " ", href: "/empty" },
+      null,
+      "not-an-object",
+    ])).toEqual([
+      { id: "home", label: "Home", href: "/" },
+      { id: "nav-link-1", label: "Services", href: "/services" },
+    ]);
+    expect(getSafePublicNavLinks({ navLinks: [] })).toEqual([]);
+  });
+});
 
 describe("Website Studio public page cache", () => {
   it("uses distinct cache keys for the home page and each custom page", () => {
