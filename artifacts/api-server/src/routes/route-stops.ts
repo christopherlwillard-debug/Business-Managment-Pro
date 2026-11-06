@@ -249,7 +249,7 @@ const BLOCK_LABELS = [
 router.post("/split-blocks", async (req, res) => {
   try {
     const { date, blockSize = 9 } = req.body as { date?: unknown; blockSize?: unknown };
-    if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {
+    if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: "date must be a YYYY-MM-DD string" });
     }
     if (!Number.isSafeInteger(blockSize) || (blockSize as number) < 1 || (blockSize as number) > 1000) {
