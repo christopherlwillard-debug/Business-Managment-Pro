@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -154,5 +154,25 @@ describe("Website Studio stored logo paths", () => {
     for (const value of ["https://example.com/logo.png", "http://127.0.0.1/logo.png", "/objects/uploads/../secrets", "/objects/uploads/%2e%2e/secrets", "/objects/uploads/logo.png?redirect=http://127.0.0.1", "/objects/uploads\\\\logo.png", null, 42]) {
       expect(isTrustedWebsiteLogoObjectPath(value)).toBe(false);
     }
+  });
+});
+
+describe("Website Studio section normalization", () => {
+  it("falls back to defaults when saved sections are missing or malformed", () => {
+    expect(normalizeSections(null).length).toBeGreaterThan(0);
+    expect(normalizeSections({}).length).toBeGreaterThan(0);
+  });
+
+  it("filters malformed saved sections and normalizes invalid metadata", () => {
+    const result = normalizeSections([
+      null,
+      { type: "hero", content: { headline: "Welcome" }, order: "bad", enabled: "yes" },
+      { type: "broken", content: [] },
+    ]);
+    expect(result[0]).toMatchObject({
+      id: "section-1", type: "hero", enabled: true, order: 1,
+      content: { headline: "Welcome" },
+    });
+    expect(result.every(section => typeof section.type === "string" && !!section.content)).toBe(true);
   });
 });
