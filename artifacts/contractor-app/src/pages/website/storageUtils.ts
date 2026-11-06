@@ -119,3 +119,20 @@ export function hasPendingWebsiteAssetUploads(pending: Set<string>, session: num
   for (const key of pending) if (key.startsWith(prefix)) return true;
   return false;
 }
+
+/** Update section content only within its owning page; section IDs are page-local. */
+export function patchWebsitePageSectionContent<
+  TPage extends { id: string; sections: TSection[] },
+  TSection extends { id: string; content: Record<string, unknown> },
+>(
+  pages: TPage[] | null,
+  pageId: string,
+  sectionId: string,
+  content: Record<string, unknown>,
+): TPage[] | null {
+  if (!pages) return pages;
+  return pages.map(page => page.id !== pageId ? page : {
+    ...page,
+    sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
+  });
+}
