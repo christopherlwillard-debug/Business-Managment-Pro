@@ -64,3 +64,35 @@ describe("truncateWebsiteMediaFilename", () => {
     expect(truncateWebsiteMediaFilename("photo.jpg", 5)).toBe("photo");
   });
 });
+
+describe("Website Studio direct upload validation", () => {
+  const valid = { name: "background.webp", size: 1024, contentType: "image/webp" };
+
+  it("accepts supported image uploads and normalizes content types", async () => {
+    const { validateWebsiteDirectUpload } = await import("./websiteMediaValidation");
+    expect(validateWebsiteDirectUpload({ ...valid, contentType: "IMAGE/WEBP" }, "image")).toEqual({
+      ok: true,
+      upload: { ...valid, contentType: "image/webp" },
+    });
+  });
+
+  it("rejects missing, malformed, empty, and oversized uploads", async () => {
+    const { validateWebsiteDirectUpload } = await import("./websiteMediaValidation");
+    for (const input of [null, [], {}, { ...valid, size: 0 }, { ...valid, size: -1 }, { ...valid, size: 20 * 1024 * 1024 + 1 }, { ...valid, name: " " }, { ...valid, contentType: "text/html" }]) {
+      expect(validateWebsiteDirectUpload(input, "image").ok).toBe(false);
+    }
+    expect(validateWebsiteDirectUpload({ ...valid, size: 2 * 1024 * 1024 + 1 }, "favicon").ok).toBe(false);
+  });
+
+  it("restricts favicon types to browser icon formats", async () => {
+    const { validateWebsiteDirectUpload } = await import("./websiteMediaValidation");
+    expect(validateWebsiteDirectUpload({ ...valid, contentType: "image/jpeg" }, "favicon").ok).toBe(false);
+    expect(validateWebsiteDirectUpload({ ...valid, contentType: "image/png" }, "favicon").ok).toBe(true);
+    expect(validateWebsiteDirectUpload({ ...valid, contentType: "image/x-icon" }, "favicon").ok).toBe(true);
+  });
+
+  it("rejects filenames beyond the database-safe limit", async () => {
+    const { validateWebsiteDirectUpload } = await import("./websiteMediaValidation");
+    expect(validateWebsiteDirectUpload({ ...valid, name: "x".repeat(256) }, "image").ok).toBe(false);
+  });
+});
