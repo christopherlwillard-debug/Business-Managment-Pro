@@ -102,7 +102,7 @@ export default function Clients() {
         setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
       }
     } catch {
-      setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0 });
+      setDeleteLinkCounts({ jobCount: 0, invoiceCount: 0, estimateCount: 0, billingProfileCount: 0, mfhPricingCount: 0, productionPricingCount: 0 });
     } finally {
       setIsCheckingDelete(false);
     }
