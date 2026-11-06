@@ -1382,7 +1382,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeCustomerEmail)) {
       return res.status(400).json({ error: "A valid email address is required." });
     }
-  } else if (safeCustomerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+  } else if (safeCustomerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeCustomerEmail)) {
     return res.status(400).json({ error: "Please enter a valid email address." });
   }
   if (fPhone.show !== false && fPhone.required !== false && !safeCustomerPhone) {
