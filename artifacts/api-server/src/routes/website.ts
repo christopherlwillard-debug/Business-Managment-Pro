@@ -125,6 +125,31 @@ export function getWebsitePageList(value: unknown): WebsitePageLike[] {
   );
 }
 
+/** Parse a positive USD amount without parseFloat's permissive partial-string behavior. */
+export function parseWebsiteMoneyCents(value: unknown): number | null {
+  if (typeof value !== "number" && typeof value !== "string") return null;
+  const raw = typeof value === "string" ? value.trim() : String(value);
+  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?$/.test(raw)) return null;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const cents = Math.round(amount * 100);
+  return Number.isSafeInteger(cents) && cents > 0 ? cents : null;
+}
+
+/** Find a structurally valid, enabled deposit section in legacy or corrupt settings. */
+export function getEnabledWebsiteDepositSection(value: unknown): { content: Record<string, unknown> } | null {
+  if (!Array.isArray(value)) return null;
+  const section = value.find((item): item is { type: string; enabled: boolean; content: Record<string, unknown> } =>
+    !!item && typeof item === "object" && !Array.isArray(item) &&
+    (item as { type?: unknown }).type === "deposit" &&
+    (item as { enabled?: unknown }).enabled === true &&
+    !!(item as { content?: unknown }).content &&
+    typeof (item as { content?: unknown }).content === "object" &&
+    !Array.isArray((item as { content?: unknown }).content)
+  );
+  return section ? { content: section.content } : null;
+}
+
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
   ok: false;
   error: string;
@@ -1125,12 +1150,12 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
 
-  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
-  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  const depositSection = getEnabledWebsiteDepositSection(config.sections);
   if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
 
-  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
-  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredCents = parseWebsiteMoneyCents(depositSection.content.amount);
+  if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredAmount = configuredCents / 100;
 
   const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
 
@@ -1143,17 +1168,18 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
     if (!allowCustomAmount) {
       return res.status(400).json({ error: "Custom amount is not allowed for this deposit." });
     }
-    const parsed = parseFloat(String(customAmount));
-    if (isNaN(parsed) || parsed <= 0) {
-      return res.status(400).json({ error: "Invalid custom amount." });
+    const parsedCents = parseWebsiteMoneyCents(customAmount);
+    if (parsedCents === null) {
+      return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
     }
-    if (parsed < configuredAmount) {
-      return res.status(400).json({ error: `Custom amount must be at least $${configuredAmount.toFixed(2)}.` });
+    if (parsedCents < configuredCents) {
+      return res.status(400).json({ error: `Custom amount must be at least ${configuredAmount.toFixed(2)}.` });
     }
-    amount = parsed;
+    amount = parsedCents / 100;
   }
 
-  const amountCents = Math.round(amount * 100);
+  const amountCents = parseWebsiteMoneyCents(amount);
+  if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
   let redirectUrl: string | undefined;
   if (returnUrl) {
@@ -1209,12 +1235,12 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
 
-  const sections = config.sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>;
-  const depositSection = sections.find(s => s.type === "deposit" && s.enabled);
+  const depositSection = getEnabledWebsiteDepositSection(config.sections);
   if (!depositSection) return res.status(404).json({ error: "Deposit section not found or not enabled" });
 
-  const configuredAmount = parseFloat(String(depositSection.content.amount ?? 0));
-  if (!configuredAmount || configuredAmount <= 0) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredCents = parseWebsiteMoneyCents(depositSection.content.amount);
+  if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
+  const configuredAmount = configuredCents / 100;
 
   const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
   const heading = (depositSection.content.heading as string) || "Deposit";
@@ -1246,13 +1272,14 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   let amount = configuredAmount;
   if (customAmount !== undefined) {
     if (!allowCustomAmount) return res.status(400).json({ error: "Custom amount is not allowed." });
-    const parsed = parseFloat(String(customAmount));
-    if (isNaN(parsed) || parsed <= 0) return res.status(400).json({ error: "Invalid custom amount." });
-    if (parsed < configuredAmount) return res.status(400).json({ error: `Minimum deposit is $${configuredAmount.toFixed(2)}.` });
-    amount = parsed;
+    const parsedCents = parseWebsiteMoneyCents(customAmount);
+    if (parsedCents === null) return res.status(400).json({ error: "Invalid custom amount. Use a positive amount with no more than two decimal places." });
+    if (parsedCents < configuredCents) return res.status(400).json({ error: `Minimum deposit is ${configuredAmount.toFixed(2)}.` });
+    amount = parsedCents / 100;
   }
 
-  const amountCents = Math.round(amount * 100);
+  const amountCents = parseWebsiteMoneyCents(amount);
+  if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
   let redirectUrl: string | undefined;
   if (returnUrl) {
@@ -1276,7 +1303,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     customerEmail: customerEmail?.trim().toLowerCase() || "",
     customerPhone: customerPhone?.trim() || null,
     customerNotes: customerNotes?.trim() || null,
-    amount: String(amount),
+    amount: (amountCents / 100).toFixed(2),
     paymentStatus: "pending",
   }).returning();
 
