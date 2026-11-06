@@ -514,7 +514,9 @@ router.put("/", wrapAsync(async (req, res) => {
   }
   const normalizedSettings = {
     ...validatedSettings,
-    ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}),
+    ...(Object.prototype.hasOwnProperty.call(validatedSettings, "pages")
+      ? { pages: pageValidation.pages }
+      : {}),
   };
 
   const [existing] = await db
