@@ -177,8 +177,14 @@ async function loadPaymentHistoryJobs(
       amountPaid,
       paidDate,
       paidNotes: r.paidNotes,
-      paymentStatus: r.paymentStatus ?? "unpaid",
-      paidAt: r.paidAt ?? null,
+      paymentStatus: r.hasLedgerRecords
+        ? amountPaid <= 0
+          ? "unpaid"
+          : amountOwed != null && amountPaid >= amountOwed
+            ? "paid"
+            : "partial"
+        : (r.paymentStatus ?? "unpaid"),
+      paidAt: r.hasLedgerRecords ? (paidDate ?? null) : (r.paidAt ?? null),
       effectiveYear,
       effectiveDate,
     };
