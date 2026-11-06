@@ -131,8 +131,12 @@ export function patchWebsitePageSectionContent<
   content: Record<string, unknown>,
 ): TPage[] | null {
   if (!pages) return pages;
-  return pages.map(page => page.id !== pageId ? page : {
-    ...page,
-    sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
+  return pages.map(page => {
+    if (page.id !== pageId) return page;
+    if (!page.sections.some(section => section.id === sectionId)) return page;
+    return {
+      ...page,
+      sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
+    };
   });
 }
