@@ -986,7 +986,7 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
         ${isActive ? "bg-primary/8 border border-primary/30" : selected ? "bg-primary/5" : "hover:bg-muted/50"}`}
       onClick={onActivate}
     >
-      <button onClick={e => { e.stopPropagation(); onToggleSelect(); }} className="flex-shrink-0">
+      <button type="button" aria-label={selected ? "Deselect image" : "Select image"} onClick={e => { e.stopPropagation(); onToggleSelect(); }} className="flex-shrink-0">
         <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors
           ${selected ? "bg-primary border-primary" : "border-border group-hover:border-muted-foreground"}`}>
           {selected && <Check className="w-2.5 h-2.5 text-white" />}
@@ -1009,7 +1009,8 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             className="w-full text-xs border border-primary rounded px-1.5 py-0.5 focus:outline-none bg-background"
           />
         ) : (
-          <p className="text-xs font-medium text-foreground truncate">{displayLabel(item)}</p>
+          <button type="button" onClick={e => { e.stopPropagation(); onActivate(); }}
+            className="block w-full text-left text-xs font-medium text-foreground truncate">{displayLabel(item)}</button>
         )}
         <p className="text-[10px] text-muted-foreground">{formatSize(item.size)} · {formatDate(item.uploadedAt)}</p>
       </div>
@@ -1034,8 +1035,8 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
             </select>
           </div>
         )}
-        <button onClick={e => { e.stopPropagation(); onStartRename(); }}
-          className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity" title="Rename">
+        <button type="button" aria-label={`Rename ${displayLabel(item)}`} onClick={e => { e.stopPropagation(); onStartRename(); }}
+          className="p-1 rounded text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
           <Pencil className="w-3 h-3" />
         </button>
         {isDeleteConfirm ? (
