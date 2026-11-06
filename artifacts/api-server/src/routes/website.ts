@@ -2587,7 +2587,7 @@ router.post("/media", (_req, res) => {
 
 router.delete("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const [item] = await db
     .select()
@@ -2615,7 +2615,7 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
 
 router.patch("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   const validation = validateWebsiteMediaPatch(req.body);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
@@ -2643,7 +2643,7 @@ router.patch("/media/:id", wrapAsync(async (req, res) => {
 
 router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const [item] = await db
@@ -2686,7 +2686,7 @@ router.post("/media/:id/generate-alt", wrapAsync(async (req, res) => {
 
 router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const validation = validateEnhancementOptions(
@@ -2751,7 +2751,7 @@ router.post("/media/:id/replace", (_req, res) => {
 
 router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
   if (!req.file) return res.status(400).json({ error: "No file provided" });
 
@@ -2876,7 +2876,7 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
 
 router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const id = parseInt(req.params.id as string);
+  const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
   const [item] = await db.select({ url: websiteMediaTable.url })
@@ -2942,7 +2942,7 @@ router.post("/media/folders", wrapAsync(async (req, res) => {
 
 router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const folderId = parseInt(req.params.folderId as string);
+  const folderId = parsePositiveDatabaseId(req.params.folderId);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   const validation = validateWebsiteMediaFolderName((req.body as { name?: unknown } | undefined)?.name);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
@@ -2956,7 +2956,7 @@ router.patch("/media/folders/:folderId", wrapAsync(async (req, res) => {
 
 router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
-  const folderId = parseInt(req.params.folderId as string);
+  const folderId = parsePositiveDatabaseId(req.params.folderId);
   if (!businessId || !folderId) return res.status(400).json({ error: "Invalid params" });
   await db.update(websiteMediaTable)
     .set({ folderId: null })
