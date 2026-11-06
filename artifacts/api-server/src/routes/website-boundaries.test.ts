@@ -198,6 +198,7 @@ describe("Website Studio profile data normalization", () => {
   it("filters and bounds service-area strings from malformed saved settings", () => {
     expect(getWebsiteStringList(["  Kentucky  ", "", 42, null, "Illinois"], 2)).toEqual(["Kentucky", "Illinois"]);
     expect(getWebsiteStringList({ areas: ["Kentucky"] })).toEqual([]);
+    expect(getWebsiteStringList(["Kentucky"], 0)).toEqual([]);
     expect(getWebsiteStringList(["x".repeat(200)], 10, 80)).toEqual(["x".repeat(80)]);
   });
 
