@@ -177,7 +177,13 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
         conflict: { slug, pageId: prior.id, pageName: prior.name },
       };
     }
-    const normalizedPage = { ...page, slug };
+    const normalizedPage = {
+      ...page,
+      slug,
+      ...(Array.isArray(page.sections)
+        ? { sections: ensureUniqueWebsiteSectionIds(page.sections as Array<{ id?: unknown; type?: unknown }>) }
+        : {}),
+    };
     seen.set(slug, normalizedPage);
     normalized.push(normalizedPage);
   }
