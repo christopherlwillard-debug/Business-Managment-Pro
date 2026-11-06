@@ -3341,6 +3341,8 @@ function WebsiteEditor() {
         brandColor: "#1a1a2e",
         fontFamily: "Inter",
         ...generatedSettings,
+        // Full-site generation replaces the current custom-page set.
+        pages: [],
         // Always preserve these from the current site (overwrite any AI-generated values)
         logoUrl: preservedLogoUrl,
         ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : generatedSettings.logoObjectPath ? { logoObjectPath: generatedSettings.logoObjectPath } : {}),
@@ -3349,7 +3351,27 @@ function WebsiteEditor() {
         ...(settings.customDomain ? { customDomain: settings.customDomain } : {}),
       };
 
+      if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, generationSession)) {
+        toast({ title: "Wait for uploads to finish", description: "Finish your image uploads before applying the generated website." });
+        return;
+      }
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      // Apply generated content only after any earlier autosave has settled, so
+      // a slower save of the old site cannot overwrite this generated version.
+      await waitForWebsiteSaveQueue({
+        isInFlight: () => saveInFlightRef.current,
+        isQueued: () => saveQueuedRef.current,
+        getPending: () => saveInFlightPromiseRef.current,
+        flushQueued: () => {
+          saveQueuedRef.current = false;
+          requestSave();
+        },
+      });
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while generation was waiting", description: "Your edits were preserved. Review the generated site and apply it again if needed.", variant: "destructive" });
+        return;
+      }
 
       const payload = {
         sections: sections.map((s, i) => ({ ...s, order: i })),
