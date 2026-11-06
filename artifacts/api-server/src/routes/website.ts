@@ -10,7 +10,7 @@ import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
-import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, validateEnhancementOptions } from "../lib/imageProcessor";
+import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, shouldGenerateWebsiteMediaVariants, validateEnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
@@ -2429,7 +2429,7 @@ async function uploadMediaAssets(
     uploaded.push(objectPath);
     const assets: MediaAssetPaths = { objectPath };
 
-    if (mimetype.startsWith("image/") && mimetype !== "image/svg+xml") {
+    if (shouldGenerateWebsiteMediaVariants(mimetype)) {
       const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(buffer);
       const variantId = uuidPrefix ?? objectPath.split("/").pop()!.replace(/\.[^.]+$/, "");
       assets.webpObjectPath = await objectStorageService.uploadBufferWithFilename(
