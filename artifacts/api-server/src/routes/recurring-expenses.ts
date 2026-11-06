@@ -298,7 +298,7 @@ router.put("/:id", async (req, res) => {
 
     const [updated] = await db.update(recurringExpensesTable).set({
       ...(description !== undefined && { description: description.trim() }),
-      ...(amount !== undefined && { amount: parsedAmount }),
+      ...(amount !== undefined && parsedAmount != null && { amount: parsedAmount }),
       ...(category !== undefined && { category: category.trim() }),
       ...(vendor !== undefined && { vendor: vendor || null }),
       ...(jobId !== undefined && { jobId: parsedJobId }),
