@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -138,5 +138,15 @@ describe("Website Studio request body normalization", () => {
 
   it("preserves valid object bodies", () => {
     expect(getWebsiteRequestBody({ sections: [], settings: {} })).toEqual({ sections: [], settings: {} });
+  });
+});
+
+
+describe("Website Studio stored logo paths", () => {
+  it("accepts only normalized object-storage paths for server-side logo reads", () => {
+    expect(isTrustedWebsiteLogoObjectPath("/objects/uploads/business/logo.png")).toBe(true);
+    for (const value of ["https://example.com/logo.png", "http://127.0.0.1/logo.png", "/objects/uploads/../secrets", "/objects/uploads/%2e%2e/secrets", "/objects/uploads/logo.png?redirect=http://127.0.0.1", "/objects/uploads\\\\logo.png", null, 42]) {
+      expect(isTrustedWebsiteLogoObjectPath(value)).toBe(false);
+    }
   });
 });
