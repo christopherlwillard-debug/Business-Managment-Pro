@@ -2137,15 +2137,17 @@ import { generateColorPalettes } from "../lib/colorPalette";
  * Extracts dominant colors from the business logo (or falls back to a
  * user-supplied base color) and returns 4 named ThemeOverrides suggestions.
  *
- * Body (at least one of the three required):
- *   businessId?:  number  — if set, server fetches the logo from object storage
- *   logoUrl?:     string  — public http/https URL to fetch directly
- *   baseColor?:   string  — hex color used when no logo is available
+ * Body:
+ *   businessId?:  number  — fetch the saved logo from this business's object storage
+ *   baseColor?:   string  — hex color used when no saved logo is available
+ *
+ * Arbitrary caller-supplied URLs are intentionally not fetched here: doing so
+ * would expose the API server to SSRF, redirects to internal services, and
+ * unbounded response bodies.
  */
 router.post("/suggest-colors", wrapAsync(async (req, res) => {
-  const { businessId, logoUrl, baseColor } = req.body as {
+  const { businessId, baseColor } = req.body as {
     businessId?: number;
-    logoUrl?: string;
     baseColor?: string;
   };
 
@@ -2178,14 +2180,6 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
           });
           imageBuffer = Buffer.concat(chunks);
         }
-      }
-    }
-
-    if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
-      // Fetch logo from a public URL
-      const fetchRes = await fetch(logoUrl);
-      if (fetchRes.ok) {
-        imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
       }
     }
 
