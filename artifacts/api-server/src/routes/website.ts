@@ -318,6 +318,23 @@ export function getSafeWebsitePaymentReturnUrl(value: unknown, customDomainValue
   return `${parsed.origin}${parsed.pathname}?payment=success`;
 }
 
+/** Preserve failed checkout attempts instead of leaving deposit submissions stuck as pending. */
+export async function createWebsiteDepositCheckout<T>(
+  createCheckout: () => Promise<T>,
+  markSubmissionFailed: () => Promise<unknown>,
+): Promise<T> {
+  try {
+    return await createCheckout();
+  } catch (error) {
+    try {
+      await markSubmissionFailed();
+    } catch {
+      // Preserve the original Square error if the status update also fails.
+    }
+    throw error;
+  }
+}
+
 /** Parse a positive USD amount without parseFloat's permissive partial-string behavior. */
 export function parseWebsiteMoneyCents(value: unknown): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
@@ -1498,14 +1515,19 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
     paymentStatus: "pending",
   }).returning();
 
-  const { url, id: checkoutId } = await createSquarePaymentLink({
-    amountCents,
-    currency: "USD",
-    productName: `${biz.name}: ${heading}`,
-    referenceId: `website_deposit_${slug}_${submission.id}`,
-    customerEmail: safeCustomerEmail || undefined,
-    redirectUrl,
-  });
+  const { url, id: checkoutId } = await createWebsiteDepositCheckout(
+    () => createSquarePaymentLink({
+      amountCents,
+      currency: "USD",
+      productName: `${biz.name}: ${heading}`,
+      referenceId: `website_deposit_${slug}_${submission.id}`,
+      customerEmail: safeCustomerEmail || undefined,
+      redirectUrl,
+    }),
+    () => db.update(depositSubmissionsTable)
+      .set({ paymentStatus: "failed" })
+      .where(eq(depositSubmissionsTable.id, submission.id)),
+  );
 
   await db.update(depositSubmissionsTable)
     .set({ squareCheckoutId: checkoutId, squareCheckoutUrl: url })
