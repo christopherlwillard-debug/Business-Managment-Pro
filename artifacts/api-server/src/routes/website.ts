@@ -86,11 +86,24 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
   error: string;
   conflict: { slug: string; pageId?: string; pageName?: string };
 } {
-  if (!Array.isArray(pages)) return { ok: true, pages: [] };
+  if (pages === undefined || pages === null) return { ok: true, pages: [] };
+  if (!Array.isArray(pages)) {
+    return {
+      ok: false,
+      error: "Pages must be provided as a list.",
+      conflict: { slug: "invalid-pages" },
+    };
+  }
   const seen = new Map<string, WebsitePageLike>();
   const normalized: WebsitePageLike[] = [];
   for (const raw of pages) {
-    if (!raw || typeof raw !== "object") continue;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return {
+        ok: false,
+        error: "Every page must be a valid page object.",
+        conflict: { slug: "invalid-page" },
+      };
+    }
     const page = raw as WebsitePageLike;
     const slug = normalizePageSlug(String(page.slug ?? ""));
     if (!slug || slug === "home") {
