@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "./websiteMediaValidation";
 
 describe("validateWebsiteMediaPatch", () => {
   it("accepts valid metadata and folder updates", () => {
@@ -117,6 +117,26 @@ describe("Website Studio analysis input validation", () => {
       [[validSection], "bad"],
     ] as Array<[unknown, unknown]>) {
       expect(validateWebsiteAnalysisInput(sections, settings).ok).toBe(false);
+    }
+  });
+});
+
+describe("Website Studio configuration validation", () => {
+  it("accepts valid section and settings structures", () => {
+    expect(validateWebsiteSections([{ id: "hero", type: "hero", enabled: true, content: {} }]).ok).toBe(true);
+    expect(validateWebsiteSections([]).ok).toBe(true);
+    expect(validateWebsiteSettings({ brandColor: "#123456" }).ok).toBe(true);
+  });
+
+  it("rejects malformed sections before they can be persisted", () => {
+    for (const value of [null, {}, "bad", [null], [[]], [{ type: "hero", content: {} }], [{ type: "", content: {} }], [{ type: "hero", content: [] }], [{ type: "hero", content: {}, enabled: "yes" }]]) {
+      expect(validateWebsiteSections(value).ok).toBe(false);
+    }
+  });
+
+  it("rejects primitive and array settings payloads", () => {
+    for (const value of [null, [], "bad", 12, true]) {
+      expect(validateWebsiteSettings(value).ok).toBe(false);
     }
   });
 });
