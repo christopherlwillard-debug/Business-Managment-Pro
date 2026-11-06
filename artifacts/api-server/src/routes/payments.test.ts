@@ -24,6 +24,12 @@ vi.mock("@workspace/db", () => {
   return { db: { select: () => chain } };
 });
 
+vi.mock("drizzle-orm", () => ({
+  eq: (...args: unknown[]) => ({ operator: "eq", args }),
+  and: (...args: unknown[]) => ({ operator: "and", args }),
+  desc: (...args: unknown[]) => ({ operator: "desc", args }),
+}));
+
 vi.mock("@workspace/db/schema", () => ({
   paymentsTable: {
     id: "payments.id",
