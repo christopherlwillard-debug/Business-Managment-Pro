@@ -170,3 +170,47 @@ export function cropRatioLabel(ratio: CropRatio): string {
   };
   return labels[ratio];
 }
+
+
+/**
+ * Validate untrusted enhancement options before they reach Sharp. In particular,
+ * a truthy but unsupported crop value must never reach applyEnhancements,
+ * where it would otherwise cause an opaque server error.
+ */
+export type EnhancementOptionsValidation =
+  | { ok: true; options: EnhancementOptions }
+  | { ok: false; error: string };
+
+export function validateEnhancementOptions(value: unknown): EnhancementOptionsValidation {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Enhancements must be an object." };
+  }
+
+  const input = value as Record<string, unknown>;
+  for (const key of ["brighten", "straighten", "removeBackground"] as const) {
+    if (input[key] !== undefined && typeof input[key] !== "boolean") {
+      return { ok: false, error: `${key} must be true or false.` };
+    }
+  }
+
+  if (input.removeBackground === true) {
+    return { ok: false, error: "Background removal is not available yet." };
+  }
+
+  if (input.crop !== undefined && input.crop !== null &&
+      !(CROP_RATIOS as readonly unknown[]).includes(input.crop)) {
+    return { ok: false, error: "Crop must be 16:9, 4:3, or 1:1." };
+  }
+
+  const options: EnhancementOptions = {
+    brighten: input.brighten as boolean | undefined,
+    straighten: input.straighten as boolean | undefined,
+    crop: input.crop as CropRatio | null | undefined,
+  };
+
+  if (!options.brighten && !options.straighten && !options.crop) {
+    return { ok: false, error: "Choose at least one supported enhancement." };
+  }
+
+  return { ok: true, options };
+}
