@@ -4008,19 +4008,34 @@ function WebsiteEditor() {
   }
 
   async function handleContentComponentImageUpload(file: File): Promise<string> {
-    const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-    });
-    if (!urlRes.ok) throw new Error("Failed to get upload URL");
-    const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
-    const uploadRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-    if (!uploadRes.ok) throw new Error("Upload failed");
-    const slug = activeBusiness!.slug;
-    const imgUuid = objectPath.split("/").pop()!;
-    return `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      throw new Error("Select a business before uploading an image.");
+    }
+    try {
+      const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Failed to get upload URL");
+      const { uploadURL, objectPath } = await urlRes.json() as { uploadURL: string; objectPath: string };
+      const uploadRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      if (!isCurrentWebsiteAssetUpload(upload) || activePageIdRef.current !== upload.pageId) {
+        throw new Error("The editor changed while the image was uploading. Please select the image again.");
+      }
+      const imgUuid = objectPath.split("/").pop();
+      if (!imgUuid) throw new Error("Image upload returned an invalid storage path.");
+      return `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+    } finally {
+      finishWebsiteAssetUpload(upload.key);
+      // Autosaves are paused while any asset upload is pending. Resume saving
+      // edits made during this upload even if the caller rejects the result.
+      if (isCurrentWebsiteAssetUpload(upload) && isDirtyRef.current) requestSave();
+    }
   }
 
   async function handleGalleryImageUpload(sectionId: string, imageId: string, file: File) {
