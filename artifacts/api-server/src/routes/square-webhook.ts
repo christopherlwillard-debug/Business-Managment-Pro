@@ -399,7 +399,9 @@ async function handleSquarePayment(opts: {
     }
 
     const clientId = client?.id ?? null;
-    const businessId = await resolveWebhookBusinessId(client?.businessId, client?.businessLine, tx);
+    const businessId = clientMatchAmbiguous
+      ? null
+      : await resolveWebhookBusinessId(client?.businessId, client?.businessLine, tx);
 
     const amountDollars = (amountMoney / 100).toFixed(2);
     const dateStr = paidAt.toISOString().split("T")[0];
@@ -480,8 +482,8 @@ async function handleSquarePayment(opts: {
       source: "square_tap_to_pay",
       paymentMethod: "card",
       clientId,
-      businessId: String(businessId),
-      businessLine: client?.businessLine ?? "general_contracting",
+      businessId: businessId == null ? null : String(businessId),
+      businessLine: client?.businessLine ?? (businessId == null ? null : "general_contracting"),
     });
 
     console.log(
