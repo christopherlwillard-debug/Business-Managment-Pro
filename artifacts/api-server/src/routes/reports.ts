@@ -2485,7 +2485,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const businessMileageDeduction = summarizeMileageRecords(
       mileageLogs.filter(m => m.subcontractorId == null),
     ).totalDeduction;
-    const depreciationDeduction = await computeDepreciationForYear(year, reportBusiness ?? null);
+    const depreciationDeduction = await computeDepreciationForYear(year);
     const netProfit = paidRevenue - totalExpenses - businessMileageDeduction - depreciationDeduction;
 
     // Owensboro gross for OCC tax — invoices + other income rows with city = owensboro
