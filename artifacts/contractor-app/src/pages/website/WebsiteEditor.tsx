@@ -4013,25 +4013,31 @@ function WebsiteEditor() {
   }
 
   async function handleGalleryImageUpload(sectionId: string, imageId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Image upload failed", variant: "destructive" });
+      return;
+    }
     setUploadingGalleryImageIds(prev => new Set(prev).add(imageId));
     const blobUrl = URL.createObjectURL(file);
-    const sectionsAtStart = sections;
-    const settingsAtStart = settings;
-    const pagesAtStart = pagesRef.current;
-    history.pushSnapshot({ sections: pagesAtStart, settings: settingsAtStart });
+    const originalUrl = (pagesRef.current.find(page => page.id === upload.pageId)?.sections ?? [])
+      .find(section => section.id === sectionId)?.content.images as any[] | undefined;
+    const originalImageUrl = originalUrl?.find(image => image.id === imageId)?.url;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    updatePageSections(sectionsAtStart.map(s =>
-      s.id === sectionId
+    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+      pageSections.map(section => section.id === sectionId
         ? {
-            ...s,
+            ...section,
             content: {
-              ...s.content,
-              images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                img.id === imageId ? { ...img, url: blobUrl } : img
+              ...section.content,
+              images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                image.id === imageId ? { ...image, url: blobUrl } : image
               ),
             },
           }
-        : s
+        : section),
     ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-column-image`, {
@@ -4048,51 +4054,58 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
-      const imgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/column-image/${imgUuid}`;
-      const savedSections = sectionsAtStart.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                  img.id === imageId ? { ...img, objectPath, url: canonicalUrl } : img
-                ),
-              },
-            }
-          : s
-      );
-      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-      await saveNow(settingsAtStart, savedSections);
-      URL.revokeObjectURL(blobUrl);
-      isDirtyRef.current = false;
-      updatePageSections(savedSections.map(s =>
-        s.id === sectionId
-          ? {
-              ...s,
-              content: {
-                ...s.content,
-                images: ((s.content.images as any[]) ?? []).map((img: any) =>
-                  img.id === imageId ? { ...img, url: `${canonicalUrl}?v=${Date.now()}` } : img
-                ),
-              },
-            }
-          : s
-      ));
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Image uploaded" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        const imgUuid = objectPath.split("/").pop()!;
+        const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/column-image/${imgUuid}`;
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.id === sectionId
+            ? {
+                ...section,
+                content: {
+                  ...section.content,
+                  images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                    image.id === imageId && image.url === blobUrl
+                      ? { ...image, objectPath, url: `${canonicalUrl}?v=${Date.now()}` }
+                      : image
+                  ),
+                },
+              }
+            : section),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Image uploaded" });
+      }
     } catch {
-      URL.revokeObjectURL(blobUrl);
-      setLocalPages(pagesAtStart);
-      toast({ title: "Image upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          pageSections.map(section => section.id === sectionId
+            ? {
+                ...section,
+                content: {
+                  ...section.content,
+                  images: ((section.content.images as any[]) ?? []).map((image: any) =>
+                    image.id === imageId && image.url === blobUrl
+                      ? { ...image, url: originalImageUrl }
+                      : image
+                  ),
+                },
+              }
+            : section),
+        ));
+        toast({ title: "Image upload failed", variant: "destructive" });
+      }
     } finally {
-      setUploadingGalleryImageIds(prev => {
-        const next = new Set(prev);
-        next.delete(imageId);
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setUploadingGalleryImageIds(prev => {
+          const next = new Set(prev);
+          next.delete(imageId);
+          return next;
+        });
+      }
     }
   }
 
