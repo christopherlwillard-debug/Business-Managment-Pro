@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
+import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2834,15 +2834,8 @@ function WebsiteEditor() {
       textEditSessionRef.current.timer = null;
     }, 1500);
     isDirtyRef.current = true;
-    setLocalPages(prev => {
-      if (!prev) return prev;
-      return prev.map(p => {
-        if (p.sections.some(s => s.id === id)) {
-          return { ...p, sections: p.sections.map(s => s.id === id ? { ...s, content } : s) };
-        }
-        return p;
-      });
-    });
+    const pageId = activePageIdRef.current;
+    setLocalPages(prev => patchWebsitePageSectionContent(prev, pageId, id, content));
   }
 
   /** Inserts a component from the library panel into a content section at the given index. */
