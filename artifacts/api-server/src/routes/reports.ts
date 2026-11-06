@@ -378,6 +378,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       amountPaid:       jobSubcontractorsTable.amountPaid,
       paymentStatus:    jobSubcontractorsTable.paymentStatus,
       businessLine:     jobsTable.businessLine,
+      businessId:       jobsTable.businessId,
       compensationType: jobSubcontractorsTable.compensationType,
       allocationPct:    jobSubcontractorsTable.allocationPct,
       jobId:            jobSubcontractorsTable.jobId,
