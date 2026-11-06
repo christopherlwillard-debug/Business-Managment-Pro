@@ -43,60 +43,50 @@ export async function waitForWebsiteSaveQueue(options: {
 }
 
 /** Apply a background-image patch to the latest section array without replacing unrelated edits. */
-export function patchSectionBlockStyle<
-  T extends { id: string; blockStyle?: S },
-  S extends object,
->(
+export function patchSectionBlockStyle<T extends { id: string; blockStyle?: object }>(
   sections: T[],
   sectionId: string,
-  patch: Partial<S>,
+  patch: Partial<NonNullable<T["blockStyle"]>>,
 ): T[] {
   return sections.map(section => section.id === sectionId
-    ? { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } }
+    ? { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } as NonNullable<T["blockStyle"]> }
     : section);
 }
 
 /** Apply a background-image result only while its own optimistic preview is still current. */
-export function completeSectionBlockStyleUpload<
-  T extends { id: string; blockStyle?: S },
-  S extends { bgImageUrl?: string },
->(
+export function completeSectionBlockStyleUpload<T extends { id: string; blockStyle?: { bgImageUrl?: string } & object }>(
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  patch: Partial<S>,
+  patch: Partial<NonNullable<T["blockStyle"]>>,
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     changed = true;
-    return { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } };
+    return { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } as NonNullable<T["blockStyle"]> };
   });
   return changed ? next : sections;
 }
 
 /** Roll back only this upload's optimistic background fields; preserve all concurrent style edits. */
-export function restoreSectionBlockStylePreview<
-  T extends { id: string; blockStyle?: S },
-  S extends { bgImageUrl?: string; bgType?: string },
->(
+export function restoreSectionBlockStylePreview<T extends { id: string; blockStyle?: { bgImageUrl?: string; bgType?: string } & object }>(
   sections: T[],
   sectionId: string,
   previewUrl: string,
-  originalBlockStyle: S | undefined,
+  originalBlockStyle: T["blockStyle"],
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     changed = true;
-    const nextStyle = { ...(section.blockStyle ?? {}) } as S;
+    const nextStyle = { ...(section.blockStyle ?? {}) } as NonNullable<T["blockStyle"]>;
     if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgImageUrl")) {
       nextStyle.bgImageUrl = originalBlockStyle.bgImageUrl;
     } else {
       delete nextStyle.bgImageUrl;
     }
-    // A user may have changed the background mode while the upload was in
-    // flight. Restore that field only if the temporary preview still owns it.
+    // Restore the previous mode only while this upload still owns the preview.
     if (nextStyle.bgType === "image") {
       if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgType")) {
         nextStyle.bgType = originalBlockStyle.bgType;
