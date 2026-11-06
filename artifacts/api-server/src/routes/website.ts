@@ -188,11 +188,16 @@ export function getWebsiteSectionTextItems(value: unknown): Array<{ title: strin
 /** Normalize string arrays from saved profile sections before using them in the website wizard. */
 export function getWebsiteStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, maxItems).flatMap(item => {
-    if (typeof item !== "string") return [];
+  const limit = Math.max(0, Math.floor(maxItems));
+  const scanLimit = Math.min(value.length, Math.max(limit, limit * 5));
+  const result: string[] = [];
+  for (const item of value.slice(0, scanLimit)) {
+    if (typeof item !== "string") continue;
     const text = item.trim().slice(0, maxLength);
-    return text ? [text] : [];
-  });
+    if (text) result.push(text);
+    if (result.length >= limit) break;
+  }
+  return result;
 }
 
 /** Keep only structurally valid social links from saved website sections. */
