@@ -116,7 +116,7 @@ import type { RefreshSuggestion } from "./website-types";
 import { DealerPageGenerator } from "./DealerPageGenerator";
 import { AITemplateBuilder } from "./AITemplateBuilder";
 import { reportCrash } from "@/lib/reportCrash";
-import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, writeEditorPreference } from "./storageUtils";
+import { completeSectionBlockStyleUpload, hasPendingWebsiteAssetUploads, patchSectionBlockStyle, patchWebsitePageSectionContent, patchWebsitePageSections, readEditorPreference, restoreSectionBlockStylePreview, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -2560,10 +2560,7 @@ function WebsiteEditor() {
       revision: editorRevisionRef.current,
       payload: {
         sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
-        settings: {
-          ...settingsRef.current,
-          ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
-        },
+        settings: withWebsitePageList(settingsRef.current, additionalPages),
       },
     };
   }
@@ -3660,10 +3657,7 @@ function WebsiteEditor() {
     const effectiveSettings = overrideSettings ?? settingsRef.current;
     const payload = {
       sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
-      settings: {
-        ...effectiveSettings,
-        ...(additionalPages.length > 0 ? { pages: additionalPages } : {}),
-      },
+      settings: withWebsitePageList(effectiveSettings, additionalPages),
     };
     const res = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
       method: "PUT",
@@ -4664,6 +4658,7 @@ function WebsiteEditor() {
       });
       const savedSettings: SiteSettings = {
         ...t.settings,
+        pages: [],
         logoUrl: settings.logoUrl || "",
         ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : {}),
         ...(settings.faviconUrl ? { faviconUrl: settings.faviconUrl } : {}),
