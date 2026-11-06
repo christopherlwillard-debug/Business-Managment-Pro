@@ -19,6 +19,15 @@
 
 import sharp from "sharp";
 
+/** Cap decoded image dimensions to prevent compressed uploads exhausting server memory. */
+export const WEBSITE_MEDIA_MAX_PIXELS = 40_000_000;
+
+export function isWithinWebsiteMediaPixelLimit(width: unknown, height: unknown): boolean {
+  return Number.isSafeInteger(width) && Number.isSafeInteger(height) &&
+    (width as number) > 0 && (height as number) > 0 &&
+    (width as number) * (height as number) <= WEBSITE_MEDIA_MAX_PIXELS;
+}
+
 const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
   jpeg: "image/jpeg",
   png: "image/png",
@@ -36,7 +45,8 @@ const WEBSITE_MEDIA_MIME_TYPES: Readonly<Record<string, string>> = {
  */
 export async function detectWebsiteMediaMimeType(inputBuffer: Buffer): Promise<string | null> {
   try {
-    const metadata = await sharp(inputBuffer).metadata();
+    const metadata = await sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS }).metadata();
+    if (!isWithinWebsiteMediaPixelLimit(metadata.width, metadata.height)) return null;
     if (metadata.format === "heif") {
       if (metadata.compression === "av1") return "image/avif";
       if (metadata.compression === "hevc") return "image/heic";
@@ -80,7 +90,7 @@ export function shouldGenerateWebsiteMediaVariants(mimetype: string): boolean {
 
 export async function createMediaVariants(inputBuffer: Buffer): Promise<MediaVariants> {
   // Always fix EXIF orientation first so all variants are upright.
-  const base = await sharp(inputBuffer).rotate().toBuffer();
+  const base = await sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS }).rotate().toBuffer();
 
   const [webpBuffer, thumbBuffer, displayBuffer] = await Promise.all([
     // Full-resolution WebP
@@ -118,7 +128,7 @@ export async function applyEnhancements(
   opts: EnhancementOptions,
 ): Promise<Buffer> {
   // Step 1 — correct EXIF orientation only when explicitly requested.
-  const source = sharp(inputBuffer);
+  const source = sharp(inputBuffer, { limitInputPixels: WEBSITE_MEDIA_MAX_PIXELS });
   const base = await (opts.straighten ? source.rotate() : source).toBuffer();
 
   // Step 2 — get dimensions of the (now correctly-oriented) image
