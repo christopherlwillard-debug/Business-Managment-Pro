@@ -10,6 +10,7 @@ describe("Website Studio public navigation safety", () => {
     expect(getSafeWebsiteHref("javascript:void")).toBeNull();
     expect(getSafeWebsiteHref("//attacker.example/path")).toBeNull();
     expect(getSafeWebsiteHref("data:text/html,unsafe")).toBeNull();
+    expect(getSafeWebsiteHref("java\\tscript:unsafe")).toBeNull();
     expect(getSafeWebsiteHref("  /services  ")).toBe("/services");
     expect(getSafeWebsiteHref("#contact")).toBe("#contact");
     expect(getSafeWebsiteHref("https://example.com")).toBe("https://example.com");
