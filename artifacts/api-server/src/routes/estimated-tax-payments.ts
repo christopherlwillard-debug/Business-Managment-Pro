@@ -320,8 +320,8 @@ router.post("/", wrapAsync(async (req, res) => {
 
 // PUT /api/estimated-tax-payments/:id
 router.put("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const { amountDue, amountPaid, paidDate, paymentMethod, notes, level } = req.body ?? {};
@@ -361,8 +361,8 @@ router.put("/:id", wrapAsync(async (req, res) => {
 
 // DELETE /api/estimated-tax-payments/:id
 router.delete("/:id", wrapAsync(async (req, res) => {
-  const id = parseInt(req.params.id as string);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   await db.delete(estimatedTaxPaymentsTable)
