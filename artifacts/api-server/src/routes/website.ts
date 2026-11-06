@@ -991,7 +991,7 @@ publicRouter.get("/:slug/manifest.json", wrapAsync(async (req, res) => {
 // correctly. Both by-host (custom domain) and slug-based variants are provided.
 
 export function buildSitemapXml(baseUrl: string, pages: Array<{ slug: string; name: string }>): string {
-  const trimBase = escapeWebsiteXml(baseUrl.replace(/\\/$/, ""));
+  const trimBase = escapeWebsiteXml(baseUrl.replace(/\/$/, ""));
   const urls = [
     `  <url><loc>${trimBase}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
     ...pages.map(page => {
