@@ -81,6 +81,25 @@ beforeEach(() => {
 });
 
 describe("GET /tax-reports/schedule-c", () => {
+  it("rejects an unknown business before running any financial totals", async () => {
+    h.queue = [
+      [{ taxAssumptions: null }],
+      [],
+    ];
+    const response = await request(app).get("/tax-reports/schedule-c?year=2026&businessLine=not-a-real-business");
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("Unknown business");
+    expect(h.queue).toHaveLength(0);
+  });
+
+  it("rejects malformed tax years instead of partially parsing them", async () => {
+    h.queue = [];
+    const response = await request(app).get("/tax-reports/schedule-c?year=2026oops");
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("A valid tax year is required");
+    expect(h.queue).toHaveLength(0);
+  });
+
   it("loads raw mileage rows for the effective-date mileage engine", async () => {
     const response = await request(app).get("/tax-reports/schedule-c?year=2026");
 
