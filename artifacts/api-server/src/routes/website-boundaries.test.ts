@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -9,6 +9,30 @@ describe("Website Studio route registration", () => {
       (layer: any) => layer.route?.path === "/regenerate-section" && layer.route.methods.post,
     );
     expect(handlers).toHaveLength(1);
+  });
+});
+
+
+describe("Website Studio public page list recovery", () => {
+  it("returns an empty list for missing or malformed persisted page settings", () => {
+    expect(getWebsitePageList(undefined)).toEqual([]);
+    expect(getWebsitePageList(null)).toEqual([]);
+    expect(getWebsitePageList({ slug: "about" })).toEqual([]);
+    expect(getWebsitePageList("about")).toEqual([]);
+  });
+
+  it("filters malformed entries before public route slug lookups", () => {
+    expect(getWebsitePageList([
+      null,
+      "about",
+      [],
+      { slug: 42 },
+      { id: "valid", slug: "about" },
+      { id: "also-valid", slug: "contact" },
+    ])).toEqual([
+      { id: "valid", slug: "about" },
+      { id: "also-valid", slug: "contact" },
+    ]);
   });
 });
 
