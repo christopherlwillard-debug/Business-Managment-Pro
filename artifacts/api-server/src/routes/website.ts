@@ -474,9 +474,10 @@ router.put("/", wrapAsync(async (req, res) => {
   if (!pageValidation.ok) {
     return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
   }
-  const normalizedSettings = validatedSettings
-    ? { ...settings, ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}) }
-    : settings;
+  const normalizedSettings = {
+    ...validatedSettings,
+    ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}),
+  };
 
   const [existing] = await db
     .select({ id: websiteConfigsTable.id })
@@ -561,8 +562,8 @@ router.post("/publish", wrapAsync(async (req, res) => {
     .insert(websiteConfigsTable)
     .values({
       businessId,
-      sections: (sections ?? defaultSections()) as any,
-      settings: (settings ?? defaultSettings()) as any,
+      sections: (validatedSections ?? defaultSections()) as any,
+      settings: (validatedSettings ?? defaultSettings()) as any,
       published: true,
       publishedAt: now,
     })
