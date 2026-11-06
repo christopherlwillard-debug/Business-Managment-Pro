@@ -9,26 +9,73 @@ const router = Router();
 
 const VALID_PAYMENT_METHODS = ["cash", "check", "bank_transfer", "other"] as const;
 type PaymentMethod = typeof VALID_PAYMENT_METHODS[number];
-function parseBody(body: any): { clientId?: number | null; jobId?: number | null; businessId?: string | null; amount: string; date: string; description: string; source?: string | null; paymentMethod: PaymentMethod; city?: string | null; state?: string | null; notes?: string | null; businessLine?: string | null } | null {
-  const { clientId, jobId, amount, date, description, source, paymentMethod, city, state, notes, businessLine } = body ?? {};
-  if (!amount || isNaN(parseFloat(String(amount)))) return null;
-  if (!date || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  if (!description || typeof description !== "string" || description.trim() === "") return null;
-  const pm: PaymentMethod = VALID_PAYMENT_METHODS.includes(paymentMethod) ? paymentMethod : "other";
-  const parsedClientId = clientId != null && !isNaN(parseInt(String(clientId))) ? parseInt(String(clientId)) : null;
-  const parsedJobId = jobId != null && !isNaN(parseInt(String(jobId))) ? parseInt(String(jobId)) : null;
+export function parseOtherIncomeBody(body: unknown): {
+  clientId?: number | null;
+  jobId?: number | null;
+  businessId?: string | null;
+  amount: string;
+  date: string;
+  description: string;
+  source?: string | null;
+  paymentMethod: PaymentMethod;
+  city?: string | null;
+  state?: string | null;
+  notes?: string | null;
+  businessLine?: string | null;
+} | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const input = body as Record<string, unknown>;
+  const { clientId, jobId, amount, date, description, source, paymentMethod, city, state, notes } = input;
+
+  const amountText = typeof amount === "number" && Number.isFinite(amount)
+    ? String(amount)
+    : typeof amount === "string" ? amount.trim() : "";
+  if (!/^(?:0|[1-9]\\d{0,9})(?:\\.\\d{1,2})?$/.test(amountText)) return null;
+  const amountNumber = Number(amountText);
+  if (!Number.isFinite(amountNumber) || amountNumber <= 0 || amountNumber > 9_999_999_999.99) return null;
+
+  if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return null;
+  const parsedDate = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return null;
+
+  if (typeof description !== "string" || !description.trim() || description.trim().length > 500) return null;
+
+  const parseOptionalId = (value: unknown): number | null | undefined => {
+    if (value == null || value === "") return null;
+    const text = String(value).trim();
+    if (!/^\\d+$/.test(text)) return undefined;
+    const parsed = Number(text);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  };
+  const parsedClientId = parseOptionalId(clientId);
+  const parsedJobId = parseOptionalId(jobId);
+  if (parsedClientId === undefined || parsedJobId === undefined) return null;
+
+  const optionalText = (value: unknown, maxLength: number): string | null | undefined => {
+    if (value == null || value === "") return null;
+    if (typeof value !== "string" || value.length > maxLength) return undefined;
+    return value.trim() || null;
+  };
+  const parsedSource = optionalText(source, 120);
+  const parsedCity = optionalText(city, 120);
+  const parsedState = optionalText(state, 80);
+  const parsedNotes = optionalText(notes, 2000);
+  if ([parsedSource, parsedCity, parsedState, parsedNotes].includes(undefined)) return null;
+
+  const pm: PaymentMethod = VALID_PAYMENT_METHODS.includes(paymentMethod as PaymentMethod)
+    ? paymentMethod as PaymentMethod
+    : "other";
   return {
     clientId: parsedClientId,
     jobId: parsedJobId,
-    amount: String(parseFloat(String(amount))),
+    amount: amountNumber.toFixed(2),
     date,
     description: description.trim(),
-    source: source ? String(source).trim() || null : null,
+    source: parsedSource,
     paymentMethod: pm,
-    city: city ? String(city).trim() || null : null,
-    state: state ? String(state).trim() || null : null,
-    notes: notes ? String(notes).trim() || null : null,
-    businessLine: businessLine && typeof businessLine === "string" ? businessLine.trim() || null : null,
+    city: parsedCity,
+    state: parsedState,
+    notes: parsedNotes,
   };
 }
 
@@ -60,7 +107,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const data = parseBody(req.body);
+    const data = parseOtherIncomeBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
@@ -89,7 +136,7 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const data = parseBody(req.body);
+    const data = parseOtherIncomeBody(req.body);
     if (!data) { res.status(400).json({ error: "Invalid payload" }); return; }
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
