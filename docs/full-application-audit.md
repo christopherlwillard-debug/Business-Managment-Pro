@@ -187,6 +187,6 @@ The existing `amountPaid` and provider timestamp fields remain aggregate/snapsho
 ### Validation
 
 - Reviewed the updated route and test source after the commits.
-- Added five focused invoice-allocation assertions; **tests, TypeScript checks, and builds were not executed** because this session has no repository checkout/package runtime.
+- Added five focused Square invoice-allocation assertions, a completed-payment missing-ID ingress test, and two Plaid canonical-status assertions; **tests, TypeScript checks, and builds were not executed** because this session has no repository checkout/package runtime.
 - GitHub Actions returned no workflow runs and the commit had no combined status checks at the time of inspection. No test pass is claimed.
 - The audit branch remains separate from `master`; no merge, deployment, credentials, or production data were changed.
