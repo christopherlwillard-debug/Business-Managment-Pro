@@ -2819,10 +2819,11 @@ router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync
   const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
   const oldUrl = item.url;
 
-  const configs = await db.select().from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-
   try {
+    // Keep the config read inside the cleanup boundary: if it fails after the
+    // replacement objects were uploaded, those objects must not be orphaned.
+    const configs = await db.select().from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId));
     let replacedInConfigs = 0;
     let updated;
     await db.transaction(async tx => {
