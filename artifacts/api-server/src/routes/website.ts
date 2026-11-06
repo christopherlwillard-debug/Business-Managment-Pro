@@ -332,6 +332,24 @@ function defaultSettings() {
 
 type SectionRow = { id: string; type: string; enabled: boolean; order: number; content: Record<string, unknown> };
 
+/** Give every section a stable, non-empty ID; duplicate IDs break editor selection and updates. */
+export function ensureUniqueWebsiteSectionIds<T extends { id?: unknown; type?: unknown }>(
+  sections: T[],
+): Array<T & { id: string }> {
+  const used = new Set<string>();
+  return sections.map((section, index) => {
+    const type = typeof section.type === "string" && section.type.trim() ? section.type.trim() : "section";
+    const preferred = typeof section.id === "string" && section.id.trim()
+      ? section.id.trim()
+      : `${type}-${index + 1}`;
+    let id = preferred;
+    let suffix = 2;
+    while (used.has(id)) id = `${preferred}-${suffix++}`;
+    used.add(id);
+    return { ...section, id };
+  });
+}
+
 export function normalizeSections(existing: unknown): SectionRow[] {
   const defaults = defaultSections() as SectionRow[];
   const validExisting = Array.isArray(existing)
@@ -374,7 +392,7 @@ export function normalizeSections(existing: unknown): SectionRow[] {
       result.push({ ...def, order: nextOrder++, enabled: def.enabled });
     }
   }
-  return result;
+  return ensureUniqueWebsiteSectionIds(result) as SectionRow[];
 }
 
 // ── Business Profile Pre-fill ─────────────────────────────────────────────────
@@ -5187,16 +5205,16 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
     });
   }
 
-  template.sections = rawSections.map((s, i) => ({
+  template.sections = ensureUniqueWebsiteSectionIds(rawSections.map((s, i) => ({
     ...s,
-    id: String(s.id || s.type || `s${i}`),
+    id: s.id,
     enabled: true,
     order: typeof s.order === "number" ? s.order : i - 1,
     // content must be an object
     content: (s.content && typeof s.content === "object" && !Array.isArray(s.content))
       ? s.content
       : {},
-  }));
+  })));
 
   return res.json(template);
 }));
