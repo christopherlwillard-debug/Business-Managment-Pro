@@ -3858,7 +3858,7 @@ Return slug as a clean URL slug (lowercase, hyphens only, no spaces or special c
     .select({ settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
-  const existingPages = ((existingConfig?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const existingPages = getWebsitePageList(getWebsiteRequestBody(existingConfig?.settings).pages);
   const conflict = existingPages.find(existing => normalizePageSlug(String(existing.slug ?? "")) === resolvedSlug);
   if (conflict || resolvedSlug === "home") {
     return res.status(409).json({
@@ -5940,7 +5940,7 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
 
   type SectionRow = { type: string; content: Record<string, unknown> };
   const siteSections = getWebsiteSectionList(config?.sections) as SectionRow[];
-  const existingPages = ((config?.settings as Record<string, unknown> | null)?.pages ?? []) as WebsitePageLike[];
+  const existingPages = getWebsitePageList(getWebsiteRequestBody(config?.settings).pages);
   const requestedSlugs = validIds.map(id => DEALER_BRANDS[id]!.slug);
   const conflicts = existingPages.filter(page => requestedSlugs.includes(normalizePageSlug(String(page.slug ?? ""))));
   if (conflicts.length > 0) {
