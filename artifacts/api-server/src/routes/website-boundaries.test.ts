@@ -170,7 +170,7 @@ describe("Website Studio section normalization", () => {
       { type: "broken", content: [] },
     ]);
     expect(result[0]).toMatchObject({
-      id: "section-1", type: "hero", enabled: true, order: 1,
+      id: "section-0", type: "hero", enabled: true, order: 0,
       content: { headline: "Welcome" },
     });
     expect(result.every(section => typeof section.type === "string" && !!section.content)).toBe(true);
