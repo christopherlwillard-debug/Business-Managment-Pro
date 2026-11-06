@@ -20,13 +20,24 @@ function formatStop(s: RouteStopRow & { clientName?: string | null; prospectCont
   };
 }
 
-async function validateJobClientMatch(jobId: number | null | undefined, clientId: number | null | undefined): Promise<boolean> {
+async function validateJobClientMatch(
+  jobId: number | null | undefined,
+  clientId: number | null | undefined,
+  businessLine?: string | null,
+): Promise<boolean> {
   if (jobId == null) return true;
-  const [job] = await db.select({ id: jobsTable.id, clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId));
+  const [job] = await db.select({
+    id: jobsTable.id,
+    clientId: jobsTable.clientId,
+    businessLine: jobsTable.businessLine,
+  }).from(jobsTable).where(eq(jobsTable.id, jobId));
   if (!job) return false;
   // A route stop may be linked to a job without duplicating its optional client link.
   // When both links are present, they must identify the same customer.
-  return clientId == null || job.clientId === clientId;
+  if (clientId != null && job.clientId !== clientId) return false;
+  // When Route Planner is opened inside a business, never let a linked job
+  // from another business leak into or be attached to that business's route.
+  return !businessLine || job.businessLine === businessLine;
 }
 
 router.get("/", async (req, res) => {
@@ -80,18 +91,18 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId } = req.body as {
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId, businessLine } = req.body as {
       title?: string; address: string; lat?: number; lng?: number; notes?: string;
       scheduledDate?: string; status?: string; estimatedDurationMinutes?: number; sortOrder?: number;
       blockNumber?: number | null; crewLabel?: string | null;
-      clientId?: number | null; prospectId?: number | null; jobId?: number | null;
+      clientId?: number | null; prospectId?: number | null; jobId?: number | null; businessLine?: string | null;
     };
     if (!address) return res.status(400).json({ error: "Address is required" });
     if (status !== undefined && !isValidStatus(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
     }
     if (jobId != null) {
-      const valid = await validateJobClientMatch(jobId, clientId);
+      const valid = await validateJobClientMatch(jobId, clientId, businessLine);
       if (!valid) return res.status(400).json({ error: "The selected job does not exist or does not belong to the linked client" });
     }
 
@@ -172,12 +183,12 @@ router.put("/:id", async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid stop ID" });
 
-    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId } = req.body as {
+    const { title, address, lat, lng, notes, scheduledDate, status, estimatedDurationMinutes, sortOrder, blockNumber, crewLabel, clientId, prospectId, jobId, businessLine } = req.body as {
       title?: string | null; address?: string; lat?: number | null; lng?: number | null;
       notes?: string | null; scheduledDate?: string | null; status?: string;
       estimatedDurationMinutes?: number; sortOrder?: number;
       blockNumber?: number | null; crewLabel?: string | null;
-      clientId?: number | null; prospectId?: number | null; jobId?: number | null;
+      clientId?: number | null; prospectId?: number | null; jobId?: number | null; businessLine?: string | null;
     };
 
     if (status !== undefined && !isValidStatus(status)) {
@@ -195,7 +206,7 @@ router.put("/:id", async (req, res) => {
 
       const effectiveClientId = clientId !== undefined ? clientId : existing.clientId;
       const effectiveJobId = jobId !== undefined ? jobId : existing.jobId;
-      const valid = await validateJobClientMatch(effectiveJobId, effectiveClientId);
+      const valid = await validateJobClientMatch(effectiveJobId, effectiveClientId, businessLine);
       if (!valid) {
         return res.status(400).json({ error: "The selected job does not exist or does not belong to the linked client" });
       }
