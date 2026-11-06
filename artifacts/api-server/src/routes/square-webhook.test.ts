@@ -123,7 +123,7 @@ describe("Square invoice receipt allocation", () => {
   it("keeps an underpaid invoice partial instead of marking it paid", () => {
     expect(calculateSquareInvoicePayment("500.00", "0.00", 12500)).toEqual({
       amountPaid: "125.00",
-      status: "partial",
+      status: "partiallyPaid",
     });
   });
 
