@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, val
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
+import { validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -2736,8 +2736,9 @@ router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync
 router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
   const businessId = parseInt(req.query.businessId as string);
   if (!businessId) return res.status(400).json({ error: "businessId required" });
-  const { ids } = req.body as { ids: number[] };
-  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "ids required" });
+  const validation = validateWebsiteMediaIds((req.body as { ids?: unknown } | undefined)?.ids);
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const ids = validation.ids;
   const items = await db.select({
     objectPath: websiteMediaTable.objectPath,
     webpObjectPath: websiteMediaTable.webpObjectPath,
