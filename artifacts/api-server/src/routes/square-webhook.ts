@@ -132,9 +132,10 @@ async function handleSquarePayment(opts: {
   // prospect deposits append an event, so duplicate Square deliveries must not
   // create duplicate deposit history.
   if (
+    referenceId &&
     squarePaymentId &&
     amountMoney !== null &&
-    (referenceId?.startsWith("quick_") || referenceId?.startsWith("prospect_") || referenceId?.startsWith("estimate_"))
+    (referenceId.startsWith("quick_") || referenceId.startsWith("prospect_") || referenceId.startsWith("estimate_"))
   ) {
     let ownerId: number | null = null;
     let ownerSlug: string | null = null;
