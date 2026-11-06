@@ -778,3 +778,11 @@ Created the four-document architecture governance system:
 - Reassignment from a sent or paid invoice requires confirmation and never
   rewrites the finalized invoice or moves the list's expense records.
 - Added append-only assignment history and invoice-specific material-line sync.
+
+## 2026-11-06
+
+### Route stop job/client relationship integrity
+
+- Route stop creation now verifies that a supplied job exists and, when a client is also linked, that both references identify the same customer.
+- Partial route stop edits resolve omitted job/client link values from the stored route stop before validating a changed relationship, preventing one-sided reassignment from creating mismatched links.
+- Job-only route stops and unrelated field edits remain supported. No schema, financial ledger, or source-of-truth changes were introduced.
