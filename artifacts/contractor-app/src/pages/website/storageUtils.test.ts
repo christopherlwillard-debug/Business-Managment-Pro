@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cancelWebsiteRenameBlurCommit, consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { cancelWebsiteRenameBlurCommit, consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, removeWebsitePageAndNavigationLinks, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
 
@@ -96,6 +96,54 @@ describe("Website Studio custom page persistence", () => {
     expect(withWebsitePageList(settings, pages)).toEqual({
       brandColor: "#123456", customDomain: "example.com", pages,
     });
+  });
+});
+
+describe("Website Studio page deletion", () => {
+  it("removes the selected page and its header link without changing other pages", () => {
+    const pages = [
+      {
+        id: "home",
+        sections: [
+          {
+            id: "header",
+            type: "header",
+            content: {
+              navLinks: [
+                { id: "about-link", pageId: "about", href: "/site/demo/about" },
+                { id: "contact-link", pageId: "contact", href: "/site/demo/contact" },
+                { id: "external-link", href: "https://example.com" },
+              ],
+            },
+          },
+          { id: "hero", type: "hero", content: { headline: "Home" } },
+        ],
+      },
+      { id: "about", sections: [] },
+      { id: "contact", sections: [] },
+    ];
+
+    const result = removeWebsitePageAndNavigationLinks(pages, "about");
+
+    expect(result.map(page => page.id)).toEqual(["home", "contact"]);
+    expect(result[0].sections[0].content.navLinks).toEqual([
+      { id: "contact-link", pageId: "contact", href: "/site/demo/contact" },
+      { id: "external-link", href: "https://example.com" },
+    ]);
+    expect(result[0].sections[1]).toBe(pages[0].sections[1]);
+    expect(result[1]).toBe(pages[2]);
+  });
+
+  it("does not crash on malformed header links and never removes the home page", () => {
+    const pages = [
+      { id: "home", sections: [{ id: "header", type: "header", content: { navLinks: { pageId: "about" } } }] },
+      { id: "about", sections: [] },
+    ];
+
+    expect(removeWebsitePageAndNavigationLinks(pages, "home")).toBe(pages);
+    const result = removeWebsitePageAndNavigationLinks(pages, "about");
+    expect(result.map(page => page.id)).toEqual(["home"]);
+    expect(result[0].sections[0].content.navLinks).toEqual([]);
   });
 });
 
