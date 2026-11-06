@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, getWebsiteDepositFieldConfig, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -96,6 +96,15 @@ describe("Website Studio payment return URL safety", () => {
     expect(getSafeWebsitePaymentReturnUrl("javascript:alert(1)", "business.example.com", "https://app.example.com")).toBeUndefined();
     expect(getSafeWebsitePaymentReturnUrl("not a URL", "business.example.com", "https://app.example.com")).toBeUndefined();
     expect(getSafeWebsitePaymentReturnUrl({ url: "https://business.example.com" }, "business.example.com", "https://app.example.com")).toBeUndefined();
+  });
+});
+
+describe("Website Studio deposit field settings", () => {
+  it("uses only explicit booleans and safe defaults for malformed field settings", () => {
+    expect(getWebsiteDepositFieldConfig(undefined, { show: true, required: true })).toEqual({ show: true, required: true });
+    expect(getWebsiteDepositFieldConfig({ show: false, required: false }, { show: true, required: true })).toEqual({ show: false, required: false });
+    expect(getWebsiteDepositFieldConfig({ show: "false", required: 0 }, { show: false, required: true })).toEqual({ show: false, required: true });
+    expect(getWebsiteDepositFieldConfig(null, { show: false, required: false })).toEqual({ show: false, required: false });
   });
 });
 
