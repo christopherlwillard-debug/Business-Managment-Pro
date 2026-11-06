@@ -20,10 +20,13 @@ function formatStop(s: RouteStopRow & { clientName?: string | null; prospectCont
   };
 }
 
-async function validateJobClientMatch(jobId: number, clientId: number): Promise<boolean> {
+async function validateJobClientMatch(jobId: number | null | undefined, clientId: number | null | undefined): Promise<boolean> {
+  if (jobId == null) return true;
   const [job] = await db.select({ id: jobsTable.id, clientId: jobsTable.clientId }).from(jobsTable).where(eq(jobsTable.id, jobId));
   if (!job) return false;
-  return job.clientId === clientId;
+  // A route stop may be linked to a job without duplicating its optional client link.
+  // When both links are present, they must identify the same customer.
+  return clientId == null || job.clientId === clientId;
 }
 
 router.get("/", async (req, res) => {
@@ -87,9 +90,9 @@ router.post("/", async (req, res) => {
     if (status !== undefined && !isValidStatus(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
     }
-    if (jobId != null && clientId != null) {
+    if (jobId != null) {
       const valid = await validateJobClientMatch(jobId, clientId);
-      if (!valid) return res.status(400).json({ error: "The selected job does not belong to the linked client" });
+      if (!valid) return res.status(400).json({ error: "The selected job does not exist or does not belong to the linked client" });
     }
 
     const [stop] = await db.insert(routeStopsTable).values({
@@ -180,9 +183,22 @@ router.put("/:id", async (req, res) => {
     if (status !== undefined && !isValidStatus(status)) {
       return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` });
     }
-    if (jobId != null && clientId != null) {
-      const valid = await validateJobClientMatch(jobId, clientId);
-      if (!valid) return res.status(400).json({ error: "The selected job does not belong to the linked client" });
+    // RoutePlanner sends partial edits (often jobId without clientId). Resolve
+    // the effective pair from the stored row before validating either link.
+    if (clientId !== undefined || jobId !== undefined) {
+      const [existing] = await db.select({
+        id: routeStopsTable.id,
+        clientId: routeStopsTable.clientId,
+        jobId: routeStopsTable.jobId,
+      }).from(routeStopsTable).where(eq(routeStopsTable.id, id));
+      if (!existing) return res.status(404).json({ error: "Route stop not found" });
+
+      const effectiveClientId = clientId !== undefined ? clientId : existing.clientId;
+      const effectiveJobId = jobId !== undefined ? jobId : existing.jobId;
+      const valid = await validateJobClientMatch(effectiveJobId, effectiveClientId);
+      if (!valid) {
+        return res.status(400).json({ error: "The selected job does not exist or does not belong to the linked client" });
+      }
     }
 
     const updates: Partial<RouteStopRow> = {};
