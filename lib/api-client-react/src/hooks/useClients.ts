@@ -15,6 +15,7 @@ export interface ClientProfile {
     nextServiceDate: string | null;
     serviceIntervalMonths: number | null;
     businessLine: string | null;
+    businessId?: number | null;
     squareCustomerId: string | null;
     createdAt: string;
   };
@@ -96,11 +97,17 @@ export function useClientProfile(id: number | null, businessId?: number | null) 
 export function useUpdateClientServiceDate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, nextServiceDate, serviceIntervalMonths }: { id: number; nextServiceDate: string | null; serviceIntervalMonths: number | null }) =>
+    mutationFn: ({ id, nextServiceDate, serviceIntervalMonths, sourceBusinessId, sourceBusinessLine }: {
+      id: number;
+      nextServiceDate: string | null;
+      serviceIntervalMonths: number | null;
+      sourceBusinessId?: number;
+      sourceBusinessLine?: string;
+    }) =>
       customFetch<unknown>(`/api/clients/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nextServiceDate, serviceIntervalMonths }),
+        body: JSON.stringify({ nextServiceDate, serviceIntervalMonths, sourceBusinessId, sourceBusinessLine }),
       }),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["/api/clients"] });
