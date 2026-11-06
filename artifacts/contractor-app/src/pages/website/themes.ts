@@ -255,7 +255,7 @@ function sanitizeWebsiteCssShadow(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const shadow = value.trim();
   if (shadow === "none") return shadow;
-  const length = "-?\\d+(?:\\.\\d+)?(?:px|rem|em)";
+  const length = "-?(?:0|\\d+(?:\\.\\d+)?(?:px|rem|em))";
   const color = "(?:rgba?\\(\\s*[\\d.%\\s,]+\\)|#[0-9a-f]{3,8}|[a-z]{1,24})";
   const pattern = new RegExp("^(?:" + length + "\\s+){2,4}" + color + "$", "i");
   return pattern.test(shadow) ? shadow : undefined;
