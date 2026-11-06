@@ -149,15 +149,30 @@ export function getWebsitePageList(value: unknown): WebsitePageLike[] {
     const id = typeof page.id === "string" && page.id.trim() ? page.id : `page-${index + 1}`;
     const name = typeof page.name === "string" && page.name.trim() ? page.name.trim().slice(0, 120) : slug;
     const sections = Array.isArray(page.sections)
-      ? page.sections.filter(section =>
-          !!section && typeof section === "object" && !Array.isArray(section) &&
-          typeof (section as { type?: unknown }).type === "string" &&
-          !!(section as { content?: unknown }).content &&
-          typeof (section as { content?: unknown }).content === "object" &&
-          !Array.isArray((section as { content?: unknown }).content)
-        )
+      ? page.sections.flatMap((rawSection, sectionIndex) => {
+          if (!rawSection || typeof rawSection !== "object" || Array.isArray(rawSection)) return [];
+          const section = rawSection as Record<string, unknown>;
+          if (typeof section.type !== "string" || !section.type.trim()) return [];
+          const content = section.content && typeof section.content === "object" && !Array.isArray(section.content)
+            ? section.content as Record<string, unknown>
+            : {};
+          return [{
+            ...section,
+            id: typeof section.id === "string" && section.id.trim() ? section.id : `${section.type}-${sectionIndex + 1}`,
+            type: section.type,
+            enabled: typeof section.enabled === "boolean" ? section.enabled : true,
+            order: typeof section.order === "number" && Number.isFinite(section.order) ? section.order : sectionIndex,
+            content,
+          }];
+        })
       : [];
-    return [{ ...page, id, name, slug, sections }] as WebsitePageLike[];
+    return [{
+      ...page,
+      id,
+      name,
+      slug,
+      sections: ensureUniqueWebsiteSectionIds(sections),
+    }] as WebsitePageLike[];
   });
 }
 
