@@ -173,6 +173,27 @@ export function getWebsiteSectionList(value: unknown): Array<{
   });
 }
 
+/** Check a portfolio photo reference without trusting persisted nested array shapes. */
+export function hasWebsitePortfolioPhoto(sectionsValue: unknown, objectPath: unknown): boolean {
+  if (!isWebsiteStoredObjectPath(objectPath, "/objects/uploads/website-portfolio-photos/")) return false;
+  const portfolio = getWebsiteSectionList(sectionsValue).find(section => section.type === "portfolio");
+  if (!portfolio) return false;
+
+  const content = portfolio.content;
+  const photos = Array.isArray(content.projects)
+    ? content.projects.flatMap(project => {
+        if (!project || typeof project !== "object" || Array.isArray(project)) return [];
+        const projectPhotos = (project as Record<string, unknown>).photos;
+        return Array.isArray(projectPhotos) ? projectPhotos : [];
+      })
+    : Array.isArray(content.photos) ? content.photos : [];
+
+  return photos.some(photo =>
+    !!photo && typeof photo === "object" && !Array.isArray(photo) &&
+    (photo as Record<string, unknown>).photoObjectPath === objectPath
+  );
+}
+
 /** Return only normalized public page slugs before placing them in sitemap URLs. */
 export function getWebsiteSitemapPages(value: unknown): Array<{ slug: string; name: string }> {
   return getWebsitePageList(value).flatMap(page => {
@@ -2621,25 +2642,13 @@ publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res)
 
   if (!config) return res.status(404).json({ error: "No website config" });
 
-  const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
-  const portfolioSection = sections.find(s => s.type === "portfolio");
   const expectedObjectPath = `/objects/uploads/website-portfolio-photos/${photoUuid}`;
-  type PhotoRow = { photoObjectPath?: string };
-  const allPhotos: PhotoRow[] = (() => {
-    const c = portfolioSection?.content ?? {};
-    if (Array.isArray((c as any).projects)) {
-      return (c as any).projects.flatMap((proj: any) => proj.photos ?? []) as PhotoRow[];
-    }
-    return ((c as any).photos ?? []) as PhotoRow[];
-  })();
-  const photo = allPhotos.find(p => p.photoObjectPath === expectedObjectPath);
-
-  if (!photo?.photoObjectPath) {
+  if (!hasWebsitePortfolioPhoto(config.sections, expectedObjectPath)) {
     return res.status(404).json({ error: "Photo not found" });
   }
 
   try {
-    const objectFile = await objectStorageService.getObjectEntityFile(photo.photoObjectPath);
+    const objectFile = await objectStorageService.getObjectEntityFile(expectedObjectPath);
     const response = await objectStorageService.downloadObject(objectFile);
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
