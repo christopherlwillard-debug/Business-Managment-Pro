@@ -25,7 +25,7 @@ import { eq, asc, desc, and, inArray, isNull } from "drizzle-orm";
 import { getRequestUser } from "./guards";
 import crypto from "crypto";
 import { ObjectStorageService } from "../lib/objectStorage.js";
-import { requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { hasRequestedBusiness, requestedBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { calculateChecklistProgress } from "../lib/checklist-progress.js";
 import { getJobProductionComponents } from "../lib/job-production-components.js";
 import {
@@ -292,7 +292,7 @@ router.get("/checklist-summaries", async (req, res) => {
 router.get("/ready-to-start", async (req, res) => {
   try {
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     const allJobs = await db.select().from(jobsTable);
     const candidateJobs = allJobs.filter(job =>
@@ -354,7 +354,7 @@ router.get("/schedule-overview", async (req, res) => {
     }
 
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     const allJobs = await db.select().from(jobsTable);
     const scopedJobs = allJobs.filter(job =>
@@ -452,7 +452,7 @@ router.get("/schedule-history", async (req, res) => {
     }
 
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     const allJobs = await db.select().from(jobsTable);
     const candidateJobs = allJobs.filter(job =>
@@ -658,7 +658,7 @@ router.post("/:jobId/checklist/sections/:sectionId/complete", async (req, res) =
     const jobId = Number(req.params.jobId);
     const sectionId = Number(req.params.sectionId);
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
     if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const [checklist] = await db.select().from(jobChecklistsTable).where(eq(jobChecklistsTable.jobId, jobId)).limit(1);
@@ -738,7 +738,7 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
     const jobId = parseInt(req.params.jobId);
     const user = getRequestUser(req);
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     // Verify item belongs to this job's checklist
     const [job] = await db
