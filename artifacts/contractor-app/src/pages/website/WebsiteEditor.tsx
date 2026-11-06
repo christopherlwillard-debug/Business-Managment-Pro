@@ -3524,19 +3524,22 @@ function WebsiteEditor() {
   }
 
   async function handleSectionBgUpload(sectionId: string, file: File) {
+    const upload = beginWebsiteAssetUpload();
+    if (!upload.businessId || !upload.slug) {
+      finishWebsiteAssetUpload(upload.key);
+      toast({ title: "Background image upload failed", variant: "destructive" });
+      return;
+    }
     setBgUploading(prev => ({ ...prev, [sectionId]: true }));
     const blobUrl = URL.createObjectURL(file);
-    const uploadKey = `${activePageIdRef.current}:${sectionId}`;
-    const targetPageId = activePageIdRef.current;
-    const originalBlockStyle = sections.find(section => section.id === sectionId)?.blockStyle as Record<string, unknown> | undefined;
-    pendingBackgroundUploadsRef.current.add(uploadKey);
+    const originalBlockStyle = pagesRef.current
+      .find(page => page.id === upload.pageId)?.sections
+      .find(section => section.id === sectionId)?.blockStyle as Record<string, unknown> | undefined;
     history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     isDirtyRef.current = true;
-    setLocalPages(prev => prev
-      ? prev.map(page => page.id === targetPageId
-          ? { ...page, sections: patchSectionBlockStyle(page.sections, sectionId, { bgImageUrl: blobUrl, bgType: "image" }) }
-          : page)
-      : prev);
+    setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+      patchSectionBlockStyle(pageSections, sectionId, { bgImageUrl: blobUrl, bgType: "image" }),
+    ));
     try {
       const urlRes = await fetch(`${BASE}/api/website/upload-section-bg`, {
         method: "POST",
@@ -3552,40 +3555,42 @@ function WebsiteEditor() {
         body: file,
       });
       if (!uploadRes.ok) throw new Error("Upload failed");
-      const slug = activeBusiness!.slug;
       const bgUuid = objectPath.split("/").pop()!;
-      const canonicalUrl = `${BASE}/api/public/site/${slug}/section-bg/${bgUuid}`;
-      pendingBackgroundUploadsRef.current.delete(uploadKey);
-      // Merge into the latest page/section, preserving edits made during upload.
-      setLocalPages(prev => prev
-        ? prev.map(page => page.id === targetPageId
-            ? { ...page, sections: patchSectionBlockStyle(page.sections, sectionId, {
-                bgImageObjectPath: objectPath,
-                bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
-                bgType: "image",
-              }) }
-            : page)
-        : prev);
-      URL.revokeObjectURL(blobUrl);
-      qc.invalidateQueries({ queryKey: ["website-config", bizId] });
-      toast({ title: "Background image uploaded" });
+      const canonicalUrl = `${BASE}/api/public/site/${upload.slug}/section-bg/${bgUuid}`;
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        // Apply only if this upload's preview is still current. Edits to the
+        // section, another background selection, and other pages are preserved.
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          completeSectionBlockStyleUpload(pageSections, sectionId, blobUrl, {
+            bgImageObjectPath: objectPath,
+            bgImageUrl: `${canonicalUrl}?v=${Date.now()}`,
+            bgType: "image",
+          }),
+        ));
+        qc.invalidateQueries({ queryKey: ["website-config", upload.businessId] });
+        toast({ title: "Background image uploaded" });
+      }
     } catch {
-      pendingBackgroundUploadsRef.current.delete(uploadKey);
-      URL.revokeObjectURL(blobUrl);
-      // Revert only this upload's preview if it is still present. Never replace
-      // the current page collection with a stale snapshot.
-      setLocalPages(prev => prev
-        ? prev.map(page => page.id === targetPageId
-            ? { ...page, sections: restoreSectionBlockStylePreview(page.sections, sectionId, blobUrl, originalBlockStyle) }
-            : page)
-        : prev);
-      toast({ title: "Upload failed", variant: "destructive" });
+      finishWebsiteAssetUpload(upload.key);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        // Restore only the optimistic background fields; never restore a stale
+        // page snapshot or overwrite style edits made while the upload ran.
+        setLocalPages(prev => patchWebsitePageSections(prev, upload.pageId, pageSections =>
+          restoreSectionBlockStylePreview(pageSections, sectionId, blobUrl, originalBlockStyle),
+        ));
+        toast({ title: "Upload failed", variant: "destructive" });
+      }
     } finally {
-      setBgUploading(prev => {
-        const next = { ...prev };
-        delete next[sectionId];
-        return next;
-      });
+      finishWebsiteAssetUpload(upload.key);
+      URL.revokeObjectURL(blobUrl);
+      if (isCurrentWebsiteAssetUpload(upload)) {
+        setBgUploading(prev => {
+          const next = { ...prev };
+          delete next[sectionId];
+          return next;
+        });
+      }
     }
   }
 
