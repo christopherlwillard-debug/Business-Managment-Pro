@@ -867,7 +867,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     // direct ownerCapitalEntries chain → [accOwnerContribRows] next.
     const [subsWithYtdAcc, depreciationDeduction, accWaterfall, accOwnerContribRows] = await Promise.all([
       Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
-      computeDepreciationForYear(year),
+      computeDepreciationForYear(year, reportBusiness ?? null),
       computeOwnerWaterfall(year, reportBusiness ?? null),
       db.select({ amount: ownerCapitalEntriesTable.amount, businessId: ownerCapitalEntriesTable.businessId })
         .from(ownerCapitalEntriesTable)
@@ -1427,11 +1427,21 @@ async function computeOwnerWaterfall(
 // Used by /profit-loss and /accounting so every screen derives the same
 // depreciation number. calcAnnualDepreciation is a hoisted function declaration
 // (defined near the /year-end route below) and is accessible here at runtime.
-async function computeDepreciationForYear(year: number): Promise<number> {
-  const [assets, busUseRows] = await Promise.all([
+async function computeDepreciationForYear(
+  year: number,
+  reportBusiness: ReportBusiness | null = null,
+): Promise<number> {
+  const [allAssets, allBusUseRows] = await Promise.all([
     db.select().from(assetsTable),
     db.select().from(assetBusinessUseTable),
   ]);
+  const assets = reportBusiness
+    ? allAssets.filter(asset => asset.businessId === reportBusiness.id)
+    : allAssets;
+  const assetIds = new Set(assets.map(asset => asset.id));
+  const busUseRows = reportBusiness
+    ? allBusUseRows.filter(row => assetIds.has(row.assetId))
+    : allBusUseRows;
   const busUseMap = new Map<number, Map<number, number>>();
   for (const row of busUseRows) {
     if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
@@ -1699,7 +1709,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     //   then the outer Promise.all calls .then() on the two direct chains → [ownerContribRows, settingsRows]
     // Final order: [7] assets, [8] busUseRows, [9] waterfallPaidInvs, [10] ownerContribRows, [11] settingsRows
     const [depreciationDeduction, ownerContribRows, settingsRows, plWaterfall] = await Promise.all([
-      computeDepreciationForYear(year),
+      computeDepreciationForYear(year, reportBusiness ?? null),
       db.select({ amount: ownerCapitalEntriesTable.amount })
         .from(ownerCapitalEntriesTable)
         .where(and(
@@ -2475,7 +2485,7 @@ router.get("/business-reserve", sectionGuard("jobs"), async (req, res) => {
     const businessMileageDeduction = summarizeMileageRecords(
       mileageLogs.filter(m => m.subcontractorId == null),
     ).totalDeduction;
-    const depreciationDeduction = await computeDepreciationForYear(year);
+    const depreciationDeduction = await computeDepreciationForYear(year, reportBusiness ?? null);
     const netProfit = paidRevenue - totalExpenses - businessMileageDeduction - depreciationDeduction;
 
     // Owensboro gross for OCC tax — invoices + other income rows with city = owensboro
