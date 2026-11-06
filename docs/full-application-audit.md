@@ -8,7 +8,7 @@
 ## Branch and audit baseline
 
 - `master` was at `135a42696556ef9df91417b3dfe0a87b06cb05ca` when this batch began.
-- The original ledger baseline was 360 commits ahead and 0 behind; the recurring-expense fix moved it to 361 ahead. At the start of the client-isolation batch, branch head was `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b` (371 ahead, 0 behind). After the client batch and archive-safety follow-up, code head was `24e920e57caab5200187160a63fa05c5c966b161` (394 ahead, 0 behind). The archive-safety code batch ended at `24e920e57caab5200187160a63fa05c5c966b161` (394 ahead, 0 behind); subsequent commits in this file only update the audit ledger. `master` remained `135a42696556ef9df91417b3dfe0a87b06cb05ca`.
+- The original ledger baseline was 360 commits ahead and 0 behind; the recurring-expense fix moved it to 361 ahead. At the start of the client-isolation batch, branch head was `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b` (371 ahead, 0 behind). The archive-safety code batch ended at `24e920e57caab5200187160a63fa05c5c966b161` (394 ahead, 0 behind); subsequent commits in this file only update the audit ledger. `master` remained `135a42696556ef9df91417b3dfe0a87b06cb05ca`.
 - No open pull request was present at the time of review.
 - Existing audit material reviewed includes `ACCOUNTING_AUDIT.md`, `.agents/architecture/AUDIT_2026_08_05.md`, `.agents/architecture/ACCOUNTING_AUDIT_2026_08_05.md`, and `.agents/architecture/DEAD_CODE_AUDIT_2026_08_05.md`. No dedicated full-application findings ledger was present, so this file is the ongoing ledger.
 
