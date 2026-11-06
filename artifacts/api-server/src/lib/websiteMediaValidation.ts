@@ -81,3 +81,30 @@ export function validateWebsiteDirectUpload(value: unknown, kind: "favicon" | "i
   }
   return { ok: true, upload: { name: input.name.trim(), size: input.size as number, contentType: input.contentType.toLowerCase() } };
 }
+
+/** Validate untrusted section/settings payloads used by Website Studio analysis endpoints. */
+export function validateWebsiteAnalysisInput(sections: unknown, settings: unknown):
+  | { ok: true; sections: Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>; settings: Record<string, unknown> }
+  | { ok: false; error: string } {
+  if (!Array.isArray(sections)) return { ok: false, error: "Sections must be provided as a list." };
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return { ok: false, error: "Settings must be an object." };
+  }
+  for (const section of sections) {
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      return { ok: false, error: "Every section must be a valid section object." };
+    }
+    const item = section as Record<string, unknown>;
+    if (typeof item.type !== "string" || !item.type.trim()) {
+      return { ok: false, error: "Every section must have a valid type." };
+    }
+    if (!item.content || typeof item.content !== "object" || Array.isArray(item.content)) {
+      return { ok: false, error: "Every section must have a content object." };
+    }
+  }
+  return {
+    ok: true,
+    sections: sections as Array<{ type: string; enabled: boolean; content: Record<string, unknown> }>,
+    settings: settings as Record<string, unknown>,
+  };
+}
