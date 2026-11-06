@@ -187,7 +187,7 @@ router.put("/:id", async (req, res) => {
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const { amount, paymentDate, year, description, invoiceNumber, notes, paymentMethod } = req.body ?? {};
-    const updates: Record<string, unknown> = {};
+    const updates: Partial<typeof paymentsTable.$inferInsert> = {};
     if (amount !== undefined) {
       const parsed = parseSubcontractorPaymentAmount(amount);
       if (!parsed) return res.status(400).json({ error: "Payment amount must be a positive dollar amount with no more than two decimal places" });
