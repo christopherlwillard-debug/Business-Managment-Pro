@@ -105,7 +105,35 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
       };
     }
     const page = raw as WebsitePageLike;
-    const slug = normalizePageSlug(String(page.slug ?? ""));
+    if (page.id !== undefined && typeof page.id !== "string") {
+      return {
+        ok: false,
+        error: "Page IDs must be text.",
+        conflict: { slug: "invalid-page-id" },
+      };
+    }
+    if (page.name !== undefined && typeof page.name !== "string") {
+      return {
+        ok: false,
+        error: "Page names must be text.",
+        conflict: { slug: "invalid-page-name" },
+      };
+    }
+    if (typeof page.slug !== "string") {
+      return {
+        ok: false,
+        error: "Every page must have a text URL slug.",
+        conflict: { slug: "invalid-page-slug", pageId: page.id, pageName: page.name },
+      };
+    }
+    if (page.sections !== undefined && !Array.isArray((page as any).sections)) {
+      return {
+        ok: false,
+        error: "Page sections must be provided as a list.",
+        conflict: { slug: "invalid-page-sections", pageId: page.id, pageName: page.name },
+      };
+    }
+    const slug = normalizePageSlug(page.slug);
     if (!slug || slug === "home") {
       return {
         ok: false,
