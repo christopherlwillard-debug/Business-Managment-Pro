@@ -21,8 +21,9 @@ app.use(express.json({
   limit: "25mb",
   verify: (req, _res, buffer) => {
     // Square signs the exact request bytes, not a JSON re-serialization.
-    if (req.originalUrl.startsWith("/api/webhooks/square")) {
-      (req as Request & { rawBody?: string }).rawBody = buffer.toString("utf8");
+    const request = req as Request & { rawBody?: string };
+    if (request.originalUrl.startsWith("/api/webhooks/square")) {
+      request.rawBody = buffer.toString("utf8");
     }
   },
 }));
