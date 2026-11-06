@@ -47,6 +47,25 @@ describe("imageProcessor — createMediaVariants", () => {
 
 // ── Website media upload validation ─────────────────────────────────────────
 
+describe("imageProcessor — photo enhancement behavior", () => {
+  it("applies EXIF orientation only when Straighten is selected", async () => {
+    const orientedPng = await sharp({
+      create: { width: 2, height: 3, channels: 3, background: { r: 80, g: 120, b: 160 } },
+    }).png().withMetadata({ orientation: 6 }).toBuffer();
+
+    const unchanged = await applyEnhancements(orientedPng, { brighten: true });
+    const straightened = await applyEnhancements(orientedPng, { straighten: true });
+
+    const unchangedMetadata = await sharp(unchanged).metadata();
+    const straightenedMetadata = await sharp(straightened).metadata();
+
+    expect(unchangedMetadata.width).toBe(2);
+    expect(unchangedMetadata.height).toBe(3);
+    expect(straightenedMetadata.width).toBe(3);
+    expect(straightenedMetadata.height).toBe(2);
+  });
+});
+
 describe("imageProcessor — website media upload validation", () => {
   it("detects the stored MIME type from image bytes", async () => {
     const png = await sharp({
