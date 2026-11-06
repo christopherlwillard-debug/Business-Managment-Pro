@@ -54,7 +54,7 @@ export function applyPublicWebsiteImageSecurityHeaders(res: { setHeader(name: st
 const BASE_URL = process.env["BASE_URL"] ?? "";
 
 /** Normalize absent or malformed JSON request bodies before route destructuring. */
-function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
+export function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
