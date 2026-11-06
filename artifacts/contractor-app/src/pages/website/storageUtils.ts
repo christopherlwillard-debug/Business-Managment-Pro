@@ -131,14 +131,12 @@ export function patchWebsitePageSectionContent<
   content: Record<string, unknown>,
 ): TPage[] | null {
   if (!pages) return pages;
-  return pages.map(page => {
-    if (page.id !== pageId) return page;
-    if (!page.sections.some(section => section.id === sectionId)) return page;
-    return {
-      ...page,
-      sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
-    };
-  });
+  const targetPage = pages.find(page => page.id === pageId);
+  if (!targetPage || !targetPage.sections.some(section => section.id === sectionId)) return pages;
+  return pages.map(page => page.id !== pageId ? page : ({
+    ...page,
+    sections: page.sections.map(section => section.id === sectionId ? { ...section, content } : section),
+  }));
 }
 
 /** Persist the complete custom-page collection, including an explicit empty list after the last page is deleted. */
