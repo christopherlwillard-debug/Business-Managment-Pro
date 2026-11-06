@@ -62,6 +62,8 @@ export interface Client {
   zip?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  sourceBusinessId?: number;
+  sourceBusinessLine?: string;
   nextServiceDate?: string | null;
   squareCustomerId?: string | null;
   reminderOptOut?: boolean;
