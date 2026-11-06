@@ -140,10 +140,9 @@ router.get("/:id/profile", async (req, res) => {
     const [jobs, invoices, squarePayments, linkedProspects, routeStops, otherIncome] = await Promise.all([
       db.select().from(jobsTable).where(and(eq(jobsTable.clientId, id), scopedOwnerPredicate(jobsTable, scope))).orderBy(desc(jobsTable.createdAt)),
       db.select().from(invoicesTable).where(and(eq(invoicesTable.clientId, id), scopedOwnerPredicate(invoicesTable, scope))).orderBy(desc(invoicesTable.createdAt)),
-      db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(and(
-        eq(squarePaymentsTable.clientId, id),
-        scope ? eq(squarePaymentsTable.businessId, scope.id) : undefined,
-      )).orderBy(desc(squarePaymentsTable.paidAt)),
+      // The legacy production table has no business_id column; access is scoped
+      // through the already-authorized client foreign key.
+      db.select(clientProfileSquarePaymentColumns).from(squarePaymentsTable).where(eq(squarePaymentsTable.clientId, id)).orderBy(desc(squarePaymentsTable.paidAt)),
       db.select().from(prospectsTable).where(and(eq(prospectsTable.clientId, id), scopedOwnerPredicate(prospectsTable, scope))).orderBy(desc(prospectsTable.createdAt)),
       db.select(clientProfileRouteStopColumns).from(routeStopsTable).where(eq(routeStopsTable.clientId, id)).orderBy(desc(routeStopsTable.scheduledDate)),
       db.select().from(otherIncomeTable).where(and(eq(otherIncomeTable.clientId, id), scopedOwnerPredicate(otherIncomeTable, scope))).orderBy(desc(otherIncomeTable.date)),
