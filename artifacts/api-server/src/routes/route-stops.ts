@@ -248,28 +248,36 @@ const BLOCK_LABELS = [
 
 router.post("/split-blocks", async (req, res) => {
   try {
-    const { date, blockSize = 9 } = req.body as { date: string; blockSize?: number };
-    if (!date) return res.status(400).json({ error: "date is required" });
+    const { date, blockSize = 9 } = req.body as { date?: unknown; blockSize?: unknown };
+    if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "date must be a YYYY-MM-DD string" });
+    }
+    if (!Number.isSafeInteger(blockSize) || (blockSize as number) < 1 || (blockSize as number) > 1000) {
+      return res.status(400).json({ error: "blockSize must be a whole number between 1 and 1000" });
+    }
 
-    const stops = await db
-      .select({ id: routeStopsTable.id, sortOrder: routeStopsTable.sortOrder })
-      .from(routeStopsTable)
-      .where(eq(routeStopsTable.scheduledDate, date))
-      .orderBy(asc(routeStopsTable.sortOrder), asc(routeStopsTable.createdAt));
+    // Assign every stop for the date as one unit. A failed row update must not
+    // leave the day's route split across a mixture of old and new blocks.
+    const updated = await db.transaction(async tx => {
+      const stops = await tx
+        .select({ id: routeStopsTable.id, sortOrder: routeStopsTable.sortOrder })
+        .from(routeStopsTable)
+        .where(eq(routeStopsTable.scheduledDate, date))
+        .orderBy(asc(routeStopsTable.sortOrder), asc(routeStopsTable.createdAt));
 
-    if (stops.length === 0) return res.json({ updated: 0 });
+      const size = blockSize as number;
+      for (const [index, stop] of stops.entries()) {
+        const blockIdx = Math.floor(index / size);
+        const blockNumber = blockIdx + 1;
+        const crewLabel = BLOCK_LABELS[blockIdx] ?? `Block ${blockIdx + 1}`;
+        await tx.update(routeStopsTable)
+          .set({ blockNumber, crewLabel })
+          .where(eq(routeStopsTable.id, stop.id));
+      }
+      return stops.length;
+    });
 
-    const size = Math.max(1, Math.floor(blockSize));
-    await Promise.all(stops.map((stop, i) => {
-      const blockIdx = Math.floor(i / size);
-      const blockNumber = blockIdx + 1;
-      const crewLabel = BLOCK_LABELS[blockIdx] ?? `Block ${blockIdx + 1}`;
-      return db.update(routeStopsTable)
-        .set({ blockNumber, crewLabel })
-        .where(eq(routeStopsTable.id, stop.id));
-    }));
-
-    res.json({ updated: stops.length });
+    res.json({ updated });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to split blocks" });
