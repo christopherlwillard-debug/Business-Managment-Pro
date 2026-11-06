@@ -16,6 +16,52 @@ describe("InlineEditableText keyboard activation", () => {
     host = null;
   });
 
+  it("preserves line breaks when reading multiline contentEditable text", () => {
+    const updateDraft = vi.fn();
+    const context: InlineEditContextValue = {
+      editingId: "headline",
+      selectedId: "headline",
+      draft: "first\nsecond",
+      enterBehavior: "newline",
+      escapeBehavior: "commit",
+      startEditing: vi.fn(),
+      updateDraft,
+      commitEdit: vi.fn(),
+      cancelEdit: vi.fn(),
+      moveToNext: vi.fn(),
+      setCommitBoundaryCallback: vi.fn(),
+      selectElement: vi.fn(),
+      deselectAll: vi.fn(),
+    };
+
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    act(() => {
+      root?.render(createElement(
+        InlineEditContext.Provider,
+        { value: context },
+        createElement(InlineEditableText, {
+          id: "headline",
+          value: "first\nsecond",
+          onCommit: vi.fn(),
+        }),
+      ));
+    });
+
+    const editable = host.querySelector('[data-inline-editable="headline"]') as HTMLElement | null;
+    expect(editable).not.toBeNull();
+    Object.defineProperty(editable, "innerText", {
+      configurable: true,
+      get: () => "first\nsecond",
+    });
+    act(() => {
+      editable?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    expect(updateDraft).toHaveBeenCalledWith("first\nsecond");
+  });
+
   it("keeps the Space activation key from reaching the canvas shortcut listener", () => {
     const startEditing = vi.fn();
     const context: InlineEditContextValue = {
