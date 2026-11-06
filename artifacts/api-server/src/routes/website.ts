@@ -188,8 +188,9 @@ export function getWebsiteSectionTextItems(value: unknown): Array<{ title: strin
 /** Normalize string arrays from saved profile sections before using them in the website wizard. */
 export function getWebsiteStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
   if (!Array.isArray(value)) return [];
-  const limit = Math.max(0, Math.floor(maxItems));
-  const scanLimit = Math.min(value.length, Math.max(limit, limit * 5));
+  const limit = Number.isFinite(maxItems) ? Math.max(0, Math.floor(maxItems)) : 0;
+  if (limit === 0) return [];
+  const scanLimit = Math.min(value.length, limit * 5);
   const result: string[] = [];
   for (const item of value.slice(0, scanLimit)) {
     if (typeof item !== "string") continue;
