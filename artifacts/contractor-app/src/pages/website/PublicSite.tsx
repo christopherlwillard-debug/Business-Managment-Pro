@@ -330,12 +330,19 @@ export default function PublicSite() {
   }
 
   const { sections, settings, businessName } = data;
-  const sorted = [...sections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
+  // Public sites can outlive older or partially migrated configs. Keep malformed
+  // JSON from crashing the entire published page while the owner repairs it.
+  const safeSections = Array.isArray(sections)
+    ? sections.filter((section): section is Section => !!section && typeof section === "object")
+    : [];
+  const sorted = [...safeSections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
   const headerSec = sorted.find(s => s.type === "header");
   const homeBodySections = sorted.filter(s => s.type !== "header");
 
-  const additionalPages: SitePage[] = settings.pages ?? [];
+  const additionalPages: SitePage[] = Array.isArray(settings?.pages)
+    ? settings.pages.filter((page): page is SitePage => !!page && typeof page === "object" && typeof page.slug === "string")
+    : [];
 
   let bodySections: Section[];
   if (pageSlug) {
