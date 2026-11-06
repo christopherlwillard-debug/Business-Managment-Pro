@@ -149,6 +149,33 @@ export function withWebsitePageList<T extends Record<string, unknown>>(
   return { ...settings, pages };
 }
 
+/** Remove a custom page and only the header links that target that page. */
+export function removeWebsitePageAndNavigationLinks<
+  TPage extends { id: string; sections: TSection[] },
+  TSection extends { type: string; content: Record<string, unknown> },
+>(pages: TPage[], pageId: string): TPage[] {
+  if (pageId === "home" || !pages.some(page => page.id === pageId)) return pages;
+
+  const remaining = pages.filter(page => page.id !== pageId);
+  return remaining.map(page => page.id !== "home" ? page : ({
+    ...page,
+    sections: page.sections.map(section => {
+      if (section.type !== "header") return section;
+      const links = Array.isArray(section.content.navLinks) ? section.content.navLinks : [];
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          navLinks: links.filter(link =>
+            !link || typeof link !== "object" || Array.isArray(link) ||
+            (link as Record<string, unknown>).pageId !== pageId
+          ),
+        },
+      };
+    }),
+  }));
+}
+
 /** Let the server inspect files with an unknown browser MIME type, but report known non-images instead of silently dropping them. */
 export function partitionWebsiteMediaFiles<T extends { type: string; name: string }>(files: T[]): {
   uploadable: T[];
