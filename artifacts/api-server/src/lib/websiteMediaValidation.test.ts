@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "./websiteMediaValidation";
+import { countWebsiteMediaUrlReferences, parsePositiveDatabaseId, truncateWebsiteMediaFilename, validateSavedWebsiteSection, validateWebsiteAnalysisInput, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "./websiteMediaValidation";
 
 describe("validateWebsiteMediaPatch", () => {
   it("accepts valid metadata and folder updates", () => {
