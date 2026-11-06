@@ -122,6 +122,9 @@ export function validateWebsiteSections(value: unknown):
     if (typeof item.type !== "string" || !item.type.trim()) {
       return { ok: false, error: "Every website section must have a type." };
     }
+    if (item.id !== undefined && (typeof item.id !== "string" || !item.id.trim())) {
+      return { ok: false, error: "Website section IDs must be non-empty text." };
+    }
     if (!item.content || typeof item.content !== "object" || Array.isArray(item.content)) {
       return { ok: false, error: "Every website section must have a content object." };
     }
