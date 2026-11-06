@@ -1,6 +1,27 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
+
+
+describe("Website Studio media file selection", () => {
+  it("reports known non-image files and lets the server inspect unknown MIME types", () => {
+    const image = { name: "photo.jpg", type: "image/jpeg" };
+    const unknown = { name: "phone-photo", type: "" };
+    const document = { name: "invoice.pdf", type: "application/pdf" };
+    expect(partitionWebsiteMediaFiles([image, unknown, document])).toEqual({
+      uploadable: [image, unknown],
+      unsupported: [document],
+    });
+  });
+
+  it("returns unsupported files instead of silently dropping an all-invalid selection", () => {
+    const document = { name: "invoice.pdf", type: "application/pdf" };
+    expect(partitionWebsiteMediaFiles([document])).toEqual({
+      uploadable: [],
+      unsupported: [document],
+    });
+  });
+});
 
 describe("Website Studio custom page persistence", () => {
   it("explicitly clears the last deleted custom page instead of retaining stale settings", () => {
