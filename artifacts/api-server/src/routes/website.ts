@@ -76,6 +76,16 @@ export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string 
   return isWebsiteStoredObjectPath(value, "/objects/uploads/website-logos/");
 }
 
+/** Escape untrusted contact-form content before inserting it into notification email HTML. */
+export function escapeWebsiteEmailHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function normalizePageSlug(value: string): string {
   return value
     .trim()
@@ -1077,7 +1087,7 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (notifEmail && EMAIL_RE.test(notifEmail)) {
       const rows = Object.entries(submissionFields)
-        .map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #f3f4f6;">${k}</td><td style="padding:6px 10px;color:#6b7280;border-bottom:1px solid #f3f4f6;">${v}</td></tr>`)
+        .map(([k, v]) => `<tr><td style="padding:6px 10px;font-weight:600;color:#374151;border-bottom:1px solid #f3f4f6;">${escapeWebsiteEmailHtml(k)}</td><td style="padding:6px 10px;color:#6b7280;border-bottom:1px solid #f3f4f6;">${escapeWebsiteEmailHtml(v)}</td></tr>`)
         .join("");
       await sendEmail({
         to: notifEmail,
