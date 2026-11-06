@@ -53,7 +53,19 @@ export function patchSectionBlockStyle<T extends { id: string; blockStyle?: Reco
     : section);
 }
 
-/** Roll back only this upload's optimistic preview; never restore an old page snapshot. */
+/** Apply a background-image result only while its own optimistic preview is still current. */
+export function completeSectionBlockStyleUpload<T extends { id: string; blockStyle?: Record<string, unknown> }>(
+  sections: T[],
+  sectionId: string,
+  previewUrl: string,
+  patch: Record<string, unknown>,
+): T[] {
+  return sections.map(section => section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl
+    ? section
+    : { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } });
+}
+
+/** Roll back only this upload's optimistic background fields; preserve all concurrent style edits. */
 export function restoreSectionBlockStylePreview<T extends { id: string; blockStyle?: Record<string, unknown> }>(
   sections: T[],
   sectionId: string,
@@ -62,9 +74,34 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
 ): T[] {
   return sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
+    const nextStyle = { ...(section.blockStyle ?? {}) };
+    for (const key of ["bgImageUrl", "bgType"] as const) {
+      if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, key)) {
+        nextStyle[key] = originalBlockStyle[key];
+      } else {
+        delete nextStyle[key];
+      }
+    }
     const restored = { ...section } as T;
-    if (originalBlockStyle) restored.blockStyle = originalBlockStyle;
+    if (Object.keys(nextStyle).length > 0) restored.blockStyle = nextStyle;
     else delete restored.blockStyle;
     return restored;
   });
+}
+
+/** Update one page using its latest section state, never a pre-upload snapshot. */
+export function patchWebsitePageSections<TPage extends { id: string; sections: TSection[] }, TSection>(
+  pages: TPage[] | null,
+  pageId: string,
+  update: (sections: TSection[]) => TSection[],
+): TPage[] | null {
+  if (!pages) return pages;
+  return pages.map(page => page.id === pageId ? { ...page, sections: update(page.sections) } : page);
+}
+
+/** Ignore unfinished uploads from a previous business/editor session. */
+export function hasPendingWebsiteAssetUploads(pending: Set<string>, session: number): boolean {
+  const prefix = `${session}:`;
+  for (const key of pending) if (key.startsWith(prefix)) return true;
+  return false;
 }
