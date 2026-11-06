@@ -1568,7 +1568,7 @@ mfhLibraryRouter.get("/knowledge-base/:modelId/production-reviews", async (req, 
     const modelId = parseInt(req.params.modelId);
     if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
 
     const revisions = await db.select().from(jobTypeBenchmarkRevisionsTable)
@@ -1586,7 +1586,7 @@ mfhLibraryRouter.post("/knowledge-base/:modelId/production-reviews", async (req,
     const modelId = parseInt(req.params.modelId);
     if (isNaN(modelId)) return res.status(400).json({ error: "Invalid modelId" });
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
 
     const proposedHours = numericValue(req.body?.proposedBenchmarkHours);
@@ -1640,7 +1640,7 @@ mfhLibraryRouter.patch("/knowledge-base/:modelId/production-reviews/:revisionId/
     const revisionId = parseInt(req.params.revisionId);
     if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
     const identity = reviewerIdentity(req);
 
@@ -1691,7 +1691,7 @@ mfhLibraryRouter.patch("/knowledge-base/:modelId/production-reviews/:revisionId/
     const revisionId = parseInt(req.params.revisionId);
     if (isNaN(modelId) || isNaN(revisionId)) return res.status(400).json({ error: "Invalid review identifiers" });
     const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope)) return;
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) return res.status(403).json({ error: "Benchmark reviews require the all-business view" });
     const identity = reviewerIdentity(req);
     const note = typeof req.body?.reviewerNote === "string" ? req.body.reviewerNote.trim().slice(0, 2000) || null : null;
