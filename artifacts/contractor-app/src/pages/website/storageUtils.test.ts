@@ -1,7 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { getPublicSiteQueryKey, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
+
+
+describe("Website Studio public page cache", () => {
+  it("uses distinct cache keys for the home page and each custom page", () => {
+    const home = getPublicSiteQueryKey("sample-business", undefined, false, "example.com");
+    const about = getPublicSiteQueryKey("sample-business", "about", false, "example.com");
+    const contact = getPublicSiteQueryKey("sample-business", "contact", false, "example.com");
+    expect(new Set([JSON.stringify(home), JSON.stringify(about), JSON.stringify(contact)]).size).toBe(3);
+  });
+
+  it("keeps host-based and draft-preview pages isolated", () => {
+    const published = getPublicSiteQueryKey(undefined, "about", false, "example.com");
+    const preview = getPublicSiteQueryKey(undefined, "about", true, "example.com");
+    const otherHost = getPublicSiteQueryKey(undefined, "about", false, "other.example");
+    expect(new Set([JSON.stringify(published), JSON.stringify(preview), JSON.stringify(otherHost)]).size).toBe(3);
+  });
+});
 
 describe("Website Studio media file selection", () => {
   it("reports known non-image files and lets the server inspect unknown MIME types", () => {
