@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -19,6 +19,28 @@ describe("Website Studio contact email escaping", () => {
     expect(escapeWebsiteEmailHtml("<img src=x onerror=alert(1)>")).toBe("&lt;img src=x onerror=alert(1)&gt;");
     expect(escapeWebsiteEmailHtml("A & B \"quoted\" 'text'")).toBe("A &amp; B &quot;quoted&quot; &#39;text&#39;");
     expect(escapeWebsiteEmailHtml(null)).toBe("");
+  });
+});
+
+describe("Website Studio deposit validation", () => {
+  it("parses only positive finite USD amounts with at most two decimal places", () => {
+    expect(parseWebsiteMoneyCents(250)).toBe(25000);
+    expect(parseWebsiteMoneyCents("250.5")).toBe(25050);
+    expect(parseWebsiteMoneyCents("0.01")).toBe(1);
+    for (const value of ["10junk", "1e3", "1.001", "-5", "0", "", "  ", Infinity, NaN, {}, [], true, Number.MAX_SAFE_INTEGER]) {
+      expect(parseWebsiteMoneyCents(value)).toBeNull();
+    }
+  });
+
+  it("ignores malformed or disabled deposit sections", () => {
+    expect(getEnabledWebsiteDepositSection(null)).toBeNull();
+    expect(getEnabledWebsiteDepositSection({ type: "deposit" })).toBeNull();
+    expect(getEnabledWebsiteDepositSection([
+      null,
+      { type: "deposit", enabled: true, content: null },
+      { type: "deposit", enabled: false, content: { amount: 50 } },
+      { type: "deposit", enabled: true, content: { amount: 75 } },
+    ])).toEqual({ content: { amount: 75 } });
   });
 });
 
