@@ -4691,6 +4691,7 @@ function WebsiteEditor() {
       setActivePageId("home");
       setLocalSettings(savedSettings);
       isDirtyRef.current = false;
+      setHasUnpublishedChanges(true);
       qc.invalidateQueries({ queryKey: ["website-config", bizId] });
       setShowTemplatePicker(false);
       setShowApplyConfirm(false);
