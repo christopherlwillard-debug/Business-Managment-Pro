@@ -42,6 +42,7 @@ vi.mock("@workspace/db", () => {
 });
 
 vi.mock("../lib/business-scope.js", () => ({
+  hasRequestedBusiness: () => false,
   requestedBusiness: vi.fn().mockResolvedValue(null),
   belongsToBusiness: vi.fn().mockReturnValue(true),
 }));
