@@ -117,7 +117,7 @@ export function getWebsiteContactFieldError(
     }
     if (!value) continue;
 
-    if (type === "email" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)) {
+    if (type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
       return `${label} must be a valid email address.`;
     }
 
