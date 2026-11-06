@@ -103,6 +103,21 @@ describe("Square webhook signature boundary", () => {
     }));
   });
 
+  it("rejects a completed payment without a provider payment ID before any database write", async () => {
+    const rawEvent = JSON.stringify({
+      type: "payment.completed",
+      data: { object: { payment: { status: "COMPLETED", amount_money: { amount: 12500 } } } },
+    });
+    const response = await request(app)
+      .post("/")
+      .set("Content-Type", "application/json")
+      .set("x-square-hmacsha256-signature", "valid")
+      .send(rawEvent);
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/payment ID/i);
+  });
+
   it("fails closed in production when the webhook signature key is missing", async () => {
     delete process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"];
     process.env["NODE_ENV"] = "production";
