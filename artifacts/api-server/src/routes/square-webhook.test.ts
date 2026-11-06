@@ -141,6 +141,13 @@ describe("Square invoice receipt allocation", () => {
     });
   });
 
+  it("caps invoice allocation at the invoice total when Square reports an overpayment", () => {
+    expect(calculateSquareInvoicePayment("100.00", "75.00", 5000)).toEqual({
+      amountPaid: "100.00",
+      status: "paid",
+    });
+  });
+
   it("rejects invalid totals, prior balances, and payment amounts", () => {
     expect(calculateSquareInvoicePayment("0.00", "0.00", 100)).toBeNull();
     expect(calculateSquareInvoicePayment("100.00", "-1.00", 100)).toBeNull();
