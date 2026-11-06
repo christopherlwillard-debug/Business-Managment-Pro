@@ -13,7 +13,7 @@ vi.mock("../lib/square", () => ({
 
 vi.mock("@workspace/db", () => ({ db: {} }));
 vi.mock("@workspace/db/schema", () => ({
-  invoicesTable: {},
+  invoicesTable: { businessId: "invoice.businessId", businessLine: "invoice.businessLine" },
   quickChargesTable: {},
   prospectsTable: {},
   estimatesTable: {},
@@ -25,7 +25,20 @@ vi.mock("@workspace/db/schema", () => ({
   businessesTable: {},
 }));
 
-const { default: squareWebhookRouter, calculateSquareInvoicePayment } = await import("./square-webhook");
+vi.mock("drizzle-orm", () => {
+  const node = (op: string) => (...args: unknown[]) => ({ op, args });
+  return {
+    eq: node("eq"),
+    and: node("and"),
+    or: node("or"),
+    isNull: node("isNull"),
+    ne: node("ne"),
+    asc: node("asc"),
+    ilike: node("ilike"),
+  };
+});
+
+const { default: squareWebhookRouter, calculateSquareInvoicePayment, squareInvoiceBusinessCondition } = await import("./square-webhook");
 const app = express();
 app.use(express.json({
   verify: (req, _res, buffer) => {
@@ -169,5 +182,31 @@ describe("Square invoice receipt allocation", () => {
     expect(calculateSquareInvoicePayment("100.00", "0.00", 0)).toBeNull();
     expect(calculateSquareInvoicePayment("not-money", "0.00", 100)).toBeNull();
     expect(calculateSquareInvoicePayment("100.00", "0.00", 1.5)).toBeNull();
+  });
+});
+
+
+describe("Square fallback invoice business matching", () => {
+  it("matches only the canonical business and legacy rows for the same business line", () => {
+    expect(squareInvoiceBusinessCondition(7, "asphalt_sealing")).toEqual({
+      op: "or",
+      args: [
+        { op: "eq", args: ["invoice.businessId", 7] },
+        {
+          op: "and",
+          args: [
+            { op: "isNull", args: ["invoice.businessId"] },
+            { op: "eq", args: ["invoice.businessLine", "asphalt_sealing"] },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("does not match unassigned legacy invoices when the client has no business line", () => {
+    expect(squareInvoiceBusinessCondition(2, null)).toEqual({
+      op: "eq",
+      args: ["invoice.businessId", 2],
+    });
   });
 });
