@@ -14,7 +14,7 @@ import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, sho
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
-import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "../lib/websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteAnalysisInput, validateWebsiteDirectUpload, validateWebsiteMediaIds, validateWebsiteMediaPatch, validateWebsiteSections, validateWebsiteSettings } from "../lib/websiteMediaValidation";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -452,9 +452,15 @@ router.put("/", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections: unknown[]; settings: Record<string, unknown> };
-  if (settings?.seo && typeof settings.seo === "object") {
-    const seo = settings.seo as Record<string, unknown>;
+  const { sections, settings } = req.body as { sections?: unknown; settings?: unknown };
+  const sectionsValidation = validateWebsiteSections(sections);
+  if (!sectionsValidation.ok) return res.status(400).json({ error: sectionsValidation.error });
+  const settingsValidation = validateWebsiteSettings(settings);
+  if (!settingsValidation.ok) return res.status(400).json({ error: settingsValidation.error });
+  const validatedSections = sectionsValidation.sections;
+  const validatedSettings = settingsValidation.settings;
+  if (validatedSettings.seo && typeof validatedSettings.seo === "object") {
+    const seo = validatedSettings.seo as Record<string, unknown>;
     const seoErrors = validateSeoMetadata({
       ...seo,
       ogTitle: seo.ogTitle || seo.metaTitle,
@@ -464,11 +470,11 @@ router.put("/", wrapAsync(async (req, res) => {
       return res.status(422).json({ error: "SEO metadata failed validation", fields: seoErrors });
     }
   }
-  const pageValidation = validatePageSlugs(settings?.pages);
+  const pageValidation = validatePageSlugs(validatedSettings.pages);
   if (!pageValidation.ok) {
     return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
   }
-  const normalizedSettings = settings
+  const normalizedSettings = validatedSettings
     ? { ...settings, ...(pageValidation.pages.length > 0 ? { pages: pageValidation.pages } : {}) }
     : settings;
 
@@ -480,7 +486,7 @@ router.put("/", wrapAsync(async (req, res) => {
   if (existing) {
     const [updated] = await db
       .update(websiteConfigsTable)
-      .set({ sections: sections as any, settings: normalizedSettings as any, updatedAt: new Date() })
+      .set({ sections: validatedSections as any, settings: normalizedSettings as any, updatedAt: new Date() })
       .where(eq(websiteConfigsTable.id, existing.id))
       .returning();
     return res.json(updated);
@@ -488,7 +494,7 @@ router.put("/", wrapAsync(async (req, res) => {
 
   const [created] = await db
     .insert(websiteConfigsTable)
-    .values({ businessId, sections: sections as any, settings: normalizedSettings as any })
+    .values({ businessId, sections: validatedSections as any, settings: normalizedSettings as any })
     .returning();
   res.json(created);
 }));
@@ -499,8 +505,21 @@ router.post("/publish", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = req.body as { sections?: unknown[]; settings?: Record<string, unknown> };
-  if (settings) {
+  const { sections, settings } = req.body as { sections?: unknown; settings?: unknown };
+  let validatedSections: Array<Record<string, unknown>> | undefined;
+  let validatedSettings: Record<string, unknown> | undefined;
+  if (sections !== undefined && sections !== null) {
+    const result = validateWebsiteSections(sections);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    validatedSections = result.sections;
+  }
+  if (settings !== undefined && settings !== null) {
+    const result = validateWebsiteSettings(settings);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+    validatedSettings = result.settings;
+  }
+  if (validatedSettings) {
+    const settings = validatedSettings;
     if (settings.seo && typeof settings.seo === "object") {
       const seo = settings.seo as Record<string, unknown>;
       const seoErrors = validateSeoMetadata({
@@ -528,8 +547,8 @@ router.post("/publish", wrapAsync(async (req, res) => {
 
   if (existing) {
     const updateData: Record<string, unknown> = { published: true, publishedAt: now, updatedAt: now };
-    if (sections) updateData.sections = sections;
-    if (settings) updateData.settings = settings;
+    if (validatedSections) updateData.sections = validatedSections;
+    if (validatedSettings) updateData.settings = validatedSettings;
     const [updated] = await db
       .update(websiteConfigsTable)
       .set(updateData as any)
