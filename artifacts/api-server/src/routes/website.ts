@@ -222,6 +222,14 @@ export function getWebsiteSectionTextItems(value: unknown): Array<{ title: strin
   );
 }
 
+/** Keep only plain record entries before AI copy merges or scoring inspect them. */
+export function getWebsiteSectionRecordItems(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> =>
+    !!item && typeof item === "object" && !Array.isArray(item)
+  );
+}
+
 /** Normalize string arrays from saved profile sections before using them in the website wizard. */
 export function getWebsiteStringList(value: unknown, maxItems = 100, maxLength = 160): string[] {
   if (!Array.isArray(value)) return [];
@@ -2093,8 +2101,10 @@ Return JSON with: headline (8-12 words, trade + location specific, not starting 
       break;
     }
     case "services": {
-      const items = (section.content.items as Array<{ title?: string }> | undefined) ?? [];
-      const titles = items.map((it, i) => it.title ?? `Service ${i + 1}`);
+      const items = getWebsiteSectionRecordItems(section.content.items);
+      const titles = items.map((item, index) =>
+        typeof item.title === "string" && item.title.trim() ? item.title.trim() : `Service ${index + 1}`
+      );
       prompt = `Write services section copy for: ${summary}
 Return JSON with: heading (4-7 words), subheading (1-2 sentences), items (array of {title, description} — one per service).
 Services to describe: ${JSON.stringify(titles)}
@@ -2318,7 +2328,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For services, merge item descriptions into existing items (preserve IDs)
     if (section.type === "services" && Array.isArray(copy.items)) {
-      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingItems = getWebsiteSectionRecordItems(section.content.items);
       const copyItems = copy.items as Array<{ title: string; description: string }>;
       const mergedItems = existingItems.map((item, idx) => ({
         ...item,
@@ -2332,7 +2342,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For process, merge step descriptions into existing steps (preserve icons + IDs)
     if (section.type === "process" && Array.isArray(copy.steps)) {
-      const existingSteps = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingSteps = getWebsiteSectionRecordItems(section.content.steps);
       const copySteps = copy.steps as Array<{ title: string; description: string }>;
       const mergedSteps = existingSteps.map((step, idx) => ({
         ...step,
@@ -2355,7 +2365,7 @@ router.post("/generate-site-copy", wrapAsync(async (req, res) => {
 
     // For why-choose-us, merge items similarly
     if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
-      const existingItems = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+      const existingItems = getWebsiteSectionRecordItems(section.content.items);
       const copyItems = copy.items as Array<{ title: string; description: string }>;
       const mergedItems = copyItems.map((item, idx) => ({
         id: (existingItems[idx] as any)?.id ?? `why-${idx + 1}`,
@@ -5641,7 +5651,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
       const copy = outcome.value;
 
       if (section.type === "services" && Array.isArray(copy.items)) {
-        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.items);
         const ci = copy.items as Array<{ title: string; description: string }>;
         const merged = ex.map((item, idx) => ({ ...item, title: ci[idx]?.title ?? item.title, description: ci[idx]?.description ?? item.description }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5656,7 +5666,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         return { ...section, content: { ...section.content, ...rest, items: faqItems } };
       }
       if (section.type === "process" && Array.isArray(copy.steps)) {
-        const ex = (section.content.steps as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.steps);
         const cs = copy.steps as Array<{ title: string; description: string }>;
         const merged = ex.map((step, idx) => ({ ...step, title: cs[idx]?.title ?? step.title, description: cs[idx]?.description ?? step.description }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -5664,7 +5674,7 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         return { ...section, content: { ...section.content, ...rest, steps: merged } };
       }
       if (section.type === "why-choose-us" && Array.isArray(copy.items)) {
-        const ex = (section.content.items as Array<Record<string, unknown>> | undefined) ?? [];
+        const ex = getWebsiteSectionRecordItems(section.content.items);
         const ci = copy.items as Array<{ title: string; description: string }>;
         const merged = ci.map((item, idx) => ({ id: (ex[idx] as any)?.id ?? `why-${idx + 1}`, icon: (ex[idx] as any)?.icon ?? "✓", ...item }));
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
