@@ -16,6 +16,8 @@ export interface CreateClientRequest {
   zip?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  sourceBusinessId?: number;
+  sourceBusinessLine?: string;
   nextServiceDate?: string | null;
   serviceIntervalMonths?: number | null;
   reminderOptOut?: boolean;
