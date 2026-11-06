@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+
+
+describe("Website Studio route registration", () => {
+  it("registers only one section-regeneration handler so the client contract is reachable", () => {
+    const handlers = (websiteRouter as any).stack.filter(
+      (layer: any) => layer.route?.path === "/regenerate-section" && layer.route.methods.post,
+    );
+    expect(handlers).toHaveLength(1);
+  });
+});
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
