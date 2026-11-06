@@ -48,7 +48,7 @@ async function resolveReportBusiness(
   }
   const slug = typeof rawSlug === "string" ? rawSlug.trim() : "";
   let id: number | null = null;
-  if (rawId != null) {
+  if (rawId != null && String(rawId).trim() !== "") {
     const text = String(rawId).trim();
     if (!/^\\d+$/.test(text)) {
       res.status(400).json({ error: "Invalid business ID" });
