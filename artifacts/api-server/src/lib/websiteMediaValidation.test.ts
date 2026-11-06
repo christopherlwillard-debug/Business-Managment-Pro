@@ -177,7 +177,7 @@ describe("saved Website Studio section validation", () => {
 
   it("accepts only positive safe database IDs", () => {
     expect(parsePositiveDatabaseId("12")).toBe(12);
-    for (const value of ["12junk", "1.5", 0, -1, Number.MAX_SAFE_INTEGER + 1, null]) {
+    for (const value of ["12junk", "1.5", "1e2", 0, -1, true, [1], Number.MAX_SAFE_INTEGER + 1, null]) {
       expect(parsePositiveDatabaseId(value)).toBe(null);
     }
   });
