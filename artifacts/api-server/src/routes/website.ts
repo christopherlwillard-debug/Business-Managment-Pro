@@ -60,6 +60,11 @@ export function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/** Validate opaque object IDs before composing public object-storage paths. */
+export function isWebsiteMediaObjectKey(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]{1,16})?$/i.test(value);
+}
+
 /** Only resolve logo objects through the app's own object-storage namespace. */
 export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
   if (typeof value !== "string" || !value.startsWith("/objects/uploads/")) return false;
@@ -3005,6 +3010,7 @@ router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
 
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params as { uuid: string };
+  if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
   // The original image is always served from a deterministic path derived from
   // the uuid, with no DB query. Published pages may still reference deleted
   // URLs, but the underlying object is intentionally removed with the record.
@@ -3066,6 +3072,7 @@ publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/card-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params;
+  if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
   const objectPath = `/objects/uploads/website-card-images/${uuid}`;
   try {
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
