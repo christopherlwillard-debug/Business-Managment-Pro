@@ -2456,6 +2456,8 @@ function WebsiteEditor() {
   }
 
   function beginWebsiteAssetUpload() {
+    // A previously scheduled autosave must not capture the temporary blob URL.
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     const session = businessSessionRef.current;
     const key = `${session}:${nanoid()}`;
     pendingWebsiteAssetUploadsRef.current.add(key);
@@ -2595,6 +2597,8 @@ function WebsiteEditor() {
   });
 
   function requestSave() {
+    // Manual shortcuts and queue callbacks must not persist temporary preview URLs.
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) return;
     const request = captureSaveRequest();
     if (!request) return;
     if (saveInFlightRef.current) {
@@ -2651,9 +2655,13 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!isDirtyRef.current) return;
     if (!bizId) return;
-    // Do not persist temporary blob: preview URLs. The final object URL (or a
-    // selective rollback) will trigger this effect when the upload settles.
-    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) return;
+    // Keep revisions moving while an upload is pending so an older in-flight
+    // save cannot mark newer local edits clean. Do not persist temporary blobs.
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) {
+      editorRevisionRef.current += 1;
+      setHasUnpublishedChanges(true);
+      return;
+    }
     // Each state change after initialization represents a new local revision.
     // Save requests capture this revision rather than reading mutable refs
     // after the request has started.
@@ -2668,6 +2676,10 @@ function WebsiteEditor() {
 
   async function handlePublish() {
     if (publishing) return;
+    if (hasPendingWebsiteAssetUploads(pendingWebsiteAssetUploadsRef.current, businessSessionRef.current)) {
+      toast({ title: "Wait for uploads to finish", description: "Your images are still uploading. Publish after they complete." });
+      return;
+    }
     setPublishing(true);
     try {
       // Publish only after the latest editor revision has finished saving.
