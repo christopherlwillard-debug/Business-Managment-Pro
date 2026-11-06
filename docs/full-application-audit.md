@@ -315,8 +315,7 @@ SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals.
 
 - `RTE-004`: Route Planner's shared stop records and active-business UI selection need an explicit ownership policy before repair.
 - `STO-001`: Generic presigned uploads need a confirmed authorization and actual object-size/content-type enforcement policy.
-- `SQR-008`: Square's generic client matching must not silently pick an invoice from another business.
-- `SUB-PAY-001` and `SUB-PAY-002`: Payroll payment-date and reversal history defects remain gated because they change financial reporting.
+- `SQR-008`, `SUB-PAY-001`, and `SUB-PAY-002`: repair code and focused regression coverage have been added; execution and target-runtime validation remain pending.
 - `AUTH-001`: OIDC transient-refresh logout and refresh-token concurrency defect is fixed in code; runtime validation remains pending.
 
 
@@ -324,6 +323,6 @@ SUB-PAY-001 and SUB-PAY-002 affect payroll reporting and payment-history totals.
 
 - SQR-008: The generic Square fallback now limits candidate invoices to the client's resolved canonical business. Canonical businessId matches are preferred; legacy rows without businessId are eligible only when businessLine matches the client. The Square mirror inherits the resolved business, and unmatched payments continue to be recorded as Other Income under the client's business. Added focused business-condition tests.
 - SUB-PAY-001: Payment history now filters both the ledger sum and displayed effective date by canonical sub_payment_records.payment_date for the requested year or date range. The job start date is no longer substituted when canonical ledger rows exist but no active payment falls in the selected period. Added regression coverage for cross-year events and date-window filters.
-- SUB-PAY-002: Any canonical ledger row now prevents fallback to the legacy cached job_subcontractors.amount_paid, including when every ledger row is reversed. Reversed entries contribute neither to the sum nor the event date; the displayed status is derived from the active ledger amount and current owed amount. Legacy cached values are used only when no canonical ledger rows exist. Added regression coverage for all-reversed history.
+- SUB-PAY-002: Any canonical ledger row now prevents fallback to the legacy cached job_subcontractors.amount_paid, including when every ledger row is reversed. Reversed entries contribute neither to the sum nor the event date; a zero active ledger amount displays as unpaid. Existing job payment status is otherwise preserved across date-filtered views. Legacy cached values are used only when no canonical ledger rows exist. Added regression coverage for all-reversed history.
 - These changes preserve the canonical ledger and do not rewrite payment records, cached historical rows, or production data.
 - Validation limitation: tests, typecheck, build, accounting gate, and PostgreSQL integration checks have not been executed in this environment. The focused regression tests are authored only; no pass is claimed. The branch remains isolated from master.
