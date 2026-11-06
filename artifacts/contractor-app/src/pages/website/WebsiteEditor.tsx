@@ -3356,8 +3356,6 @@ function WebsiteEditor() {
         brandColor: "#1a1a2e",
         fontFamily: "Inter",
         ...generatedSettings,
-        // Full-site generation replaces the current custom-page set.
-        pages: [],
         // Always preserve these from the current site (overwrite any AI-generated values)
         logoUrl: preservedLogoUrl,
         ...(settings.logoObjectPath ? { logoObjectPath: settings.logoObjectPath } : generatedSettings.logoObjectPath ? { logoObjectPath: generatedSettings.logoObjectPath } : {}),
@@ -3390,7 +3388,7 @@ function WebsiteEditor() {
 
       const payload = {
         sections: sections.map((s, i) => ({ ...s, order: i })),
-        settings: newSettings,
+        settings: withWebsitePageList(newSettings, []),
       };
 
       const saveRes = await fetch(`${BASE}/api/website?businessId=${bizId}`, {
