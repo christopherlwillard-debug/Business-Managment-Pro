@@ -786,3 +786,10 @@ Created the four-document architecture governance system:
 - Route stop creation now verifies that a supplied job exists and, when a client is also linked, that both references identify the same customer.
 - Partial route stop edits resolve omitted job/client link values from the stored route stop before validating a changed relationship, preventing one-sided reassignment from creating mismatched links.
 - Job-only route stops and unrelated field edits remain supported. No schema, financial ledger, or source-of-truth changes were introduced.
+
+### Square webhook parsing and signature enforcement
+
+- Moved the public Square webhook mount behind the existing JSON parser so webhook payloads are parsed before the route executes.
+- Captured the exact raw JSON bytes for Square HMAC verification; the handler no longer re-serializes parsed JSON for signature checks.
+- Made webhook verification fail closed when the signature key or signature header is missing, reject missing raw-body data, and compare HMAC bytes with a constant-time comparison.
+- Added focused signature-boundary tests. Runtime execution remains pending; no Square credentials or live payment records were changed.
