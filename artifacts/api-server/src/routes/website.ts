@@ -135,13 +135,30 @@ export function validateWebsiteMediaFolderName(value: unknown): { ok: true; name
 
 type WebsitePageLike = { id?: string; name?: string; slug?: string; sections?: unknown[] };
 
-/** Treat legacy/corrupt persisted page settings as an empty or filtered list. */
+/** Treat legacy/corrupt persisted page settings as a safe, unique page list. */
 export function getWebsitePageList(value: unknown): WebsitePageLike[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((page): page is WebsitePageLike =>
-    !!page && typeof page === "object" && !Array.isArray(page) &&
-    typeof (page as { slug?: unknown }).slug === "string"
-  );
+  const seen = new Set<string>();
+  return value.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const page = raw as Record<string, unknown>;
+    if (typeof page.slug !== "string") return [];
+    const slug = normalizePageSlug(page.slug);
+    if (!slug || slug === "home" || seen.has(slug)) return [];
+    seen.add(slug);
+    const id = typeof page.id === "string" && page.id.trim() ? page.id : `page-${index + 1}`;
+    const name = typeof page.name === "string" && page.name.trim() ? page.name.trim().slice(0, 120) : slug;
+    const sections = Array.isArray(page.sections)
+      ? page.sections.filter(section =>
+          !!section && typeof section === "object" && !Array.isArray(section) &&
+          typeof (section as { type?: unknown }).type === "string" &&
+          !!(section as { content?: unknown }).content &&
+          typeof (section as { content?: unknown }).content === "object" &&
+          !Array.isArray((section as { content?: unknown }).content)
+        )
+      : [];
+    return [{ ...page, id, name, slug, sections }] as WebsitePageLike[];
+  });
 }
 
 /** Filter persisted section data before public routes inspect nested content. */
@@ -806,7 +823,9 @@ router.get("/", wrapAsync(async (req, res) => {
   }
 
   const normalizedSections = normalizeSections(config.sections as SectionRow[]);
-  res.json({ ...config, sections: normalizedSections });
+  const settings = getWebsiteRequestBody(config.settings);
+  const pages = getWebsitePageList(settings.pages);
+  res.json({ ...config, sections: normalizedSections, settings: { ...settings, pages } });
 }));
 
 router.put("/", wrapAsync(async (req, res) => {
