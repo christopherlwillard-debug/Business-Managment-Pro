@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
+import { truncateWebsiteMediaFilename, validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
 
 describe("validateWebsiteMediaPatch", () => {
   it("accepts valid metadata and folder updates", () => {
@@ -54,5 +54,13 @@ describe("validateWebsiteMediaIds", () => {
     for (const ids of [[0], [-1], [1.5], ["3"], [Number.MAX_SAFE_INTEGER + 1]]) {
       expect(validateWebsiteMediaIds(ids).ok).toBe(false);
     }
+  });
+});
+
+describe("truncateWebsiteMediaFilename", () => {
+  it("keeps filenames within the database limit without splitting Unicode characters", () => {
+    expect([...truncateWebsiteMediaFilename("x".repeat(300))]).toHaveLength(255);
+    expect([...truncateWebsiteMediaFilename("😀".repeat(300))]).toHaveLength(255);
+    expect(truncateWebsiteMediaFilename("photo.jpg", 5)).toBe("photo");
   });
 });
