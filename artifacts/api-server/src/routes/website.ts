@@ -240,7 +240,7 @@ export function getSafeWebsiteCustomDomain(value: unknown): string | null {
 export function parseWebsiteMoneyCents(value: unknown): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
   const raw = typeof value === "string" ? value.trim() : String(value);
-  if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?$/.test(raw)) return null;
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(raw)) return null;
   const amount = Number(raw);
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const cents = Math.round(amount * 100);
