@@ -1118,7 +1118,7 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
     const isActive = !!activeCardId && activeCardId === node.id;
     return (
       <button type="button"
-        className="w-full text-left ${{`flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
+        className={`w-full text-left flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
