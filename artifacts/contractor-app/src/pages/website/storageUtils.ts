@@ -104,10 +104,10 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
 }
 
 /** Update one page using its latest section state, never a pre-upload snapshot. */
-export function patchWebsitePageSections<TPage extends { id: string; sections: TSection[] }, TSection>(
+export function patchWebsitePageSections<TPage extends { id: string; sections: unknown[] }>(
   pages: TPage[] | null,
   pageId: string,
-  update: (sections: TSection[]) => TSection[],
+  update: (sections: TPage["sections"]) => TPage["sections"],
 ): TPage[] | null {
   if (!pages) return pages;
   return pages.map(page => page.id === pageId ? { ...page, sections: update(page.sections) } : page);
@@ -140,10 +140,10 @@ export function patchWebsitePageSectionContent<
 }
 
 /** Persist the complete custom-page collection, including an explicit empty list after the last page is deleted. */
-export function withWebsitePageList<T extends Record<string, unknown>>(
-  settings: T,
-  pages: unknown[],
-): T & { pages: unknown[] } {
+export function withWebsitePageList<TSettings extends object, TPage>(
+  settings: TSettings,
+  pages: TPage[],
+): TSettings & { pages: TPage[] } {
   return { ...settings, pages };
 }
 
