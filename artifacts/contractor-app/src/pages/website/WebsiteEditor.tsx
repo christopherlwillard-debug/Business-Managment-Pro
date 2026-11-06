@@ -623,9 +623,10 @@ function SortableRow({
         {SECTION_LABELS[section.type] ?? section.type}
       </button>
       <button
+        type="button"
         onClick={e => { e.stopPropagation(); onToggle(); }}
         className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
-        title={section.enabled ? "Hide section" : "Show section"}
+        aria-label={section.enabled ? "Hide section" : "Show section"}
       >
         {section.enabled ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
       </button>
@@ -1021,7 +1022,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
             <GripVertical className="w-3 h-3" />
           </div>
         )}
-        <button type="button" className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+        <button type="button" aria-label={isExpanded ? "Collapse page" : "Expand page"} className="flex-shrink-0 p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
           onClick={e => { e.stopPropagation(); onToggleExpand(node.id); }}>
           <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
         </button>
@@ -1044,17 +1045,17 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
           </button>
         )}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-          <button type="button" onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
-            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Rename">
+          <button type="button" aria-label={`Rename ${node.label} page`} onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground">
             <Pencil className="w-2.5 h-2.5" />
           </button>
-          <button type="button" onClick={e => { e.stopPropagation(); switchPage(node.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
-            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground" title="Replace page with template">
+          <button type="button" aria-label={`Replace ${node.label} page with a template`} onClick={e => { e.stopPropagation(); switchPage(node.id); setPageTemplatePickerMode("apply"); setShowPageTemplatePicker(true); }}
+            className="p-0.5 rounded hover:bg-muted-foreground/20 text-muted-foreground">
             <LayoutTemplate className="w-2.5 h-2.5" />
           </button>
           {node.id !== "home" && (
-            <button type="button" onClick={e => { e.stopPropagation(); deletePage(node.id); }}
-              className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive" title="Delete page">
+            <button type="button" aria-label={`Delete ${node.label} page`} onClick={e => { e.stopPropagation(); deletePage(node.id); }}
+              className="p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive">
               <Trash2 className="w-2.5 h-2.5" />
             </button>
           )}
@@ -7339,7 +7340,7 @@ function WebsiteEditor() {
                         type="button"
                         onClick={e => { e.stopPropagation(); toggleSection(sec.id); }}
                         className="p-0.5 rounded opacity-0 group-hover/layer:opacity-100 hover:bg-muted flex-shrink-0 transition-opacity"
-                        title={sec.enabled ? "Hide section" : "Show section"}
+                        aria-label={sec.enabled ? "Hide section" : "Show section"}
                       >
                         {sec.enabled ? <Eye className="w-3 h-3 text-muted-foreground" /> : <EyeOff className="w-3 h-3 text-orange-400" />}
                       </button>
