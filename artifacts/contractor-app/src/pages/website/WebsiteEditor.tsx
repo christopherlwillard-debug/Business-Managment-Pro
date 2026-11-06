@@ -3173,6 +3173,9 @@ function WebsiteEditor() {
    * suggest-colors (M7) → apply to editor state.
    */
   async function handleAIGenerate(values: WizardFormValues, _prefill: BusinessProfilePrefill) {
+    const generationSession = businessSessionRef.current;
+    const generationBusinessId = bizId;
+    const generationRevision = editorRevisionRef.current;
     setShowAIWizard(false);
     setIsGenerating(true);
     try {
@@ -3248,6 +3251,14 @@ function WebsiteEditor() {
         }
       } catch { /* color generation is optional */ }
 
+      // Do not apply a long-running generation to a different business or
+      // overwrite edits made while the AI request was running.
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while AI was working", description: "Your edits were preserved. Start generation again when ready.", variant: "destructive" });
+        return;
+      }
+
       // ── 4. Apply everything to editor state ───────────────────────────────
       setGeneratingStep("Finalizing your website…");
 
@@ -3305,13 +3316,18 @@ function WebsiteEditor() {
         variant: "destructive",
       });
     } finally {
-      setIsGenerating(false);
-      setGeneratingStep("");
+      if (generationSession === businessSessionRef.current) {
+        setIsGenerating(false);
+        setGeneratingStep("");
+      }
     }
   }
 
   // ── M20: AI Website Generator complete handler ────────────────────────────────
   async function handleGeneratorComplete(data: GeneratedSiteData) {
+    const generationSession = businessSessionRef.current;
+    const generationBusinessId = bizId;
+    const generationRevision = editorRevisionRef.current;
     setShowGeneratorScreen(false);
     setIsGenerating(true);
     setGeneratingStep("Applying your website…");
@@ -3346,6 +3362,12 @@ function WebsiteEditor() {
         body: JSON.stringify(payload),
       });
 
+      if (generationSession !== businessSessionRef.current || generationBusinessId !== bizIdRef.current) return;
+      if (generationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while generation was saving", description: "Your edits were preserved. Review the generated site before applying it again.", variant: "destructive" });
+        return;
+      }
+
       if (saveRes.ok) {
         setLocalPages([{ id: "home", name: "Home", slug: "home", sections }]);
         setActivePageId("home");
@@ -3366,8 +3388,10 @@ function WebsiteEditor() {
       console.error("[AI Generator apply]", err);
       toast({ title: "Generation failed", description: "Something went wrong. Please try again.", variant: "destructive" });
     } finally {
-      setIsGenerating(false);
-      setGeneratingStep("");
+      if (generationSession === businessSessionRef.current) {
+        setIsGenerating(false);
+        setGeneratingStep("");
+      }
     }
   }
 
