@@ -178,7 +178,10 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
 // authenticated owner; checking the referenced row prevents arbitrary IDs
 // from creating or probing website records for nonexistent businesses.
 router.use(wrapAsync(async (req, res, next) => {
-  const bodyBusinessId = req.body && typeof req.body === "object" ? req.body.businessId : undefined;
+  // Express may leave req.body undefined for requests without a parsed JSON body.
+  // Normalize it once so every handler can safely validate or read fields.
+  req.body = getWebsiteRequestBody(req.body);
+  const bodyBusinessId = req.body.businessId;
   const raw = Array.isArray(req.query.businessId) ? req.query.businessId[0] : req.query.businessId ?? bodyBusinessId;
   if (raw === undefined || raw === null || raw === "") return next();
   const businessId = Number(raw);
