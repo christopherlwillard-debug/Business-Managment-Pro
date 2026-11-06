@@ -3335,7 +3335,9 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
     if (Array.isArray(sections)) {
       for (const section of sections) {
         if (JSON.stringify(section.content ?? {}).includes(item.url)) {
-          locations.push({ sectionId: section.id, sectionType: section.type });
+          if (typeof section.id === "string" && typeof section.type === "string") {
+            locations.push({ sectionId: section.id, sectionType: section.type });
+          }
         }
       }
     }
