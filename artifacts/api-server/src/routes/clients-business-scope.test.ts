@@ -228,4 +228,14 @@ describe("client mutation business ownership", () => {
     expect(response.body.error).toContain("saved billing or manufacturer pricing");
     expect(h.deleteConditions).toHaveLength(0);
   });
+
+  it("does not permanently delete an otherwise empty client before archive support exists", async () => {
+    const response = await request(app).delete("/clients/7?businessId=2");
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("archive/restore workflow");
+    expect(response.body.error).toContain("No data was changed");
+    expect(h.updateConditions).toHaveLength(0);
+    expect(h.deleteConditions).toHaveLength(0);
+  });
 });
