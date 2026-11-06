@@ -1865,9 +1865,13 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         .where(and(gte(mileageLogsTable.date, startDate), lte(mileageLogsTable.date, endDate), eq(mileageLogsTable.classification, "business"), isNull(mileageLogsTable.subcontractorId), isNull(mileageLogsTable.voidedAt), mileageWhere)),
       db.select().from(otherIncomeTable)
         .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
-      db.select().from(assetsTable),
+      db.select().from(assetsTable)
+        .where(reportBusiness ? eq(assetsTable.businessId, reportBusiness.id) : undefined),
       db.select().from(estimatedTaxPaymentsTable)
-        .where(eq(estimatedTaxPaymentsTable.year, year)),
+        .where(and(
+          eq(estimatedTaxPaymentsTable.year, year),
+          reportBusiness ? eq(estimatedTaxPaymentsTable.businessId, reportBusiness.id) : undefined,
+        )),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
       db.select().from(assetBusinessUseTable),
@@ -1899,9 +1903,14 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
         )),
     ]);
 
+    // Assets are business-scoped above; only attach usage records belonging to those assets.
+    const reportAssetIds = new Set(assets.map(asset => asset.id));
+    const scopedBusUseRows = reportBusiness
+      ? busUseRows.filter(row => reportAssetIds.has(row.assetId))
+      : busUseRows;
     // Build lookup: assetId → year → businessUsePct
     const busUseMap = new Map<number, Map<number, number>>();
-    for (const row of busUseRows) {
+    for (const row of scopedBusUseRows) {
       if (!busUseMap.has(row.assetId)) busUseMap.set(row.assetId, new Map());
       busUseMap.get(row.assetId)!.set(row.year, row.businessUsePct);
     }
