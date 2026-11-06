@@ -1404,12 +1404,12 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
   let redirectUrl: string | undefined;
-  if (returnUrl) {
+  if (safeReturnUrl) {
     try {
       const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
       const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
       const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(returnUrl);
+      const parsed = new URL(safeReturnUrl);
       if (parsed.origin.toLowerCase() === requestOrigin) {
         redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
       }
