@@ -1913,9 +1913,9 @@ Return ONLY a valid JSON object with exactly these keys (no markdown, no code fe
   };
   if (phone)    localBusiness.telephone = phone;
   if (email)    localBusiness.email     = email;
-  const configuredDomain = (config?.settings as Record<string, unknown> | undefined)?.customDomain;
-  const publicBaseUrl = typeof configuredDomain === "string" && configuredDomain.trim()
-    ? `https://${configuredDomain.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")}`
+  const configuredDomain = getSafeWebsiteCustomDomain(getWebsiteRequestBody(config?.settings).customDomain);
+  const publicBaseUrl = configuredDomain
+    ? `https://${configuredDomain}`
     : BASE_URL ? `${BASE_URL.replace(/\/+$/, "")}/site/${biz.slug}` : undefined;
   if (publicBaseUrl) localBusiness.url = publicBaseUrl;
 
