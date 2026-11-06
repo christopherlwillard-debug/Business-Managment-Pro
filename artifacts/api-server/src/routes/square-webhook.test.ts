@@ -25,7 +25,7 @@ vi.mock("@workspace/db/schema", () => ({
   businessesTable: {},
 }));
 
-const { default: squareWebhookRouter } = await import("./square-webhook");
+const { default: squareWebhookRouter, calculateSquareInvoicePayment } = await import("./square-webhook");
 const app = express();
 app.use(express.json({
   verify: (req, _res, buffer) => {
@@ -115,5 +115,37 @@ describe("Square webhook signature boundary", () => {
     expect(response.status).toBe(503);
     expect(response.body.error).toMatch(/not configured/i);
     expect(h.verify).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Square invoice receipt allocation", () => {
+  it("keeps an underpaid invoice partial instead of marking it paid", () => {
+    expect(calculateSquareInvoicePayment("500.00", "0.00", 12500)).toEqual({
+      amountPaid: "125.00",
+      status: "partial",
+    });
+  });
+
+  it("marks an invoice paid when the new receipt covers the remaining balance", () => {
+    expect(calculateSquareInvoicePayment("500.00", "125.00", 37500)).toEqual({
+      amountPaid: "500.00",
+      status: "paid",
+    });
+  });
+
+  it("adds successive receipts using integer cents", () => {
+    expect(calculateSquareInvoicePayment("19.99", "9.99", 1000)).toEqual({
+      amountPaid: "19.99",
+      status: "paid",
+    });
+  });
+
+  it("rejects invalid totals, prior balances, and payment amounts", () => {
+    expect(calculateSquareInvoicePayment("0.00", "0.00", 100)).toBeNull();
+    expect(calculateSquareInvoicePayment("100.00", "-1.00", 100)).toBeNull();
+    expect(calculateSquareInvoicePayment("100.00", "0.00", 0)).toBeNull();
+    expect(calculateSquareInvoicePayment("not-money", "0.00", 100)).toBeNull();
+    expect(calculateSquareInvoicePayment("100.00", "0.00", 1.5)).toBeNull();
   });
 });
