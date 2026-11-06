@@ -157,7 +157,8 @@ router.put("/:id", async (req, res) => {
       data.businessId = job.businessId != null ? String(job.businessId) : String(owner.id);
       data.businessLine = owner.slug;
     }
-    data.businessId = data.businessId ?? existing.businessId ?? String(owner.id);
+    // Re-save legacy slug-owned rows with the canonical numeric business ID.
+    data.businessId = String(owner.id);
     data.businessLine = owner.slug;
     const [row] = await db.update(otherIncomeTable).set(data)
       .where(and(eq(otherIncomeTable.id, id), mutationBusinessPredicate(otherIncomeTable, owner))).returning();
