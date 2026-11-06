@@ -60,7 +60,9 @@ export function completeSectionBlockStyleUpload<T extends { id: string; blockSty
   previewUrl: string,
   patch: Record<string, unknown>,
 ): T[] {
-  return sections.map(section => section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl
+  return sections.map(section => section.id !== sectionId
+    || section.blockStyle?.bgImageUrl !== previewUrl
+    || section.blockStyle?.bgType !== "image"
     ? section
     : { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } });
 }
@@ -75,11 +77,18 @@ export function restoreSectionBlockStylePreview<T extends { id: string; blockSty
   return sections.map(section => {
     if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     const nextStyle = { ...(section.blockStyle ?? {}) };
-    for (const key of ["bgImageUrl", "bgType"] as const) {
-      if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, key)) {
-        nextStyle[key] = originalBlockStyle[key];
+    if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgImageUrl")) {
+      nextStyle.bgImageUrl = originalBlockStyle.bgImageUrl;
+    } else {
+      delete nextStyle.bgImageUrl;
+    }
+    // A user may have changed the background mode while the upload was in
+    // flight. Restore that field only if the temporary preview still owns it.
+    if (nextStyle.bgType === "image") {
+      if (originalBlockStyle && Object.prototype.hasOwnProperty.call(originalBlockStyle, "bgType")) {
+        nextStyle.bgType = originalBlockStyle.bgType;
       } else {
-        delete nextStyle[key];
+        delete nextStyle.bgType;
       }
     }
     const restored = { ...section } as T;
