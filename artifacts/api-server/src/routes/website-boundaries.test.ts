@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -185,5 +185,19 @@ describe("Website Studio media storage filenames", () => {
     expect(getWebsiteMediaStorageFilename("image/avif")).toBe("website-media.avif");
     expect(getWebsiteMediaStorageFilename("image/webp")).toBe("website-media.webp");
     expect(getWebsiteMediaStorageFilename("../../etc/passwd")).toBe("website-media.img");
+  });
+});
+
+
+describe("Website Studio public image identifiers", () => {
+  it("accepts generated UUID keys with safe image extensions", () => {
+    expect(isWebsiteMediaObjectKey("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
+    expect(isWebsiteMediaObjectKey("550e8400-e29b-41d4-a716-446655440000.jpg")).toBe(true);
+  });
+
+  it("rejects path traversal, encoded paths, and arbitrary object names", () => {
+    for (const value of ["../private", "%2e%2e", "550e8400-e29b-41d4-a716-446655440000/../../secret", "550e8400-e29b-41d4-a716-446655440000.svg?x=1", "not-a-uuid", null, 42]) {
+      expect(isWebsiteMediaObjectKey(value)).toBe(false);
+    }
   });
 });
