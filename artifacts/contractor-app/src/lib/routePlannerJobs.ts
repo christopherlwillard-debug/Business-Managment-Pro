@@ -1,6 +1,6 @@
 export type RoutePlannerJobLink = {
   id: number;
-  businessLine: string | null;
+  businessLine?: string | null;
 };
 
 export function findRoutePlannerJob<T extends RoutePlannerJobLink>(
