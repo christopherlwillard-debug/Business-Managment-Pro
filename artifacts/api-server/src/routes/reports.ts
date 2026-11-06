@@ -613,13 +613,13 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
     const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= currentYear + 1
       ? requestedYear
       : currentYear;
-    const businessLine = typeof req.query.businessLine === "string" && req.query.businessLine.trim()
-      ? req.query.businessLine.trim()
-      : null;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const businessLine = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-    const businessWhere = (column: Parameters<typeof eq>[0]) =>
-      businessLine ? eq(column, businessLine) : undefined;
+    const businessWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
 
     const [paidInvoices, otherIncome] = await Promise.all([
       db.select(dashboardInvoiceSelection)
@@ -627,7 +627,7 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
         .where(and(
           eq(invoicesTable.status, "paid"),
           isNull(invoicesTable.voidedAt),
-          businessWhere(invoicesTable.businessLine),
+          businessWhere(invoicesTable.businessLine, invoicesTable.businessId),
         )),
       db.select({
         date: otherIncomeTable.date,
@@ -638,7 +638,7 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
           gte(otherIncomeTable.date, startDate),
           lte(otherIncomeTable.date, endDate),
           isNull(otherIncomeTable.voidedAt),
-          businessWhere(otherIncomeTable.businessLine),
+          businessWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId),
         )),
     ]);
 
