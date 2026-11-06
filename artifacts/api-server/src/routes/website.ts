@@ -360,6 +360,19 @@ export function getEnabledWebsiteDepositSection(value: unknown): { content: Reco
   return section ? { content: section.content } : null;
 }
 
+/** Use explicit booleans for optional deposit form fields; malformed settings fall back safely. */
+export function getWebsiteDepositFieldConfig(
+  value: unknown,
+  fallback: { show: boolean; required: boolean },
+): { show: boolean; required: boolean } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const config = value as Record<string, unknown>;
+  return {
+    show: typeof config.show === "boolean" ? config.show : fallback.show,
+    required: typeof config.required === "boolean" ? config.required : fallback.required,
+  };
+}
+
 export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePageLike[] } | {
   ok: false;
   error: string;
@@ -1376,9 +1389,9 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
   const configuredAmount = configuredCents / 100;
 
-  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
+  const allowCustomAmount = depositSection.content.allowCustomAmount === true;
 
-  const heading = (depositSection.content.heading as string) || "Deposit";
+  const heading = getWebsiteContactText(depositSection.content.heading, 100) || "Deposit";
 
   const { returnUrl, customAmount } = getWebsiteRequestBody(req.body) as { returnUrl?: string; customAmount?: number };
   const safeReturnUrl = getWebsiteContactText(returnUrl, 2048);
@@ -1459,14 +1472,13 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   if (configuredCents === null) return res.status(400).json({ error: "Deposit amount is not configured" });
   const configuredAmount = configuredCents / 100;
 
-  const allowCustomAmount = !!(depositSection.content.allowCustomAmount);
-  const heading = (depositSection.content.heading as string) || "Deposit";
+  const allowCustomAmount = depositSection.content.allowCustomAmount === true;
+  const heading = getWebsiteContactText(depositSection.content.heading, 100) || "Deposit";
 
-  type FieldCfg = { show?: boolean; required?: boolean };
-  const fName  = (depositSection.content.fieldName  as FieldCfg | undefined) ?? { show: true,  required: true };
-  const fEmail = (depositSection.content.fieldEmail as FieldCfg | undefined) ?? { show: true,  required: true };
-  const fPhone = (depositSection.content.fieldPhone as FieldCfg | undefined) ?? { show: false, required: false };
-  const fNotes = (depositSection.content.fieldNotes as FieldCfg | undefined) ?? { show: false, required: false };
+  const fName = getWebsiteDepositFieldConfig(depositSection.content.fieldName, { show: true, required: true });
+  const fEmail = getWebsiteDepositFieldConfig(depositSection.content.fieldEmail, { show: true, required: true });
+  const fPhone = getWebsiteDepositFieldConfig(depositSection.content.fieldPhone, { show: false, required: false });
+  const fNotes = getWebsiteDepositFieldConfig(depositSection.content.fieldNotes, { show: false, required: false });
 
   if (fName.show !== false && fName.required !== false && !safeCustomerName) {
     return res.status(400).json({ error: "Name is required." });
