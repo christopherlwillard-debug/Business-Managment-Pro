@@ -69,6 +69,37 @@ describe("Website Studio deposit validation", () => {
   });
 });
 
+describe("Website Studio persisted section boundaries", () => {
+  it("filters malformed section records and normalizes invalid nested content", () => {
+    expect(getWebsiteSectionList(null)).toEqual([]);
+    expect(getWebsiteSectionList([
+      null,
+      "hero",
+      { type: 42, content: {} },
+      { type: "hero", content: [] },
+      { type: "services", content: { items: [{ title: "Trim" }] } },
+    ])).toEqual([
+      { type: "hero", content: {} },
+      { type: "services", content: { items: [{ title: "Trim" }] } },
+    ]);
+  });
+
+  it("extracts only valid titled service items", () => {
+    expect(getWebsiteSectionTextItems([
+      null, "service", [], { title: 42 }, { title: "  Sealing  " }, { title: "" },
+    ])).toEqual([{ title: "Sealing" }]);
+    expect(getWebsiteSectionTextItems({ title: "not an array" })).toEqual([]);
+  });
+
+  it("safely checks portfolio photos in malformed legacy and current data", () => {
+    const objectPath = "/objects/uploads/website-portfolio-photos/550e8400-e29b-41d4-a716-446655440000";
+    expect(hasWebsitePortfolioPhoto(null, objectPath)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { projects: [null, { photos: [null, { photoObjectPath: objectPath }] }] } }], objectPath)).toBe(true);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: "bad" } }], objectPath)).toBe(false);
+    expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [{ photoObjectPath: objectPath }] } }], "https://example.com/image.png")).toBe(false);
+  });
+});
+
 describe("Website Studio sitemap safety", () => {
   it("filters and normalizes persisted sitemap page slugs", () => {
     expect(getWebsiteSitemapPages([
