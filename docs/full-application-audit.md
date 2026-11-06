@@ -8,7 +8,7 @@
 ## Branch and audit baseline
 
 - `master` was at `135a42696556ef9df91417b3dfe0a87b06cb05ca` when this batch began.
-- The original ledger baseline was 360 commits ahead and 0 behind; the recurring-expense fix moved it to 361 ahead. At the start of the client-isolation batch, branch head was `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b` (371 ahead, 0 behind). After the client batch and archive-safety follow-up, code head was `24e920e57caab5200187160a63fa05c5c966b161` (394 ahead, 0 behind). `master` remained `135a42696556ef9df91417b3dfe0a87b06cb05ca`.
+- The original ledger baseline was 360 commits ahead and 0 behind; the recurring-expense fix moved it to 361 ahead. At the start of the client-isolation batch, branch head was `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b` (371 ahead, 0 behind). After the client batch and archive-safety follow-up, code head was `24e920e57caab5200187160a63fa05c5c966b161` (394 ahead, 0 behind). The current branch head after ledger updates is `18fe0f4069b22aee68e3fd0355fdedc6647a1365` (396 ahead, 0 behind). `master` remained `135a42696556ef9df91417b3dfe0a87b06cb05ca`.
 - No open pull request was present at the time of review.
 - Existing audit material reviewed includes `ACCOUNTING_AUDIT.md`, `.agents/architecture/AUDIT_2026_08_05.md`, `.agents/architecture/ACCOUNTING_AUDIT_2026_08_05.md`, and `.agents/architecture/DEAD_CODE_AUDIT_2026_08_05.md`. No dedicated full-application findings ledger was present, so this file is the ongoing ledger.
 
@@ -60,17 +60,17 @@ Every batch must trace confirmed defects through callers, schema, and tests; add
 - Added shared source-owner serialization in `artifacts/contractor-app/src/lib/clientBusinessScope.ts`. Updated Clients, People & Properties, Address Book quick-edit, and Client Profile service-date callers to send source ownership. ID-based delete and link-count requests now include the source selector.
 - Documented the source-owner fields in `lib/api-spec/openapi.yaml` and synchronized the generated API request types.
 - Prevented silent cascade deletion of client billing profiles, MFH client pricing, and production price overrides. The delete path locks the scoped client in a transaction and refuses deletion with HTTP 409 while any of those settings remain. It also blocks all permanent client deletion until archive/restore support exists. The link-count endpoint and Clients dialog show the protected dependencies.
-- Added `artifacts/api-server/src/routes/clients-business-scope.test.ts` for cross-business update/delete rejection, destination-vs-source reassignment, and pricing-preservation behavior; updated `mileage-surcharge.test.ts` fixtures for the newly scoped client update path.
+- Added `artifacts/api-server/src/routes/clients-business-scope.test.ts` for cross-business update/delete rejection, destination-vs-source reassignment, pricing-preservation, and archive-required behavior; updated `mileage-surcharge.test.ts` fixtures for the newly scoped client update path.
 
 ### Validation and limitations for this batch
 
 - Inspected the final branch diff against `b607aaa5b4fae22eebc4e035e65fe40b4c0ec89b`: 22 code commits and two ledger commits across 12 code files plus the audit ledger, confined to client routes/callers, API contract/types, and focused tests. No unrelated files were overwritten.
-- Branch comparison: 388 commits ahead of `master` and 0 behind; `master` unchanged. No open pull request. The latest code commit had no status contexts, and no Actions runs were returned for the branch.
+- Branch comparison after the archive-safety follow-up and ledger updates: 396 commits ahead of `master` and 0 behind; `master` unchanged. No open pull request. The latest code commit had no status contexts, and no Actions runs were returned for the branch.
 - Tests, typecheck, and build were **not executed**. This environment has GitHub file/commit access but no local repository checkout or package runtime. Added tests are therefore **found/fixed with regression coverage authored, not target-tested**; no pass is claimed.
 - No migration, production data, credentials, merge, or deployment was changed.
 
 ### Remaining client risks
 
 - `DELETE /api/clients/:id` now returns HTTP 409 before detaching any child record or deleting the client. This is an interim data-preservation guard for CLI-003; a proper archive/restore lifecycle and UI are still required. Previously deleted client relationships are not reconstructed.
-- Client-specific billing/pricing settings are protected from cascade loss, but users must transfer or remove them before deletion; there is no transfer UI.
+- Client-specific billing/pricing settings are protected from cascade loss and remain intact while deletion is disabled; no transfer UI exists for the future archive workflow.
 - Client-profile route-stop reads and other linked child records still need a dedicated cross-business integrity review. The present batch only closes the ID-based client mutation gap and protects the identified cascade-owned settings.
