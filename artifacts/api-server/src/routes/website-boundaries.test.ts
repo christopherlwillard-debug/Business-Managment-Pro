@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName } from "./website";
 
 describe("website data boundaries", () => {
   it("returns a client error for oversized and malformed media uploads", () => {
@@ -198,6 +198,24 @@ describe("Website Studio public image identifiers", () => {
   it("rejects path traversal, encoded paths, and arbitrary object names", () => {
     for (const value of ["../private", "%2e%2e", "550e8400-e29b-41d4-a716-446655440000/../../secret", "550e8400-e29b-41d4-a716-446655440000.svg?x=1", "not-a-uuid", null, 42]) {
       expect(isWebsiteMediaObjectKey(value)).toBe(false);
+    }
+  });
+});
+
+
+describe("Website Studio stored public object paths", () => {
+  it("accepts only UUID objects from the requested upload namespace", () => {
+    const path = "/objects/uploads/website-favicons/550e8400-e29b-41d4-a716-446655440000";
+    expect(isWebsiteStoredObjectPath(path, "/objects/uploads/website-favicons/")).toBe(true);
+    expect(isWebsiteStoredObjectPath(path, "/objects/uploads/website-about-photos/")).toBe(false);
+    for (const value of [
+      "/objects/uploads/website-favicons/../private",
+      "/objects/uploads/website-favicons/%2e%2e",
+      "/objects/uploads/website-favicons/550e8400-e29b-41d4-a716-446655440000/extra",
+      "https://example.com/favicon.ico",
+      null,
+    ]) {
+      expect(isWebsiteStoredObjectPath(value, "/objects/uploads/website-favicons/")).toBe(false);
     }
   });
 });
