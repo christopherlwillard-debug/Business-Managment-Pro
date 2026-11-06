@@ -5371,6 +5371,14 @@ const DEALER_BRANDS: Record<string, {
   },
 };
 
+/** Keep dealer-page generation deterministic and prevent duplicate slugs in one request. */
+export function normalizeDealerManufacturerIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id): id is string =>
+    typeof id === "string" && Object.prototype.hasOwnProperty.call(DEALER_BRANDS, id)
+  ))];
+}
+
 function uid7(): string {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -5551,8 +5559,8 @@ router.post("/generate-dealer-pages", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "manufacturers array required" });
   }
 
-  // Validate brand IDs
-  const validIds = manufacturers.filter(id => DEALER_BRANDS[id]);
+  // Validate and deduplicate brand IDs before checking conflicts or generating pages.
+  const validIds = normalizeDealerManufacturerIds(manufacturers);
   if (validIds.length === 0) {
     return res.status(400).json({ error: "No valid manufacturer IDs provided" });
   }
