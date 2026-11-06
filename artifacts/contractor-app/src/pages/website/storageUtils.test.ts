@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cancelWebsiteRenameBlurCommit, consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, removeWebsitePageAndNavigationLinks, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { cancelWebsiteRenameBlurCommit, consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, removeWebsitePageAndNavigationLinks, resolvePublicSitePageRoute, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
 
@@ -61,6 +61,42 @@ describe("Website Studio public page cache", () => {
     const preview = getPublicSiteQueryKey(undefined, "about", true, "example.com");
     const otherHost = getPublicSiteQueryKey(undefined, "about", false, "other.example");
     expect(new Set([JSON.stringify(published), JSON.stringify(preview), JSON.stringify(otherHost)]).size).toBe(3);
+  });
+});
+
+describe("Website Studio custom-domain page routing", () => {
+  it("resolves custom-domain root and one-segment page paths", () => {
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/")).toEqual({ invalidPath: false });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/about")).toEqual({
+      pageSlug: "about",
+      invalidPath: false,
+    });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/About-Us/")).toEqual({
+      pageSlug: "about-us",
+      invalidPath: false,
+    });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/about%2Dus")).toEqual({
+      pageSlug: "about-us",
+      invalidPath: false,
+    });
+  });
+
+  it("preserves explicit app-hosted business and page route parameters", () => {
+    expect(resolvePublicSitePageRoute("sample-business", undefined, "/site/sample-business")).toEqual({
+      invalidPath: false,
+    });
+    expect(resolvePublicSitePageRoute("sample-business", "about", "/site/sample-business/about")).toEqual({
+      pageSlug: "about",
+      invalidPath: false,
+    });
+  });
+
+  it("rejects malformed and nested custom-domain paths instead of treating them as home", () => {
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/about/team")).toEqual({ invalidPath: true });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/%2e%2e")).toEqual({ invalidPath: true });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/bad%2Fslug")).toEqual({ invalidPath: true });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/bad%ZZ")).toEqual({ invalidPath: true });
+    expect(resolvePublicSitePageRoute(undefined, undefined, "/about.html")).toEqual({ invalidPath: true });
   });
 });
 
