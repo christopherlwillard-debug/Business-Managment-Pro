@@ -2211,7 +2211,6 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
 router.post("/upload-section-bg", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "image");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
-  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-section-bgs");
   res.json({ uploadURL, objectPath });
 }));
@@ -2219,7 +2218,6 @@ router.post("/upload-section-bg", wrapAsync(async (req, res) => {
 router.post("/upload-column-image", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "image");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
-  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-column-images");
   res.json({ uploadURL, objectPath });
 }));
@@ -2227,7 +2225,6 @@ router.post("/upload-column-image", wrapAsync(async (req, res) => {
 router.post("/upload-favicon", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "favicon");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
-  const { name, size, contentType } = validation.upload;
   const { uploadURL, objectPath } = await objectStorageService.getObjectEntityUploadURLForSubPath("uploads/website-favicons");
   res.json({ uploadURL, objectPath });
 }));
@@ -2235,7 +2232,6 @@ router.post("/upload-favicon", wrapAsync(async (req, res) => {
 router.post("/upload-card-image", wrapAsync(async (req, res) => {
   const validation = validateWebsiteDirectUpload(req.body, "image");
   if (!validation.ok) return res.status(400).json({ error: validation.error });
-  const { name, size, contentType } = validation.upload;
   const { businessId: rawBusinessId } = req.body as { businessId?: number };
   const businessId = Number(rawBusinessId);
   if (!businessId || isNaN(businessId)) {
