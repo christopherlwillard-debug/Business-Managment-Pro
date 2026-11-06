@@ -894,9 +894,9 @@ function GridItem({ item, usageCount, selected, isActive, isDeleteConfirm, delet
             </p>
           )}
           <div className="flex gap-1.5">
-            <button onClick={onDelete} disabled={deleting}
-              className="px-2 py-0.5 bg-white text-destructive rounded text-[10px] font-semibold hover:bg-gray-100">
-              {deleting ? "…" : "Delete"}
+            <button onClick={onDelete} disabled={deleting || usageCount > 0}
+              className="px-2 py-0.5 bg-white text-destructive rounded text-[10px] font-semibold hover:bg-gray-100 disabled:opacity-50">
+              {deleting ? "…" : usageCount > 0 ? "In use" : "Delete"}
             </button>
             <button onClick={onDeleteCancel}
               className="px-2 py-0.5 bg-white/20 text-white rounded text-[10px] font-semibold hover:bg-white/30">
@@ -1033,9 +1033,9 @@ function ListItem({ item, usageCount, selected, isActive, renamingId, renameValu
           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
             <span className="text-[10px] text-destructive font-medium">Delete?</span>
             {usageCount > 0 && <span className="text-[9px] text-amber-600">{usageCount} in use</span>}
-            <button type="button" onClick={onDelete} disabled={deleting}
+            <button type="button" onClick={onDelete} disabled={deleting || usageCount > 0}
               className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-semibold disabled:opacity-60">
-              {deleting ? "…" : "Yes"}
+              {deleting ? "…" : usageCount > 0 ? "In use" : "Yes"}
             </button>
             <button type="button" onClick={onDeleteCancel} disabled={deleting}
               className="px-1.5 py-0.5 rounded border border-border text-[10px] disabled:opacity-60">
@@ -1393,9 +1393,9 @@ function DetailPanel({ item, businessId, usageDetails, usageDetailsFailed, isLoa
               <p className="text-[10px] text-destructive/80">It is currently used in {usageDetails.total} site section{usageDetails.total === 1 ? "" : "s"}.</p>
             ) : null}
             <div className="flex gap-2">
-              <button type="button" onClick={onDelete} disabled={isDeleting}
+              <button type="button" onClick={onDelete} disabled={isDeleting || isLoadingDetails || usageDetailsFailed || (usageDetails?.total ?? 0) > 0}
                 className="flex-1 px-2 py-1 text-[10px] font-semibold bg-destructive text-destructive-foreground rounded disabled:opacity-60">
-                {isDeleting ? "Deleting…" : "Delete"}
+                {isDeleting ? "Deleting…" : isLoadingDetails ? "Checking…" : usageDetailsFailed ? "Usage unavailable" : (usageDetails?.total ?? 0) > 0 ? "In use" : "Delete"}
               </button>
               <button type="button" onClick={onDeleteCancel} disabled={isDeleting}
                 className="flex-1 px-2 py-1 text-[10px] border border-border rounded disabled:opacity-60">
