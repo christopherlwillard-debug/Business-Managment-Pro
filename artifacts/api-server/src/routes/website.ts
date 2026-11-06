@@ -126,12 +126,15 @@ export function validatePageSlugs(pages: unknown): { ok: true; pages: WebsitePag
         conflict: { slug: "invalid-page-slug", pageId: page.id, pageName: page.name },
       };
     }
-    if (page.sections !== undefined && !Array.isArray((page as any).sections)) {
-      return {
-        ok: false,
-        error: "Page sections must be provided as a list.",
-        conflict: { slug: "invalid-page-sections", pageId: page.id, pageName: page.name },
-      };
+    if (page.sections !== undefined) {
+      const sectionValidation = validateWebsiteSections(page.sections);
+      if (!sectionValidation.ok) {
+        return {
+          ok: false,
+          error: "Page sections contain invalid section data.",
+          conflict: { slug: "invalid-page-sections", pageId: page.id, pageName: page.name },
+        };
+      }
     }
     const slug = normalizePageSlug(page.slug);
     if (!slug || slug === "home") {
