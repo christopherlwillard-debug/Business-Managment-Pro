@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
     clientId: "route_stops.client_id",
     jobId: "route_stops.job_id",
     scheduledDate: "route_stops.scheduled_date",
+    sortOrder: "route_stops.sort_order",
+    createdAt: "route_stops.created_at",
   },
   jobsTable: {
     id: "jobs.id",
@@ -18,7 +20,9 @@ const h = vi.hoisted(() => ({
   clientsTable: { id: "clients.id", name: "clients.name" },
   prospectsTable: { id: "prospects.id", contactName: "prospects.contact_name", address: "prospects.address" },
   jobs: [] as Array<{ id: number; clientId: number | null }>,
-  stops: [] as Array<{ id: number; clientId: number | null; jobId: number | null; createdAt: Date }>,
+  stops: [] as Array<{ id: number; clientId: number | null; jobId: number | null; scheduledDate?: string | null; sortOrder?: number | null; createdAt: Date }>,
+  blockUpdates: [] as Array<{ values: any; condition: any }>,
+  transactionCalls: 0,
   insertedStop: null as any,
   updatedStop: null as any,
   insertValues: null as any,
@@ -67,7 +71,9 @@ vi.mock("@workspace/db", () => {
                 ? "clientId"
                 : condition.column === h.routeStopsTable.jobId
                   ? "jobId"
-                  : null;
+                  : condition.column === h.routeStopsTable.scheduledDate
+                    ? "scheduledDate"
+                    : null;
             if (field) rows = rows.filter(row => row[field] === condition.value);
           }
           return Promise.resolve(rows).then(resolve, reject);
@@ -81,16 +87,28 @@ vi.mock("@workspace/db", () => {
         return { returning: async () => h.insertedStop ? [h.insertedStop] : [] };
       },
     }),
-    update: () => ({
+    update: (table: unknown) => ({
       set(values: unknown) {
         h.updateValues = values;
         return {
-          where: () => ({
-            returning: async () => h.updatedStop ? [h.updatedStop] : [],
-          }),
+          where: (condition: unknown) => {
+            if (table === h.routeStopsTable) {
+              h.blockUpdates.push({ values, condition });
+            }
+            const result = {
+              returning: async () => h.updatedStop ? [h.updatedStop] : [],
+              then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+                Promise.resolve(undefined).then(resolve, reject),
+            };
+            return result;
+          },
         };
       },
     }),
+    transaction: async (callback: (tx: any) => unknown) => {
+      h.transactionCalls += 1;
+      return callback(db);
+    },
   };
   return { db };
 });
@@ -104,6 +122,8 @@ const originalStop = {
   id: 5,
   clientId: 10,
   jobId: 100,
+  scheduledDate: "2026-11-06",
+  sortOrder: 0,
   createdAt: new Date("2026-11-01T12:00:00.000Z"),
 };
 
@@ -118,6 +138,8 @@ beforeEach(() => {
   h.updatedStop = { ...originalStop, jobId: 201 };
   h.insertValues = null;
   h.updateValues = null;
+  h.blockUpdates = [];
+  h.transactionCalls = 0;
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -174,5 +196,52 @@ describe("route stop job/client relationship integrity", () => {
 
     expect(response.status).toBe(200);
     expect(h.updateValues).toMatchObject({ title: "Updated stop" });
+  });
+});
+
+
+describe("route stop block splitting", () => {
+  it("rejects invalid block sizes before starting a transaction", async () => {
+    const response = await request(app).post("/split-blocks").send({
+      date: "2026-11-06",
+      blockSize: 1.5,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/whole number/i);
+    expect(h.transactionCalls).toBe(0);
+    expect(h.blockUpdates).toHaveLength(0);
+  });
+
+  it("rejects malformed dates before starting a transaction", async () => {
+    const response = await request(app).post("/split-blocks").send({
+      date: "11/06/2026",
+      blockSize: 9,
+    });
+
+    expect(response.status).toBe(400);
+    expect(h.transactionCalls).toBe(0);
+    expect(h.blockUpdates).toHaveLength(0);
+  });
+
+  it("assigns all stops for a date inside one transaction", async () => {
+    h.stops = [
+      { ...originalStop, id: 5, sortOrder: 0 },
+      { ...originalStop, id: 6, sortOrder: 1 },
+    ];
+
+    const response = await request(app).post("/split-blocks").send({
+      date: "2026-11-06",
+      blockSize: 1,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ updated: 2 });
+    expect(h.transactionCalls).toBe(1);
+    expect(h.blockUpdates).toHaveLength(2);
+    expect(h.blockUpdates.map(update => update.values)).toEqual([
+      { blockNumber: 1, crewLabel: "Block A" },
+      { blockNumber: 2, crewLabel: "Block B" },
+    ]);
   });
 });
