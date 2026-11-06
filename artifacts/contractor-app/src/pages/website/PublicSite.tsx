@@ -363,7 +363,7 @@ export default function PublicSite() {
   const rawPhone = typeof headerContent?.phone === "string" ? headerContent.phone.trim() : "";
   const rawEmail = typeof headerContent?.email === "string" ? headerContent.email.trim() : "";
   const headerPhone = rawPhone.slice(0, 100);
-  const headerEmail = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(rawEmail) ? rawEmail.slice(0, 320) : "";
+  const headerEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail) ? rawEmail.slice(0, 320) : "";
   const ctaLabel = typeof headerContent?.ctaLabel === "string" && headerContent.ctaLabel.trim()
     ? headerContent.ctaLabel.trim().slice(0, 100)
     : "Get a Quote";
