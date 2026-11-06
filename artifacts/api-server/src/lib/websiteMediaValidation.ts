@@ -141,3 +141,21 @@ export function validateWebsiteSettings(value: unknown):
   }
   return { ok: true, settings: value as Record<string, unknown> };
 }
+
+/** Count references to a media URL in saved website sections and settings. */
+export function countWebsiteMediaUrlReferences(value: unknown, url: string): number {
+  if (!url) return 0;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value ?? null);
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  let position = 0;
+  while ((position = serialized.indexOf(url, position)) !== -1) {
+    count++;
+    position++;
+  }
+  return count;
+}
