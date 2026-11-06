@@ -36,7 +36,7 @@ export function calculateSquareInvoicePayment(
   invoiceTotal: string | number | null,
   amountAlreadyPaid: string | number | null,
   paymentAmountCents: number,
-): { amountPaid: string; status: "partial" | "paid" } | null {
+): { amountPaid: string; status: "partiallyPaid" | "paid" } | null {
   const totalCents = Math.round(Number(invoiceTotal) * 100);
   const paidCents = Math.round(Number(amountAlreadyPaid ?? 0) * 100);
   if (
@@ -50,7 +50,7 @@ export function calculateSquareInvoicePayment(
   const nextPaidCents = Math.min(totalCents, paidCents + paymentAmountCents);
   return {
     amountPaid: (nextPaidCents / 100).toFixed(2),
-    status: nextPaidCents >= totalCents ? "paid" : "partial",
+    status: nextPaidCents >= totalCents ? "paid" : "partiallyPaid",
   };
 }
 
