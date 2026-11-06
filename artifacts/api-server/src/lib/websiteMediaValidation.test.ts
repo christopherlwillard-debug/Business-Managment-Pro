@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateWebsiteMediaPatch } from "./websiteMediaValidation";
+import { validateWebsiteMediaIds, validateWebsiteMediaPatch } from "./websiteMediaValidation";
 
 describe("validateWebsiteMediaPatch", () => {
   it("accepts valid metadata and folder updates", () => {
@@ -39,6 +39,20 @@ describe("validateWebsiteMediaPatch", () => {
   it("rejects invalid folder IDs", () => {
     for (const folderId of [0, -1, 1.5, "12", Number.MAX_SAFE_INTEGER + 1]) {
       expect(validateWebsiteMediaPatch({ folderId }).ok).toBe(false);
+    }
+  });
+});
+describe("validateWebsiteMediaIds", () => {
+  it("accepts positive integer IDs and removes duplicates", () => {
+    expect(validateWebsiteMediaIds([3, 8, 3])).toEqual({ ok: true, ids: [3, 8] });
+  });
+
+  it("rejects missing, empty, oversized, or malformed ID lists", () => {
+    expect(validateWebsiteMediaIds(undefined).ok).toBe(false);
+    expect(validateWebsiteMediaIds([]).ok).toBe(false);
+    expect(validateWebsiteMediaIds(Array.from({ length: 1001 }, (_, i) => i + 1)).ok).toBe(false);
+    for (const ids of [[0], [-1], [1.5], ["3"], [Number.MAX_SAFE_INTEGER + 1]]) {
+      expect(validateWebsiteMediaIds(ids).ok).toBe(false);
     }
   });
 });
