@@ -270,12 +270,25 @@ async function handleSquarePayment(opts: {
 router.post("/", async (req: Request, res: Response) => {
   const signatureKey = process.env["SQUARE_WEBHOOK_SIGNATURE_KEY"];
   const headerSig = req.headers["x-square-hmacsha256-signature"] as string | undefined;
+  const rawBody = (req as Request & { rawBody?: string }).rawBody;
 
-  if (signatureKey && headerSig) {
+  if (!signatureKey) {
+    if (process.env["NODE_ENV"] === "production") {
+      console.error("Square webhook signature verification is not configured");
+      return res.status(503).json({ error: "Square webhook signature verification is not configured" });
+    }
+    console.warn("Square webhook signature key is not configured — allowing non-production callback only");
+  } else {
+    if (!headerSig) {
+      return res.status(401).json({ error: "Missing Square webhook signature" });
+    }
+    if (typeof rawBody !== "string") {
+      return res.status(400).json({ error: "Raw Square webhook body is unavailable for signature verification" });
+    }
+
     const protocol = req.headers["x-forwarded-proto"] ?? req.protocol;
     const host = req.headers["x-forwarded-host"] ?? req.headers.host;
     const notificationUrl = `${protocol}://${host}${req.originalUrl}`;
-    const rawBody = JSON.stringify(req.body);
 
     const valid = verifySquareWebhookSignature({
       signatureKey,
@@ -288,8 +301,6 @@ router.post("/", async (req: Request, res: Response) => {
       console.error("Square webhook signature verification failed");
       return res.status(400).json({ error: "Invalid webhook signature" });
     }
-  } else {
-    console.warn("Square webhook signature key not set or signature header missing — skipping verification");
   }
 
   try {
