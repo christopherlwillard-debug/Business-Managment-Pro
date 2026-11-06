@@ -333,7 +333,7 @@ export default function PublicSite() {
   // Public sites can outlive older or partially migrated configs. Keep malformed
   // JSON from crashing the entire published page while the owner repairs it.
   const safeSections = Array.isArray(sections)
-    ? sections.filter((section): section is Section => !!section && typeof section === "object")
+    ? sections.filter((section): section is Section => !!section && typeof section === "object" && typeof section.type === "string" && !!section.content && typeof section.content === "object" && !Array.isArray(section.content))
     : [];
   const sorted = [...safeSections].sort((a, b) => a.order - b.order).filter(s => s.enabled);
 
@@ -348,7 +348,7 @@ export default function PublicSite() {
   if (pageSlug) {
     const targetPage = additionalPages.find(p => p.slug === pageSlug);
     bodySections = targetPage && Array.isArray(targetPage.sections)
-      ? targetPage.sections.filter(s => s?.enabled)
+      ? targetPage.sections.filter(s => !!s && s.enabled && typeof s.type === "string" && !!s.content && typeof s.content === "object" && !Array.isArray(s.content))
       : [];
   } else {
     bodySections = homeBodySections;
