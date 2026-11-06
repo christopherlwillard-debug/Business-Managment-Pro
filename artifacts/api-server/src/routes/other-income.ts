@@ -30,11 +30,11 @@ export function parseOtherIncomeBody(body: unknown): {
   const amountText = typeof amount === "number" && Number.isFinite(amount)
     ? String(amount)
     : typeof amount === "string" ? amount.trim() : "";
-  if (!/^(?:0|[1-9]\\d{0,9})(?:\\.\\d{1,2})?$/.test(amountText)) return null;
+  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(amountText)) return null;
   const amountNumber = Number(amountText);
   if (!Number.isFinite(amountNumber) || amountNumber <= 0 || amountNumber > 9_999_999_999.99) return null;
 
-  if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) return null;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   const parsedDate = new Date(`${date}T00:00:00.000Z`);
   if (!Number.isFinite(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) return null;
 
@@ -43,7 +43,7 @@ export function parseOtherIncomeBody(body: unknown): {
   const parseOptionalId = (value: unknown): number | null | undefined => {
     if (value == null || value === "") return null;
     const text = String(value).trim();
-    if (!/^\\d+$/.test(text)) return undefined;
+    if (!/^\d+$/.test(text)) return undefined;
     const parsed = Number(text);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
   };
