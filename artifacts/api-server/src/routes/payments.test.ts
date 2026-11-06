@@ -18,6 +18,8 @@ vi.mock("@workspace/db", () => {
       h.queryConditions.push(condition);
       return chain;
     },
+    then: (resolve: (value: any) => unknown, reject?: (reason: unknown) => unknown) =>
+      Promise.resolve(h.rows).then(resolve, reject),
   };
   return { db: { select: () => chain } };
 });
