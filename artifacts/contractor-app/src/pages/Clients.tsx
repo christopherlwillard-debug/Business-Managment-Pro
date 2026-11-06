@@ -8,7 +8,6 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useLocation } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
-import { useToast } from "@/hooks/use-toast";
 import { getClientBusinessScopeQuery, getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -30,7 +29,6 @@ function isDueSoon(dateStr: string | null | undefined): boolean {
 export default function Clients() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness } = useBusiness();
-  const { toast } = useToast();
   const [, navigate] = useLocation();
   const { data: clients, isLoading, refetch } = useListClients(
     activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
@@ -388,7 +386,7 @@ export default function Clients() {
               </div>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={handleDeleteCancel} disabled={isDeleting} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={handleDeleteCancel} disabled={isCheckingDelete} className="px-4 py-2 rounded-xl font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50">Cancel</button>
               <button disabled title="Archive/restore support is not available yet" className="px-4 py-2 rounded-xl font-medium bg-muted text-muted-foreground cursor-not-allowed">
                 Deletion disabled
               </button>
