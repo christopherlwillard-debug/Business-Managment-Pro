@@ -62,9 +62,7 @@ export function completeSectionBlockStyleUpload<T extends { id: string; blockSty
 ): T[] {
   let changed = false;
   const next = sections.map(section => {
-    if (section.id !== sectionId
-      || section.blockStyle?.bgImageUrl !== previewUrl
-      || section.blockStyle?.bgType !== "image") return section;
+    if (section.id !== sectionId || section.blockStyle?.bgImageUrl !== previewUrl) return section;
     changed = true;
     return { ...section, blockStyle: { ...(section.blockStyle ?? {}), ...patch } };
   });
