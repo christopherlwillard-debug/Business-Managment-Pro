@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { aggregateCanonicalJobProfit } from "@/lib/jobFinancials";
 import { getMapCoordinateKey, getMapReadyStops, hasValidMapCoordinates } from "@/lib/routePlannerMap";
+import { findRoutePlannerJob } from "@/lib/routePlannerJobs";
 import { formatSundaySaturdayWeekRange, getSundaySaturdayWeekRange } from "@/lib/dateUtils";
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
@@ -372,9 +373,10 @@ export default function RoutePlanner() {
   }, [asphaltJobs]);
 
   function pickJobForStop(stop: RouteStop) {
-    // If a specific job is directly linked, use it (exact match)
+    // Direct links must obey the same active-business selection as the
+    // client-based fallback below; otherwise a GC job can appear in Asphalt.
     if (stop.jobId != null) {
-      return allJobs.find(j => j.id === stop.jobId) ?? undefined;
+      return findRoutePlannerJob(stop.jobId, allJobs, activeBusiness?.slug);
     }
     // Fall back to clientId-based lookup
     if (stop.clientId == null) return undefined;
