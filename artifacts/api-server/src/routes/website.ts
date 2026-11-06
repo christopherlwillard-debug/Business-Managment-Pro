@@ -65,6 +65,12 @@ export function isWebsiteMediaObjectKey(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.[a-z0-9]{1,16})?$/i.test(value);
 }
 
+/** Require a trusted opaque UUID key under the expected upload namespace. */
+export function isWebsiteStoredObjectPath(value: unknown, prefix: string): value is string {
+  if (typeof value !== "string" || !value.startsWith(prefix)) return false;
+  return isWebsiteMediaObjectKey(value.slice(prefix.length));
+}
+
 /** Only resolve logo objects through the app's own object-storage namespace. */
 export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
   if (typeof value !== "string" || !value.startsWith("/objects/uploads/")) return false;
@@ -693,7 +699,7 @@ publicRouter.get("/:slug/about-photo", wrapAsync(async (req, res) => {
   const sections = config.sections as Array<{ id: string; type: string; content: Record<string, unknown> }>;
   const aboutSection = sections.find(s => s.type === "about");
   const photoObjectPath = aboutSection?.content?.photoObjectPath as string | undefined;
-  if (!photoObjectPath?.startsWith("/objects/uploads/website-about-photos/")) {
+  if (!isWebsiteStoredObjectPath(photoObjectPath, "/objects/uploads/website-about-photos/")) {
     return res.status(404).json({ error: "No about photo" });
   }
 
@@ -2352,7 +2358,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
   const settings = config.settings as Record<string, unknown>;
   const faviconObjectPath = settings.faviconObjectPath as string | undefined;
-  if (!faviconObjectPath?.startsWith("/objects/uploads/website-favicons/")) {
+  if (!isWebsiteStoredObjectPath(faviconObjectPath, "/objects/uploads/website-favicons/")) {
     return res.status(404).json({ error: "No favicon" });
   }
 
@@ -2376,6 +2382,7 @@ publicRouter.get("/:slug/favicon", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
   const { slug, bgUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(bgUuid)) return res.status(404).json({ error: "Image not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
@@ -2411,6 +2418,7 @@ publicRouter.get("/:slug/section-bg/:bgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
   const { slug, imgUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(imgUuid)) return res.status(404).json({ error: "Image not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
@@ -2451,6 +2459,7 @@ publicRouter.get("/:slug/column-image/:imgUuid", wrapAsync(async (req, res) => {
 
 publicRouter.get("/:slug/portfolio-photo/:photoUuid", wrapAsync(async (req, res) => {
   const { slug, photoUuid } = req.params;
+  if (!isWebsiteMediaObjectKey(photoUuid)) return res.status(404).json({ error: "Photo not found" });
   const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
