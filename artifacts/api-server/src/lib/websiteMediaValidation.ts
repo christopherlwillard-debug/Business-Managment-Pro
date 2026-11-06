@@ -194,7 +194,10 @@ export function validateSavedWebsiteSection(value: unknown):
 
 /** Validate a positive safe database identifier rather than accepting parseInt prefixes. */
 export function parsePositiveDatabaseId(value: unknown): number | null {
-  if (value === undefined || value === null || String(value).trim() === "") return null;
-  const id = Number(value);
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string" || !/^\\d+$/.test(value.trim())) return null;
+  const id = Number(value.trim());
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
