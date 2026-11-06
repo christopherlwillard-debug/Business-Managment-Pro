@@ -3786,8 +3786,9 @@ router.post("/score", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
   }
 
-  const result = scoreSections(finalSections, finalSettings);
-  res.json(result);
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(scoreSections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M14: Accessibility Checker ────────────────────────────────────────────────
@@ -3938,7 +3939,9 @@ router.post("/check-accessibility", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = ((config?.settings ?? {}) as Record<string, unknown>);
   }
 
-  res.json(checkAccessibilitySections(finalSections, finalSettings));
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(checkAccessibilitySections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M15: Performance Analyzer ─────────────────────────────────────────────────
@@ -4083,7 +4086,9 @@ router.post("/analyze-performance", wrapAsync(async (req, res) => {
     if (!finalSettings) finalSettings = (config?.settings ?? {}) as Record<string, unknown>;
   }
 
-  res.json(analyzePerformanceSections(finalSections, finalSettings));
+  const resolvedInput = validateWebsiteAnalysisInput(finalSections, finalSettings);
+  if (!resolvedInput.ok) return res.status(422).json({ error: "Saved website content is invalid and could not be analyzed." });
+  res.json(analyzePerformanceSections(resolvedInput.sections, resolvedInput.settings));
 }));
 
 // ── M5: Suggest Images ────────────────────────────────────────────────────────
