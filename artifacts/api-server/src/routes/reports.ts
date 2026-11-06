@@ -735,22 +735,17 @@ router.get("/compliance", sectionGuard("compliance"), async (req, res) => {
 
 router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-
-    // Optional DB-level business-line filter — accepts any slug, no hardcoded allowlist
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    // Resolve businessId from slug for mileage isolation
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     // Accounting invoice columns — shared between the paid and non-paid fetches below
     const accInvoiceCols = {
@@ -866,7 +861,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const [subsWithYtdAcc, depreciationDeduction, accWaterfall, accOwnerContribRows] = await Promise.all([
       Promise.all(subs.map(async s => ({ ...s, _ytd: await computeYtd(s.id, year, blFilter) }))),
       computeDepreciationForYear(year),
-      computeOwnerWaterfall(year, blFilter),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
       db.select({ amount: ownerCapitalEntriesTable.amount, businessId: ownerCapitalEntriesTable.businessId })
         .from(ownerCapitalEntriesTable)
         .where(and(
@@ -1362,12 +1357,12 @@ const WATERFALL_TAX_PCT    = 0.25;
  */
 async function computeOwnerWaterfall(
   year: number,
-  blFilter: string | null,
+  reportBusiness: ReportBusiness | null,
 ): Promise<{ ownerAllocated: number; ownerTaxReserve: number }> {
   const startDate = `${year}-01-01`;
   const endDate   = `${year}-12-31`;
-  const blWhere = (col: Parameters<typeof eq>[0]) =>
-    blFilter ? eq(col, blFilter) : undefined;
+  const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+    reportBusinessWhere(reportBusiness, businessLineColumn, businessIdColumn);
 
   // No date WHERE — JS applies effective-payment-date gating after the fetch.
   const paidInvs = await db.select({
@@ -1499,20 +1494,17 @@ const PL_OPEX_LABELS: Record<string, string> = {
 
 router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate   = `${year}-12-31`;
-
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    const mileageWhere = mileageBusinessId ? eq(mileageLogsTable.businessId, mileageBusinessId) : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     const [invRows, expRows, mileRows, otherRows, plSubPayRows] = await Promise.all([
        db.select({ status: invoicesTable.status, total: invoicesTable.total, issueDate: invoicesTable.issueDate, stripePaidAt: invoicesTable.stripePaidAt, squarePaidAt: invoicesTable.squarePaidAt })
@@ -1712,7 +1704,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
         .limit(1),
-      computeOwnerWaterfall(year, blFilter),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);
     // Sign convention: positive owner_capital_entries = contributions (cash into business).
     const ownerContributionsTotal = ownerContribRows.reduce((s, r) => {
@@ -1807,26 +1799,17 @@ function calcAnnualDepreciation(asset: {
 
 router.get("/year-end", ownerGuard(), async (req, res) => {
   try {
-    const year = parseInt((req.query.year as string) || String(new Date().getFullYear()));
-    const blFilter = (req.query.businessLine as string | undefined) || null;
+    const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
+    if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
+    const year = rawYear;
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    if (reportBusiness === undefined) return;
+    const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
     const endDate = `${year}-12-31`;
-
-    const blWhere = (col: Parameters<typeof eq>[0]) =>
-      blFilter ? eq(col, blFilter) : undefined;
-
-    let mileageBusinessId: number | null = null;
-    if (blFilter) {
-      const [biz] = await db.select({ id: businessesTable.id }).from(businessesTable).where(eq(businessesTable.slug, blFilter));
-      mileageBusinessId = biz?.id ?? null;
-    }
-    // Mirror Schedule C rule (Task #919):
-    // • No business filter → include ALL mileage (null businessId logs count globally)
-    // • Business filter active + slug resolved → only logs tagged to that business (strict eq, no null fallback)
-    // • Business filter active + slug not found → match nothing (safer than returning global totals for an invalid slug)
-    const mileageWhere = blFilter
-      ? (mileageBusinessId != null ? eq(mileageLogsTable.businessId, mileageBusinessId) : eq(mileageLogsTable.businessId, -1))
-      : undefined;
+    const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
+      reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
+    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
 
     const [
       invoices,
@@ -2204,7 +2187,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
           isNull(ownerCapitalEntriesTable.voidedAt),
           mileageBusinessId != null ? eq(ownerCapitalEntriesTable.businessId, mileageBusinessId) : undefined,
         )),
-      computeOwnerWaterfall(year, blFilter),
+      computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);
     // Sign convention: positive entries = capital contributions (cash in).
     const yeOwnerContributionsTotal = yeOwnerContribRows.reduce((s, r) => {
