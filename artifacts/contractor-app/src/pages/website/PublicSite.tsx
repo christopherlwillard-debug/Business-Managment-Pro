@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, X, Menu } from "lucide-react";
 import { useParams, Link } from "wouter";
 import { buildThemeCssVarBlock, sanitizeWebsiteFontFamily } from "./themes";
-import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref } from "./storageUtils";
+import { getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, resolvePublicSitePageRoute } from "./storageUtils";
 import { resolveLogoHeightPx } from "./sections/HeaderSection";
 import { HeroSection } from "./sections/HeroSection";
 import { ServicesSection } from "./sections/ServicesSection";
@@ -213,7 +213,9 @@ function renderBodySection(
 export default function PublicSite() {
   const params = useParams<{ slug?: string; page?: string }>();
   const slug = params.slug;
-  const pageSlug = params.page;
+  const pageRoute = resolvePublicSitePageRoute(params.slug, params.page, window.location.pathname);
+  const pageSlug = pageRoute.pageSlug;
+  const invalidPagePath = pageRoute.invalidPath;
   const [paymentSuccessDismissed, setPaymentSuccessDismissed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -223,8 +225,9 @@ export default function PublicSite() {
   const isDraftPreview = new URLSearchParams(window.location.search).get("draft") === "1";
 
   const { data, isLoading, isError } = useQuery<PublishedConfig>({
-    queryKey: getPublicSiteQueryKey(slug, pageSlug, isDraftPreview, window.location.host),
+    queryKey: getPublicSiteQueryKey(slug, invalidPagePath ? "__invalid_path__" : pageSlug, isDraftPreview, window.location.host),
     queryFn: async () => {
+      if (invalidPagePath) throw new Error("Not found");
       if (isDraftPreview && slug) {
         const query = pageSlug ? `?page=${encodeURIComponent(pageSlug)}` : "";
         const res = await fetch(`${BASE}/api/website/preview-by-slug/${slug}${query}`, { credentials: "include" });
@@ -320,10 +323,10 @@ export default function PublicSite() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
         <div className="text-center max-w-md">
-          <div className="text-6xl mb-6">{pageSlug ? "🔎" : "🚧"}</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">{pageSlug ? "Page not found" : "Coming Soon"}</h1>
+          <div className="text-6xl mb-6">{pageSlug || invalidPagePath ? "🔎" : "🚧"}</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">{pageSlug || invalidPagePath ? "Page not found" : "Coming Soon"}</h1>
           <p className="text-gray-500">
-            {pageSlug ? "The page you requested doesn’t exist on this website." : "This website is being set up. Check back soon."}
+            {pageSlug || invalidPagePath ? "The page you requested doesn’t exist on this website." : "This website is being set up. Check back soon."}
           </p>
         </div>
       </div>
