@@ -610,19 +610,18 @@ function SortableRow({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
+      className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
         active ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
       }`}
-      onClick={onActivate}
     >
       {leadingContent}
       <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground" onClick={e => e.stopPropagation()}>
         <GripVertical className="w-3 h-3" />
       </div>
-      <span className={`flex-1 flex items-center gap-1 text-[11px] font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`}>
+      <button type="button" className={`flex-1 flex items-center gap-1 text-left text-[11px] font-medium ${section.enabled ? "text-foreground" : "text-muted-foreground"}`} onClick={onActivate}>
         <span className="opacity-50">{getSectionTypeIcons()[section.type] ?? <Layers className="w-3 h-3 flex-shrink-0" />}</span>
         {SECTION_LABELS[section.type] ?? section.type}
-      </span>
+      </button>
       <button
         onClick={e => { e.stopPropagation(); onToggle(); }}
         className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
@@ -1007,10 +1006,9 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
       <div
-        className={`group flex items-center gap-1 px-1.5 py-1 rounded-md cursor-pointer transition-colors ${
+        className={`group flex items-center gap-1 px-1.5 py-1 rounded-md transition-colors ${
           isActivePage ? "bg-primary/10 text-primary" : "hover:bg-muted text-foreground"
         }`}
-        onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}
       >
         {node.id !== "home" && (
           <div
@@ -1027,7 +1025,6 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
           onClick={e => { e.stopPropagation(); onToggleExpand(node.id); }}>
           <ChevronRight className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
         </button>
-        <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
         {editingPageId === node.id ? (
           <input type="text" value={editingPageName}
             onChange={e => setEditingPageName(e.target.value)}
@@ -1040,7 +1037,11 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
             autoFocus onClick={e => e.stopPropagation()}
           />
         ) : (
-          <span className="flex-1 text-[11px] font-medium truncate">{node.label}</span>
+          <button type="button" className="flex-1 min-w-0 flex items-center gap-1 text-left text-[11px] font-medium"
+            onClick={() => { switchPage(node.id); if (!expandedIds.has(node.id)) onToggleExpand(node.id); }}>
+            <FileText className="w-3 h-3 flex-shrink-0 opacity-60" />
+            <span className="truncate">{node.label}</span>
+          </button>
         )}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button type="button" onClick={e => { e.stopPropagation(); setEditingPageId(node.id); setEditingPageName(node.label); }}
@@ -1063,8 +1064,8 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
       {isExpanded && (
         <div className="ml-3 mt-0.5 space-y-0.5">
           {lockedHeader && (
-            <div data-section-id={lockedHeader.id}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors ${
+            <button type="button" data-section-id={lockedHeader.id}
+              className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors ${
                 activeSection === lockedHeader.id ? "bg-primary/10 border border-primary/30" : "hover:bg-muted"
               }`}
               onClick={() => setActiveSection(lockedHeader.id)}
@@ -1072,7 +1073,7 @@ function PageNodeWithSortable(props: SiteTreeNodeProps) {
               <Lock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
               <span className="flex-1 text-[11px] font-medium text-foreground">Header</span>
               <span className="text-[9px] text-muted-foreground/40 uppercase tracking-wide font-medium">Fixed</span>
-            </div>
+            </button>
           )}
 
           {isActivePage ? (
@@ -7327,11 +7328,13 @@ function WebsiteEditor() {
                 return (
                   <div key={sec.id} className="group/layer">
                     <div
-                      className={`flex items-center gap-1.5 px-2 py-1.5 text-xs cursor-pointer transition-colors ${isActive ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted/50"} ${!sec.enabled ? "opacity-50" : ""}`}
-                      onClick={() => setActiveSection(sec.id)}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 text-xs transition-colors ${isActive ? "bg-primary/10 text-primary font-medium" : "text-foreground hover:bg-muted/50"} ${!sec.enabled ? "opacity-50" : ""}`}
                     >
-                      <span className="flex-shrink-0 opacity-60 [&>svg]:w-3 [&>svg]:h-3">{sectionIcons[sec.type]}</span>
-                      <span className="flex-1 truncate">{secLabel}</span>
+                      <button type="button" className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                        onClick={() => setActiveSection(sec.id)}>
+                        <span className="flex-shrink-0 opacity-60 [&>svg]:w-3 [&>svg]:h-3">{sectionIcons[sec.type]}</span>
+                        <span className="flex-1 truncate">{secLabel}</span>
+                      </button>
                       <button
                         type="button"
                         onClick={e => { e.stopPropagation(); toggleSection(sec.id); }}
