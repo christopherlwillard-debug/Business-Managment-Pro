@@ -140,3 +140,18 @@ describe("Website Studio configuration validation", () => {
     }
   });
 });
+
+describe("Website Studio media reference protection", () => {
+  it("counts URL references across nested website data", () => {
+    const data = {
+      sections: [{ content: { photoUrl: "/media/1", items: [{ imageUrl: "/media/1" }] } }],
+      settings: { logoUrl: "/media/1" },
+    };
+    expect(countWebsiteMediaUrlReferences(data, "/media/1")).toBe(3);
+  });
+
+  it("returns zero for missing URLs and safely handles empty data", () => {
+    expect(countWebsiteMediaUrlReferences(null, "/media/1")).toBe(0);
+    expect(countWebsiteMediaUrlReferences({ url: "/media/1" }, "")).toBe(0);
+  });
+});
