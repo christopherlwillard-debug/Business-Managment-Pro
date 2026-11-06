@@ -150,7 +150,9 @@ export function countWebsiteMediaUrlReferences(value: unknown, url: string): num
   if (!url) return 0;
   let serialized: string;
   try {
-    serialized = JSON.stringify(value ?? null);
+    const result = JSON.stringify(value ?? null);
+    if (typeof result !== "string") return 0;
+    serialized = result;
   } catch {
     return 0;
   }
