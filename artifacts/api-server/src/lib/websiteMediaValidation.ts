@@ -108,3 +108,36 @@ export function validateWebsiteAnalysisInput(sections: unknown, settings: unknow
     settings: settings as Record<string, unknown>,
   };
 }
+
+/** Validate the core shape of website sections before persisting or analyzing them. */
+export function validateWebsiteSections(value: unknown):
+  | { ok: true; sections: Array<Record<string, unknown>> }
+  | { ok: false; error: string } {
+  if (!Array.isArray(value)) return { ok: false, error: "Website sections must be provided as a list." };
+  for (const section of value) {
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      return { ok: false, error: "Every website section must be a valid object." };
+    }
+    const item = section as Record<string, unknown>;
+    if (typeof item.type !== "string" || !item.type.trim()) {
+      return { ok: false, error: "Every website section must have a type." };
+    }
+    if (!item.content || typeof item.content !== "object" || Array.isArray(item.content)) {
+      return { ok: false, error: "Every website section must have a content object." };
+    }
+    if (item.enabled !== undefined && typeof item.enabled !== "boolean") {
+      return { ok: false, error: "Website section enabled flags must be true or false." };
+    }
+  }
+  return { ok: true, sections: value as Array<Record<string, unknown>> };
+}
+
+/** Settings are JSON objects; reject primitives and arrays before object spreading or mutation. */
+export function validateWebsiteSettings(value: unknown):
+  | { ok: true; settings: Record<string, unknown> }
+  | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Website settings must be an object." };
+  }
+  return { ok: true, settings: value as Record<string, unknown> };
+}
