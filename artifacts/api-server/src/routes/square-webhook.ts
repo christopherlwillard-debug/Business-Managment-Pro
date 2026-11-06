@@ -519,6 +519,14 @@ router.post("/", async (req: Request, res: Response) => {
 
       const squarePaymentId = payment.id ?? null;
       const amountMoney = payment.amount_money?.amount ?? null;
+      if (
+        !squarePaymentId ||
+        amountMoney === null ||
+        !Number.isSafeInteger(amountMoney) ||
+        amountMoney <= 0
+      ) {
+        return res.status(400).json({ error: "Completed Square payment is missing a valid payment ID or positive amount in cents" });
+      }
       const customerId = payment.customer_id ?? null;
       const buyerEmail = payment.buyer_email_address ?? null;
       const paidAt = payment.created_at ? new Date(payment.created_at) : new Date();
