@@ -17,6 +17,7 @@ import {
   detectWebsiteMediaMimeType,
   CROP_RATIOS,
   cropRatioLabel,
+  validateEnhancementOptions,
 } from "../lib/imageProcessor";
 
 // ── imageProcessor — module-level tests ──────────────────────────────────────
@@ -70,6 +71,40 @@ describe("imageProcessor — website media upload validation", () => {
 describe("imageProcessor — EnhancementOptions validation logic", () => {
   const VALID_CROPS = ["16:9", "4:3", "1:1"];
   const INVALID_CROPS = ["9:16", "21:9", "2:3", "", "none", "auto"];
+
+
+  it("accepts valid supported enhancement combinations", () => {
+    expect(validateEnhancementOptions({ brighten: true })).toEqual({
+      ok: true, options: { brighten: true, straighten: undefined, crop: undefined },
+    });
+    expect(validateEnhancementOptions({ crop: "4:3", brighten: true })).toEqual({
+      ok: true, options: { brighten: true, straighten: undefined, crop: "4:3" },
+    });
+  });
+
+  it("rejects malformed option payloads and non-boolean flags", () => {
+    expect(validateEnhancementOptions(null).ok).toBe(false);
+    expect(validateEnhancementOptions([]).ok).toBe(false);
+    expect(validateEnhancementOptions({ brighten: "yes" }).ok).toBe(false);
+  });
+
+  it("rejects unsupported crop ratios before image processing", () => {
+    expect(validateEnhancementOptions({ brighten: true, crop: "9:16" })).toEqual({
+      ok: false, error: "Crop must be 16:9, 4:3, or 1:1.",
+    });
+  });
+
+  it("does not silently accept the not-yet-available background removal option", () => {
+    expect(validateEnhancementOptions({ brighten: true, removeBackground: true })).toEqual({
+      ok: false, error: "Background removal is not available yet.",
+    });
+  });
+
+  it("rejects requests that do not select a supported enhancement", () => {
+    expect(validateEnhancementOptions({ brighten: false, straighten: false, crop: null })).toEqual({
+      ok: false, error: "Choose at least one supported enhancement.",
+    });
+  });
 
   it("valid crop ratios are all in CROP_RATIOS", () => {
     VALID_CROPS.forEach(r => expect(CROP_RATIOS).toContain(r));
