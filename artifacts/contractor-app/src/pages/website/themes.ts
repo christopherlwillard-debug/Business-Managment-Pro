@@ -228,12 +228,13 @@ function resolveBodySize(size: string | undefined): string | undefined {
   return size ? BODY_SIZES[size] : undefined;
 }
 
+
 /** Restrict persisted style values before interpolating them into a public <style> block. */
 export function sanitizeWebsiteCssColor(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const color = value.trim();
   if (/^#[0-9a-f]{3,8}$/i.test(color)) return color;
-  if (/^(?:rgb|rgba|hsl|hsla)\\(\\s*[\\d.%\\s,/-]+\\)$/i.test(color)) return color;
+  if (/^(?:rgb|rgba|hsl|hsla)\(\s*[\d.%\s,/-]+\)$/i.test(color)) return color;
   if (/^(?:transparent|currentcolor|[a-z]{1,24})$/i.test(color)) return color;
   return undefined;
 }
@@ -247,242 +248,16 @@ export function sanitizeWebsiteFontFamily(value: unknown): string | undefined {
 function sanitizeWebsiteCssLength(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const length = value.trim();
-  return /^(?:0|\\d+(?:\\.\\d+)?(?:px|rem|em|%)?)$/i.test(length) ? length : undefined;
+  return /^(?:0|\d+(?:\.\d+)?(?:px|rem|em|%)?)$/i.test(length) ? length : undefined;
 }
 
 function sanitizeWebsiteCssShadow(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const shadow = value.trim();
   if (shadow === "none") return shadow;
-  const length = String.raw`-?\\d+(?:\\.\\d+)?(?:px|rem|em)`;
-  const color = String.raw`(?:rgba?\\(\\s*[\\d.%\\s,]+\\)|#[0-9a-f]{3,8}|[a-z]{1,24})`;
-  const pattern = new RegExp(`^(?:${length}\\s+){2,4}${color}export interface SiteTheme {
-  id: string;
-  name: string;
-  emoji: string;
-  description: string;
-  headingFont: string;
-  bodyFont: string;
-  brandColor: string;
-  secondaryColor: string;
-  accentColor: string;
-  bgColor: string;
-  surfaceColor: string;
-  textColor: string;
-  textMutedColor: string;
-  buttonRadius: string;
-  buttonFontWeight: string;
-  buttonShadow: boolean;
-  cardRadius: string;
-  cardShadow: string;
-  cardBorder: boolean;
-  inputRadius: string;
-  headingSizeScale: "compact" | "regular" | "large" | "xl";
-  baseFontSize: "sm" | "base" | "lg";
-}
-
-export interface ThemeOverrides {
-  brandColor?: string;
-  secondaryColor?: string;
-  accentColor?: string;
-  bgColor?: string;
-  surfaceColor?: string;
-  textColor?: string;
-  textMutedColor?: string;
-  headingFont?: string;
-  bodyFont?: string;
-  buttonRadius?: string;
-  buttonFontWeight?: string;
-  buttonShadow?: boolean;
-  cardRadius?: string;
-  cardShadow?: string;
-  cardBorder?: boolean;
-  inputRadius?: string;
-  headingSizeScale?: "compact" | "regular" | "large" | "xl";
-  baseFontSize?: "sm" | "base" | "lg";
-  headerBgColor?: string;
-  headerTextColor?: string;
-  headerLinkColor?: string;
-  footerTextColor?: string;
-  footerLinkColor?: string;
-  focusRingColor?: string;
-}
-
-export type ThemeColorOverrides = ThemeOverrides;
-
-export const HEADING_SCALES: Record<string, { h1: string; h2: string; h3: string }> = {
-  compact: { h1: "2rem", h2: "1.5rem", h3: "1.25rem" },
-  regular: { h1: "3rem", h2: "2rem", h3: "1.5rem" },
-  large: { h1: "3.5rem", h2: "2.5rem", h3: "1.75rem" },
-  xl: { h1: "4rem", h2: "3rem", h3: "2rem" },
-};
-
-export const BODY_SIZES: Record<string, string> = {
-  sm: "0.875rem",
-  base: "1rem",
-  lg: "1.125rem",
-};
-
-export const SITE_THEMES: SiteTheme[] = [
-  {
-    id: "modern",
-    name: "Modern",
-    emoji: "⚡",
-    description: "Clean lines, blue palette, pill buttons",
-    headingFont: "Inter",
-    bodyFont: "Inter",
-    brandColor: "#2563EB",
-    secondaryColor: "#1E40AF",
-    accentColor: "#60A5FA",
-    bgColor: "#ffffff",
-    surfaceColor: "#f8fafc",
-    textColor: "#0f172a",
-    textMutedColor: "#64748b",
-    buttonRadius: "9999px",
-    buttonFontWeight: "600",
-    buttonShadow: false,
-    cardRadius: "12px",
-    cardShadow: "0 1px 4px rgba(0,0,0,0.08)",
-    cardBorder: false,
-    inputRadius: "8px",
-    headingSizeScale: "regular",
-    baseFontSize: "base",
-  },
-  {
-    id: "corporate",
-    name: "Corporate",
-    emoji: "🏢",
-    description: "Navy, Montserrat, structured borders",
-    headingFont: "Montserrat",
-    bodyFont: "Source Sans 3",
-    brandColor: "#1E3A5F",
-    secondaryColor: "#2D5986",
-    accentColor: "#C8A95A",
-    bgColor: "#ffffff",
-    surfaceColor: "#f1f5f9",
-    textColor: "#1e293b",
-    textMutedColor: "#64748b",
-    buttonRadius: "4px",
-    buttonFontWeight: "700",
-    buttonShadow: false,
-    cardRadius: "6px",
-    cardShadow: "none",
-    cardBorder: true,
-    inputRadius: "4px",
-    headingSizeScale: "regular",
-    baseFontSize: "base",
-  },
-  {
-    id: "creative",
-    name: "Creative",
-    emoji: "🎨",
-    description: "Purple, Raleway, elevated cards",
-    headingFont: "Raleway",
-    bodyFont: "Nunito",
-    brandColor: "#7C3AED",
-    secondaryColor: "#5B21B6",
-    accentColor: "#F59E0B",
-    bgColor: "#fefefe",
-    surfaceColor: "#f5f3ff",
-    textColor: "#1e1b4b",
-    textMutedColor: "#6b7280",
-    buttonRadius: "8px",
-    buttonFontWeight: "600",
-    buttonShadow: true,
-    cardRadius: "16px",
-    cardShadow: "0 4px 20px rgba(124,58,237,0.14)",
-    cardBorder: false,
-    inputRadius: "8px",
-    headingSizeScale: "large",
-    baseFontSize: "base",
-  },
-  {
-    id: "luxury",
-    name: "Luxury",
-    emoji: "✨",
-    description: "Gold, Playfair Display, refined edges",
-    headingFont: "Playfair Display",
-    bodyFont: "Lato",
-    brandColor: "#B5935A",
-    secondaryColor: "#1A1A1A",
-    accentColor: "#D4AF72",
-    bgColor: "#faf9f7",
-    surfaceColor: "#f5f0e8",
-    textColor: "#1a1a1a",
-    textMutedColor: "#8a7560",
-    buttonRadius: "2px",
-    buttonFontWeight: "500",
-    buttonShadow: false,
-    cardRadius: "4px",
-    cardShadow: "none",
-    cardBorder: true,
-    inputRadius: "2px",
-    headingSizeScale: "large",
-    baseFontSize: "base",
-  },
-  {
-    id: "minimal",
-    name: "Minimal",
-    emoji: "◻",
-    description: "Black & white, sharp corners, space",
-    headingFont: "Inter",
-    bodyFont: "Inter",
-    brandColor: "#111111",
-    secondaryColor: "#333333",
-    accentColor: "#888888",
-    bgColor: "#ffffff",
-    surfaceColor: "#f5f5f5",
-    textColor: "#111111",
-    textMutedColor: "#777777",
-    buttonRadius: "0px",
-    buttonFontWeight: "600",
-    buttonShadow: false,
-    cardRadius: "0px",
-    cardShadow: "none",
-    cardBorder: true,
-    inputRadius: "0px",
-    headingSizeScale: "regular",
-    baseFontSize: "base",
-  },
-  {
-    id: "bold",
-    name: "Bold",
-    emoji: "🔥",
-    description: "Red, Oswald, high contrast impact",
-    headingFont: "Oswald",
-    bodyFont: "Open Sans",
-    brandColor: "#DC2626",
-    secondaryColor: "#991B1B",
-    accentColor: "#FCA5A5",
-    bgColor: "#ffffff",
-    surfaceColor: "#fff1f1",
-    textColor: "#111111",
-    textMutedColor: "#6b7280",
-    buttonRadius: "6px",
-    buttonFontWeight: "700",
-    buttonShadow: true,
-    cardRadius: "8px",
-    cardShadow: "0 4px 16px rgba(220,38,38,0.18)",
-    cardBorder: false,
-    inputRadius: "6px",
-    headingSizeScale: "xl",
-    baseFontSize: "lg",
-  },
-];
-
-function resolveCardBorder(v: boolean | undefined): string {
-  return v ? "1px solid #e5e7eb" : "none";
-}
-
-function resolveButtonShadow(v: boolean | undefined): string {
-  return v ? "0 2px 8px rgba(0,0,0,0.15)" : "none";
-}
-
-function resolveHeadingScale(scale: string | undefined): { h1: string; h2: string; h3: string } | undefined {
-  return scale ? HEADING_SCALES[scale] : undefined;
-}
-
-, "i");
+  const length = "-?\\d+(?:\\.\\d+)?(?:px|rem|em)";
+  const color = "(?:rgba?\\(\\s*[\\d.%\\s,]+\\)|#[0-9a-f]{3,8}|[a-z]{1,24})";
+  const pattern = new RegExp("^(?:" + length + "\\s+){2,4}" + color + "$", "i");
   return pattern.test(shadow) ? shadow : undefined;
 }
 
