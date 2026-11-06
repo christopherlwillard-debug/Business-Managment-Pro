@@ -10,7 +10,7 @@ import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
-import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, type EnhancementOptions } from "../lib/imageProcessor";
+import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, validateEnhancementOptions } from "../lib/imageProcessor";
 import { createSquarePaymentLink, isSquareConfigured } from "../lib/square";
 import { sendEmail } from "../lib/sendEmail";
 import { SEO_LIMITS, isAbsoluteHttpUrl, validateSeoMetadata } from "@workspace/api-zod";
@@ -2619,12 +2619,11 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
   const id = parseInt(req.params.id as string);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
 
-  const { enhancements = {} } = req.body as { enhancements?: EnhancementOptions };
-
-  // Validate at least one enhancement is requested
-  if (!enhancements.brighten && !enhancements.straighten && !enhancements.crop) {
-    return res.status(400).json({ error: "No enhancements specified" });
-  }
+  const validation = validateEnhancementOptions(
+    (req.body as { enhancements?: unknown } | undefined)?.enhancements ?? {},
+  );
+  if (!validation.ok) return res.status(400).json({ error: validation.error });
+  const enhancements = validation.options;
 
   // Load the source media record
   const [item] = await db.select().from(websiteMediaTable)
