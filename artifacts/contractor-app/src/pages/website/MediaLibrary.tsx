@@ -565,6 +565,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
                 <div className="px-2 py-1">
                   <input
                     autoFocus
+                    aria-label="Rename folder"
+                    maxLength={100}
                     value={renameFolderValue}
                     onChange={e => setRenameFolderValue(e.target.value)}
                     onBlur={() => {
@@ -615,6 +617,8 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
               <div className="py-1">
                 <input
                   autoFocus
+                  aria-label="New folder name"
+                  maxLength={100}
                   value={newFolderName}
                   onChange={e => setNewFolderName(e.target.value)}
                   placeholder="Folder name"
