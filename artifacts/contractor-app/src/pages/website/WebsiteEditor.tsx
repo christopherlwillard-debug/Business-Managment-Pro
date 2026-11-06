@@ -1814,11 +1814,24 @@ function WebsiteEditor() {
   }));
 
   async function deleteSavedTemplate(id: string) {
-    await fetch(`${BASE}/api/website/templates/${id}?businessId=${bizId}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    refetchSavedTemplates();
+    try {
+      const res = await fetch(`${BASE}/api/website/templates/${encodeURIComponent(id)}?businessId=${bizId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Failed to delete template.");
+      }
+      await refetchSavedTemplates();
+      toast({ title: "Template deleted" });
+    } catch (error) {
+      toast({
+        title: "Could not delete template",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   useEffect(() => {
