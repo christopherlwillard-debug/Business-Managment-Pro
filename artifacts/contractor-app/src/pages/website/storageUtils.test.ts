@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
+import { cancelWebsiteRenameBlurCommit, consumeWebsiteRenameBlurCommit, getPublicSiteQueryKey, getSafePublicNavLinks, getSafeWebsiteHref, partitionWebsiteMediaFiles, readEditorPreference, waitForWebsiteSaveQueue, withWebsitePageList, writeEditorPreference } from "./storageUtils";
 
 
 
@@ -41,10 +41,10 @@ describe("Website Studio rename blur handling", () => {
   });
 
   it("does not commit when Escape cancels a rename", () => {
-    const shouldCommitOnBlur = { current: false };
+    const shouldCommitOnBlur = { current: true };
+    cancelWebsiteRenameBlurCommit(shouldCommitOnBlur);
+    expect(shouldCommitOnBlur.current).toBe(false);
     expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(false);
-    shouldCommitOnBlur.current = true;
-    expect(consumeWebsiteRenameBlurCommit(shouldCommitOnBlur)).toBe(true);
   });
 });
 
