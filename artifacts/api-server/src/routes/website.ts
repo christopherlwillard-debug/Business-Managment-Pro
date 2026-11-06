@@ -5219,7 +5219,9 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   return res.json(template);
 }));
 
-// The sole /regenerate-section handler is registered near the end of this file.\n// ── POST /generate-from-profile ──────────────────────────────────────────────
+// The sole /regenerate-section handler is registered near the end of this file.
+
+// ── POST /generate-from-profile ──────────────────────────────────────────────
 // M20: AI Website Generator — one-click full site generation from business data.
 // Streams server-sent events so the client can show meaningful progress steps.
 //
