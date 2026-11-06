@@ -191,6 +191,22 @@ describe("Website Studio section identity", () => {
     expect(result[1].id).toBe("duplicate-2");
     expect(new Set(result.map(section => section.id)).size).toBe(result.length);
   });
+
+  it("normalizes duplicate IDs inside custom pages before persistence", () => {
+    const result = validatePageSlugs([{
+      id: "about",
+      name: "About",
+      slug: "about",
+      sections: [
+        { id: "duplicate", type: "hero", content: {} },
+        { id: "duplicate", type: "text", content: {} },
+      ],
+    }]);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.pages[0].sections?.map(section => section.id)).toEqual(["duplicate", "duplicate-2"]);
+    }
+  });
 });
 
 describe("Website Studio section normalization", () => {
