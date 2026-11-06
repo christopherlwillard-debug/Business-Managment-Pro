@@ -6,7 +6,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendEmail } from "../lib/sendEmail";
-import { requestedBusiness, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -15,6 +15,7 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
     const [asset] = await db.select().from(assetsTable).where(eq(assetsTable.id, id));
     if (!asset || !belongsToBusiness(asset, scope)) return res.status(404).json({ error: "Asset not found" });
@@ -50,6 +51,7 @@ router.get("/", async (req, res) => {
   try {
     const { status, year } = req.query;
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const conditions: any[] = [];
     if (status) conditions.push(eq(assetsTable.status, status as string));
     if (year) conditions.push(like(assetsTable.purchaseDate, `${year}-%`));
@@ -125,6 +127,7 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [asset] = await db.select().from(assetsTable).where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
     const busUseRows = await db.select().from(assetBusinessUseTable)
@@ -197,10 +200,15 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/:id/business-use", async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid asset ID" });
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const [asset] = await db.select().from(assetsTable)
+      .where(and(eq(assetsTable.id, id), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
+    if (!asset) return res.status(404).json({ error: "Asset not found" });
     const rows = await db.select().from(assetBusinessUseTable)
-      .where(and(eq(assetBusinessUseTable.assetId, id), ...(scope ? [eq(assetBusinessUseTable.assetId, id)] : [])))
+      .where(eq(assetBusinessUseTable.assetId, id))
       .orderBy(assetBusinessUseTable.year);
     res.json(rows);
   } catch (err) {
@@ -247,9 +255,13 @@ router.put("/:id/business-use", async (req, res) => {
 
 router.delete("/:id/business-use/:year", async (req, res) => {
   try {
-    const assetId = parseInt(req.params.id);
-    const year = parseInt(req.params.year);
+    const assetId = Number(req.params.id);
+    const year = Number(req.params.year);
+    if (!Number.isSafeInteger(assetId) || assetId <= 0 || !Number.isInteger(year) || year < 1900 || year > 2200) {
+      return res.status(400).json({ error: "Invalid asset ID or year" });
+    }
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const [asset] = await db.select({ id: assetsTable.id }).from(assetsTable)
       .where(and(eq(assetsTable.id, assetId), ...(scope ? [eq(assetsTable.businessId, scope.id)] : [])));
     if (!asset) return res.status(404).json({ error: "Asset not found" });
@@ -264,8 +276,10 @@ router.delete("/:id/business-use/:year", async (req, res) => {
 
 router.post("/:id/receipt", upload.single("receipt"), async (req, res) => {
   try {
-    const id = parseInt(req.params.id as string);
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid asset ID" });
     const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     let fileBuffer = req.file.buffer;
