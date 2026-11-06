@@ -1117,8 +1117,8 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
   if (node.type === "item") {
     const isActive = !!activeCardId && activeCardId === node.id;
     return (
-      <div
-        className={`flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
+      <button type="button"
+        className="w-full text-left ${{`flex items-center gap-1.5 pl-2 pr-1.5 py-0.5 rounded-md cursor-pointer transition-colors text-[10px] ${
           isActive
             ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -1132,7 +1132,7 @@ function SiteTreeNode(props: SiteTreeNodeProps) {
       >
         <span className="w-1 h-1 rounded-full bg-current flex-shrink-0 opacity-70" />
         <span className="flex-1 truncate">{node.label}</span>
-      </div>
+      </button>
     );
   }
 
@@ -7346,14 +7346,15 @@ function WebsiteEditor() {
                         {nestedComps.map(comp => {
                           const isCompActive = selectedComponentState?.sectionId === sec.id && selectedComponentState.componentId === comp.id;
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={comp.id}
-                              className={`flex items-center gap-1.5 px-1.5 py-1 text-[10px] rounded cursor-pointer transition-colors ${isCompActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
+                              className={`w-full text-left flex items-center gap-1.5 px-1.5 py-1 text-[10px] rounded cursor-pointer transition-colors ${isCompActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/30"}`}
                               onClick={() => { setActiveSection(sec.id); setSelectedComponentState({ sectionId: sec.id, componentId: comp.id }); }}
                             >
                               <span className="w-1.5 h-1.5 rounded-full bg-current opacity-40 flex-shrink-0" />
                               <span className="flex-1 truncate">{comp.label}</span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
