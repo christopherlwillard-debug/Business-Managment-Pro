@@ -1240,8 +1240,8 @@ publicRouter.get("/:slug/contact-prefill", wrapAsync(async (req, res) => {
 }));
 
 router.get("/contact-prefill-token", wrapAsync(async (req, res) => {
-  const contactId = parseInt(req.query.contactId as string);
-  if (!contactId || isNaN(contactId)) return res.status(400).json({ error: "contactId required" });
+  const contactId = parsePositiveDatabaseId(req.query.contactId);
+  if (!contactId) return res.status(400).json({ error: "Valid contactId required" });
   const [contact] = await db
     .select({ name: contactsTable.name, email: contactsTable.email, phone: contactsTable.phone })
     .from(contactsTable)
