@@ -90,7 +90,7 @@ async function handleSquarePayment(opts: {
         status: invoicesTable.status,
         businessId: invoicesTable.businessId,
         businessLine: invoicesTable.businessLine,
-      }).from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1);
+      }).from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1).for("update");
 
       if (invoice && invoice.status !== "cancelled") {
         const businessId = await resolveWebhookBusinessId(invoice.businessId, invoice.businessLine, tx);
@@ -394,7 +394,8 @@ async function handleSquarePayment(opts: {
           ne(invoicesTable.status, "cancelled"),
         ))
         .orderBy(asc(invoicesTable.issueDate))
-        .limit(1);
+        .limit(1)
+        .for("update");
     }
 
     const paymentBusinessId = openInvoice
