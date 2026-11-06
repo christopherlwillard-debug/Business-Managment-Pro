@@ -2243,8 +2243,19 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
         if (response.body) {
           const chunks: Buffer[] = [];
           const nodeStream = Readable.fromWeb(response.body as any);
+          const maxLogoBytes = 5 * 1024 * 1024;
+          let totalBytes = 0;
           await new Promise<void>((resolve, reject) => {
-            nodeStream.on("data", (chunk: Buffer) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+            nodeStream.on("data", (chunk: Buffer) => {
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+              totalBytes += buffer.length;
+              if (totalBytes > maxLogoBytes) {
+                nodeStream.destroy();
+                reject(new Error("Saved logo exceeds the 5 MB color extraction limit."));
+                return;
+              }
+              chunks.push(buffer);
+            });
             nodeStream.on("end", resolve);
             nodeStream.on("error", reject);
           });
