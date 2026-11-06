@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, escapeWebsiteEmailHtml, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -12,6 +12,15 @@ describe("Website Studio route registration", () => {
   });
 });
 
+
+
+describe("Website Studio contact email escaping", () => {
+  it("escapes untrusted field labels and values before HTML email rendering", () => {
+    expect(escapeWebsiteEmailHtml("<img src=x onerror=alert(1)>")).toBe("&lt;img src=x onerror=alert(1)&gt;");
+    expect(escapeWebsiteEmailHtml("A & B \"quoted\" 'text'")).toBe("A &amp; B &quot;quoted&quot; &#39;text&#39;");
+    expect(escapeWebsiteEmailHtml(null)).toBe("");
+  });
+});
 
 describe("Website Studio public page list recovery", () => {
   it("returns an empty list for missing or malformed persisted page settings", () => {
