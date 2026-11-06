@@ -162,3 +162,13 @@ export function partitionWebsiteMediaFiles<T extends { type: string; name: strin
   }
   return { uploadable, unsupported };
 }
+
+/** Scope public-site cache entries to the requested page as well as the site and preview mode. */
+export function getPublicSiteQueryKey(
+  slug: string | undefined,
+  pageSlug: string | undefined,
+  isDraftPreview: boolean,
+  host: string,
+): readonly ["public-site", string, string, boolean] {
+  return ["public-site", slug ?? `__host__${host}`, pageSlug ?? "__home__", isDraftPreview];
+}
