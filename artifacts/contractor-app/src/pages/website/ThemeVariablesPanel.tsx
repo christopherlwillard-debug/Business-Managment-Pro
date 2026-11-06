@@ -264,17 +264,10 @@ function AiColorAssistant({
     setSuggestions([]);
     setAppliedId(null);
     try {
-      const body: Record<string, unknown> = {};
-      if (bizId && settings.logoObjectPath) {
-        body.businessId = bizId;
-      } else if (settings.logoUrl && /^https?:\/\//.test(settings.logoUrl)) {
-        body.logoUrl = settings.logoUrl;
-      } else if (bizId) {
-        body.businessId = bizId;
-      }
-      if (!body.businessId && !body.logoUrl) {
-        body.baseColor = baseColor;
-      }
+      const body: Record<string, unknown> = { baseColor };
+      // The server extracts colors only from the business's saved object-storage
+      // logo. It deliberately never fetches arbitrary URLs supplied by the client.
+      if (bizId) body.businessId = bizId;
 
       const res = await fetch(`${BASE}/api/website/suggest-colors`, {
         method: "POST",
