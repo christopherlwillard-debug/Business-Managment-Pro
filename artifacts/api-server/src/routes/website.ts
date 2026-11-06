@@ -282,6 +282,36 @@ export function getSafeWebsiteCustomDomain(value: unknown): string | null {
   return host;
 }
 
+/** Allow payment completion redirects only to configured website origins, never forwarded request headers. */
+export function getSafeWebsitePaymentReturnUrl(value: unknown, customDomainValue: unknown, baseUrlValue: unknown): string | undefined {
+  const rawUrl = getWebsiteContactText(value, 2048);
+  if (!rawUrl) return undefined;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return undefined;
+
+  const allowedOrigins = new Set<string>();
+  const customDomain = getSafeWebsiteCustomDomain(customDomainValue);
+  if (customDomain) allowedOrigins.add(`https://${customDomain}`);
+
+  if (typeof baseUrlValue === "string" && baseUrlValue.trim()) {
+    try {
+      const base = new URL(baseUrlValue);
+      if (base.protocol === "https:" || base.protocol === "http:") allowedOrigins.add(base.origin.toLowerCase());
+    } catch {
+      // An invalid BASE_URL simply means no platform origin is allowed.
+    }
+  }
+
+  if (!allowedOrigins.has(parsed.origin.toLowerCase())) return undefined;
+  return `${parsed.origin}${parsed.pathname}?payment=success`;
+}
+
 /** Parse a positive USD amount without parseFloat's permissive partial-string behavior. */
 export function parseWebsiteMoneyCents(value: unknown): number | null {
   if (typeof value !== "number" && typeof value !== "string") return null;
@@ -1311,7 +1341,7 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
-    .select({ sections: websiteConfigsTable.sections })
+    .select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
@@ -1348,20 +1378,11 @@ publicRouter.post("/:slug/create-deposit-link", wrapAsync(async (req, res) => {
   const amountCents = parseWebsiteMoneyCents(amount);
   if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
-  let redirectUrl: string | undefined;
-  if (safeReturnUrl) {
-    try {
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
-      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
-      const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(safeReturnUrl);
-      if (parsed.origin.toLowerCase() === requestOrigin) {
-        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
-      }
-    } catch {
-      // Invalid or mismatched URL — no redirect
-    }
-  }
+  const redirectUrl = getSafeWebsitePaymentReturnUrl(
+    safeReturnUrl,
+    getWebsiteRequestBody(config.settings).customDomain,
+    BASE_URL,
+  );
 
   const { url } = await createSquarePaymentLink({
     amountCents,
@@ -1403,7 +1424,7 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   if (!biz) return res.status(404).json({ error: "Not found" });
 
   const [config] = await db
-    .select({ id: websiteConfigsTable.id, sections: websiteConfigsTable.sections })
+    .select({ id: websiteConfigsTable.id, sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(and(eq(websiteConfigsTable.businessId, biz.id), eq(websiteConfigsTable.published, true)));
   if (!config) return res.status(404).json({ error: "Website not published" });
@@ -1454,20 +1475,11 @@ publicRouter.post("/:slug/deposit-submit", wrapAsync(async (req, res) => {
   const amountCents = parseWebsiteMoneyCents(amount);
   if (amountCents === null) return res.status(400).json({ error: "Invalid deposit amount." });
 
-  let redirectUrl: string | undefined;
-  if (safeReturnUrl) {
-    try {
-      const proto = (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0].trim() ?? req.protocol ?? "https";
-      const host = ((req.headers["x-forwarded-host"] as string | undefined) ?? req.headers.host ?? "").split(",")[0].trim();
-      const requestOrigin = `${proto}://${host}`.toLowerCase();
-      const parsed = new URL(safeReturnUrl);
-      if (parsed.origin.toLowerCase() === requestOrigin) {
-        redirectUrl = `${parsed.origin}${parsed.pathname}?payment=success`;
-      }
-    } catch {
-      // Invalid or mismatched URL — no redirect
-    }
-  }
+  const redirectUrl = getSafeWebsitePaymentReturnUrl(
+    safeReturnUrl,
+    getWebsiteRequestBody(config.settings).customDomain,
+    BASE_URL,
+  );
 
   const [submission] = await db.insert(depositSubmissionsTable).values({
     businessId: biz.id,
