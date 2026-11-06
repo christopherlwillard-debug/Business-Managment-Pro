@@ -362,7 +362,11 @@ export default function PublicSite() {
   }
 
   const headerContent = headerSec?.content as any;
-  const navLinks = getSafePublicNavLinks(headerContent?.navLinks);
+  const navLinks = getSafePublicNavLinks(headerContent?.navLinks, {
+    pages: additionalPages,
+    businessSlug: resolvedSlug,
+    customDomain: !slug,
+  });
   const rawPhone = typeof headerContent?.phone === "string" ? headerContent.phone.trim() : "";
   const rawEmail = typeof headerContent?.email === "string" ? headerContent.email.trim() : "";
   const headerPhone = rawPhone.slice(0, 100);

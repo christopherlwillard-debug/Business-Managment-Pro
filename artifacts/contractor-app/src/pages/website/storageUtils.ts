@@ -259,14 +259,38 @@ export function getSafeWebsiteHref(value: unknown): string | null {
 }
 
 /** Ignore malformed persisted navigation entries and supply stable fallback keys. */
-export function getSafePublicNavLinks(value: unknown): Array<{ id: string; label: string; href: string }> {
+export function getSafePublicNavLinks(
+  value: unknown,
+  options: {
+    pages?: Array<{ id: string; slug: string }>;
+    businessSlug?: string;
+    customDomain?: boolean;
+  } = {},
+): Array<{ id: string; label: string; href: string }> {
   if (!Array.isArray(value)) return [];
   const links: Array<{ id: string; label: string; href: string }> = [];
   value.forEach((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return;
     const link = item as Record<string, unknown>;
     if (typeof link.label !== "string" || !link.label.trim()) return;
-    const href = getSafeWebsiteHref(link.href);
+
+    let href: string | null = null;
+    if (typeof link.pageId === "string" && Array.isArray(options.pages)) {
+      const page = options.pages.find(candidate => candidate?.id === link.pageId);
+      const pageSlug = typeof page?.slug === "string" ? page.slug.trim().toLowerCase() : "";
+      if (!pageSlug || pageSlug === "home" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(pageSlug)) return;
+
+      if (options.customDomain) {
+        href = `/${pageSlug}`;
+      } else if (typeof options.businessSlug === "string" && options.businessSlug.trim()) {
+        href = `/site/${encodeURIComponent(options.businessSlug.trim())}/${encodeURIComponent(pageSlug)}`;
+      }
+    }
+
+    // Legacy, anchor, and external links remain unchanged. Page-backed links use
+    // the current page record so renames and custom domains cannot retain stale
+    // application-hosted URLs.
+    href ??= getSafeWebsiteHref(link.href);
     if (!href) return;
     links.push({ id: typeof link.id === "string" && link.id.trim() ? link.id : `nav-link-${index}`, label: link.label, href });
   });

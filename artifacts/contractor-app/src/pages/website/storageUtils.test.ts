@@ -31,6 +31,48 @@ describe("Website Studio public navigation safety", () => {
     ]);
     expect(getSafePublicNavLinks({ navLinks: [] })).toEqual([]);
   });
+
+  it("maps page-backed links to custom-domain paths using current page slugs", () => {
+    expect(getSafePublicNavLinks([
+      { id: "about-link", label: "About", href: "/site/demo/old-about", pageId: "page-about" },
+      { id: "contact-link", label: "Contact", href: "/site/demo/contact", pageId: "page-contact" },
+      { id: "anchor-link", label: "Contact section", href: "#contact" },
+      { id: "external-link", label: "External", href: "https://example.com" },
+    ], {
+      pages: [
+        { id: "page-about", slug: "about-us" },
+        { id: "page-contact", slug: "contact" },
+      ],
+      businessSlug: "demo",
+      customDomain: true,
+    })).toEqual([
+      { id: "about-link", label: "About", href: "/about-us" },
+      { id: "contact-link", label: "Contact", href: "/contact" },
+      { id: "anchor-link", label: "Contact section", href: "#contact" },
+      { id: "external-link", label: "External", href: "https://example.com" },
+    ]);
+  });
+
+  it("builds app-hosted links from the current page slug after a rename", () => {
+    expect(getSafePublicNavLinks([
+      { id: "about-link", label: "About Us", href: "/site/demo/about", pageId: "page-about" },
+    ], {
+      pages: [{ id: "page-about", slug: "about-us" }],
+      businessSlug: "demo",
+    })).toEqual([
+      { id: "about-link", label: "About Us", href: "/site/demo/about-us" },
+    ]);
+  });
+
+  it("omits stale page-backed links when the referenced page no longer exists", () => {
+    expect(getSafePublicNavLinks([
+      { id: "stale-link", label: "Old page", href: "/site/demo/old-page", pageId: "deleted-page" },
+    ], {
+      pages: [],
+      businessSlug: "demo",
+      customDomain: true,
+    })).toEqual([]);
+  });
 });
 
 describe("Website Studio rename blur handling", () => {
