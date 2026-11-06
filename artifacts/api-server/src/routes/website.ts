@@ -5113,7 +5113,7 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   if (
     !template.brandColor ||
     typeof template.brandColor !== "string" ||
-    !/^#[0-9A-Fa-f]{3,6}$/.test(template.brandColor as string)
+    !/^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(template.brandColor as string)
   ) {
     template.brandColor = "#1a1a2e";
   }
@@ -5122,9 +5122,12 @@ router.post("/generate-template", wrapAsync(async (req, res) => {
   if (!template.settings || typeof template.settings !== "object" || Array.isArray(template.settings)) {
     template.settings = {};
   }
-  // Ensure brandColor is mirrored inside settings
+  // Ensure settings only retain a valid CSS hex color.
+  const settingsBrandColor = (template.settings as Record<string, unknown>).brandColor;
   (template.settings as Record<string, unknown>).brandColor =
-    (template.settings as Record<string, unknown>).brandColor ?? template.brandColor;
+    typeof settingsBrandColor === "string" && /^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(settingsBrandColor)
+      ? settingsBrandColor
+      : template.brandColor;
 
   // sections must be a non-empty array
   if (!Array.isArray(template.sections)) {
