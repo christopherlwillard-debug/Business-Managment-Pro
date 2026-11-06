@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useListClients, useCreateClient, useUpdateClient, useDeleteClient } from "@workspace/api-client-react";
+import { useListClients, useCreateClient, useUpdateClient } from "@workspace/api-client-react";
 import { Users, Plus, Phone, Mail, MapPin, Edit2, Trash2, AlertTriangle, ChevronRight, Calendar, DollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,6 +8,8 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useLocation } from "wouter";
 import { cn, formatCurrency } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { getClientBusinessScopeQuery, getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -28,13 +30,13 @@ function isDueSoon(dateStr: string | null | undefined): boolean {
 export default function Clients() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness } = useBusiness();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const { data: clients, isLoading, refetch } = useListClients(
     activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
   );
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
-  const deleteMutation = useDeleteClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<any>(null);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
@@ -59,6 +61,7 @@ export default function Clients() {
       mileageSurchargeEnabled: formData.get("mileageSurchargeEnabled") === "on",
       mileageSurchargeTriggerMiles: formData.get("mileageSurchargeTriggerMiles") ? Number(formData.get("mileageSurchargeTriggerMiles")) : null,
       mileageSurchargeDailyRate: formData.get("mileageSurchargeDailyRate") ? Number(formData.get("mileageSurchargeDailyRate")) : null,
+      ...(editingClient ? getClientSourceBusinessFields(editingClient) : {}),
     };
 
     try {
@@ -91,7 +94,7 @@ export default function Clients() {
     setIsCheckingDelete(true);
     setDeleteTarget(client);
     try {
-      const res = await fetch(`${BASE}/api/clients/${client.id}/link-counts`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/clients/${client.id}/link-counts${getClientBusinessScopeQuery(client)}`, { credentials: "include" });
       if (res.ok) {
         const counts = await res.json();
         setDeleteLinkCounts(counts);
@@ -109,8 +112,17 @@ export default function Clients() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await deleteMutation.mutateAsync({ id: deleteTarget.id });
+      const response = await fetch(`${BASE}/api/clients/${deleteTarget.id}${getClientBusinessScopeQuery(deleteTarget)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to delete client");
+      }
       refetch();
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Failed to delete client", variant: "destructive" });
     } finally {
       setIsDeleting(false);
       setDeleteTarget(null);
