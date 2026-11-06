@@ -86,6 +86,25 @@ export function escapeWebsiteEmailHtml(value: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
+/** Accept bounded plain-text fields from anonymous public website forms only. */
+export function getWebsiteContactText(value: unknown, maxLength = 5000): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, maxLength) : undefined;
+}
+
+/** Bound arbitrary visitor-defined labels and values before storing or emailing them. */
+export function getSafeWebsiteSubmissionFields(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [rawLabel, rawValue] of Object.entries(value).slice(0, 30)) {
+    const label = getWebsiteContactText(rawLabel, 100);
+    const fieldValue = getWebsiteContactText(rawValue, 5000);
+    if (label && fieldValue) result[label] = fieldValue;
+  }
+  return result;
+}
+
 export function normalizePageSlug(value: string): string {
   return value
     .trim()
@@ -1053,15 +1072,17 @@ publicRouter.post("/:slug/contact", wrapAsync(async (req, res) => {
     labeledFields?: Record<string, string>;
   };
 
-  const normName = name ?? fieldValues?.name;
-  const normPhone = phone ?? fieldValues?.phone;
-  const normEmail = email ?? fieldValues?.email;
-  const normServiceType = serviceType ?? fieldValues?.serviceType;
-  const normMessage = message ?? fieldValues?.message;
+  const safeFieldValues = getSafeWebsiteSubmissionFields(fieldValues);
+  const normName = getWebsiteContactText(name) ?? safeFieldValues.name;
+  const normPhone = getWebsiteContactText(phone, 100) ?? safeFieldValues.phone;
+  const normEmail = getWebsiteContactText(email, 320) ?? safeFieldValues.email;
+  const normServiceType = getWebsiteContactText(serviceType, 200) ?? safeFieldValues.serviceType;
+  const normMessage = getWebsiteContactText(message) ?? safeFieldValues.message;
 
+  const customSubmissionFields = getSafeWebsiteSubmissionFields(labeledFields);
   const submissionFields: Record<string, string> =
-    labeledFields && Object.keys(labeledFields).length > 0
-      ? labeledFields
+    Object.keys(customSubmissionFields).length > 0
+      ? customSubmissionFields
       : Object.fromEntries(
           ([
             normName ? ["Full Name", normName] : null,
