@@ -4654,7 +4654,10 @@ function WebsiteEditor() {
   }
 
   async function handleApplyTemplate(t: WebsiteTemplate, bizInfo?: { phone?: string; email?: string; licenseNumber?: string; name?: string }) {
-    history.pushSnapshot({ sections: pagesRef.current, settings });
+    const operationSession = businessSessionRef.current;
+    const operationBusinessId = bizId;
+    const operationRevision = editorRevisionRef.current;
+    history.pushSnapshot({ sections: pagesRef.current, settings: settingsRef.current });
     setApplyingTemplate(true);
     try {
       const appliedSections = t.sections.map(s => {
@@ -4683,6 +4686,11 @@ function WebsiteEditor() {
         body: JSON.stringify(templatePayload),
       });
       if (!templateRes.ok) throw new Error("Failed to apply template");
+      if (operationSession !== businessSessionRef.current || operationBusinessId !== bizIdRef.current) return;
+      if (operationRevision !== editorRevisionRef.current) {
+        toast({ title: "Website changed while template was applying", description: "Your edits were preserved. Apply the template again if you still want to replace the page.", variant: "destructive" });
+        return;
+      }
       setLocalPages([{ id: "home", name: "Home", slug: "home", sections: appliedSections as any }]);
       setActivePageId("home");
       setLocalSettings(savedSettings);
