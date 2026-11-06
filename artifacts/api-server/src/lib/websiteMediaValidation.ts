@@ -159,3 +159,42 @@ export function countWebsiteMediaUrlReferences(value: unknown, url: string): num
   }
   return count;
 }
+
+/** Validate saved-section data before storing it as JSONB. */
+export function validateSavedWebsiteSection(value: unknown):
+  | { ok: true; section: { name: string; sectionType: string; content: Record<string, unknown>; blockStyle?: Record<string, unknown> | null } }
+  | { ok: false; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, error: "Saved section must be an object." };
+  }
+  const input = value as Record<string, unknown>;
+  if (typeof input.name !== "string" || !input.name.trim() || [...input.name].length > 255) {
+    return { ok: false, error: "Section name is required and must be 255 characters or fewer." };
+  }
+  if (typeof input.sectionType !== "string" || !input.sectionType.trim()) {
+    return { ok: false, error: "Section type is required." };
+  }
+  if (!input.content || typeof input.content !== "object" || Array.isArray(input.content)) {
+    return { ok: false, error: "Section content must be an object." };
+  }
+  if (input.blockStyle !== undefined && input.blockStyle !== null &&
+      (typeof input.blockStyle !== "object" || Array.isArray(input.blockStyle))) {
+    return { ok: false, error: "Section block style must be an object or null." };
+  }
+  return {
+    ok: true,
+    section: {
+      name: input.name.trim(),
+      sectionType: input.sectionType.trim(),
+      content: input.content as Record<string, unknown>,
+      ...(input.blockStyle !== undefined ? { blockStyle: input.blockStyle as Record<string, unknown> | null } : {}),
+    },
+  };
+}
+
+/** Validate a positive safe database identifier rather than accepting parseInt prefixes. */
+export function parsePositiveDatabaseId(value: unknown): number | null {
+  if (value === undefined || value === null || String(value).trim() === "") return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
