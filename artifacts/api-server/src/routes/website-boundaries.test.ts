@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -169,6 +169,39 @@ describe("Website Studio portfolio photo lookup", () => {
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { projects: {} } }], path)).toBe(false);
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [null, []] } }], path)).toBe(false);
     expect(hasWebsitePortfolioPhoto([{ type: "portfolio", content: { photos: [{ photoObjectPath: path }] } }], "/objects/uploads/other/" + path.split("/").pop())).toBe(false);
+  });
+});
+
+describe("Website Studio profile data normalization", () => {
+  it("filters and bounds service-area strings from malformed saved settings", () => {
+    expect(getWebsiteStringList(["  Kentucky  ", "", 42, null, "Illinois"], 2)).toEqual(["Kentucky", "Illinois"]);
+    expect(getWebsiteStringList({ areas: ["Kentucky"] })).toEqual([]);
+    expect(getWebsiteStringList(["x".repeat(200)], 10, 80)).toEqual(["x".repeat(80)]);
+  });
+
+  it("keeps only valid HTTP social links and bounds their count", () => {
+    expect(getWebsiteSocialLinks([
+      { platform: "Facebook", url: "https://facebook.com/example" },
+      null,
+      { platform: "Unsafe", url: "javascript:alert(1)" },
+      { platform: 42, url: "https://example.com" },
+      { platform: "No URL", url: [] },
+    ])).toEqual([{ platform: "Facebook", url: "https://facebook.com/example" }]);
+    expect(getWebsiteSocialLinks("bad")).toEqual([]);
+  });
+
+  it("normalizes hours rows without throwing on malformed entries", () => {
+    expect(getWebsiteWorkingHours([
+      { day: "Monday", open: "8:00 AM", close: "5:00 PM", closed: false },
+      null,
+      "Tuesday",
+      { day: 42, open: "9", close: "5", closed: false },
+      { day: "Tuesday", open: 9, close: null, closed: "yes" },
+    ])).toEqual([
+      { day: "Monday", open: "8:00 AM", close: "5:00 PM", closed: false },
+      { day: "Tuesday", open: "", close: "", closed: false },
+    ]);
+    expect(getWebsiteWorkingHours({ hours: [] })).toEqual([]);
   });
 });
 
