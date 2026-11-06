@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -44,6 +44,28 @@ describe("Website Studio contact email escaping", () => {
     expect(escapeWebsiteEmailHtml("<img src=x onerror=alert(1)>")).toBe("&lt;img src=x onerror=alert(1)&gt;");
     expect(escapeWebsiteEmailHtml("A & B \"quoted\" 'text'")).toBe("A &amp; B &quot;quoted&quot; &#39;text&#39;");
     expect(escapeWebsiteEmailHtml(null)).toBe("");
+  });
+});
+
+describe("Website Studio payment return URL safety", () => {
+  it("allows only configured custom-domain or platform origins", () => {
+    expect(getSafeWebsitePaymentReturnUrl(
+      "https://business.example.com/quote?source=website",
+      "business.example.com",
+      "https://app.example.com",
+    )).toBe("https://business.example.com/quote?payment=success");
+    expect(getSafeWebsitePaymentReturnUrl(
+      "https://app.example.com/site/business",
+      "business.example.com",
+      "https://app.example.com/base",
+    )).toBe("https://app.example.com/site/business?payment=success");
+  });
+
+  it("rejects forwarded-host spoofing, unsafe protocols, malformed URLs, and non-text values", () => {
+    expect(getSafeWebsitePaymentReturnUrl("https://attacker.example/return", "business.example.com", "https://app.example.com")).toBeUndefined();
+    expect(getSafeWebsitePaymentReturnUrl("javascript:alert(1)", "business.example.com", "https://app.example.com")).toBeUndefined();
+    expect(getSafeWebsitePaymentReturnUrl("not a URL", "business.example.com", "https://app.example.com")).toBeUndefined();
+    expect(getSafeWebsitePaymentReturnUrl({ url: "https://business.example.com" }, "business.example.com", "https://app.example.com")).toBeUndefined();
   });
 });
 
