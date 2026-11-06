@@ -60,6 +60,13 @@ export function getWebsiteRequestBody(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/** Only resolve logo objects through the app's own object-storage namespace. */
+export function isTrustedWebsiteLogoObjectPath(value: unknown): value is string {
+  if (typeof value !== "string" || !value.startsWith("/objects/uploads/")) return false;
+  if (/[\\\\?#\\u0000-\\u001f]/.test(value)) return false;
+  return value.slice("/objects/uploads/".length).split("/").every(segment => segment.length > 0 && segment !== "." && segment !== "..");
+}
+
 export function normalizePageSlug(value: string): string {
   return value
     .trim()
@@ -2221,7 +2228,7 @@ router.post("/suggest-colors", wrapAsync(async (req, res) => {
       const settings = (config?.settings ?? {}) as Record<string, unknown>;
       const logoObjectPath = settings.logoObjectPath as string | undefined;
 
-      if (logoObjectPath?.startsWith("/objects/uploads/")) {
+      if (isTrustedWebsiteLogoObjectPath(logoObjectPath)) {
         const objectFile = await objectStorageService.getObjectEntityFile(logoObjectPath);
         const response = await objectStorageService.downloadObject(objectFile);
         if (response.body) {
@@ -5317,12 +5324,8 @@ router.post("/generate-from-profile", wrapAsync(async (req, res) => {
         } catch { /* non-fatal */ }
       }
 
-      if (!imageBuffer && logoUrl && /^https?:\/\//.test(logoUrl)) {
-        try {
-          const fr = await fetch(logoUrl);
-          if (fr.ok) imageBuffer = Buffer.from(await fr.arrayBuffer());
-        } catch { /* non-fatal */ }
-      }
+      // Do not fetch logoUrl here: it may be user-controlled and would create an SSRF path.
+      // If no stored logo object is available, the configured brand color is the safe fallback.
 
       let dominantColors: string[] = [];
       if (imageBuffer && imageBuffer.length > 0) {
