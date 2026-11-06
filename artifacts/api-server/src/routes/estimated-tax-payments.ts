@@ -50,7 +50,7 @@ export function parseEstimatedTaxMoney(value: unknown, allowEmpty = false): stri
   const text = typeof value === "number" && Number.isFinite(value)
     ? String(value)
     : typeof value === "string" ? value.trim() : "";
-  if (!/^(?:0|[1-9]\\d{0,9})(?:\\.\\d{1,2})?$/.test(text)) return undefined;
+  if (!/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(text)) return undefined;
   const amount = Number(text);
   if (!Number.isFinite(amount) || amount < 0 || amount > 9_999_999_999.99) return undefined;
   return amount.toFixed(2);
@@ -58,7 +58,7 @@ export function parseEstimatedTaxMoney(value: unknown, allowEmpty = false): stri
 
 function isValidOptionalIsoDate(value: unknown): boolean {
   if (value == null || value === "") return true;
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return false;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
@@ -270,8 +270,8 @@ router.get("/", wrapAsync(async (req, res) => {
 // POST /api/estimated-tax-payments
 router.post("/", wrapAsync(async (req, res) => {
   const { year, quarter, level, amountDue, amountPaid, paidDate, paymentMethod, notes } = req.body ?? {};
-  const parsedYear = typeof year === "number" ? year : typeof year === "string" && /^\\d{4}$/.test(year) ? Number(year) : NaN;
-  const parsedQuarter = typeof quarter === "number" ? quarter : typeof quarter === "string" && /^\\d+$/.test(quarter) ? Number(quarter) : NaN;
+  const parsedYear = typeof year === "number" ? year : typeof year === "string" && /^\d{4}$/.test(year) ? Number(year) : NaN;
+  const parsedQuarter = typeof quarter === "number" ? quarter : typeof quarter === "string" && /^\d+$/.test(quarter) ? Number(quarter) : NaN;
   if (!Number.isInteger(parsedYear) || parsedYear < 2000 || parsedYear > 2200) {
     res.status(400).json({ error: "A valid tax year is required" });
     return;
