@@ -35,6 +35,14 @@ describe("bid dashboard statistics", () => {
     expect(stats.naicsMatchCount).toBe(1);
   });
 
+  it("excludes legacy dismissed records even when their stage was not updated", () => {
+    const stats = calculateBidStats([
+      bid({ id: 1, status: "dismissed", stage: "new" }),
+      bid({ id: 2, status: "interested", stage: "reviewing" }),
+    ], [], new Date(2026, 0, 5, 12));
+    expect(stats.activeBids).toBe(1);
+  });
+
   it("does not label a veteran evaluation preference as SDVOSB eligibility", () => {
     const stats = calculateBidStats([
       bid({ aiSummary: { veteranPreference: true, setAsideType: "veteran_preference" } }),
