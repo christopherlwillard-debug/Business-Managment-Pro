@@ -30,7 +30,7 @@ export function daysUntilBidDeadline(dateStr: string | null, now = new Date()): 
 
 function isCurrentOpportunity(bid: BidOpportunity, now: Date): boolean {
   if (bid.source === "usa-spending" || bid.opportunityType === "award_intelligence") return false;
-  if (["won", "lost", "no_bid", "score_rejected"].includes(bid.stage)) return false;
+  if (bid.status === "dismissed" || ["won", "lost", "no_bid", "score_rejected"].includes(bid.stage)) return false;
   if (bid.lifecycleState === "expired" || bid.lifecycleState === "historical") return false;
   const days = daysUntilBidDeadline(bid.responseDeadline, now);
   return days === null || days >= 0;
