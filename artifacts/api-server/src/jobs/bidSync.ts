@@ -547,7 +547,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
           notes: bid.notes?.startsWith("Filtered:")
             ? `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
             : bid.notes
-              ? `${bid.notes}\\n\\nFiltered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
+              ? `${bid.notes}\n\nFiltered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
               : `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
         } : {}),
         ...(autoRestoreRejected ? {
