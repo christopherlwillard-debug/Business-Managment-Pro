@@ -19,7 +19,7 @@ import {
 } from "../lib/samGov.js";
 import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS, type LocalScrapeResult, type SiteHealthRecord } from "../lib/kyLocalBids.js";
 import { fetchKyVssSolicitations } from "../lib/kyVss.js";
-import { fetchUsaSpendingAwards, UsaSpendingAward } from "../lib/usaSpending.js";
+import { fetchUsaSpendingAwards, UsaSpendingAward, UsaSpendingFetchResult } from "../lib/usaSpending.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 import {
   CapabilityDefinition,
@@ -1010,7 +1010,7 @@ export async function runBidSync(
       : Promise.resolve([]),
     awardsActuallyRan
       ? fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes, state: business.state ?? "KY" })
-      : Promise.resolve([] as UsaSpendingAward[]),
+      : Promise.resolve({ awards: [], errors: [], requestsAttempted: 0, requestsSucceeded: 0 } as UsaSpendingFetchResult),
   ]);
 
   // Unpack SAM.gov results before deciding health. Failed pages retain earlier
@@ -1035,8 +1035,12 @@ export async function runBidSync(
     fedResult.status === "rejected" ? String(fedResult.reason) : null,
   ].filter((message): message is string => !!message).join("; ") || null;
 
-  const localOk  = localResult.status === "fulfilled";
-  const awardsOk = awardsResult.status === "fulfilled";
+  const localOk = localResult.status === "fulfilled";
+  const awardsFetchFulfilled = awardsResult.status === "fulfilled";
+  const awardsFetchResult = awardsFetchFulfilled ? (awardsResult.value as UsaSpendingFetchResult) : null;
+  const awardsOk = awardsFetchFulfilled && (awardsFetchResult?.errors.length ?? 0) === 0;
+  const awardsError = (awardsFetchResult?.errors ?? []).slice(0, 5).join("; ")
+    || (awardsResult.status === "rejected" ? String(awardsResult.reason) : null);
 
   // Write per-source health to legacy bid_business_settings (backward compat)
   await writeSyncHealth(businessId, {
@@ -1045,12 +1049,12 @@ export async function runBidSync(
     localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
     localLastError:      !kyLocalActuallyRan ? null : localOk ? null : String((localResult as PromiseRejectedResult).reason),
     awardsLastSuccessAt: (awardsActuallyRan && awardsOk) ? now : undefined,
-    awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
+    awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : awardsError,
   });
 
   // Partial SAM.gov results are still used for ingestion, even when health is degraded.
   const federal: OppWithSource[] = samResult?.opportunities ?? [];
-  const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
+  const awards: UsaSpendingAward[] = awardsFetchResult?.awards ?? [];
 
   // Unpack the structured LocalScrapeResult from the KY/IN local scraper.
   // localResult.value is now a LocalScrapeResult (not a plain array).
@@ -1086,7 +1090,7 @@ export async function runBidSync(
       federal.length
     ) : Promise.resolve(),
     kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
-    awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending", awardsOk,         awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)                       : Promise.resolve(),
+    awardsActuallyRan ? writeConnectionHealth(businessId, "usa_spending", awardsOk, awardsError, awards.length) : Promise.resolve(),
   ]);
 
   // Filter local results by local keywords
