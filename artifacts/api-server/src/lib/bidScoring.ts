@@ -31,14 +31,20 @@ export function normalizeSetAsideType(code: string | null | undefined): string |
   // Explicit full-and-open marker from SAM.gov
   if (upper === "NONE") return "open";
 
-  // SDVOSB — strictly requires SDVOSB cert (more restrictive than VOSB)
-  if (upper === "SDVOSB") return "sdvosb";
+  // SAM.gov official codes include competed and sole-source variants.
+  if (["SDVOSB", "SDVOSBC", "SDVOSBS"].includes(upper)) return "sdvosb";
 
-  // VOSB — requires VOSB or SDVOSB cert (SDVOSB is a qualifying subset)
-  if (upper === "VOSB" || upper === "VSBAOP") return "vosb";
+  // VOSB and VA veteran-owned variants (SDVOSB is a qualifying subset).
+  if (["VOSB", "VSBAOP", "VSA", "VSS"].includes(upper)) return "vosb";
 
-  // Total small-business set-aside — any small business qualifies
-  if (upper === "SBA") return "small_business";
+  // Total and partial small-business set-asides.
+  if (["SBA", "SBP"].includes(upper)) return "small_business";
+
+  // Certification-specific programs are recognized but never receive an
+  // automatic scoring advantage from unverified profile flags.
+  if (["HZC", "HZS"].includes(upper)) return "hubzone";
+  if (["8A", "8AN", "HS3"].includes(upper)) return "8a";
+  if (["WOSB", "WOSBSS", "EDWOSB", "EDWOSBSS", "ISBEE", "BICIV", "IEE", "BI"].includes(upper)) return "cert_other";
 
   // Veteran preference in evaluation (not a formal set-aside; all may compete)
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
@@ -69,6 +75,9 @@ export function setAsideScore(
     case "sdvosb":
     case "vosb":
     case "small_business":
+    case "hubzone":
+    case "8a":
+    case "cert_other":
     default:
       // Restricted categories receive no automatic bonus until eligibility is verified.
       return 0;
