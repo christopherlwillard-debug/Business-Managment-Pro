@@ -79,7 +79,7 @@ export function mergeBidSourceFields(
   for (const key of Object.keys(incoming) as Array<keyof BidSourceFields>) {
     const value = incoming[key];
     if (typeof value === "string" ? value.trim().length > 0 : value != null) {
-      merged[key] = value as BidSourceFields[typeof key];
+      Object.assign(merged, { [key]: value });
     }
   }
   return merged;
