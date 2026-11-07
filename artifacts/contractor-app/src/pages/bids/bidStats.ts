@@ -43,8 +43,15 @@ export function calculateBidStats(
 ): BidStats {
   const active = bids.filter((bid) => isCurrentOpportunity(bid, now));
   const veteranOpportunities = active.filter((bid) => {
-    const setAside = bid.aiSummary?.setAsideType;
-    return setAside === "sdvosb" || setAside === "vosb" || setAside === "veteran_preference";
+    const rawCode = bid.setAsideType?.trim().toUpperCase();
+    const rawVeteranSetAside = rawCode === "SDVOSB" || rawCode === "VOSB" || rawCode === "VSBAOP"
+      || rawCode === "VOB" || rawCode === "VETS" || rawCode === "VP";
+    const analyzedType = bid.aiSummary?.setAsideType;
+    return rawVeteranSetAside
+      || analyzedType === "sdvosb"
+      || analyzedType === "vosb"
+      || analyzedType === "veteran_preference"
+      || bid.aiSummary?.veteranPreference === true;
   }).length;
   const won = bids.filter((bid) => bid.stage === "won").length;
   const lost = bids.filter((bid) => bid.stage === "lost").length;
