@@ -64,6 +64,17 @@ describe("bid recommendation certification safeguards", () => {
     expect(result.recommendation).toBe("review");
   });
 
+  it("handles official SDVOSB, VOSB, and partial small-business codes conservatively", () => {
+    for (const code of ["SDVOSBC", "SDVOSBS", "VSA", "VSS", "SBP"]) {
+      const result = computeRecommendation(
+        opportunity(code),
+        { isSdvosb: true, isVosb: true, isSmallBusiness: true },
+        reviewedFit,
+      );
+      expect(result.recommendation, code).toBe("review");
+    }
+  });
+
   it("can still recommend BID for a reviewed full-and-open opportunity", () => {
     const result = computeRecommendation(
       opportunity("NONE"),
