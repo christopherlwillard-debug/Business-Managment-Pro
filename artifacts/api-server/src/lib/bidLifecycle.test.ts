@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
+import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
   it("keeps USA Spending awards out of actionable work", () => {
@@ -43,6 +43,14 @@ describe("bid lifecycle boundary", () => {
     expect(shouldPruneScopeMismatch("bidding")).toBe(false);
     expect(shouldPruneScopeMismatch("submitted")).toBe(false);
     expect(shouldPruneScopeMismatch("won")).toBe(false);
+  });
+
+  it("moves only untouched new opportunities below the score floor to recovery", () => {
+    expect(shouldRejectNewBid("new", 19, 20)).toBe(true);
+    expect(shouldRejectNewBid("new", 20, 20)).toBe(false);
+    expect(shouldRejectNewBid("reviewing", 0, 20)).toBe(false);
+    expect(shouldRejectNewBid("bidding", 0, 20)).toBe(false);
+    expect(shouldRejectNewBid("no_bid", 0, 20)).toBe(false);
   });
 
   it("restores score-rejected opportunities when an updated profile clears the score floor", () => {
