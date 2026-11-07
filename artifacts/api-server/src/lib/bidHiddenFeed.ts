@@ -5,6 +5,11 @@ interface HiddenBidCandidate {
   notes?: string | null;
 }
 
+/** A notice identifier is unique only within its originating source. */
+export function unifiedBidIdentity(record: { source?: string | null; noticeId: string }): string {
+  return `${(record.source ?? "").trim().toLowerCase()}|${record.noticeId.trim().toLowerCase()}`;
+}
+
 export function selectUnifiedCandidateGroup<T extends HiddenBidCandidate>(
   group: T[],
   includeHidden: boolean,
