@@ -234,12 +234,13 @@ function CreateTasksButton({ businessId }: { businessId?: number }) {
 // ── Integration group rendering ───────────────────────────────────────────────
 
 function IntegrationSection({
-  label, description, items, onUpdated,
+  label, description, items, onUpdated, businessId,
 }: {
   label: string;
   description: string;
   items: IntegrationStatus[];
   onUpdated: () => void;
+  businessId: number | null;
 }) {
   if (items.length === 0) return null;
   return (
@@ -250,7 +251,7 @@ function IntegrationSection({
       </div>
       <div className="space-y-2">
         {items.map(integration => (
-          <IntegrationCard key={integration.slug} integration={integration} onUpdated={onUpdated} />
+          <IntegrationCard key={`${businessId ?? "platform"}-${integration.slug}`} integration={integration} onUpdated={onUpdated} />
         ))}
       </div>
     </div>
@@ -446,6 +447,7 @@ export default function IntegrationsPage() {
                       description={section.description}
                       items={items}
                       onUpdated={handleUpdated}
+                      businessId={activeBusiness?.id ?? null}
                     />
                   );
                 })}
