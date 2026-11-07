@@ -1004,7 +1004,7 @@ export async function runBidSync(
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     samActuallyRan
       ? fetchSamOpportunitiesGrouped(profile.searchGroups)
-      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0 } as SamGroupedResult),
+      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0, requestsFailed: 0, requestErrors: [] } as SamGroupedResult),
     kyLocalActuallyRan
       ? fetchKyLocalBids()
       : Promise.resolve([]),
@@ -1013,26 +1013,43 @@ export async function runBidSync(
       : Promise.resolve([] as UsaSpendingAward[]),
   ]);
 
-  // Write per-source health to legacy bid_business_settings (backward compat)
-  const samOk    = fedResult.status === "fulfilled";
+  // Unpack SAM.gov results before deciding health. Failed pages retain earlier
+  // successful results, but the source must not be reported healthy.
+  const samFetchFulfilled = fedResult.status === "fulfilled";
+  const samResult = samFetchFulfilled ? (fedResult.value as SamGroupedResult) : null;
+  const samQuotaExhausted = samResult?.quotaExhausted ?? false;
+  const samQuotaResetAt = samResult?.quotaResetAt ?? null;
+  const samReqAttempted = samResult?.requestsAttempted ?? 0;
+  const samReqAccepted = samResult?.requestsAccepted ?? 0;
+  const samReqFailed = samResult?.requestsFailed ?? 0;
+  const samRequestErrors = samResult?.requestErrors ?? [];
+  const samOk = samFetchFulfilled && samReqFailed === 0 && !samQuotaExhausted;
+  const samHealthError = samRequestErrors.length > 0
+    ? samRequestErrors.slice(0, 5).join("; ")
+    : samQuotaExhausted
+      ? (samQuotaResetAt
+          ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted — resets ${samQuotaResetAt}`
+          : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted; reset time unavailable`)
+      : fedResult.status === "rejected"
+        ? String(fedResult.reason)
+        : null;
+
   const localOk  = localResult.status === "fulfilled";
   const awardsOk = awardsResult.status === "fulfilled";
 
+  // Write per-source health to legacy bid_business_settings (backward compat)
   await writeSyncHealth(businessId, {
-    samLastSuccessAt:    (samActuallyRan    && samOk)    ? now : undefined,
-    samLastError:        !samActuallyRan    ? null : samOk    ? null : String((fedResult as PromiseRejectedResult).reason),
+    samLastSuccessAt:    (samActuallyRan && samOk) ? now : undefined,
+    samLastError:        !samActuallyRan ? null : samOk ? null : samHealthError,
     localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
-    localLastError:      !kyLocalActuallyRan ? null : localOk  ? null : String((localResult as PromiseRejectedResult).reason),
+    localLastError:      !kyLocalActuallyRan ? null : localOk ? null : String((localResult as PromiseRejectedResult).reason),
     awardsLastSuccessAt: (awardsActuallyRan && awardsOk) ? now : undefined,
-    awardsLastError:     !awardsActuallyRan  ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
+    awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
   });
 
-  // Unpack SamGroupedResult — partial results are kept even when quota is exhausted
-  const samResult           = samOk ? (fedResult.value as SamGroupedResult) : null;
-  const samQuotaExhausted   = samResult?.quotaExhausted    ?? false;
-  const samQuotaResetAt     = samResult?.quotaResetAt      ?? null;
-  const samReqAttempted     = samResult?.requestsAttempted ?? 0;
-  const samReqAccepted      = samResult?.requestsAccepted  ?? 0;
+  // Partial SAM.gov results are still used for ingestion, even when health is degraded.
+  const samQuotaBlocked = samQuotaExhausted;
+  const federal: OppWithSource[] = samResult?.opportunities ?? [];
   const federal: OppWithSource[]   = samResult?.opportunities ?? [];
   const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
 
@@ -1063,17 +1080,10 @@ export async function runBidSync(
 
   // Write connection health only for sources that were actually attempted
   await Promise.allSettled([
-    samActuallyRan     ? writeConnectionHealth(
+    samActuallyRan ? writeConnectionHealth(
       businessId, "sam_gov",
-      // success = fetch did not throw AND quota was not exhausted (even partially)
-      samOk && !samQuotaExhausted,
-      samOk
-        ? (samQuotaExhausted
-            ? (samQuotaResetAt
-                ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted — resets ${samQuotaResetAt}`
-                : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted; reset time unavailable`)
-            : null)
-        : String((fedResult as PromiseRejectedResult).reason),
+      samOk,
+      samHealthError,
       federal.length
     ) : Promise.resolve(),
     kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
