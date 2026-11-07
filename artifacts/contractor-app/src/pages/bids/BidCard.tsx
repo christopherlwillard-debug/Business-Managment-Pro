@@ -6,14 +6,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage, SetAsideType, RecommendationLevel, OfficialSourceStatus, NaicsMatch } from "./types";
 import { PIPELINE_STAGES } from "./types";
-
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const due = new Date(dateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
+import { daysUntilBidDeadline } from "./bidStats.js";
 
 function DeadlineBadge({ deadline, dataCompleteness }: { deadline: string | null; dataCompleteness?: string | null }) {
   if (!deadline) {
@@ -31,7 +24,7 @@ function DeadlineBadge({ deadline, dataCompleteness }: { deadline: string | null
     }
     return <span className="text-muted-foreground text-xs">No deadline</span>;
   }
-  const days = daysUntil(deadline);
+  const days = daysUntilBidDeadline(deadline);
   const isUrgent = days !== null && days >= 0 && days <= 7;
   const isPast   = days !== null && days < 0;
   return (
