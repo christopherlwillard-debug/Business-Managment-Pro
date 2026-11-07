@@ -143,7 +143,7 @@ export function isDefaultActiveBid(record: BidLifecycleInput, now = new Date()):
 /** Parse a positive safe integer from an untrusted route/query/body value. */
 export function parsePositiveBidId(value: unknown): number | null {
   if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? value : null;
-  if (typeof value !== "string" || !/^\\d+$/.test(value)) return null;
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
