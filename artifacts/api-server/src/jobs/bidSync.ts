@@ -833,6 +833,7 @@ async function upsertOpportunities(
         ...opp,
         ...refreshed,
         url: refreshed.url ?? opp.url,
+        noticeType: refreshed.noticeType ?? opp.noticeType,
         placeOfPerformance: opp.placeOfPerformance ?? existing.placeOfPerformance,
       }, defaultSourceLabel);
 
