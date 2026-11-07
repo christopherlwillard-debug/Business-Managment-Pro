@@ -37,7 +37,7 @@ import { classifySourceHeuristic } from "../lib/officialSourceFinder.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 import { getCredential } from "../lib/credentialManager.js";
 import { detectContractType } from "../lib/bidContractTypeDetector.js";
-import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
+import { classifyOpportunityScope, isScopeCompatibleWithBusiness, isAsphaltCrossRouteCandidate, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
 import { isActionableBid, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
@@ -1145,14 +1145,10 @@ export async function runBidSync(
   // business. "excluded" NAICS sectors must never be re-routed as construction bids.
   // Keep each source's original identity/label when routing so federal notices do
   // not get silently rewritten as state-local records.
-  const asphaltFederalRejected = federalUpsert.scopeRejected.filter((opp) => {
-    const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, opp.source ?? "federal");
-    return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
-  });
-  const asphaltLocalRejected = localUpsert.scopeRejected.filter((opp) => {
-    const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, opp.source ?? "state-local");
-    return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
-  });
+  const asphaltFederalRejected = federalUpsert.scopeRejected.filter((opp) =>
+    isAsphaltCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "federal"));
+  const asphaltLocalRejected = localUpsert.scopeRejected.filter((opp) =>
+    isAsphaltCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "state-local"));
   const asphaltScopeRejected = [...asphaltFederalRejected, ...asphaltLocalRejected];
   if (asphaltScopeRejected.length > 0 && business.type !== "asphalt_sealing") {
     try {
