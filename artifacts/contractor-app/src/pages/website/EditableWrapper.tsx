@@ -359,6 +359,12 @@ const ELEMENT_TYPE_LABELS: Record<string, string> = {
   social:     "Social Links",
 };
 
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable ||
+    target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']") !== null;
+}
+
 export function EditableWrapper({
   id,
   label,
@@ -420,6 +426,7 @@ export function EditableWrapper({
       } ${isHidden ? "opacity-50" : ""}`}
       onClick={locked ? undefined : onSelect}
       onKeyDown={locked ? undefined : e => {
+        if (isTextEditingTarget(e.target)) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           e.stopPropagation();
