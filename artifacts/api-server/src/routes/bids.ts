@@ -23,7 +23,7 @@ import { findOfficialSource, classifySourceHeuristic, makeStatusLabel, makeStatu
 import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 import { getExistingBusiness } from "../lib/bid-ownership.js";
-import { getBidLifecycleState, isDefaultActiveBid, legacyStatusForBidStage } from "../lib/bidLifecycle.js";
+import { getBidLifecycleState, isDefaultActiveBid, legacyStageForBidStatus, legacyStatusForBidStage } from "../lib/bidLifecycle.js";
 import { buildBidFilterReason, selectUnifiedCandidateGroup, unifiedBidIdentity } from "../lib/bidHiddenFeed.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
@@ -1115,19 +1115,40 @@ router.patch("/:id", async (req, res) => {
     updates.status = legacyStatusForBidStage(stage);
   }
 
-  if (notes !== undefined)  updates.notes = notes;
+  if (notes !== undefined) {
+    if (typeof notes !== "string") {
+      res.status(400).json({ error: "notes must be a string" });
+      return;
+    }
+    updates.notes = notes;
+  }
 
+  // Legacy clients may still send status. Keep the pipeline stage and legacy
+  // status synchronized in both directions; an explicit stage takes precedence.
   if (status !== undefined && stage === undefined) {
-    const allowed = ["new", "interested", "dismissed"];
-    if (!allowed.includes(status)) {
+    const mappedStage = legacyStageForBidStatus(status);
+    if (!mappedStage) {
       res.status(400).json({ error: "Invalid status. Must be new, interested, or dismissed." });
       return;
     }
     updates.status = status;
+    updates.stage = mappedStage;
   }
 
-  if (privateOpportunityContact !== undefined) updates.privateOpportunityContact = privateOpportunityContact ?? null;
-  if (privateSourceType !== undefined)         updates.privateSourceType = privateSourceType ?? null;
+  if (privateOpportunityContact !== undefined) {
+    if (privateOpportunityContact !== null && typeof privateOpportunityContact !== "string") {
+      res.status(400).json({ error: "privateOpportunityContact must be a string or null" });
+      return;
+    }
+    updates.privateOpportunityContact = privateOpportunityContact ?? null;
+  }
+  if (privateSourceType !== undefined) {
+    if (privateSourceType !== null && typeof privateSourceType !== "string") {
+      res.status(400).json({ error: "privateSourceType must be a string or null" });
+      return;
+    }
+    updates.privateSourceType = privateSourceType ?? null;
+  }
   if (jobId !== undefined) {
     if (jobId !== null && (!Number.isInteger(jobId) || jobId <= 0)) {
       res.status(400).json({ error: "jobId must be a positive integer or null" });
