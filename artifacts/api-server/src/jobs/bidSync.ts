@@ -832,6 +832,7 @@ async function upsertOpportunities(
       const refreshedGeography = geographyForOpportunity({
         ...opp,
         ...refreshed,
+        url: refreshed.url ?? opp.url,
         placeOfPerformance: opp.placeOfPerformance ?? existing.placeOfPerformance,
       }, defaultSourceLabel);
 
