@@ -1,6 +1,7 @@
 import { launchBrowser } from "./launchBrowser.js";
 import { getCredential } from "./credentialManager.js";
 import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { createRequire } from "node:module";
 const _require = createRequire(import.meta.url);
 // pdf-parse is CJS-only; use createRequire for ESM-safe interop
@@ -8,7 +9,34 @@ const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: strin
 
 const SAM_API_BASE = "https://api.sam.gov/opportunities/v2/search";
 
-const PRIVATE_IP_RE = /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1$|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:)/i;
+/** Reject private, loopback, link-local, shared, documentation, and non-routable IP ranges. */
+export function isUnsafeIpAddress(rawAddress: string): boolean {
+  const address = rawAddress.replace(/^\[|\]$/g, "").toLowerCase();
+  const family = isIP(address);
+  if (family === 4) {
+    const octets = address.split(".").map(Number);
+    const [a, b, c] = octets;
+    return a === 0
+      || a === 10
+      || a === 127
+      || a >= 224
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 0 && (c === 0 || c === 2))
+      || (a === 192 && b === 88 && c === 99)
+      || (a === 192 && b === 168)
+      || (a === 198 && (b === 18 || b === 19))
+      || (a === 198 && b === 51 && c === 100)
+      || (a === 203 && b === 0 && c === 113);
+  }
+  if (family === 6) {
+    // Only global-unicast 2000::/3 is permitted. This also rejects IPv4-mapped,
+    // loopback, unspecified, ULA, link-local, multicast, and reserved ranges.
+    return !/^[23]/.test(address) || address.startsWith("2001:db8:");
+  }
+  return true;
+}
 
 async function isSafeUrl(rawUrl: string): Promise<boolean> {
   let parsed: URL;
@@ -19,14 +47,13 @@ async function isSafeUrl(rawUrl: string): Promise<boolean> {
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
 
-  const hostname = parsed.hostname;
-  if (PRIVATE_IP_RE.test(hostname)) return false;
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (hostname === "localhost" || hostname.endsWith(".local")) return false;
+  if (isIP(hostname) !== 0) return !isUnsafeIpAddress(hostname);
 
   try {
-    const { address } = await lookup(hostname);
-    if (PRIVATE_IP_RE.test(address)) return false;
-    if (address === "127.0.0.1" || address === "::1") return false;
+    const resolved = await lookup(hostname, { all: true, verbatim: true });
+    if (resolved.length === 0 || resolved.some(({ address }) => isUnsafeIpAddress(address))) return false;
   } catch {
     return false;
   }
