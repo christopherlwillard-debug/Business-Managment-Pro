@@ -610,6 +610,7 @@ async function upsertOpportunities(
       .where(and(
         eq(bidOpportunitiesTable.noticeId, opp.noticeId),
         eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, effectiveSource),
       ))
       .then((rows) => rows.length > 0)) {
       console.log(`[bid-sync] Duplicate source record suppressed: "${opp.title.slice(0, 70)}"`);
@@ -636,7 +637,11 @@ async function upsertOpportunities(
     const existing = await db
       .select({ id: bidOpportunitiesTable.id, aiSummary: bidOpportunitiesTable.aiSummary })
       .from(bidOpportunitiesTable)
-      .where(and(eq(bidOpportunitiesTable.noticeId, opp.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
+      .where(and(
+        eq(bidOpportunitiesTable.noticeId, opp.noticeId),
+        eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, effectiveSource),
+      ))
       .then((rows) => rows[0] ?? null);
 
     const settingsForRec = { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness };
