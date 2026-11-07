@@ -17,6 +17,13 @@ export function isActionableBid(record: {
   return !isAwardIntelligence(record);
 }
 
+/** Keep the legacy status column aligned with every user-visible pipeline stage. */
+export function legacyStatusForBidStage(stage: string): "new" | "interested" | "dismissed" {
+  if (stage === "new") return "new";
+  if (stage === "won" || stage === "lost" || stage === "no_bid") return "dismissed";
+  return "interested";
+}
+
 export type BidLifecycleState =
   | "active"
   | "incomplete"
