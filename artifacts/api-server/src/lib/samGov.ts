@@ -159,9 +159,9 @@ async function fetchPage(
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[sam-gov] Fetch error for ${label}:`, message);
-    return { records: [], totalRecords: 0, error: `Network/timeout error for ${label}: ${message}` };
+    const errorName = err instanceof Error ? err.name : "UnknownError";
+    console.error(`[sam-gov] Fetch failed for ${label}: ${errorName}`);
+    return { records: [], totalRecords: 0, error: `Network/timeout error for ${label} (${errorName})` };
   }
 
   // ── 429: quota exhausted — throw so the grouped-search coordinator can ───
@@ -182,7 +182,7 @@ async function fetchPage(
   if (!res.ok) {
     const body = await res.text();
     console.warn(`[sam-gov] ${res.status} for ${label}: ${body.slice(0, 200)}`);
-    return { records: [], totalRecords: 0, error: `HTTP ${res.status} for ${label}: ${body.slice(0, 200)}` };
+    return { records: [], totalRecords: 0, error: `HTTP ${res.status} for ${label}` };
   }
 
   // ── Parse success response ────────────────────────────────────────────────
@@ -606,7 +606,7 @@ export async function fetchSamOpportunitiesGrouped(
   }
   console.log(
     `[sam-gov] Grouped search complete: ${result.length} unique opportunities from ${tasks.length} search tasks` +
-    `, ${httpCounters.attempted} HTTP request(s) / ${httpCounters.accepted} accepted` +
+    `, ${httpCounters.attempted} HTTP request(s) / ${httpCounters.accepted} accepted / ${httpCounters.failed} failed` +
     (quotaExhausted
       ? ` (quota exhausted${quotaResetAt ? `, resets ${quotaResetAt}` : ", reset time unavailable"})`
       : "")
