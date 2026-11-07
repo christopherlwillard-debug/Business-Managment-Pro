@@ -141,6 +141,7 @@ function toIsoDate(d: Date): string {
 interface SamApiPage {
   records:      SamOpportunity[];
   totalRecords: number;
+  error?:       string;
 }
 
 async function fetchPage(
@@ -158,8 +159,9 @@ async function fetchPage(
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    console.error(`[sam-gov] Fetch error for ${label}:`, err);
-    return { records: [], totalRecords: 0 };
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[sam-gov] Fetch error for ${label}:`, message);
+    return { records: [], totalRecords: 0, error: `Network/timeout error for ${label}: ${message}` };
   }
 
   // ── 429: quota exhausted — throw so the grouped-search coordinator can ───
@@ -180,7 +182,7 @@ async function fetchPage(
   if (!res.ok) {
     const body = await res.text();
     console.warn(`[sam-gov] ${res.status} for ${label}: ${body.slice(0, 200)}`);
-    return { records: [], totalRecords: 0 };
+    return { records: [], totalRecords: 0, error: `HTTP ${res.status} for ${label}: ${body.slice(0, 200)}` };
   }
 
   // ── Parse success response ────────────────────────────────────────────────
@@ -227,7 +229,7 @@ async function fetchPage(
     return { records, totalRecords: data.totalRecords ?? records.length };
   } catch (err) {
     console.error(`[sam-gov] Parse error for ${label}:`, err);
-    return { records: [], totalRecords: 0 };
+    return { records: [], totalRecords: 0, error: `Parse error for ${label}: ${err instanceof Error ? err.message : String(err)}` };
   }
 }
 
@@ -246,7 +248,7 @@ async function fetchAllPages(
   baseParams: Record<string, string>,
   label:      string,
   /** Shared counter updated once per fetchPage HTTP call (including all pagination pages). */
-  counters?:  { attempted: number; accepted: number },
+  counters?:  { attempted: number; accepted: number; failed: number; errors: string[] },
 ): Promise<SamOpportunity[]> {
   const all: SamOpportunity[] = [];
 
@@ -254,15 +256,21 @@ async function fetchAllPages(
     const offset = page * SAM_PAGE_SIZE;
     // Increment before the call so 429-throws are still counted as attempted.
     if (counters) counters.attempted++;
-    const { records, totalRecords } = await fetchPage(
+    const pageResult = await fetchPage(
       apiKey,
       { ...baseParams, limit: String(SAM_PAGE_SIZE), offset: String(offset) },
       page === 0 ? label : `${label} p${page + 1}`,
     );
-    // fetchPage only throws SamQuotaError; all other errors return empty.
-    // Reaching here means the HTTP call was accepted (2xx or swallowed error).
+    if (pageResult.error) {
+      if (counters) {
+        counters.failed++;
+        counters.errors.push(pageResult.error);
+      }
+      break; // keep prior successful pages, but do not report this request as healthy
+    }
     if (counters) counters.accepted++;
 
+    const { records, totalRecords } = pageResult;
     all.push(...records);
 
     const isLastPage = records.length < SAM_PAGE_SIZE;
@@ -331,7 +339,9 @@ class Semaphore {
  *                        or null when the response was missing / unparseable.
  *                        Only meaningful when `quotaExhausted` is true.
  * `requestsAttempted`  — number of fetchAllPages calls started (each task = 1).
- * `requestsAccepted`   — number of fetchAllPages calls that returned without error.
+ * `requestsAccepted`   — number of HTTP pages that returned valid 2xx JSON.
+ * `requestsFailed`     — number of network/HTTP/parse failures (partial data is retained).
+ * `requestErrors`      — sanitized failure descriptions for source-health reporting.
  */
 export interface SamGroupedResult {
   opportunities:     SamOpportunity[];
@@ -339,6 +349,8 @@ export interface SamGroupedResult {
   quotaResetAt:      string | null;
   requestsAttempted: number;
   requestsAccepted:  number;
+  requestsFailed:    number;
+  requestErrors:     string[];
 }
 
 // ── Catch-all keyword tasks ────────────────────────────────────────────────────
@@ -541,7 +553,7 @@ export async function fetchSamOpportunitiesGrouped(
 
   // HTTP-call counters — updated inside fetchAllPages once per fetchPage call,
   // so pagination is correctly accounted for (not just task count).
-  const httpCounters = { attempted: 0, accepted: 0 };
+  const httpCounters = { attempted: 0, accepted: 0, failed: 0, errors: [] as string[] };
 
   // Global dedup map — first occurrence wins; noticeId → raw SamOpportunity.
   // matchedCapability and naicsMismatch are assigned in the post-fetch pass.
@@ -606,6 +618,8 @@ export async function fetchSamOpportunitiesGrouped(
     quotaResetAt,
     requestsAttempted: httpCounters.attempted,
     requestsAccepted:  httpCounters.accepted,
+    requestsFailed:    httpCounters.failed,
+    requestErrors:     httpCounters.errors,
   };
 }
 
