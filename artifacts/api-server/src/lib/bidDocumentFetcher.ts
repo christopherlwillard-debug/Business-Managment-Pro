@@ -66,9 +66,15 @@ export interface FetchedDocument {
   source: "pdf" | "html" | "description";
 }
 
-async function extractTextFromPdf(buffer: Buffer, maxChars = 30000): Promise<string> {
-  const result = await pdfParse(buffer);
-  return result.text?.slice(0, maxChars) ?? "";
+/** A malformed or encrypted source PDF should fall back to HTML/description, not fail the whole bid analysis. */
+export async function extractTextFromPdf(buffer: Buffer, maxChars = 30000): Promise<string> {
+  try {
+    const result = await pdfParse(buffer);
+    return result.text?.slice(0, maxChars) ?? "";
+  } catch (error) {
+    console.warn("[bid-doc] PDF text extraction failed; trying fallback content:", (error as Error).message);
+    return "";
+  }
 }
 
 const MAX_REDIRECTS = 5;
