@@ -58,6 +58,33 @@ export function normalizedBidIdentity(record: {
   return `${source}|title:${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
 }
 
+export interface BidSourceFields {
+  title: string;
+  agency: string | null;
+  naicsCode: string | null;
+  description: string | null;
+  postedDate: string | null;
+  responseDeadline: string | null;
+  url: string | null;
+  noticeType: string | null;
+  setAsideType: string | null;
+}
+
+/** Prefer fresh non-empty source values, but retain last-known values when portals omit fields. */
+export function mergeBidSourceFields(
+  existing: BidSourceFields,
+  incoming: Partial<BidSourceFields>,
+): BidSourceFields {
+  const merged = { ...existing };
+  for (const key of Object.keys(incoming) as Array<keyof BidSourceFields>) {
+    const value = incoming[key];
+    if (typeof value === "string" ? value.trim().length > 0 : value != null) {
+      merged[key] = value as BidSourceFields[typeof key];
+    }
+  }
+  return merged;
+}
+
 export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()): BidLifecycleState {
   if (isAwardIntelligence(record) || ["won", "lost", "no_bid", "score_rejected"].includes(record.stage ?? "")) {
     return "historical";
