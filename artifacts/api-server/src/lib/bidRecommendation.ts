@@ -51,7 +51,9 @@ function daysUntil(dateStr: string | null): number | null {
 export type NormalizedSetAside =
   | "sdvosb"             // SDVOSB set-aside — requires SDVOSB cert
   | "vosb"               // VOSB set-aside — requires VOSB (SDVOSB counts)
-  | "small_business"     // SB total set-aside — any SB qualifies
+  | "small_business"     // SB total/partial set-aside — size standard applies
+  | "hubzone"            // HUBZone set-aside — requires HUBZone certification
+  | "8a"                 // 8(a) set-aside — requires SBA 8(a) certification
   | "veteran_preference" // Veteran preference in evaluation (not a set-aside)
   | "open"               // Full & open competition
   | "cert_other"         // Other cert-specific (8(a), HUBZone, WOSB…)
@@ -61,13 +63,15 @@ export function classifySetAside(rawCode: string | null | undefined): Normalized
   if (!rawCode) return "unknown";
   const upper = rawCode.trim().toUpperCase();
   if (upper === "NONE") return "open";
-  if (upper === "SDVOSB") return "sdvosb";
-  if (upper === "VOSB" || upper === "VSBAOP") return "vosb";
-  if (upper === "SBA") return "small_business";
+  if (["SDVOSB", "SDVOSBC", "SDVOSBS"].includes(upper)) return "sdvosb";
+  if (["VOSB", "VSBAOP", "VSA", "VSS"].includes(upper)) return "vosb";
+  if (["SBA", "SBP"].includes(upper)) return "small_business";
+  if (["HZC", "HZS"].includes(upper)) return "hubzone";
+  if (["8A", "8AN", "HS3"].includes(upper)) return "8a";
   // "veteran preference" signals — not formal set-asides
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
   // Cert-specific that we cannot score (WOSB, EDWOSB, HZC, 8A, 8AN, ISBEE)
-  if (["WOSB","EDWOSB","HZC","HZS","8A","8AN","ISBEE"].some((c) => upper === c)) return "cert_other";
+  if (["WOSB", "WOSBSS", "EDWOSB", "EDWOSBSS", "ISBEE", "BICIV", "IEE", "BI"].includes(upper)) return "cert_other";
   return "unknown";
 }
 
@@ -75,7 +79,7 @@ export function classifySetAside(rawCode: string | null | undefined): Normalized
 
 function buildSetAsideFactor(
   rawCode: string | null | undefined,
-  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
+  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean; isHubzone?: boolean; is8a?: boolean },
 ): RecommendationFactor {
   const norm = classifySetAside(rawCode);
   const key = "set_aside";
@@ -100,6 +104,20 @@ function buildSetAsideFactor(
       }
       return { key, label: "Set-Aside Eligibility", signal: "negative",
         detail: "VOSB set-aside — restricted to Veteran-Owned Small Businesses. Veteran-owned certification is required." };
+
+    case "hubzone":
+      return settings.isHubzone
+        ? { key, label: "Set-Aside Eligibility", signal: "neutral",
+            detail: "HUBZone set-aside — the business profile is marked HUBZone, but this is not proof of current SBA certification. Verify active HUBZone certification and SAM.gov representations before treating the business as eligible." }
+        : { key, label: "Set-Aside Eligibility", signal: "negative",
+            detail: "HUBZone set-aside — this competition is restricted to certified HUBZone small businesses. Verify eligibility before pursuing." };
+
+    case "8a":
+      return settings.is8a
+        ? { key, label: "Set-Aside Eligibility", signal: "neutral",
+            detail: "8(a) set-aside — the business profile is marked 8(a), but this is not proof of current SBA program participation. Verify active 8(a) status and SAM.gov representations before treating the business as eligible." }
+        : { key, label: "Set-Aside Eligibility", signal: "negative",
+            detail: "8(a) set-aside — this opportunity requires current SBA 8(a) program eligibility. Verify before pursuing." };
 
     case "small_business":
       if (settings.isSmallBusiness) {
@@ -166,6 +184,8 @@ export function computeRecommendation(
     isSdvosb:        boolean;
     isVosb:          boolean;
     isSmallBusiness: boolean;
+    isHubzone?:      boolean;
+    is8a?:           boolean;
   },
   aiSummary: Record<string, unknown> | null,
 ): BidRecommendation {
@@ -322,7 +342,7 @@ export function computeRecommendation(
   }
 
   // ── Decision logic ─────────────────────────────────────────────────────────
-  const setAsideRequiresVerification = ["sdvosb", "vosb", "small_business", "cert_other"].includes(setAsideNorm);
+  const setAsideRequiresVerification = ["sdvosb", "vosb", "small_business", "hubzone", "8a", "cert_other", "unknown"].includes(setAsideNorm);
   const deadlineExpired     = daysOut !== null && daysOut < 0;
   const aiIsFit             = aiSummary?.["isFit"] === true;
   const aiIsNotFit          = aiSummary?.["isFit"] === false;
