@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, legacyStatusForBidStage, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
+import { getBidLifecycleState, legacyStageForBidStatus, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, legacyStatusForBidStage, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
+  it("keeps legacy status-only updates aligned with pipeline stages", () => {
+    expect(legacyStageForBidStatus("new")).toBe("new");
+    expect(legacyStageForBidStatus("interested")).toBe("reviewing");
+    expect(legacyStageForBidStatus("dismissed")).toBe("no_bid");
+    expect(legacyStageForBidStatus("unknown")).toBeNull();
+  });
+
   it("keeps legacy status aligned across every pipeline stage", () => {
     expect(legacyStatusForBidStage("new")).toBe("new");
     for (const stage of ["reviewing", "bidding", "submitted"]) {
