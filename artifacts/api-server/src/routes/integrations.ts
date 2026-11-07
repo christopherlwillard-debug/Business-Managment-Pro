@@ -184,10 +184,13 @@ async function resolveBusinessScope(
 }
 
 /** Aggregate bid_source_connections across ALL businesses, by catalogSlug. */
-async function loadSyncHealthMap(): Promise<Map<string, SyncHealth>> {
+async function loadSyncHealthMap(businessId?: number | null): Promise<Map<string, SyncHealth>> {
   let rows: typeof bidSourceConnectionsTable.$inferSelect[] = [];
   try {
-    rows = await db.select().from(bidSourceConnectionsTable);
+    const query = db.select().from(bidSourceConnectionsTable);
+    rows = businessId == null
+      ? await query
+      : await query.where(eq(bidSourceConnectionsTable.businessId, businessId));
   } catch {
     // Table may not exist yet
     return new Map();
@@ -236,7 +239,7 @@ router.get("/", async (req, res) => {
     const rawBusinessId = req.query.businessId;
     const parsedBusinessId = rawBusinessId == null ? null : Number(rawBusinessId);
     const businessId = Number.isInteger(parsedBusinessId) && parsedBusinessId! > 0 ? parsedBusinessId : null;
-    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap(businessId)]);
 
     const result = INTEGRATION_CATALOG
       .filter(def => !def.comingSoon) // hide coming-soon from the main list
@@ -255,7 +258,7 @@ router.get("/health", async (req, res) => {
     const rawBusinessId = req.query.businessId;
     const parsedBusinessId = rawBusinessId == null ? null : Number(rawBusinessId);
     const businessId = Number.isInteger(parsedBusinessId) && parsedBusinessId! > 0 ? parsedBusinessId : null;
-    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap(businessId)]);
 
     const allIntegrations = INTEGRATION_CATALOG.map(def =>
       buildIntegrationResponse(def, getScopedCredentialRow(rows, def, businessId), syncHealthMap)
@@ -303,7 +306,7 @@ router.get("/:slug", async (req, res) => {
           ? isNull(integrationCredentialsTable.businessId)
           : eq(integrationCredentialsTable.businessId, businessId),
       )).limit(1),
-      loadSyncHealthMap(),
+      loadSyncHealthMap(req.query.businessId == null ? null : Number(req.query.businessId)),
     ]);
 
     res.json(buildIntegrationResponse(def, row, syncHealthMap));
@@ -551,7 +554,7 @@ router.post("/health/tasks", async (req, res) => {
   }
 
   try {
-    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap(businessId)]);
     
 
     const created: Array<{ title: string; notes: string; priority: string }> = [];
