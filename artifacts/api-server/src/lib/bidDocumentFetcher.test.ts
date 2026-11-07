@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUnsafeIpAddress, readLimitedResponseBuffer } from "./bidDocumentFetcher.js";
+import { extractTextFromPdf, isUnsafeIpAddress, readLimitedResponseBuffer } from "./bidDocumentFetcher.js";
 
 describe("bid document URL safety", () => {
   it("blocks private, loopback, link-local, shared, and non-routable IPv4 ranges", () => {
@@ -50,5 +50,11 @@ describe("bid document response size limits", () => {
 
     const result = await readLimitedResponseBuffer(response, 4);
     expect(result).toEqual(Buffer.from([1, 2, 3, 4]));
+  });
+});
+
+describe("bid PDF extraction fallback", () => {
+  it("returns empty extracted text for a malformed PDF instead of throwing", async () => {
+    await expect(extractTextFromPdf(Buffer.from("this is not a PDF"))).resolves.toBe("");
   });
 });
