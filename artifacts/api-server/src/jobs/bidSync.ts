@@ -995,9 +995,9 @@ export async function runBidSync(
   if (samQuotaBlocked) {
     console.log(`[bid-sync] SAM.gov quota exhausted for "${business.name}" — skipping until ${storedSamQuotaResetAt!.toISOString()}`);
   }
-  const samActuallyRan      = samEnabled && samHasApiKey && !samQuotaBlocked;
+  const samActuallyRan      = samEnabled && samHasApiKey && !samQuotaBlocked && profile.searchGroups.length > 0;
   const kyLocalActuallyRan  = isEnabled(enabledSources, "ky_in_local");
-  const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending");
+  const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending") && profile.naicsCodes.length > 0;
 
   // Fetch from all enabled sources in parallel
   const now = new Date();
