@@ -6,6 +6,7 @@ import {
   Link2, User, Globe, Activity, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -103,6 +104,7 @@ function getStatusConfig(status: string): StatusConfig {
 
 export default function IntegrationCard({ integration, onUpdated }: { integration: IntegrationStatus; onUpdated: () => void }) {
   const queryClient = useQueryClient();
+  const { activeBusiness } = useBusiness();
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -186,7 +188,8 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
   // ── Save portal credentials ──────────────────────────────────────────────────
   const savePortalMutation = useMutation({
     mutationFn: async () => {
-      const body: Record<string, string> = {};
+      const body: Record<string, string | number> = {};
+      if (integration.scope === "business" && activeBusiness?.id) body.businessId = activeBusiness.id;
       if (portalUrl.trim()) body.portalUrl = portalUrl.trim();
       if (username.trim())  body.username  = username.trim();
       if (password.trim())  body.password  = password.trim();
@@ -211,7 +214,10 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
   // ── Remove portal credentials ────────────────────────────────────────────────
   const removePortalMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`${BASE_URL}/api/integrations/${integration.slug}/portal`, {
+      const businessQuery = integration.scope === "business" && activeBusiness?.id
+        ? `?businessId=${activeBusiness.id}`
+        : "";
+      const res = await fetch(`${BASE_URL}/api/integrations/${integration.slug}/portal${businessQuery}`, {
         method: "DELETE", credentials: "include",
       });
       return res.json();
