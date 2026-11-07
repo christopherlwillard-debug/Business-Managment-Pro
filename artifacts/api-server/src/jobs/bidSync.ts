@@ -1039,6 +1039,8 @@ export async function runBidSync(
   const awardsFetchFulfilled = awardsResult.status === "fulfilled";
   const awardsFetchResult = awardsFetchFulfilled ? (awardsResult.value as UsaSpendingFetchResult) : null;
   const awardsOk = awardsFetchFulfilled && (awardsFetchResult?.errors.length ?? 0) === 0;
+  const awardsHealthSuccess = awardsFetchFulfilled
+    && ((awardsFetchResult?.requestsSucceeded ?? 0) > 0 || (awardsFetchResult?.errors.length ?? 0) === 0);
   const awardsError = (awardsFetchResult?.errors ?? []).slice(0, 5).join("; ")
     || (awardsResult.status === "rejected" ? String(awardsResult.reason) : null);
 
@@ -1048,7 +1050,7 @@ export async function runBidSync(
     samLastError:        !samActuallyRan ? null : samOk ? null : samHealthError,
     localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
     localLastError:      !kyLocalActuallyRan ? null : localOk ? null : String((localResult as PromiseRejectedResult).reason),
-    awardsLastSuccessAt: (awardsActuallyRan && awardsOk) ? now : undefined,
+    awardsLastSuccessAt: (awardsActuallyRan && awardsHealthSuccess) ? now : undefined,
     awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : awardsError,
   });
 
@@ -1090,7 +1092,7 @@ export async function runBidSync(
       federal.length
     ) : Promise.resolve(),
     kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
-    awardsActuallyRan ? writeConnectionHealth(businessId, "usa_spending", awardsOk, awardsError, awards.length) : Promise.resolve(),
+    awardsActuallyRan ? writeConnectionHealth(businessId, "usa_spending", awardsHealthSuccess, awardsError, awards.length) : Promise.resolve(),
   ]);
 
   // Filter local results by local keywords
