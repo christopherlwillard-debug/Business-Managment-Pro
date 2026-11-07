@@ -282,11 +282,10 @@ function decryptQuickLinks(links: unknown[]): unknown[] {
     for (const field of ["username", "password"]) {
       const credential = link[field];
       if (typeof credential === "string" && credential.startsWith(QUICK_LINK_SECRET_PREFIX)) {
-        try {
-          link[field] = decryptCredential(credential.slice(QUICK_LINK_SECRET_PREFIX.length));
-        } catch {
-          link[field] = "";
-        }
+        // Never substitute an empty value for undecryptable ciphertext: that
+        // would make the UI look like the saved password is blank and could
+        // overwrite a valid credential on the next save.
+        link[field] = decryptCredential(credential.slice(QUICK_LINK_SECRET_PREFIX.length));
       }
     }
     return link;
