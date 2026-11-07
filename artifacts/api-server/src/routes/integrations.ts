@@ -467,27 +467,56 @@ router.post("/:slug/portal", async (req, res) => {
     return;
   }
 
-  const body = req.body as {
-    businessId?: number;
-    portalUrl?:  string;
-    username?:   string;
-    password?:   string;
-    notes?:      string;
-  };
+  const body = req.body as Record<string, unknown> | null;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    res.status(400).json({ error: "A JSON object is required." });
+    return;
+  }
+
   const businessId = await resolveBusinessScope(def, body.businessId, res);
   if (businessId === undefined) return;
 
-  if (!body.portalUrl?.trim() && !body.username?.trim() && !body.password?.trim()) {
+  const textFields = ["portalUrl", "username", "password", "notes"] as const;
+  const limits = { portalUrl: 2048, username: 320, password: 4096, notes: 2000 } as const;
+  const values: Partial<Record<(typeof textFields)[number], string | null>> = {};
+  for (const field of textFields) {
+    const value = body[field];
+    if (value === undefined) continue;
+    if (value !== null && typeof value !== "string") {
+      res.status(400).json({ error: `${field} must be a string.` });
+      return;
+    }
+    if (typeof value === "string" && value.length > limits[field]) {
+      res.status(400).json({ error: `${field} is too long.` });
+      return;
+    }
+    values[field] = typeof value === "string" ? value.trim() : null;
+  }
+
+  const portalUrl = values.portalUrl;
+  if (typeof portalUrl === "string" && portalUrl) {
+    let parsedPortalUrl: URL;
+    try { parsedPortalUrl = new URL(portalUrl); } catch {
+      res.status(400).json({ error: "portalUrl must be a valid HTTP or HTTPS URL." });
+      return;
+    }
+    if (!["http:", "https:"].includes(parsedPortalUrl.protocol) || parsedPortalUrl.username || parsedPortalUrl.password) {
+      res.status(400).json({ error: "portalUrl must use HTTP or HTTPS and cannot contain embedded credentials." });
+      return;
+    }
+  }
+
+  if (![values.portalUrl, values.username, values.password].some(value => typeof value === "string" && value.length > 0)) {
     res.status(400).json({ error: "At least one of portalUrl, username, or password is required." });
     return;
   }
 
   try {
     await setPortalCredential(slug, {
-      portalUrl: body.portalUrl === undefined ? undefined : body.portalUrl.trim(),
-      username:  body.username === undefined ? undefined : body.username.trim(),
-      password:  body.password === undefined ? undefined : body.password.trim(),
-      notes:     body.notes === undefined ? undefined : body.notes.trim(),
+      portalUrl: values.portalUrl === undefined ? undefined : values.portalUrl,
+      username:  values.username === undefined ? undefined : values.username,
+      password:  values.password === undefined ? undefined : values.password,
+      notes:     values.notes === undefined ? undefined : values.notes,
     }, businessId);
 
     const [updatedRow] = await db
