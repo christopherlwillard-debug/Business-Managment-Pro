@@ -265,9 +265,10 @@ export default function IntegrationsPage() {
   const { activeBusiness } = useBusiness();
 
   const { data: healthData, isLoading, error } = useQuery<HealthData>({
-    queryKey: ["integrations-health"],
+    queryKey: ["integrations-health", activeBusiness?.id ?? null],
     queryFn: async () => {
-      const res = await fetch(`${BASE_URL}/api/integrations/health`, { credentials: "include" });
+      const businessQuery = activeBusiness?.id ? `?businessId=${activeBusiness.id}` : "";
+      const res = await fetch(`${BASE_URL}/api/integrations/health${businessQuery}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load integrations");
       return res.json();
     },
