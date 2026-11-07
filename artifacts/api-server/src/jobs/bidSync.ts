@@ -40,7 +40,7 @@ import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
-import { isActionableBid, normalizedBidIdentity } from "../lib/bidLifecycle.js";
+import { isActionableBid, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -495,7 +495,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     // Only auto-delete untouched new rows. A no_bid row is a user decision/history
     // record and must remain recoverable even if its capability scope later changes.
     if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
-      if (bid.stage === "new") {
+      if (shouldPruneScopeMismatch(bid.stage)) {
         await db.delete(bidOpportunitiesTable).where(eq(bidOpportunitiesTable.id, bid.id));
         console.log(`[bid-sync] Pruned wrong-business bid (scope: ${scope.primaryCategory ?? "unknown"}): "${bid.title.slice(0, 60)}" from ${profile.businessType}`);
         pruned++;
@@ -518,7 +518,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     const autoNobd = opportunityScore === 0 && bid.stage === "new" && isHardSuppressedByTitle(bid.title);
     // A previously score-rejected row may become relevant after capability profiles
     // change. Restore it automatically once it clears the current score floor.
-    const autoRestoreRejected = bid.stage === "score_rejected" && opportunityScore >= MIN_SCORE_TO_STORE;
+    const autoRestoreRejected = shouldRestoreScoreRejectedBid(bid.stage, opportunityScore, MIN_SCORE_TO_STORE);
     if (autoNobd) {
       console.log(`[bid-sync] Auto-dismissed hard-suppressed bid: "${bid.title.slice(0, 70)}"`);
     }
