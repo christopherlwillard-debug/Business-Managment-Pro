@@ -1038,6 +1038,7 @@ export async function runBidSync(
   const samReqFailed = samResult?.requestsFailed ?? 0;
   const samRequestErrors = samResult?.requestErrors ?? [];
   const samOk = samFetchFulfilled && samReqFailed === 0 && !samQuotaExhausted;
+  const samHealthSuccess = samFetchFulfilled && samReqAccepted > 0;
   const samQuotaError = samQuotaExhausted
     ? (samQuotaResetAt
         ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted / ${samReqFailed} failed — resets ${samQuotaResetAt}`
@@ -1071,7 +1072,7 @@ export async function runBidSync(
 
   // Write per-source health to legacy bid_business_settings (backward compat)
   await writeSyncHealth(businessId, {
-    samLastSuccessAt:    (samActuallyRan && samOk) ? now : undefined,
+    samLastSuccessAt:    (samActuallyRan && samHealthSuccess) ? now : undefined,
     samLastError:        !samActuallyRan ? null : samOk ? null : samHealthError,
     localLastSuccessAt:  (kyLocalActuallyRan && localHasSuccessForLegacy) ? now : undefined,
     localLastError:      !kyLocalActuallyRan ? null : localLegacyError,
@@ -1112,7 +1113,7 @@ export async function runBidSync(
   await Promise.allSettled([
     samActuallyRan ? writeConnectionHealth(
       businessId, "sam_gov",
-      samOk,
+      samHealthSuccess,
       samHealthError,
       federal.length
     ) : Promise.resolve(),
