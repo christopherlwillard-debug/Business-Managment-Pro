@@ -51,7 +51,17 @@ describe("bid lifecycle boundary", () => {
     expect(shouldRestoreScoreRejectedBid("new", 100, 20)).toBe(false);
   });
 
-  it("gives repeated source records the same identity", () => {
+  it("deduplicates repeated records by source notice ID", () => {
+    expect(normalizedBidIdentity({ source: "federal", noticeId: "  ABC-123 ", title: "Old Title", agency: "City" }))
+      .toBe(normalizedBidIdentity({ source: "FEDERAL", noticeId: "abc-123", title: "Updated Title", agency: "Different Agency" }));
+  });
+
+  it("preserves recurring solicitations with the same title but different notice IDs", () => {
+    expect(normalizedBidIdentity({ source: "federal", noticeId: "ABC-123", title: "Roof Repair", agency: "City" }))
+      .not.toBe(normalizedBidIdentity({ source: "federal", noticeId: "ABC-456", title: "Roof Repair", agency: "City" }));
+  });
+
+  it("normalizes title and agency only when a source notice ID is unavailable", () => {
     expect(normalizedBidIdentity({ source: "federal", title: "  Roof Repair ", agency: "City" }))
       .toBe(normalizedBidIdentity({ source: "federal", title: "roof repair", agency: " city " }));
   });
