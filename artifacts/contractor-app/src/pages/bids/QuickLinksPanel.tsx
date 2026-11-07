@@ -314,7 +314,7 @@ export default function QuickLinksPanel({
                     Password <span className="text-muted-foreground/50">(optional)</span>
                   </label>
                   <input
-                    type="text"
+                    type="password"
                     placeholder="Password"
                     value={form.password}
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}

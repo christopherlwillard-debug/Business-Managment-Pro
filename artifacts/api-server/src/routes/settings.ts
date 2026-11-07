@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { businessesTable, settingsTable, usersTable, vehiclesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
-import { getCredential } from "../lib/credentialManager.js";
+import { getCredential, encryptCredential, decryptCredential } from "../lib/credentialManager.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail";
 import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -259,6 +259,51 @@ function toServingUrl(raw: string | null | undefined): string | null {
   return raw; // Already /api/uploads/... or http://...
 }
 
+const QUICK_LINK_SECRET_PREFIX = "enc:v1:";
+
+function encryptQuickLinks(links: unknown[]): unknown[] {
+  return links.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const link = { ...(value as Record<string, unknown>) };
+    for (const field of ["username", "password"]) {
+      const credential = link[field];
+      if (typeof credential === "string" && credential.length > 0 && !credential.startsWith(QUICK_LINK_SECRET_PREFIX)) {
+        link[field] = QUICK_LINK_SECRET_PREFIX + encryptCredential(credential);
+      }
+    }
+    return link;
+  });
+}
+
+function decryptQuickLinks(links: unknown[]): unknown[] {
+  return links.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const link = { ...(value as Record<string, unknown>) };
+    for (const field of ["username", "password"]) {
+      const credential = link[field];
+      if (typeof credential === "string" && credential.startsWith(QUICK_LINK_SECRET_PREFIX)) {
+        // Never substitute an empty value for undecryptable ciphertext: that
+        // would make the UI look like the saved password is blank and could
+        // overwrite a valid credential on the next save.
+        link[field] = decryptCredential(credential.slice(QUICK_LINK_SECRET_PREFIX.length));
+      }
+    }
+    return link;
+  });
+}
+
+function hasLegacyQuickLinkCredentials(links: unknown[]): boolean {
+  return links.some((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const link = value as Record<string, unknown>;
+    return ["username", "password"].some((field) =>
+      typeof link[field] === "string"
+      && link[field] !== ""
+      && !(link[field] as string).startsWith(QUICK_LINK_SECRET_PREFIX),
+    );
+  });
+}
+
 function parseJsonArray(v: string | null | undefined): string[] | null {
   if (!v) return null;
   try { return JSON.parse(v); } catch { return null; }
@@ -295,7 +340,7 @@ function format(s: any) {
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
     calculatorDefaults: s.calculatorDefaults ?? null,
     taxAssumptions: s.taxAssumptions ?? null,
-    quickLinks: Array.isArray(s.quickLinks) ? s.quickLinks : [],
+    quickLinks: Array.isArray(s.quickLinks) ? decryptQuickLinks(s.quickLinks) : [],
     // P&L layout
     ownerSplitPct: s.ownerSplitPct != null ? parseFloat(String(s.ownerSplitPct)) : 50,
     taxReservePct: s.taxReservePct != null ? parseFloat(String(s.taxReservePct)) : 25,
@@ -325,6 +370,20 @@ router.get("/", async (req, res) => {
     }
     const userId = (req.user as { id?: string } | undefined)?.id;
     const isOwner = settings.ownerUserId === userId;
+    if (isOwner && Array.isArray(settings.quickLinks) && hasLegacyQuickLinkCredentials(settings.quickLinks)) {
+      try {
+        const encryptedLinks = encryptQuickLinks(settings.quickLinks);
+        await db.update(settingsTable)
+          .set({ quickLinks: encryptedLinks, updatedAt: new Date() })
+          .where(eq(settingsTable.id, settings.id));
+        settings.quickLinks = encryptedLinks as typeof settings.quickLinks;
+      } catch (migrationError) {
+        console.error("[settings] Could not encrypt legacy contractor portal credentials:", migrationError);
+        return res.status(503).json({
+          error: "Contractor portal credentials could not be secured. Configure SESSION_SECRET before accessing these settings.",
+        });
+      }
+    }
     const formatted = format(settings);
     if (!isOwner) {
       const { smtpHost, smtpPort, smtpUser, smtpSecure, smtpConfigured, ein, ownerUserId, complianceNotificationEmail, complianceEmailEnabled, quickLinks, logoUrl, dbaLogoUrl, ...safe } = formatted;
@@ -346,8 +405,8 @@ router.put("/", async (req, res) => {
     if (body.quickLinks !== undefined) {
       const [s] = await db.select({ ownerUserId: settingsTable.ownerUserId }).from(settingsTable).limit(1);
       const userId = (req.user as { id?: string } | undefined)?.id;
-      if (s?.ownerUserId && s.ownerUserId !== userId) {
-        return res.status(403).json({ error: "Only the owner can modify portal links." });
+      if (!s?.ownerUserId || s.ownerUserId !== userId) {
+        return res.status(403).json({ error: "Only the verified owner can modify portal links." });
       }
       // Validate payload shape: must be an array of objects with id, label, url strings
       if (!Array.isArray(body.quickLinks)) {
@@ -462,7 +521,7 @@ router.put("/", async (req, res) => {
         ? validateTaxAssumptionConfig(body.taxAssumptions)
         : (settings?.taxAssumptions ?? null),
       quickLinks: body.quickLinks !== undefined
-        ? (Array.isArray(body.quickLinks) ? body.quickLinks : null)
+        ? (Array.isArray(body.quickLinks) ? encryptQuickLinks(body.quickLinks) : null)
         : (settings?.quickLinks ?? null),
       // P&L layout
       ownerSplitPct: body.ownerSplitPct != null ? String(parseFloat(body.ownerSplitPct)) : settings?.ownerSplitPct,
@@ -489,7 +548,15 @@ router.put("/", async (req, res) => {
     } else {
       [settings] = await db.update(settingsTable).set(patch).returning();
     }
-    res.json(format(settings));
+    const userId = (req.user as { id?: string } | undefined)?.id;
+    const isOwner = !!userId && settings.ownerUserId === userId;
+    const formatted = format(settings);
+    if (!isOwner) {
+      const { quickLinks, ...safe } = formatted;
+      res.json(safe);
+      return;
+    }
+    res.json(formatted);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update settings" });

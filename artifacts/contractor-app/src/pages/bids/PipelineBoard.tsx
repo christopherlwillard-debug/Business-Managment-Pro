@@ -2,14 +2,7 @@ import { Building2, Sparkles, ExternalLink, CheckCircle2, XCircle, ChevronDown, 
 import { cn } from "@/lib/utils";
 import type { AiSummary, BidOpportunity, BidStage } from "./types";
 import { PIPELINE_STAGES } from "./types";
-
-function daysUntil(dateStr: string | null): number | null {
-  if (!dateStr) return null;
-  const due = new Date(dateStr);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
+import { daysUntilBidDeadline } from "./bidStats.js";
 
 function PipelineCard({
   bid,
@@ -26,7 +19,7 @@ function PipelineCard({
   onStageChange: (bid: BidOpportunity, stage: BidStage) => void;
   isUpdating: boolean;
 }) {
-  const days = daysUntil(bid.responseDeadline);
+  const days = daysUntilBidDeadline(bid.responseDeadline);
   const isUrgent = days !== null && days >= 0 && days <= 7;
   const isPast = days !== null && days < 0;
 

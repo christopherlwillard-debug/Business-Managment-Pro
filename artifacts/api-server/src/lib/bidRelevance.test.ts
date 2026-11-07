@@ -17,6 +17,8 @@ import { describe, it, expect } from "vitest";
 import {
   classifyOpportunityScope,
   isScopeCompatibleWithBusiness,
+  isAsphaltCrossRouteCandidate,
+  isGeneralContractingCrossRouteCandidate,
 } from "./bidScopeClassifier.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -32,6 +34,30 @@ function isAllowed(naicsCode: string, businessType = "general_contracting"): boo
 }
 
 // ── Negative examples — must be classified as "excluded" ─────────────────────
+
+describe("cross-business asphalt routing", () => {
+  it("routes confidently classified asphalt scope only", () => {
+    expect(isAsphaltCrossRouteCandidate("Asphalt paving and resurfacing", null, "state-local")).toBe(true);
+    expect(isAsphaltCrossRouteCandidate("Roadway sealcoating", "237310", "federal")).toBe(true);
+  });
+
+  it("routes flooring and manufactured-home opportunities back to general contracting", () => {
+    expect(isGeneralContractingCrossRouteCandidate("Flooring installation", "238330", "federal")).toBe(true);
+    expect(isGeneralContractingCrossRouteCandidate("Manufactured home drywall finishing", "238310", "federal")).toBe(true);
+  });
+
+  it("does not route asphalt or excluded sectors to general contracting", () => {
+    expect(isGeneralContractingCrossRouteCandidate("Asphalt paving", "237310", "federal")).toBe(false);
+    expect(isGeneralContractingCrossRouteCandidate("Engine block procurement", "333618", "federal")).toBe(false);
+    expect(isGeneralContractingCrossRouteCandidate("Unknown procurement", null, "federal")).toBe(false);
+  });
+
+  it("never routes excluded NAICS sectors or unrelated scopes to asphalt", () => {
+    expect(isAsphaltCrossRouteCandidate("Engine block procurement", "333618", "federal")).toBe(false);
+    expect(isAsphaltCrossRouteCandidate("Flooring installation", "238330", "federal")).toBe(false);
+    expect(isAsphaltCrossRouteCandidate("Unknown procurement", null, "federal")).toBe(false);
+  });
+});
 
 describe("NAICS sector exclusion — negative examples (must be rejected)", () => {
   it("rejects engine block / diesel (NAICS 333618 — manufacturing sector 33)", () => {

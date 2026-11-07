@@ -141,10 +141,10 @@ async function seedDefaultBusinesses(): Promise<void> {
  * Startup scope cleanup — runs every boot, completes in milliseconds.
  *
  * Deletes bid_opportunities rows whose scope_category is incompatible with
- * the business they are assigned to, as long as the row has NOT been actively
- * worked (stage = 'new' or 'no_bid'). This self-heals any rows that slipped
- * through before the Phase 7 scope gate was in place (e.g. COUNTY PAVING PROGRAM
- * under Willard's Flooring) without needing a manual sync.
+ * the business they are assigned to, but ONLY while the row is untouched
+ * (stage = 'new'). A user-marked no_bid row is review history and must never
+ * be deleted by automatic cleanup. This self-heals rows that slipped through
+ * before the Phase 7 scope gate was in place without needing a manual sync.
  *
  * Conservative: re-classifies scope from title + NAICS (same logic as sync-time
  * pruning) so confidence is correctly applied — low-confidence matches are never
@@ -165,7 +165,7 @@ async function ensureBidScopeCleanup(): Promise<void> {
       })
       .from(bidOpportunitiesTable)
       .innerJoin(businessesTable, eq(bidOpportunitiesTable.businessId, businessesTable.id))
-      .where(inArray(bidOpportunitiesTable.stage, ["new", "no_bid"]));
+      .where(eq(bidOpportunitiesTable.stage, "new"));
 
     const toDelete: number[] = [];
     for (const row of candidates) {

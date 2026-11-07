@@ -17,6 +17,20 @@ export function isActionableBid(record: {
   return !isAwardIntelligence(record);
 }
 
+/** Keep the legacy status column aligned with every user-visible pipeline stage. */
+export function legacyStageForBidStatus(status: string): "new" | "reviewing" | "no_bid" | null {
+  if (status === "new") return "new";
+  if (status === "interested") return "reviewing";
+  if (status === "dismissed") return "no_bid";
+  return null;
+}
+
+export function legacyStatusForBidStage(stage: string): "new" | "interested" | "dismissed" {
+  if (stage === "new") return "new";
+  if (stage === "won" || stage === "lost" || stage === "no_bid") return "dismissed";
+  return "interested";
+}
+
 export type BidLifecycleState =
   | "active"
   | "incomplete"
@@ -46,10 +60,43 @@ export function isExpiredDeadline(deadline: string | null | undefined, now = new
 
 export function normalizedBidIdentity(record: {
   source?: string | null;
+  noticeId?: string | null;
   title: string;
   agency?: string | null;
 }): string {
-  return `${record.source ?? ""}|${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
+  const source = (record.source ?? "").trim().toLowerCase();
+  const noticeId = record.noticeId?.trim().toLowerCase();
+  // A distinct official/source ID is a distinct opportunity even when an agency
+  // reuses the same title for recurring procurements.
+  if (noticeId) return `${source}|id:${noticeId}`;
+  return `${source}|title:${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
+}
+
+export interface BidSourceFields {
+  title: string;
+  agency: string | null;
+  naicsCode: string | null;
+  description: string | null;
+  postedDate: string | null;
+  responseDeadline: string | null;
+  url: string | null;
+  noticeType: string | null;
+  setAsideType: string | null;
+}
+
+/** Prefer fresh non-empty source values, but retain last-known values when portals omit fields. */
+export function mergeBidSourceFields(
+  existing: BidSourceFields,
+  incoming: Partial<BidSourceFields>,
+): BidSourceFields {
+  const merged = { ...existing };
+  for (const key of Object.keys(incoming) as Array<keyof BidSourceFields>) {
+    const value = incoming[key];
+    if (typeof value === "string" ? value.trim().length > 0 : value != null) {
+      Object.assign(merged, { [key]: value });
+    }
+  }
+  return merged;
 }
 
 export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()): BidLifecycleState {
@@ -64,8 +111,39 @@ export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()
   return "active";
 }
 
+/** Only untouched new rows may be automatically pruned for a scope mismatch. */
+export function shouldPruneScopeMismatch(stage: string | null | undefined): boolean {
+  return stage === "new";
+}
+
+/** Move only untouched new rows below the relevance floor into the recoverable hidden feed. */
+export function shouldRejectNewBid(
+  stage: string | null | undefined,
+  score: number,
+  minimumScore: number,
+): boolean {
+  return stage === "new" && score < minimumScore;
+}
+
+/** Re-open a previously score-rejected row when an updated profile makes it relevant. */
+export function shouldRestoreScoreRejectedBid(
+  stage: string | null | undefined,
+  score: number,
+  minimumScore: number,
+): boolean {
+  return stage === "score_rejected" && score >= minimumScore;
+}
+
 export function isDefaultActiveBid(record: BidLifecycleInput, now = new Date()): boolean {
   return isActionableBid(record)
     && getBidLifecycleState(record, now) === "active"
     && (record.opportunityScore ?? 0) > 0;
+}
+
+/** Parse a positive safe integer from an untrusted route/query/body value. */
+export function parsePositiveBidId(value: unknown): number | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? value : null;
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }

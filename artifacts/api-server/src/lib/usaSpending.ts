@@ -23,6 +23,13 @@ export interface UsaSpendingAward {
   placeOfPerformance: string | null;
 }
 
+export interface UsaSpendingFetchResult {
+  awards: UsaSpendingAward[];
+  errors: string[];
+  requestsAttempted: number;
+  requestsSucceeded: number;
+}
+
 interface RawAward {
   generated_internal_id?: string;
   "Recipient Name"?:                  string;
@@ -54,7 +61,7 @@ async function fetchAwardPage(
   endDate:    string,
   label:      string,
   state?:     string,
-): Promise<UsaSpendingAward[]> {
+): Promise<{ awards: UsaSpendingAward[]; error?: string }> {
   // Base filters — always applied
   const filters: Record<string, unknown> = {
     award_type_codes: ["A", "B", "C", "D"],
@@ -90,11 +97,11 @@ async function fetchAwardPage(
     if (!res.ok) {
       const text = await res.text();
       console.warn(`[usa-spending] ${res.status} for ${label}: ${text.slice(0, 300)}`);
-      return [];
+      return { awards: [], error: `HTTP ${res.status} for ${label}` };
     }
 
     const data = (await res.json()) as { results?: RawAward[] };
-    return (data.results ?? [])
+    const awards = (data.results ?? [])
       .filter((r) => r.generated_internal_id)
       .map((r) => ({
         noticeId:         r.generated_internal_id!,
@@ -107,9 +114,11 @@ async function fetchAwardPage(
         url:              `https://www.usaspending.gov/award/${encodeURIComponent(r.generated_internal_id!)}`,
         placeOfPerformance: r["Place of Performance State Code"] ?? null,
       }));
+    return { awards };
   } catch (err) {
-    console.error(`[usa-spending] Fetch error for ${label}:`, err);
-    return [];
+    const errorName = err instanceof Error ? err.name : "UnknownError";
+    console.error(`[usa-spending] Fetch failed for ${label}: ${errorName}`);
+    return { awards: [], error: `Network/timeout error for ${label} (${errorName})` };
   }
 }
 
@@ -126,8 +135,10 @@ export async function fetchUsaSpendingAwards(opts: {
   naicsCodes: string[];
   /** Business home state abbreviation (e.g. "KY"). Defaults to "KY" if omitted. */
   state?: string;
-}): Promise<UsaSpendingAward[]> {
-  if (opts.naicsCodes.length === 0) return [];
+}): Promise<UsaSpendingFetchResult> {
+  if (opts.naicsCodes.length === 0) {
+    return { awards: [], errors: [], requestsAttempted: 0, requestsSucceeded: 0 };
+  }
 
   const state     = opts.state ?? "KY";
   const endDate   = new Date().toISOString().slice(0, 10);
@@ -142,19 +153,25 @@ export async function fetchUsaSpendingAwards(opts: {
 
   const seen    = new Set<string>();
   const deduped: UsaSpendingAward[] = [];
+  const errors: string[] = [];
+  let requestsAttempted = 0;
+  let requestsSucceeded = 0;
 
   for (const batch of batches) {
     if (deduped.length >= MAX_RESULTS) break;
 
-    const batchResults = await fetchAwardPage(
+    const pageResult = await fetchAwardPage(
       batch,
       startDate,
       endDate,
       `NAICS [${batch.join(", ")}] / nationwide`,
       state,
     );
+    requestsAttempted++;
+    if (pageResult.error) errors.push(pageResult.error);
+    else requestsSucceeded++;
 
-    for (const r of batchResults) {
+    for (const r of pageResult.awards) {
       if (seen.has(r.noticeId)) continue;
       seen.add(r.noticeId);
       deduped.push(r);
@@ -165,5 +182,5 @@ export async function fetchUsaSpendingAwards(opts: {
   console.log(
     `[usa-spending] Fetched ${deduped.length} awards ≤$2M (nationwide) across ${batches.length} batch(es) for ${opts.naicsCodes.length} NAICS code(s)`,
   );
-  return deduped;
+  return { awards: deduped, errors, requestsAttempted, requestsSucceeded };
 }

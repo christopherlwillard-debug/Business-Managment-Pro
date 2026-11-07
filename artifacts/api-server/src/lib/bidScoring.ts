@@ -16,9 +16,9 @@
  *   "veteran_preference"→ Veteran preference in evaluation (not a formal set-aside).
  *                         Small bonus for veteran-owned businesses.
  *   "open"              → Full & open competition. Everyone competes; small static bonus.
- *   undefined           → No bonus. Covers: absent data, cert-specific programs (HUBZone,
- *                         8(a)/8AN, WOSB, EDWOSB, ISBEE) that require credentials not
- *                         tracked in bid_business_settings.
+ *   "hubzone" / "8a"    → Recognized restricted programs; no automatic bonus.
+ *   undefined           → No bonus. Covers absent or unrecognized data.
+ *   "cert_other"        → Other restricted programs (WOSB, EDWOSB, ISBEE, etc.).
  *
  * @param code - Raw SAM.gov typeOfSetAside string, or null/undefined if absent.
  * @returns A canonical scoring key, or undefined when no bonus should apply.
@@ -31,60 +31,54 @@ export function normalizeSetAsideType(code: string | null | undefined): string |
   // Explicit full-and-open marker from SAM.gov
   if (upper === "NONE") return "open";
 
-  // SDVOSB — strictly requires SDVOSB cert (more restrictive than VOSB)
-  if (upper === "SDVOSB") return "sdvosb";
+  // SAM.gov official codes include competed and sole-source variants.
+  if (["SDVOSB", "SDVOSBC", "SDVOSBS"].includes(upper)) return "sdvosb";
 
-  // VOSB — requires VOSB or SDVOSB cert (SDVOSB is a qualifying subset)
-  if (upper === "VOSB" || upper === "VSBAOP") return "vosb";
+  // VOSB and VA veteran-owned variants (SDVOSB is a qualifying subset).
+  if (["VOSB", "VSBAOP", "VSA", "VSS"].includes(upper)) return "vosb";
 
-  // Total small-business set-aside — any small business qualifies
-  if (upper === "SBA") return "small_business";
+  // Total and partial small-business set-asides.
+  if (["SBA", "SBP"].includes(upper)) return "small_business";
+
+  // Certification-specific programs are recognized but never receive an
+  // automatic scoring advantage from unverified profile flags.
+  if (["HZC", "HZS"].includes(upper)) return "hubzone";
+  if (["8A", "8AN", "HS3"].includes(upper)) return "8a";
+  if (["WOSB", "WOSBSS", "EDWOSB", "EDWOSBSS", "ISBEE", "BICIV", "IEE", "BI"].includes(upper)) return "cert_other";
 
   // Veteran preference in evaluation (not a formal set-aside; all may compete)
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
 
-  // Everything else (WOSB, EDWOSB, HZC/HZS, 8A, 8AN, ISBEE, …) requires
-  // certifications not tracked in the profile — return undefined (no bonus).
+  // Unrecognized codes receive no automatic score component.
   return undefined;
 }
 
 /**
- * Compute the set-aside score component for a given normalized set-aside type
- * and business certification flags.
+ * Compute a conservative set-aside score component.
  *
- * Scoring intent:
- *  - Maximum bonus when the business holds the required certification (directly eligible).
- *  - Reduced bonus for open/preference competitions (less differentiation).
- *  - Zero when ineligible (cert required but not held) or unknown.
- *  - NEVER assign a full eligibility bonus to a business that doesn't hold the cert.
+ * The stored certification booleans are owner-maintained profile flags, not
+ * independently verified SBA/SAM.gov records. They must never create a scoring
+ * advantage that makes a restricted opportunity look more suitable than it is.
+ * Eligibility is surfaced for manual verification in the recommendation layer.
  */
 export function setAsideScore(
   normalizedType: string | undefined,
-  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
+  _settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
 ): number {
-  if (!normalizedType) return 0;
-
   switch (normalizedType) {
-    case "sdvosb":
-      // SDVOSB set-aside: full 20-pt bonus only if SDVOSB certified
-      // VOSB alone does NOT qualify — give only 0 (ineligible, no misleading bonus)
-      return settings.isSdvosb ? 20 : 0;
-
-    case "vosb":
-      // VOSB set-aside: eligible if VOSB or SDVOSB
-      return (settings.isVosb || settings.isSdvosb) ? 20 : 0;
-
-    case "small_business":
-      return settings.isSmallBusiness ? 15 : 5; // SB flag needed for max; still worth noting
-
-    case "veteran_preference":
-      // Evaluation preference — any veteran-owned gets small advantage
-      return (settings.isVosb || settings.isSdvosb) ? 8 : 3;
-
     case "open":
-      return 5; // full-and-open — everyone competes; small signal for completeness
-
+      return 5;
+    case "veteran_preference":
+      // Preference is not a set-aside; do not infer qualification from a profile flag.
+      return 3;
+    case "sdvosb":
+    case "vosb":
+    case "small_business":
+    case "hubzone":
+    case "8a":
+    case "cert_other":
     default:
+      // Restricted categories receive no automatic bonus until eligibility is verified.
       return 0;
   }
 }

@@ -300,6 +300,7 @@ export function buildUsernameHint(username: string): string {
 export async function setPortalCredential(
   slug: string,
   opts: PortalCredentialOpts,
+  businessId?: number | null,
 ): Promise<void> {
   const encPassword  = opts.password  ? encryptCredential(opts.password)  : undefined;
   const encUsername  = opts.username  ? encryptCredential(opts.username)  : undefined;
@@ -313,7 +314,10 @@ export async function setPortalCredential(
   const existing = await db
     .select({ id: integrationCredentialsTable.id })
     .from(integrationCredentialsTable)
-    .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)))
+    .where(and(
+      eq(integrationCredentialsTable.slug, slug),
+      businessId == null ? isNull(integrationCredentialsTable.businessId) : eq(integrationCredentialsTable.businessId, businessId),
+    ))
     .limit(1);
 
   // Build a typed partial update object
@@ -337,12 +341,15 @@ export async function setPortalCredential(
     await db
       .update(integrationCredentialsTable)
       .set(updateFields)
-      .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)));
+      .where(and(
+      eq(integrationCredentialsTable.slug, slug),
+      businessId == null ? isNull(integrationCredentialsTable.businessId) : eq(integrationCredentialsTable.businessId, businessId),
+    ));
   } else {
     await db.insert(integrationCredentialsTable).values({
       slug,
-      scope:              "platform",
-      businessId:         null,
+      scope:              businessId == null ? "platform" : "business",
+      businessId:         businessId ?? null,
       portalUrl:          (opts.portalUrl ?? null) as string | null,
       encryptedValue:     (encPassword ?? null) as string | null,
       keyHint:            (passwordHint ?? null) as string | null,
@@ -359,7 +366,7 @@ export async function setPortalCredential(
 /**
  * Clear all portal credentials for a slug (URL, username, password).
  */
-export async function removePortalCredential(slug: string): Promise<void> {
+export async function removePortalCredential(slug: string, businessId?: number | null): Promise<void> {
   await db
     .update(integrationCredentialsTable)
     .set({
@@ -372,5 +379,8 @@ export async function removePortalCredential(slug: string): Promise<void> {
       lastVerifyError:    null,
       updatedAt:          new Date(),
     })
-    .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)));
+    .where(and(
+      eq(integrationCredentialsTable.slug, slug),
+      businessId == null ? isNull(integrationCredentialsTable.businessId) : eq(integrationCredentialsTable.businessId, businessId),
+    ));
 }

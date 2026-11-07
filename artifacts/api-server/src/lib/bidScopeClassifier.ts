@@ -299,6 +299,27 @@ const ASPHALT_EXCLUSIVE_SCOPES = new Set(["asphalt"]);
  */
 const NON_ASPHALT_SCOPES = new Set(["flooring", "mfg_homes"]);
 
+/** True only for a confidently classified asphalt opportunity eligible for GC-to-asphalt routing. */
+export function isAsphaltCrossRouteCandidate(
+  title: string,
+  naicsCode: string | null,
+  source: string,
+): boolean {
+  const scope = classifyOpportunityScope(title, naicsCode, source);
+  return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
+}
+
+/** True only for confidently classified flooring or manufactured-home work eligible for GC routing. */
+export function isGeneralContractingCrossRouteCandidate(
+  title: string,
+  naicsCode: string | null,
+  source: string,
+): boolean {
+  const scope = classifyOpportunityScope(title, naicsCode, source);
+  return (scope.primaryCategory === "flooring" || scope.primaryCategory === "mfg_homes")
+    && scope.confidence !== "low";
+}
+
 /**
  * Returns true if this scope is compatible with the given business type.
  *

@@ -7,6 +7,7 @@ const fixture = vi.hoisted(() => ({
   missingSelects: [] as number[],
   selectCount: 0,
   updatePayloads: [] as Record<string, unknown>[],
+  updateQueue: [] as unknown[][],
   fetchBidDocument: vi.fn(),
   openAiCreate: vi.fn(),
   computeRecommendation: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock("@workspace/db", () => {
       where: () => chain,
       returning: () => chain,
       then(resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) {
-        return Promise.resolve([]).then(resolve, reject);
+        return Promise.resolve(fixture.updateQueue.shift() ?? []).then(resolve, reject);
       },
     };
     return chain;
@@ -197,6 +198,7 @@ beforeEach(() => {
   fixture.missingSelects.length = 0;
   fixture.selectCount = 0;
   fixture.updatePayloads.length = 0;
+  fixture.updateQueue.length = 0;
   fixture.fetchBidDocument.mockReset();
   fixture.openAiCreate.mockReset();
   fixture.computeRecommendation.mockReset();
@@ -210,6 +212,44 @@ beforeEach(() => {
 afterEach(() => {
   expect(fixture.missingSelects).toHaveLength(0);
   expect(fixture.selectQueue).toHaveLength(0);
+  expect(fixture.updateQueue).toHaveLength(0);
+});
+
+describe("bid pipeline stage updates", () => {
+  it("updates the stage and keeps the legacy status column synchronized", async () => {
+    fixture.updateQueue.push([{ ...baseBid, stage: "submitted", status: "interested" }]);
+
+    const response = await request(app)
+      .patch("/bids/17")
+      .send({ businessId: 9, stage: "submitted", notes: "Submitted through the portal." });
+
+    expect(response.status).toBe(200);
+    expect(response.body.stage).toBe("submitted");
+    expect(fixture.updatePayloads).toHaveLength(1);
+    expect(fixture.updatePayloads[0]).toMatchObject({
+      stage: "submitted",
+      status: "interested",
+      notes: "Submitted through the portal.",
+    });
+  });
+
+  it("rejects an unknown stage without writing to the database", async () => {
+    const response = await request(app)
+      .patch("/bids/17")
+      .send({ businessId: 9, stage: "approved" });
+
+    expect(response.status).toBe(400);
+    expect(fixture.updatePayloads).toHaveLength(0);
+  });
+
+  it("returns not found when the bid does not belong to the selected business", async () => {
+    const response = await request(app)
+      .patch("/bids/17")
+      .send({ businessId: 99, stage: "submitted" });
+
+    expect(response.status).toBe(404);
+    expect(fixture.updatePayloads).toHaveLength(1);
+  });
 });
 
 describe("deep-read route", () => {

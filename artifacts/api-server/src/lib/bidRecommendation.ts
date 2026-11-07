@@ -51,23 +51,27 @@ function daysUntil(dateStr: string | null): number | null {
 export type NormalizedSetAside =
   | "sdvosb"             // SDVOSB set-aside — requires SDVOSB cert
   | "vosb"               // VOSB set-aside — requires VOSB (SDVOSB counts)
-  | "small_business"     // SB total set-aside — any SB qualifies
+  | "small_business"     // SB total/partial set-aside — size standard applies
+  | "hubzone"            // HUBZone set-aside — requires HUBZone certification
+  | "8a"                 // 8(a) set-aside — requires SBA 8(a) certification
   | "veteran_preference" // Veteran preference in evaluation (not a set-aside)
   | "open"               // Full & open competition
-  | "cert_other"         // Other cert-specific (8(a), HUBZone, WOSB…)
+  | "cert_other"         // Other cert-specific programs (WOSB, EDWOSB, ISBEE…)
   | "unknown";           // Not specified or unrecognised
 
 export function classifySetAside(rawCode: string | null | undefined): NormalizedSetAside {
   if (!rawCode) return "unknown";
   const upper = rawCode.trim().toUpperCase();
   if (upper === "NONE") return "open";
-  if (upper === "SDVOSB") return "sdvosb";
-  if (upper === "VOSB" || upper === "VSBAOP") return "vosb";
-  if (upper === "SBA") return "small_business";
+  if (["SDVOSB", "SDVOSBC", "SDVOSBS"].includes(upper)) return "sdvosb";
+  if (["VOSB", "VSBAOP", "VSA", "VSS"].includes(upper)) return "vosb";
+  if (["SBA", "SBP"].includes(upper)) return "small_business";
+  if (["HZC", "HZS"].includes(upper)) return "hubzone";
+  if (["8A", "8AN", "HS3"].includes(upper)) return "8a";
   // "veteran preference" signals — not formal set-asides
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
-  // Cert-specific that we cannot score (WOSB, EDWOSB, HZC, 8A, 8AN, ISBEE)
-  if (["WOSB","EDWOSB","HZC","HZS","8A","8AN","ISBEE"].some((c) => upper === c)) return "cert_other";
+  // Other cert-specific programs not represented by the current profile flags.
+  if (["WOSB", "WOSBSS", "EDWOSB", "EDWOSBSS", "ISBEE", "BICIV", "IEE", "BI"].includes(upper)) return "cert_other";
   return "unknown";
 }
 
@@ -75,7 +79,7 @@ export function classifySetAside(rawCode: string | null | undefined): Normalized
 
 function buildSetAsideFactor(
   rawCode: string | null | undefined,
-  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
+  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean; isHubzone?: boolean; is8a?: boolean },
 ): RecommendationFactor {
   const norm = classifySetAside(rawCode);
   const key = "set_aside";
@@ -83,8 +87,8 @@ function buildSetAsideFactor(
   switch (norm) {
     case "sdvosb":
       if (settings.isSdvosb) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: "SDVOSB set-aside — your SDVOSB certification makes you directly eligible for this restricted competition." };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: "SDVOSB set-aside — the business profile is marked SDVOSB, but this setting is not proof of active SBA certification. Verify the current SBA certification and SAM.gov representations before treating the business as eligible." };
       }
       if (settings.isVosb) {
         return { key, label: "Set-Aside Eligibility", signal: "negative",
@@ -95,24 +99,38 @@ function buildSetAsideFactor(
 
     case "vosb":
       if (settings.isVosb || settings.isSdvosb) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: `VOSB set-aside — you are eligible${settings.isSdvosb ? " (SDVOSB is a qualifying subset of VOSB)" : " as a Veteran-Owned Small Business"}.` };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: `VOSB set-aside — the business profile is marked ${settings.isSdvosb ? "SDVOSB" : "VOSB"}, but the profile flag is not proof of current certification. Verify the applicable SBA/VOSB status and SAM.gov representations before treating the business as eligible.` };
       }
       return { key, label: "Set-Aside Eligibility", signal: "negative",
         detail: "VOSB set-aside — restricted to Veteran-Owned Small Businesses. Veteran-owned certification is required." };
 
+    case "hubzone":
+      return settings.isHubzone
+        ? { key, label: "Set-Aside Eligibility", signal: "neutral",
+            detail: "HUBZone set-aside — the business profile is marked HUBZone, but this is not proof of current SBA certification. Verify active HUBZone certification and SAM.gov representations before treating the business as eligible." }
+        : { key, label: "Set-Aside Eligibility", signal: "negative",
+            detail: "HUBZone set-aside — this competition is restricted to certified HUBZone small businesses. Verify eligibility before pursuing." };
+
+    case "8a":
+      return settings.is8a
+        ? { key, label: "Set-Aside Eligibility", signal: "neutral",
+            detail: "8(a) set-aside — the business profile is marked 8(a), but this is not proof of current SBA program participation. Verify active 8(a) status and SAM.gov representations before treating the business as eligible." }
+        : { key, label: "Set-Aside Eligibility", signal: "negative",
+            detail: "8(a) set-aside — this opportunity requires current SBA 8(a) program eligibility. Verify before pursuing." };
+
     case "small_business":
       if (settings.isSmallBusiness) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: "Small Business set-aside — you qualify as a small business. Verify your SB size standard under the specific NAICS code." };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: "Small Business set-aside — the business profile is marked small business. Verify the applicable SBA size standard for this NAICS code and the solicitation's eligibility requirements before treating the business as qualified." };
       }
       return { key, label: "Set-Aside Eligibility", signal: "neutral",
         detail: "Small Business set-aside — verify your small business status under the applicable NAICS code before bidding." };
 
     case "veteran_preference":
       if (settings.isVosb || settings.isSdvosb) {
-        return { key, label: "Veteran Evaluation Preference", signal: "positive",
-          detail: "Veteran preference in evaluation — this is not a set-aside (all businesses may compete), but your veteran-owned status provides a scoring advantage." };
+        return { key, label: "Veteran Evaluation Preference", signal: "neutral",
+          detail: "Veteran preference in evaluation — this is not a set-aside. The business profile is marked veteran-owned; verify the solicitation's exact preference rules and any required documentation before relying on an evaluation benefit." };
       }
       return { key, label: "Veteran Evaluation Preference", signal: "neutral",
         detail: "Veteran preference applies in proposal evaluation — full competition, but veteran-owned businesses receive evaluation bonus points." };
@@ -166,6 +184,8 @@ export function computeRecommendation(
     isSdvosb:        boolean;
     isVosb:          boolean;
     isSmallBusiness: boolean;
+    isHubzone?:      boolean;
+    is8a?:           boolean;
   },
   aiSummary: Record<string, unknown> | null,
 ): BidRecommendation {
@@ -199,9 +219,15 @@ export function computeRecommendation(
   }
 
   // ── Factor 2: Set-aside eligibility ───────────────────────────────────────
+  const setAsideNorm = classifySetAside(opp.setAsideType);
   factors.push(buildSetAsideFactor(opp.setAsideType, settings));
-  if (classifySetAside(opp.setAsideType) === "unknown") {
+  if (setAsideNorm === "unknown") {
     unknowns.push("Set-aside type and competition restrictions");
+  } else if (["sdvosb", "vosb", "small_business", "cert_other"].includes(setAsideNorm)) {
+    // The profile currently stores owner-maintained booleans, not verified
+    // certification evidence or effective dates. Never let these flags alone
+    // authorize a BID or definitive PASS for a restricted competition.
+    unknowns.push("Verify current certification/size status, SAM.gov representations, and solicitation-specific eligibility before bidding");
   }
 
   // ── Factor 3: Solicitation scope review (AI summary) ─────────────────────
@@ -316,12 +342,7 @@ export function computeRecommendation(
   }
 
   // ── Decision logic ─────────────────────────────────────────────────────────
-  const setAsideNorm        = classifySetAside(opp.setAsideType);
-  const setAsideIneligible  = (
-    (setAsideNorm === "sdvosb"    && !settings.isSdvosb) ||
-    (setAsideNorm === "vosb"      && !settings.isVosb && !settings.isSdvosb) ||
-    (setAsideNorm === "cert_other")
-  );
+  const setAsideRequiresVerification = ["sdvosb", "vosb", "small_business", "hubzone", "8a", "cert_other", "unknown"].includes(setAsideNorm);
   const deadlineExpired     = daysOut !== null && daysOut < 0;
   const aiIsFit             = aiSummary?.["isFit"] === true;
   const aiIsNotFit          = aiSummary?.["isFit"] === false;
@@ -348,20 +369,6 @@ export function computeRecommendation(
       factors, unknowns,
     };
   }
-  if (setAsideIneligible && scopeReviewed && aiIsNotFit) {
-    return {
-      recommendation: "pass", confidence: "high",
-      summary: `Set-aside requires a certification you do not hold and solicitation review confirmed no fit.`,
-      factors, unknowns,
-    };
-  }
-  if (setAsideIneligible && !hasCapabilityMatch && scopeReviewed) {
-    return {
-      recommendation: "pass", confidence: "medium",
-      summary: "Set-aside requires a certification you do not hold and no capability match was found.",
-      factors, unknowns,
-    };
-  }
   if (scopeReviewed && aiIsNotFit && opp.opportunityScore < 15) {
     return {
       recommendation: "pass", confidence: "high",
@@ -371,21 +378,21 @@ export function computeRecommendation(
   }
 
   // BID: strong positive signals, scope reviewed (never BID without scope review)
-  if (scopeReviewed && aiIsFit && hasCapabilityMatch && highScore && !setAsideIneligible && !licenseRiskPresent && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && hasCapabilityMatch && highScore && !setAsideRequiresVerification && !licenseRiskPresent && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "high",
       summary: `Strong capability match and AI review confirmed fit — pursue this opportunity.`,
       factors, unknowns,
     };
   }
-  if (scopeReviewed && aiIsFit && hasCapabilityMatch && opp.opportunityScore >= 30 && !setAsideIneligible && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && hasCapabilityMatch && opp.opportunityScore >= 30 && !setAsideRequiresVerification && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "medium",
       summary: `AI review confirmed fit and capability match found — worth pursuing.`,
       factors, unknowns,
     };
   }
-  if (scopeReviewed && aiIsFit && !setAsideIneligible && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && !setAsideRequiresVerification && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "low",
       summary: `AI review confirmed fit — verify the concerns below before committing.`,

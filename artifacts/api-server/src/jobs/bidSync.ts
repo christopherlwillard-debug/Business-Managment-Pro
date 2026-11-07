@@ -19,7 +19,7 @@ import {
 } from "../lib/samGov.js";
 import { fetchKyLocalBids, NAV_PHRASE_DENYLIST, PAVEMENT_KEYWORDS, BROAD_BID_KEYWORDS, type LocalScrapeResult, type SiteHealthRecord } from "../lib/kyLocalBids.js";
 import { fetchKyVssSolicitations } from "../lib/kyVss.js";
-import { fetchUsaSpendingAwards, UsaSpendingAward } from "../lib/usaSpending.js";
+import { fetchUsaSpendingAwards, UsaSpendingAward, UsaSpendingFetchResult } from "../lib/usaSpending.js";
 import { sendEmail, escapeHtml } from "../lib/sendEmail.js";
 import {
   CapabilityDefinition,
@@ -37,10 +37,10 @@ import { classifySourceHeuristic } from "../lib/officialSourceFinder.js";
 import { loadEnabledSources, isEnabled, writeConnectionHealth, bootstrapAutomatedConnections } from "../lib/bidSourceConnection.js";
 import { getCredential } from "../lib/credentialManager.js";
 import { detectContractType } from "../lib/bidContractTypeDetector.js";
-import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
+import { classifyOpportunityScope, isScopeCompatibleWithBusiness, isAsphaltCrossRouteCandidate, isGeneralContractingCrossRouteCandidate, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
-import { isActionableBid, normalizedBidIdentity } from "../lib/bidLifecycle.js";
+import { isActionableBid, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -395,7 +395,7 @@ async function purgeIrrelevantLocalBids(businessId: number, relevantKeywords: st
   const isRelevant = [...titleConditions, ...descConditions].reduce((acc, cond) => sql`${acc} OR ${cond}`);
 
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND NOT (${isRelevant})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND NOT (${isRelevant})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} irrelevant local bid(s) for business ${businessId}`);
@@ -406,7 +406,7 @@ async function purgeNavLinkRows(businessId: number): Promise<number> {
   const likeConditions = NAV_PHRASE_DENYLIST.map((phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`);
   const combined = likeConditions.reduce((acc, cond) => sql`${acc} OR ${cond}`);
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND (${combined})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND (${combined})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} nav-link row(s) for business ${businessId}`);
@@ -427,7 +427,7 @@ async function purgeOldUsaSpendingAwards(businessId: number): Promise<number> {
 async function purgeIrrelevantFederalBids(businessId: number, allowedNaicsCodes: string[]): Promise<number> {
   if (allowedNaicsCodes.length === 0) return 0;
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'federal' AND business_id = ${businessId} AND naics_code IS NOT NULL AND naics_code NOT IN (${sql.raw(allowedNaicsCodes.map((c) => `'${c}'`).join(", "))})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'federal' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND naics_code IS NOT NULL AND naics_code NOT IN (${sql.raw(allowedNaicsCodes.map((c) => `'${c}'`).join(", "))})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} off-profile federal bid(s) for business ${businessId}`);
@@ -460,6 +460,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
       setAsideType:     bidOpportunitiesTable.setAsideType,
       // Phase 7 — needed for scope pruning and completeness re-assessment
       stage:            bidOpportunitiesTable.stage,
+      notes:             bidOpportunitiesTable.notes,
       naicsCode:        bidOpportunitiesTable.naicsCode,
       agency:           bidOpportunitiesTable.agency,
       url:              bidOpportunitiesTable.url,
@@ -491,16 +492,16 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     );
 
     // Scope pruning: delete rows that don't belong to this business type.
-    // Only auto-delete un-reviewed rows (new / no_bid) — never touch rows
-    // the user has actively moved into a workflow stage (reviewing / bidding / etc.).
+    // Only auto-delete untouched new rows. A no_bid row is a user decision/history
+    // record and must remain recoverable even if its capability scope later changes.
     if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
-      if (bid.stage === "new" || bid.stage === "no_bid") {
+      if (shouldPruneScopeMismatch(bid.stage)) {
         await db.delete(bidOpportunitiesTable).where(eq(bidOpportunitiesTable.id, bid.id));
         console.log(`[bid-sync] Pruned wrong-business bid (scope: ${scope.primaryCategory ?? "unknown"}): "${bid.title.slice(0, 60)}" from ${profile.businessType}`);
         pruned++;
         continue;
       }
-      // Stage is reviewing/bidding/submitted/won — update scope fields but don't delete
+      // Reviewed workflow stages and explicit No Bid/Lost decisions are retained; only update their scope fields.
     }
 
     const { opportunityScore, capabilityMatches } = scoreOpportunity(
@@ -515,6 +516,10 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     // score 0 but may have been inserted before a suppress term was added.
     // Only touch 'new' rows — never auto-move a row the user has already reviewed.
     const autoNobd = opportunityScore === 0 && bid.stage === "new" && isHardSuppressedByTitle(bid.title);
+    const autoRejectNew = !autoNobd && shouldRejectNewBid(bid.stage, opportunityScore, MIN_SCORE_TO_STORE);
+    // A previously score-rejected row may become relevant after capability profiles
+    // change. Restore it automatically once it clears the current score floor.
+    const autoRestoreRejected = shouldRestoreScoreRejectedBid(bid.stage, opportunityScore, MIN_SCORE_TO_STORE);
     if (autoNobd) {
       console.log(`[bid-sync] Auto-dismissed hard-suppressed bid: "${bid.title.slice(0, 70)}"`);
     }
@@ -535,7 +540,25 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
           placeOfPerformance: geography.placeOfPerformance,
           geographyReason: geography.geographyReason,
         // Suppress stale bids: move them out of 'new' so they don't clutter the feed
-        ...(autoNobd ? { stage: "no_bid" as const } : {}),
+        ...(autoNobd ? { stage: "no_bid" as const, status: "dismissed" } : {}),
+        ...(autoRejectNew ? {
+          stage: "score_rejected" as const,
+          status: "score_rejected",
+          notes: bid.notes?.startsWith("Filtered:")
+            ? `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
+            : bid.notes
+              ? `${bid.notes}\n\nFiltered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
+              : `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
+        } : {}),
+        ...(autoRestoreRejected ? {
+          stage: "new" as const,
+          status: "new",
+          ...(bid.notes?.startsWith("Filtered:")
+            ? { notes: null }
+            : bid.notes?.includes("\n\nFiltered:")
+              ? { notes: bid.notes.split("\n\nFiltered:")[0] || null }
+              : {}),
+        } : {}),
         ...(completeness !== "complete" ? {
           recommendation: "review" as const,
           recommendationFactors: [],
@@ -593,7 +616,7 @@ async function upsertOpportunities(
     // BEFORE assigning it to a business. This prevents paving/asphalt bids from
     // landing in Willard's Flooring and flooring bids from landing in Asphalt Sealing.
     const effectiveSource = opp.source ?? defaultSource;
-    const duplicateKey = normalizedBidIdentity({ source: effectiveSource, title: opp.title, agency: opp.agency });
+    const duplicateKey = normalizedBidIdentity({ source: effectiveSource, noticeId: opp.noticeId, title: opp.title, agency: opp.agency });
     const hasSameNotice = existingKeys.has(duplicateKey);
     if (hasSameNotice && !await db
       .select({ id: bidOpportunitiesTable.id })
@@ -601,6 +624,7 @@ async function upsertOpportunities(
       .where(and(
         eq(bidOpportunitiesTable.noticeId, opp.noticeId),
         eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, effectiveSource),
       ))
       .then((rows) => rows.length > 0)) {
       console.log(`[bid-sync] Duplicate source record suppressed: "${opp.title.slice(0, 70)}"`);
@@ -625,9 +649,26 @@ async function upsertOpportunities(
     // Select aiSummary so we can incorporate it into the recommendation engine
     // for existing rows that have already been analysed.
     const existing = await db
-      .select({ id: bidOpportunitiesTable.id, aiSummary: bidOpportunitiesTable.aiSummary })
+      .select({
+        id: bidOpportunitiesTable.id,
+        aiSummary: bidOpportunitiesTable.aiSummary,
+        title: bidOpportunitiesTable.title,
+        agency: bidOpportunitiesTable.agency,
+        naicsCode: bidOpportunitiesTable.naicsCode,
+        description: bidOpportunitiesTable.description,
+        postedDate: bidOpportunitiesTable.postedDate,
+        responseDeadline: bidOpportunitiesTable.responseDeadline,
+        url: bidOpportunitiesTable.url,
+        noticeType: bidOpportunitiesTable.noticeType,
+        setAsideType: bidOpportunitiesTable.setAsideType,
+        placeOfPerformance: bidOpportunitiesTable.placeOfPerformance,
+      })
       .from(bidOpportunitiesTable)
-      .where(and(eq(bidOpportunitiesTable.noticeId, opp.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
+      .where(and(
+        eq(bidOpportunitiesTable.noticeId, opp.noticeId),
+        eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, effectiveSource),
+      ))
       .then((rows) => rows[0] ?? null);
 
     const settingsForRec = { isSdvosb: profile.isSdvosb, isVosb: profile.isVosb, isSmallBusiness: profile.isSmallBusiness };
@@ -756,13 +797,53 @@ async function upsertOpportunities(
       if (createdRow) newOnes.push(opp);
       if (createdRow) existingKeys.add(duplicateKey);
     } else {
+      // Merge newly scraped fields with the last known values. A portal may omit
+      // a field on a later scrape even though the solicitation has not removed it.
+      // Refresh source data while preserving user-managed stage, notes, and job link.
+      const refreshed = mergeBidSourceFields({
+        title: existing.title,
+        agency: existing.agency,
+        naicsCode: existing.naicsCode,
+        description: existing.description,
+        postedDate: existing.postedDate,
+        responseDeadline: existing.responseDeadline,
+        url: existing.url,
+        noticeType: existing.noticeType,
+        setAsideType: existing.setAsideType,
+      }, {
+        title: opp.title,
+        agency: opp.agency,
+        naicsCode: opp.naicsCode,
+        description: opp.description,
+        postedDate: opp.postedDate,
+        responseDeadline: opp.responseDeadline,
+        url: opp.url,
+        noticeType: (opp as SamOpportunity).noticeType ?? null,
+        setAsideType: (opp as SamOpportunity).typeOfSetAside ?? null,
+      });
+      const refreshedScope = classifyOpportunityScope(refreshed.title, refreshed.naicsCode, effectiveSource);
+      const refreshedCompleteness = assessDataCompleteness({
+        responseDeadline: refreshed.responseDeadline,
+        naicsCode: refreshed.naicsCode,
+        description: refreshed.description,
+        agency: refreshed.agency,
+        url: refreshed.url,
+      });
+      const refreshedGeography = geographyForOpportunity({
+        ...opp,
+        ...refreshed,
+        url: refreshed.url ?? opp.url,
+        noticeType: refreshed.noticeType ?? opp.noticeType ?? undefined,
+        placeOfPerformance: opp.placeOfPerformance ?? existing.placeOfPerformance,
+      }, defaultSourceLabel);
+
       // Re-score existing row so capability profile changes take effect immediately.
       // Pass cached AI summary so recommendation can incorporate prior analysis.
-      const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
+      const rawSetAside = refreshed.setAsideType;
       const derivedOppType = overrides?.opportunityTypeOverride
-        ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
+        ?? deriveOpportunityType(opp.source ?? defaultSource, refreshed.noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
-        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource, agency: opp.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
+        { title: refreshed.title, description: refreshed.description, responseDeadline: refreshed.responseDeadline, source: opp.source ?? defaultSource, agency: refreshed.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
         profile.capabilities,
         settingsForRec,
         normalizeSetAsideType(rawSetAside),
@@ -770,39 +851,47 @@ async function upsertOpportunities(
 
       const existingAiSummary = existing.aiSummary as Record<string, unknown> | null;
       const rec = computeRecommendation(
-        { title: opp.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
-          responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource,
-          naicsCode: opp.naicsCode, description: opp.description, opportunityType: derivedOppType },
+        { title: refreshed.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
+          responseDeadline: refreshed.responseDeadline, source: opp.source ?? defaultSource,
+          naicsCode: refreshed.naicsCode, description: refreshed.description, opportunityType: derivedOppType },
         settingsForRec,
         existingAiSummary,
       );
 
       const detectedExisting = detectContractType({
-        title: opp.title, description: opp.description,
+        title: refreshed.title, description: refreshed.description,
         aiSummary: existingAiSummary,
-        noticeType: (opp as SamOpportunity).noticeType ?? null,
+        noticeType: refreshed.noticeType ?? null,
       });
       await db.update(bidOpportunitiesTable)
         .set({
+          title:                 refreshed.title,
+          agency:                refreshed.agency,
+          naicsCode:             refreshed.naicsCode,
+          description:           refreshed.description,
+          postedDate:            refreshed.postedDate,
+          responseDeadline:      refreshed.responseDeadline,
+          url:                   refreshed.url,
+          sourceLabel:           opp.sourceLabel ?? defaultSourceLabel,
           opportunityScore,
           capabilityMatches,
-          noticeType:            (opp as SamOpportunity).noticeType ?? null,
-          setAsideType:          rawSetAside,
+          noticeType:            refreshed.noticeType,
+          setAsideType:          refreshed.setAsideType,
           opportunityType:       derivedOppType,
-          recommendation:        completeness === "complete" ? rec.recommendation : "review",
-          recommendationFactors: completeness === "complete"
+          recommendation:        refreshedCompleteness === "complete" ? rec.recommendation : "review",
+          recommendationFactors: refreshedCompleteness === "complete"
             ? rec.factors as unknown as Record<string, unknown>[]
             : [],
           contractType:          detectedExisting.contractType,
           scopeSize:             detectedExisting.scopeSize,
           licenseFlags:          detectedExisting.licenseFlags,
           outOfScopeFlags:       detectedExisting.outOfScopeFlags,
-          // Phase 7 — keep scope + completeness current on every sync
-          scopeCategory:         scope.primaryCategory,
-          dataCompleteness:      completeness,
-          geography:             geography.geography,
-          placeOfPerformance:    geography.placeOfPerformance,
-          geographyReason:       geography.geographyReason,
+          // Phase 7 — keep scope + completeness current on every sync.
+          scopeCategory:         refreshedScope.primaryCategory,
+          dataCompleteness:      refreshedCompleteness,
+          geography:             refreshedGeography.geography,
+          placeOfPerformance:    refreshedGeography.placeOfPerformance,
+          geographyReason:       refreshedGeography.geographyReason,
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }
@@ -818,7 +907,11 @@ async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: n
     const existing = await db
       .select({ id: bidOpportunitiesTable.id })
       .from(bidOpportunitiesTable)
-      .where(and(eq(bidOpportunitiesTable.noticeId, award.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
+      .where(and(
+        eq(bidOpportunitiesTable.noticeId, award.noticeId),
+        eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, "usa-spending"),
+      ))
       .then((rows) => rows[0] ?? null);
 
     if (!existing) {
@@ -981,46 +1074,80 @@ export async function runBidSync(
   if (samQuotaBlocked) {
     console.log(`[bid-sync] SAM.gov quota exhausted for "${business.name}" — skipping until ${storedSamQuotaResetAt!.toISOString()}`);
   }
-  const samActuallyRan      = samEnabled && samHasApiKey && !samQuotaBlocked;
+  const samActuallyRan      = samEnabled && samHasApiKey && !samQuotaBlocked && profile.searchGroups.length > 0;
   const kyLocalActuallyRan  = isEnabled(enabledSources, "ky_in_local");
-  const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending");
+  const awardsActuallyRan   = isEnabled(enabledSources, "usa_spending") && profile.naicsCodes.length > 0;
 
   // Fetch from all enabled sources in parallel
   const now = new Date();
   const [fedResult, localResult, awardsResult] = await Promise.allSettled([
     samActuallyRan
       ? fetchSamOpportunitiesGrouped(profile.searchGroups)
-      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0 } as SamGroupedResult),
+      : Promise.resolve({ opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0, requestsFailed: 0, requestErrors: [] } as SamGroupedResult),
     kyLocalActuallyRan
       ? fetchKyLocalBids()
       : Promise.resolve([]),
     awardsActuallyRan
       ? fetchUsaSpendingAwards({ naicsCodes: profile.naicsCodes, state: business.state ?? "KY" })
-      : Promise.resolve([] as UsaSpendingAward[]),
+      : Promise.resolve({ awards: [], errors: [], requestsAttempted: 0, requestsSucceeded: 0 } as UsaSpendingFetchResult),
   ]);
 
-  // Write per-source health to legacy bid_business_settings (backward compat)
-  const samOk    = fedResult.status === "fulfilled";
-  const localOk  = localResult.status === "fulfilled";
-  const awardsOk = awardsResult.status === "fulfilled";
+  // Unpack SAM.gov results before deciding health. Failed pages retain earlier
+  // successful results, but the source must not be reported healthy.
+  const samFetchFulfilled = fedResult.status === "fulfilled";
+  const samResult = samFetchFulfilled ? (fedResult.value as SamGroupedResult) : null;
+  const samQuotaExhausted = samResult?.quotaExhausted ?? false;
+  const samQuotaResetAt = samResult?.quotaResetAt ?? null;
+  const samReqAttempted = samResult?.requestsAttempted ?? 0;
+  const samReqAccepted = samResult?.requestsAccepted ?? 0;
+  const samReqFailed = samResult?.requestsFailed ?? 0;
+  const samRequestErrors = samResult?.requestErrors ?? [];
+  const samOk = samFetchFulfilled && samReqFailed === 0 && !samQuotaExhausted;
+  const samHealthSuccess = samFetchFulfilled && samReqAccepted > 0;
+  const samQuotaError = samQuotaExhausted
+    ? (samQuotaResetAt
+        ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted / ${samReqFailed} failed — resets ${samQuotaResetAt}`
+        : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted / ${samReqFailed} failed; reset time unavailable`)
+    : null;
+  const samHealthError = [
+    ...samRequestErrors.slice(0, 5),
+    samQuotaError,
+    fedResult.status === "rejected" ? String(fedResult.reason) : null,
+  ].filter((message): message is string => !!message).join("; ") || null;
 
+  const localOk = localResult.status === "fulfilled";
+  const localHealthForLegacy: SiteHealthRecord[] = localOk
+    ? ((localResult.value as LocalScrapeResult)?.siteHealth ?? [])
+    : [];
+  const localFailedForLegacy = localHealthForLegacy.filter((site) => !site.success);
+  const localHasSuccessForLegacy = localOk
+    && (localHealthForLegacy.length === 0 || localHealthForLegacy.some((site) => site.success));
+  const localLegacyError = !localOk
+    ? String((localResult as PromiseRejectedResult).reason)
+    : localFailedForLegacy.length > 0
+      ? `${localFailedForLegacy.length} local procurement site(s) failed: ${localFailedForLegacy.map((site) => site.site).slice(0, 5).join(", ")}`
+      : null;
+  const awardsFetchFulfilled = awardsResult.status === "fulfilled";
+  const awardsFetchResult = awardsFetchFulfilled ? (awardsResult.value as UsaSpendingFetchResult) : null;
+  const awardsOk = awardsFetchFulfilled && (awardsFetchResult?.errors.length ?? 0) === 0;
+  const awardsHealthSuccess = awardsFetchFulfilled
+    && ((awardsFetchResult?.requestsSucceeded ?? 0) > 0 || (awardsFetchResult?.errors.length ?? 0) === 0);
+  const awardsError = (awardsFetchResult?.errors ?? []).slice(0, 5).join("; ")
+    || (awardsResult.status === "rejected" ? String(awardsResult.reason) : null);
+
+  // Write per-source health to legacy bid_business_settings (backward compat)
   await writeSyncHealth(businessId, {
-    samLastSuccessAt:    (samActuallyRan    && samOk)    ? now : undefined,
-    samLastError:        !samActuallyRan    ? null : samOk    ? null : String((fedResult as PromiseRejectedResult).reason),
-    localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
-    localLastError:      !kyLocalActuallyRan ? null : localOk  ? null : String((localResult as PromiseRejectedResult).reason),
-    awardsLastSuccessAt: (awardsActuallyRan && awardsOk) ? now : undefined,
-    awardsLastError:     !awardsActuallyRan  ? null : awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason),
+    samLastSuccessAt:    (samActuallyRan && samHealthSuccess) ? now : undefined,
+    samLastError:        !samActuallyRan ? null : samOk ? null : samHealthError,
+    localLastSuccessAt:  (kyLocalActuallyRan && localHasSuccessForLegacy) ? now : undefined,
+    localLastError:      !kyLocalActuallyRan ? null : localLegacyError,
+    awardsLastSuccessAt: (awardsActuallyRan && awardsHealthSuccess) ? now : undefined,
+    awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : awardsError,
   });
 
-  // Unpack SamGroupedResult — partial results are kept even when quota is exhausted
-  const samResult           = samOk ? (fedResult.value as SamGroupedResult) : null;
-  const samQuotaExhausted   = samResult?.quotaExhausted    ?? false;
-  const samQuotaResetAt     = samResult?.quotaResetAt      ?? null;
-  const samReqAttempted     = samResult?.requestsAttempted ?? 0;
-  const samReqAccepted      = samResult?.requestsAccepted  ?? 0;
-  const federal: OppWithSource[]   = samResult?.opportunities ?? [];
-  const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
+  // Partial SAM.gov results are still used for ingestion, even when health is degraded.
+  const federal: OppWithSource[] = samResult?.opportunities ?? [];
+  const awards: UsaSpendingAward[] = awardsFetchResult?.awards ?? [];
 
   // Unpack the structured LocalScrapeResult from the KY/IN local scraper.
   // localResult.value is now a LocalScrapeResult (not a plain array).
@@ -1044,26 +1171,19 @@ export async function runBidSync(
   const localHealthErrorMsg = !localOk
     ? String((localResult as PromiseRejectedResult).reason)
     : failedLocalSites.length > 0
-      ? `Partial: ${failedLocalSites.length} site(s) unreachable: ${failedLocalSites.map((s: SiteHealthRecord) => s.site).join(", ")}`
+      ? `${anyLocalSiteSucceeded ? "Partial" : "All"}: ${failedLocalSites.length} of ${localSiteHealth.length} site(s) unreachable: ${failedLocalSites.map((s: SiteHealthRecord) => s.site).slice(0, 8).join(", ")}`
       : null;
 
   // Write connection health only for sources that were actually attempted
   await Promise.allSettled([
-    samActuallyRan     ? writeConnectionHealth(
+    samActuallyRan ? writeConnectionHealth(
       businessId, "sam_gov",
-      // success = fetch did not throw AND quota was not exhausted (even partially)
-      samOk && !samQuotaExhausted,
-      samOk
-        ? (samQuotaExhausted
-            ? (samQuotaResetAt
-                ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted — resets ${samQuotaResetAt}`
-                : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted; reset time unavailable`)
-            : null)
-        : String((fedResult as PromiseRejectedResult).reason),
+      samHealthSuccess,
+      samHealthError,
       federal.length
     ) : Promise.resolve(),
     kyLocalActuallyRan ? writeConnectionHealth(businessId, "ky_in_local", localHealthSuccess, localHealthErrorMsg, allLocal.length, localSiteHealthJson)                                                     : Promise.resolve(),
-    awardsActuallyRan  ? writeConnectionHealth(businessId, "usa_spending", awardsOk,         awardsOk ? null : String((awardsResult as PromiseRejectedResult).reason), awards.length)                       : Promise.resolve(),
+    awardsActuallyRan ? writeConnectionHealth(businessId, "usa_spending", awardsHealthSuccess, awardsError, awards.length) : Promise.resolve(),
   ]);
 
   // Filter local results by local keywords
@@ -1086,30 +1206,59 @@ export async function runBidSync(
   // DIFFERENT business type (e.g. paving bids discovered during a GC sync),
   // route them to the correct business so they're not lost.
   // The scope gate above already prevented them from being inserted here.
-  const allScopeRejected = [...federalUpsert.scopeRejected, ...localUpsert.scopeRejected];
-  if (allScopeRejected.length > 0) {
-    try {
-      const allBusinesses = await db
-        .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
-        .from(businessesTable);
+  // Only high/medium-confidence asphalt opportunities belong in the asphalt
+  // business. "excluded" NAICS sectors must never be re-routed as construction bids.
+  // Keep each source's original identity/label when routing so federal notices do
+  // not get silently rewritten as state-local records.
+  const asphaltFederalRejected = federalUpsert.scopeRejected.filter((opp) =>
+    isAsphaltCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "federal"));
+  const asphaltLocalRejected = localUpsert.scopeRejected.filter((opp) =>
+    isAsphaltCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "state-local"));
+  const gcFederalRejected = federalUpsert.scopeRejected.filter((opp) =>
+    isGeneralContractingCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "federal"));
+  const gcLocalRejected = localUpsert.scopeRejected.filter((opp) =>
+    isGeneralContractingCrossRouteCandidate(opp.title, opp.naicsCode ?? null, opp.source ?? "state-local"));
 
-      // Group rejected bids by the business type they SHOULD go to
-      // For now: asphalt-scoped bids go to the asphalt_sealing business
-      if (business.type !== "asphalt_sealing") {
-        const asphaltBiz = allBusinesses.find((b) => b.type === "asphalt_sealing");
-        if (asphaltBiz) {
-          const asphaltProfile = await resolveProfile(asphaltBiz.id, "asphalt_sealing");
-          const crossRouted = await upsertOpportunities(
-            allScopeRejected, "state-local", "KY/IN Local", asphaltBiz.id, asphaltProfile
-          );
-          if (crossRouted.inserted.length > 0) {
-            console.log(`[bid-sync] Cross-routed ${crossRouted.inserted.length} bid(s) to "${asphaltBiz.name}" (scope mismatch from "${business.name}")`);
-          }
-        }
+  try {
+    if (business.type !== "asphalt_sealing" && (asphaltFederalRejected.length || asphaltLocalRejected.length)) {
+      const [asphaltBiz] = await db
+        .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
+        .from(businessesTable)
+        .where(eq(businessesTable.type, "asphalt_sealing"))
+        .limit(1);
+      if (asphaltBiz) {
+        const asphaltProfile = await resolveProfile(asphaltBiz.id, "asphalt_sealing");
+        const routedFederal = asphaltFederalRejected.length
+          ? await upsertOpportunities(asphaltFederalRejected, "federal", "SAM.gov", asphaltBiz.id, asphaltProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedLocal = asphaltLocalRejected.length
+          ? await upsertOpportunities(asphaltLocalRejected, "state-local", "KY/IN Local", asphaltBiz.id, asphaltProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedCount = routedFederal.inserted.length + routedLocal.inserted.length;
+        if (routedCount) console.log(`[bid-sync] Cross-routed ${routedCount} asphalt bid(s) to "${asphaltBiz.name}"`);
       }
-    } catch (crossErr) {
-      console.warn("[bid-sync] Cross-routing step failed (non-fatal):", crossErr);
     }
+
+    if (business.type === "asphalt_sealing" && (gcFederalRejected.length || gcLocalRejected.length)) {
+      const [gcBiz] = await db
+        .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
+        .from(businessesTable)
+        .where(eq(businessesTable.type, "general_contracting"))
+        .limit(1);
+      if (gcBiz) {
+        const gcProfile = await resolveProfile(gcBiz.id, "general_contracting");
+        const routedFederal = gcFederalRejected.length
+          ? await upsertOpportunities(gcFederalRejected, "federal", "SAM.gov", gcBiz.id, gcProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedLocal = gcLocalRejected.length
+          ? await upsertOpportunities(gcLocalRejected, "state-local", "KY/IN Local", gcBiz.id, gcProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedCount = routedFederal.inserted.length + routedLocal.inserted.length;
+        if (routedCount) console.log(`[bid-sync] Cross-routed ${routedCount} GC bid(s) to "${gcBiz.name}"`);
+      }
+    }
+  } catch (crossErr) {
+    console.warn("[bid-sync] Cross-business routing step failed (non-fatal):", crossErr);
   }
   // write opportunityType on awards row (backfill for existing records via DB migration)
   await upsertUsaSpendingAwards(awards, businessId);
