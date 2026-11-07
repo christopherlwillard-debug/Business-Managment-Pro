@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { getBidLifecycleState, legacyStageForBidStatus, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, legacyStatusForBidStage, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
+import { getBidLifecycleState, legacyStageForBidStatus, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, legacyStatusForBidStage, mergeBidSourceFields, normalizedBidIdentity, parsePositiveBidId, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
+  it("accepts only positive safe integer bid identifiers", () => {
+    expect(parsePositiveBidId(12)).toBe(12);
+    expect(parsePositiveBidId("12")).toBe(12);
+    for (const invalid of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "12abc", "1.2", "-2", "", " 12", "12 ", null, undefined, [], {}]) {
+      expect(parsePositiveBidId(invalid)).toBeNull();
+    }
+  });
   it("keeps legacy status-only updates aligned with pipeline stages", () => {
     expect(legacyStageForBidStatus("new")).toBe("new");
     expect(legacyStageForBidStatus("interested")).toBe("reviewing");
