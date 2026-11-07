@@ -16,9 +16,9 @@
  *   "veteran_preference"→ Veteran preference in evaluation (not a formal set-aside).
  *                         Small bonus for veteran-owned businesses.
  *   "open"              → Full & open competition. Everyone competes; small static bonus.
- *   undefined           → No bonus. Covers: absent data, cert-specific programs (HUBZone,
- *                         8(a)/8AN, WOSB, EDWOSB, ISBEE) that require credentials not
- *                         tracked in bid_business_settings.
+ *   "hubzone" / "8a"    → Recognized restricted programs; no automatic bonus.
+ *   undefined           → No bonus. Covers absent or unrecognized data.
+ *   "cert_other"        → Other restricted programs (WOSB, EDWOSB, ISBEE, etc.).
  *
  * @param code - Raw SAM.gov typeOfSetAside string, or null/undefined if absent.
  * @returns A canonical scoring key, or undefined when no bonus should apply.
