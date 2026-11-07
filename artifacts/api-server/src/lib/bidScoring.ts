@@ -49,42 +49,28 @@ export function normalizeSetAsideType(code: string | null | undefined): string |
 }
 
 /**
- * Compute the set-aside score component for a given normalized set-aside type
- * and business certification flags.
+ * Compute a conservative set-aside score component.
  *
- * Scoring intent:
- *  - Maximum bonus when the business holds the required certification (directly eligible).
- *  - Reduced bonus for open/preference competitions (less differentiation).
- *  - Zero when ineligible (cert required but not held) or unknown.
- *  - NEVER assign a full eligibility bonus to a business that doesn't hold the cert.
+ * The stored certification booleans are owner-maintained profile flags, not
+ * independently verified SBA/SAM.gov records. They must never create a scoring
+ * advantage that makes a restricted opportunity look more suitable than it is.
+ * Eligibility is surfaced for manual verification in the recommendation layer.
  */
 export function setAsideScore(
   normalizedType: string | undefined,
-  settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
+  _settings: { isSdvosb: boolean; isVosb: boolean; isSmallBusiness: boolean },
 ): number {
-  if (!normalizedType) return 0;
-
   switch (normalizedType) {
-    case "sdvosb":
-      // SDVOSB set-aside: full 20-pt bonus only if SDVOSB certified
-      // VOSB alone does NOT qualify — give only 0 (ineligible, no misleading bonus)
-      return settings.isSdvosb ? 20 : 0;
-
-    case "vosb":
-      // VOSB set-aside: eligible if VOSB or SDVOSB
-      return (settings.isVosb || settings.isSdvosb) ? 20 : 0;
-
-    case "small_business":
-      return settings.isSmallBusiness ? 15 : 5; // SB flag needed for max; still worth noting
-
-    case "veteran_preference":
-      // Evaluation preference — any veteran-owned gets small advantage
-      return (settings.isVosb || settings.isSdvosb) ? 8 : 3;
-
     case "open":
-      return 5; // full-and-open — everyone competes; small signal for completeness
-
+      return 5;
+    case "veteran_preference":
+      // Preference is not a set-aside; do not infer qualification from a profile flag.
+      return 3;
+    case "sdvosb":
+    case "vosb":
+    case "small_business":
     default:
+      // Restricted categories receive no automatic bonus until eligibility is verified.
       return 0;
   }
 }
