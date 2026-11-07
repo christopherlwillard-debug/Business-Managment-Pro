@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, normalizedBidIdentity } from "./bidLifecycle.js";
+import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
   it("keeps USA Spending awards out of actionable work", () => {
@@ -34,6 +34,21 @@ describe("bid lifecycle boundary", () => {
   it("keeps zero-score and completed records out of default active counts", () => {
     expect(isDefaultActiveBid({ stage: "new", dataCompleteness: "complete", opportunityScore: 0 })).toBe(false);
     expect(getBidLifecycleState({ stage: "won", dataCompleteness: "complete" })).toBe("historical");
+  });
+
+  it("never auto-prunes a user-marked no-bid or other reviewed stage", () => {
+    expect(shouldPruneScopeMismatch("new")).toBe(true);
+    expect(shouldPruneScopeMismatch("no_bid")).toBe(false);
+    expect(shouldPruneScopeMismatch("reviewing")).toBe(false);
+    expect(shouldPruneScopeMismatch("bidding")).toBe(false);
+    expect(shouldPruneScopeMismatch("submitted")).toBe(false);
+    expect(shouldPruneScopeMismatch("won")).toBe(false);
+  });
+
+  it("restores score-rejected opportunities when an updated profile clears the score floor", () => {
+    expect(shouldRestoreScoreRejectedBid("score_rejected", 20, 20)).toBe(true);
+    expect(shouldRestoreScoreRejectedBid("score_rejected", 19, 20)).toBe(false);
+    expect(shouldRestoreScoreRejectedBid("new", 100, 20)).toBe(false);
   });
 
   it("gives repeated source records the same identity", () => {
