@@ -82,6 +82,15 @@ describe("set-aside scoring safeguards", () => {
     expect(setAsideScore("small_business", marked)).toBe(0);
   });
 
+  it("does not award automatic points for HUBZone or 8(a) profile flags", () => {
+    expect(setAsideScore("hubzone", {
+      isSdvosb: false, isVosb: false, isSmallBusiness: true,
+    })).toBe(0);
+    expect(setAsideScore("8a", {
+      isSdvosb: false, isVosb: false, isSmallBusiness: true,
+    })).toBe(0);
+  });
+
   it("does not infer veteran preference eligibility from profile booleans", () => {
     expect(setAsideScore("veteran_preference", {
       isSdvosb: true, isVosb: true, isSmallBusiness: true,
