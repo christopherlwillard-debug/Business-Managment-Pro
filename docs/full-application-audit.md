@@ -348,3 +348,44 @@ This is a source/documentation reconciliation after full-application PR #1 and b
 - Constitution Rule 55 requires a complete diagnosis and explicit approval before changing financial/accounting logic, business ownership/record assignment, schema/source-of-truth tables, or existing behavior. This reconciliation is diagnosis/documentation only; no such implementation was performed.
 - No GitHub Actions run was returned for either merge commit by the available commit-run lookup. No local package runtime or target PostgreSQL environment was available. No test, typecheck, build, rollback, or browser pass is claimed.
 - Next safe work: add executable failure-injection coverage for the Square transaction and complete cash-basis report/source reconciliation only after the required accounting approval; obtain an explicit Route Planner stop-ownership policy before changing its schema/API; decide whether the generic upload route should remain owner-only or be replaced by an authenticated server-side upload flow that enforces byte size and content type.
+
+
+## Follow-up architecture diagnosis — Route Planner and generic uploads — 2026-11-07
+
+### RTE-004 — confirmed shared route-stop ownership gap
+
+**User-visible impact:** Route Planner can display and mutate the same stop collection while the user switches between business views. This is not a public/unauthenticated exposure: the Route Planner API is mounted behind owner authorization. It is a business-context and data-assignment consistency defect.
+
+**Source evidence:**
+- `lib/db/src/schema/route-stops.ts` defines `route_stops` without a canonical `business_id` or `business_line` ownership column.
+- `artifacts/api-server/src/routes/route-stops.ts` GET builds date-only predicates and returns all matching stops; it does not filter by active business.
+- POST accepts a `businessLine` request property but does not persist it in `route_stops`.
+- PUT also accepts `businessLine` for linked-job validation, but does not persist or scope the stop by it.
+- Reorder, split-blocks, clear-blocks, fix-geocoding, update, and delete mutations operate on stop IDs/dates without business ownership predicates.
+- `artifacts/contractor-app/src/pages/RoutePlanner.tsx` sends the active business slug on create/edit, but its stop query key and API call remain global: `["/api/route-stops"]` and `GET /route-stops`.
+- Linked-job display filtering is already in place, but it does not scope the stop record itself.
+
+**Confirmed vs. unresolved:** Shared visibility and unscoped stop mutations are confirmed from source. The intended ownership policy is not known: stops may be global route-planning objects, business-owned records, or records assigned through linked client/job/prospect ownership. Existing rows have no authoritative owner field, so a migration that guesses ownership could misassign records.
+
+**Repair gate:** Rule 55 explicit approval is required before changing business ownership, record assignment, schema, or mutation behavior. Do not implement a guessed business-line filter or migration. Required owner decision: should every stop belong to exactly one business, be global across businesses, or support explicit multi-business assignment? If owned, define how existing unlinked stops are assigned.
+
+### STO-001 — confirmed generic signed-upload contract limitation
+
+**User-visible impact:** The generic upload URL endpoint validates declared filename, size (up to 25 MB), and content type, but the actual direct-to-storage PUT is not bound to the declared size or content type.
+
+**Source evidence:**
+- `artifacts/api-server/src/routes/storage.ts` validates metadata, then calls `getObjectEntityUploadURL()` without passing the validated size/content type.
+- `artifacts/api-server/src/lib/objectStorage.ts` signs the generic upload URL with bucket, object, method, and expiry only.
+- The route currently requires owner access and no application-page caller was found in the inspected Route Planner/storage references. Separate server-side upload paths exist for receipts, asset receipts, compliance, and website media.
+
+**Confirmed vs. unresolved:** The declared metadata is not cryptographically or server-side enforced by this generic URL flow. The practical exposure is constrained by owner-only URL minting and a 15-minute signed URL. No non-owner access defect is claimed. It remains unclear whether the unused generic endpoint should be removed, retained as owner-only, or replaced with a server-side upload proxy that enforces byte count and MIME/content sniffing.
+
+**Repair gate:** No implementation performed. Decide whether the generic endpoint has an intended product caller before changing/removing behavior. If retained, design enforcement at the storage boundary, not by trusting client-declared metadata.
+
+### Additional confirmed preservation constraint — CLI-003
+
+The client DELETE route currently returns HTTP 409 for all clients after its scoped dependency checks; it does not delete or archive a client. This preserves records but leaves no supported archive/restore lifecycle. Treat this as a known product gap, not a broken delete that should be re-enabled. Archive/restore requires its own design for child records, pricing, billing profiles, audit history, and restoration behavior.
+
+### Validation boundary
+
+This is a source-only diagnosis. No schema, business assignment, financial logic, storage behavior, production data, credentials, or deployment was changed. No tests or runtime validation are claimed.
