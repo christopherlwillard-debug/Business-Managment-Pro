@@ -803,14 +803,14 @@ export default function BidOpportunities() {
             <h1 className="text-xl md:text-2xl font-bold text-foreground leading-tight">
               Bid Opportunities
             </h1>
-            {/* SDVOSB badge — only shown when is_sdvosb = true in bid_business_settings */}
+            {/* Profile indicator only — this flag is not proof of SBA certification or approval. */}
             {bidSettings?.isSdvosb && (
               <span className={cn(
                 "inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full",
                 "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               )}>
                 <Shield className="w-3 h-3" />
-                <span className="hidden sm:inline">SBA-Certified </span>SDVOSB
+                <span className="hidden sm:inline">Profile: </span>SDVOSB
               </span>
             )}
           </div>
