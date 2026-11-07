@@ -59,6 +59,17 @@ export interface IntegrationStatus {
   syncHealth:          SyncHealth | null;
 }
 
+function safePortalHref(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
 function relativeTime(iso: string | null | undefined): string {
   if (!iso) return "never";
   const ms = Date.now() - new Date(iso).getTime();
@@ -120,6 +131,7 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
   const [password, setPassword] = useState("");
   const [showPortalPassword, setShowPortalPassword] = useState(false);
 
+  const portalHref = safePortalHref(integration.portalUrl);
   const isPortalType   = ["portal_only", "username_password"].includes(integration.credentialType);
   const isAutoSync     = integration.autoSync ?? false;
   const isManaged      = integration.managed  ?? false;
@@ -341,11 +353,11 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
       )}
 
       {/* ── Portal URL display (for portal types with a saved URL) ───────────── */}
-      {isPortalType && integration.portalUrl && !showUpdateForm && (
+      {isPortalType && portalHref && !showUpdateForm && (
         <div className="ml-5 flex items-center gap-2">
           <Globe className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
           <a
-            href={integration.portalUrl}
+            href={portalHref}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-primary hover:underline truncate flex-1"
@@ -446,9 +458,9 @@ export default function IntegrationCard({ integration, onUpdated }: { integratio
           )}
 
           {/* Open portal (portal types with a URL) */}
-          {isPortalType && (integration.portalUrl || integration.defaultPortalUrl) && (
+          {isPortalType && (portalHref || integration.defaultPortalUrl) && (
             <a
-              href={integration.portalUrl ?? integration.defaultPortalUrl ?? "#"}
+              href={portalHref ?? integration.defaultPortalUrl ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-border text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
