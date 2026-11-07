@@ -649,7 +649,19 @@ async function upsertOpportunities(
     // Select aiSummary so we can incorporate it into the recommendation engine
     // for existing rows that have already been analysed.
     const existing = await db
-      .select({ id: bidOpportunitiesTable.id, aiSummary: bidOpportunitiesTable.aiSummary })
+      .select({
+        id: bidOpportunitiesTable.id,
+        aiSummary: bidOpportunitiesTable.aiSummary,
+        title: bidOpportunitiesTable.title,
+        agency: bidOpportunitiesTable.agency,
+        naicsCode: bidOpportunitiesTable.naicsCode,
+        description: bidOpportunitiesTable.description,
+        postedDate: bidOpportunitiesTable.postedDate,
+        responseDeadline: bidOpportunitiesTable.responseDeadline,
+        url: bidOpportunitiesTable.url,
+        noticeType: bidOpportunitiesTable.noticeType,
+        setAsideType: bidOpportunitiesTable.setAsideType,
+      })
       .from(bidOpportunitiesTable)
       .where(and(
         eq(bidOpportunitiesTable.noticeId, opp.noticeId),
@@ -784,13 +796,39 @@ async function upsertOpportunities(
       if (createdRow) newOnes.push(opp);
       if (createdRow) existingKeys.add(duplicateKey);
     } else {
+      // Merge newly scraped fields with the last known values. A portal may omit
+      // a field on a later scrape even though the solicitation has not removed it.
+      // Refresh source data while preserving user-managed stage, notes, and job link.
+      const refreshed = {
+        title: opp.title || existing.title,
+        agency: opp.agency ?? existing.agency,
+        naicsCode: opp.naicsCode ?? existing.naicsCode,
+        description: opp.description ?? existing.description,
+        postedDate: opp.postedDate ?? existing.postedDate,
+        responseDeadline: opp.responseDeadline ?? existing.responseDeadline,
+        url: opp.url || existing.url,
+        noticeType: (opp as SamOpportunity).noticeType ?? existing.noticeType,
+        setAsideType: (opp as SamOpportunity).typeOfSetAside ?? existing.setAsideType,
+      };
+      const refreshedCompleteness = assessDataCompleteness({
+        responseDeadline: refreshed.responseDeadline,
+        naicsCode: refreshed.naicsCode,
+        description: refreshed.description,
+        agency: refreshed.agency,
+        url: refreshed.url,
+      });
+      const refreshedGeography = geographyForOpportunity({
+        ...opp,
+        ...refreshed,
+      }, defaultSourceLabel);
+
       // Re-score existing row so capability profile changes take effect immediately.
       // Pass cached AI summary so recommendation can incorporate prior analysis.
-      const rawSetAside = (opp as SamOpportunity).typeOfSetAside ?? null;
+      const rawSetAside = refreshed.setAsideType;
       const derivedOppType = overrides?.opportunityTypeOverride
-        ?? deriveOpportunityType(opp.source ?? defaultSource, (opp as SamOpportunity).noticeType ?? null);
+        ?? deriveOpportunityType(opp.source ?? defaultSource, refreshed.noticeType ?? null);
       const { opportunityScore, capabilityMatches } = scoreOpportunity(
-        { title: opp.title, description: opp.description, responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource, agency: opp.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
+        { title: refreshed.title, description: refreshed.description, responseDeadline: refreshed.responseDeadline, source: opp.source ?? defaultSource, agency: refreshed.agency, naicsMismatch: (opp as SamOpportunity).naicsMismatch },
         profile.capabilities,
         settingsForRec,
         normalizeSetAsideType(rawSetAside),
@@ -798,39 +836,47 @@ async function upsertOpportunities(
 
       const existingAiSummary = existing.aiSummary as Record<string, unknown> | null;
       const rec = computeRecommendation(
-        { title: opp.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
-          responseDeadline: opp.responseDeadline, source: opp.source ?? defaultSource,
-          naicsCode: opp.naicsCode, description: opp.description, opportunityType: derivedOppType },
+        { title: refreshed.title, opportunityScore, capabilityMatches, setAsideType: rawSetAside,
+          responseDeadline: refreshed.responseDeadline, source: opp.source ?? defaultSource,
+          naicsCode: refreshed.naicsCode, description: refreshed.description, opportunityType: derivedOppType },
         settingsForRec,
         existingAiSummary,
       );
 
       const detectedExisting = detectContractType({
-        title: opp.title, description: opp.description,
+        title: refreshed.title, description: refreshed.description,
         aiSummary: existingAiSummary,
-        noticeType: (opp as SamOpportunity).noticeType ?? null,
+        noticeType: refreshed.noticeType ?? null,
       });
       await db.update(bidOpportunitiesTable)
         .set({
+          title:                 refreshed.title,
+          agency:                refreshed.agency,
+          naicsCode:             refreshed.naicsCode,
+          description:           refreshed.description,
+          postedDate:            refreshed.postedDate,
+          responseDeadline:      refreshed.responseDeadline,
+          url:                   refreshed.url,
+          sourceLabel:           opp.sourceLabel ?? defaultSourceLabel,
           opportunityScore,
           capabilityMatches,
-          noticeType:            (opp as SamOpportunity).noticeType ?? null,
-          setAsideType:          rawSetAside,
+          noticeType:            refreshed.noticeType,
+          setAsideType:          refreshed.setAsideType,
           opportunityType:       derivedOppType,
-          recommendation:        completeness === "complete" ? rec.recommendation : "review",
-          recommendationFactors: completeness === "complete"
+          recommendation:        refreshedCompleteness === "complete" ? rec.recommendation : "review",
+          recommendationFactors: refreshedCompleteness === "complete"
             ? rec.factors as unknown as Record<string, unknown>[]
             : [],
           contractType:          detectedExisting.contractType,
           scopeSize:             detectedExisting.scopeSize,
           licenseFlags:          detectedExisting.licenseFlags,
           outOfScopeFlags:       detectedExisting.outOfScopeFlags,
-          // Phase 7 — keep scope + completeness current on every sync
+          // Phase 7 — keep scope + completeness current on every sync.
           scopeCategory:         scope.primaryCategory,
-          dataCompleteness:      completeness,
-          geography:             geography.geography,
-          placeOfPerformance:    geography.placeOfPerformance,
-          geographyReason:       geography.geographyReason,
+          dataCompleteness:      refreshedCompleteness,
+          geography:             refreshedGeography.geography,
+          placeOfPerformance:    refreshedGeography.placeOfPerformance,
+          geographyReason:       refreshedGeography.geographyReason,
         })
         .where(eq(bidOpportunitiesTable.id, existing.id));
     }
