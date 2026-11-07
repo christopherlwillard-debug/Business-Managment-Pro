@@ -602,7 +602,7 @@ async function upsertOpportunities(
     // BEFORE assigning it to a business. This prevents paving/asphalt bids from
     // landing in Willard's Flooring and flooring bids from landing in Asphalt Sealing.
     const effectiveSource = opp.source ?? defaultSource;
-    const duplicateKey = normalizedBidIdentity({ source: effectiveSource, title: opp.title, agency: opp.agency });
+    const duplicateKey = normalizedBidIdentity({ source: effectiveSource, noticeId: opp.noticeId, title: opp.title, agency: opp.agency });
     const hasSameNotice = existingKeys.has(duplicateKey);
     if (hasSameNotice && !await db
       .select({ id: bidOpportunitiesTable.id })
