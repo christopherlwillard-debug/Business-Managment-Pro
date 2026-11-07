@@ -42,6 +42,28 @@ describe("bid recommendation certification safeguards", () => {
     }
   });
 
+  it("recognizes HUBZone and 8(a) flags but never treats them as verified certification", () => {
+    for (const [setAsideType, settings, expectedLabel] of [
+      ["HZC", { isSdvosb: false, isVosb: false, isSmallBusiness: true, isHubzone: true }, "HUBZone"],
+      ["HZS", { isSdvosb: false, isVosb: false, isSmallBusiness: true, isHubzone: false }, "HUBZone"],
+      ["8A", { isSdvosb: false, isVosb: false, isSmallBusiness: true, is8a: true }, "8(a)"],
+      ["8AN", { isSdvosb: false, isVosb: false, isSmallBusiness: true, is8a: false }, "8(a)"],
+    ] as const) {
+      const result = computeRecommendation(opportunity(setAsideType), settings, reviewedFit);
+      expect(result.recommendation).toBe("review");
+      expect(result.factors.find((factor) => factor.key === "set_aside")?.detail).toContain(expectedLabel);
+    }
+  });
+
+  it("keeps unknown set-aside codes in REVIEW instead of issuing a BID", () => {
+    const result = computeRecommendation(
+      opportunity("UNRECOGNIZED_FUTURE_CODE"),
+      { isSdvosb: false, isVosb: false, isSmallBusiness: true },
+      reviewedFit,
+    );
+    expect(result.recommendation).toBe("review");
+  });
+
   it("can still recommend BID for a reviewed full-and-open opportunity", () => {
     const result = computeRecommendation(
       opportunity("NONE"),
