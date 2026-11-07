@@ -905,7 +905,11 @@ async function upsertUsaSpendingAwards(awards: UsaSpendingAward[], businessId: n
     const existing = await db
       .select({ id: bidOpportunitiesTable.id })
       .from(bidOpportunitiesTable)
-      .where(and(eq(bidOpportunitiesTable.noticeId, award.noticeId), eq(bidOpportunitiesTable.businessId, businessId)))
+      .where(and(
+        eq(bidOpportunitiesTable.noticeId, award.noticeId),
+        eq(bidOpportunitiesTable.businessId, businessId),
+        eq(bidOpportunitiesTable.source, "usa-spending"),
+      ))
       .then((rows) => rows[0] ?? null);
 
     if (!existing) {
