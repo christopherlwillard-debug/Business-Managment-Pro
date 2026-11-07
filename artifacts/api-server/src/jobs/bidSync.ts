@@ -427,7 +427,7 @@ async function purgeOldUsaSpendingAwards(businessId: number): Promise<number> {
 async function purgeIrrelevantFederalBids(businessId: number, allowedNaicsCodes: string[]): Promise<number> {
   if (allowedNaicsCodes.length === 0) return 0;
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'federal' AND business_id = ${businessId} AND naics_code IS NOT NULL AND naics_code NOT IN (${sql.raw(allowedNaicsCodes.map((c) => `'${c}'`).join(", "))})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'federal' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND naics_code IS NOT NULL AND naics_code NOT IN (${sql.raw(allowedNaicsCodes.map((c) => `'${c}'`).join(", "))})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} off-profile federal bid(s) for business ${businessId}`);
@@ -501,7 +501,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
         pruned++;
         continue;
       }
-      // Stage is reviewing/bidding/submitted/won — update scope fields but don't delete
+      // Reviewed workflow stages and explicit No Bid/Lost decisions are retained; only update their scope fields.
     }
 
     const { opportunityScore, capabilityMatches } = scoreOpportunity(
