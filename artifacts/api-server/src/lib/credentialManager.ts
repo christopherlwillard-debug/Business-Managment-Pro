@@ -366,7 +366,7 @@ export async function setPortalCredential(
 /**
  * Clear all portal credentials for a slug (URL, username, password).
  */
-export async function removePortalCredential(slug: string): Promise<void> {
+export async function removePortalCredential(slug: string, businessId?: number | null): Promise<void> {
   await db
     .update(integrationCredentialsTable)
     .set({
