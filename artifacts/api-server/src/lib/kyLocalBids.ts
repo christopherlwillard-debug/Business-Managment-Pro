@@ -182,7 +182,7 @@ async function scrapeHancockCounty(): Promise<LocalOpportunity[]> {
     return results;
   } catch (err) {
     console.warn("[ky-local] Hancock County scrape failed:", (err as Error).message);
-    return [];
+    throw err;
   }
 }
 
@@ -263,7 +263,7 @@ async function scrapeDaviessCounty(): Promise<LocalOpportunity[]> {
     return results;
   } catch (err) {
     console.warn("[ky-local] Daviess County scrape failed:", (err as Error).message);
-    return [];
+    throw err;
   }
 }
 
@@ -273,9 +273,13 @@ async function scrapeCountyGeneric(
   agency: string,
   sourceLabel: string
 ): Promise<LocalOpportunity[]> {
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of urls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const seen = new Set<string>();
       const results: LocalOpportunity[] = [];
@@ -318,9 +322,11 @@ async function scrapeCountyGeneric(
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] ${sourceLabel} (${base}) failed:`, (err as Error).message);
     }
   }
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log(`[ky-local] ${sourceLabel}: site unreachable or no matching bids`);
   return [];
 }
@@ -352,9 +358,13 @@ async function scrapeDemandStarKY(): Promise<LocalOpportunity[]> {
     "https://network.demandstar.com/solicitations?stateCode=KY",
     "https://network.demandstar.com/solicitations?state=KY",
   ];
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of urls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const seen = new Set<string>();
       const results: LocalOpportunity[] = [];
@@ -391,9 +401,11 @@ async function scrapeDemandStarKY(): Promise<LocalOpportunity[]> {
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] DemandStar KY (${base}) failed:`, (err as Error).message);
     }
   }
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log("[ky-local] DemandStar KY: unreachable or no matching bids");
   return [];
 }
@@ -403,9 +415,13 @@ async function scrapeDemandStarIN(): Promise<LocalOpportunity[]> {
     "https://network.demandstar.com/solicitations?stateCode=IN",
     "https://network.demandstar.com/solicitations?state=IN",
   ];
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of urls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const seen = new Set<string>();
       const results: LocalOpportunity[] = [];
@@ -442,9 +458,11 @@ async function scrapeDemandStarIN(): Promise<LocalOpportunity[]> {
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] DemandStar IN (${base}) failed:`, (err as Error).message);
     }
   }
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log("[ky-local] DemandStar IN: unreachable or no matching bids");
   return [];
 }
@@ -454,9 +472,13 @@ async function scrapeBidNetDirectKY(): Promise<LocalOpportunity[]> {
     "https://www.bidnetdirect.com/kentucky",
     "https://bidnetdirect.com/kentucky",
   ];
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of urls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const seen = new Set<string>();
       const results: LocalOpportunity[] = [];
@@ -493,9 +515,11 @@ async function scrapeBidNetDirectKY(): Promise<LocalOpportunity[]> {
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] BidNet Direct KY (${base}) failed:`, (err as Error).message);
     }
   }
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log("[ky-local] BidNet Direct KY: unreachable or no matching bids");
   return [];
 }
@@ -505,9 +529,13 @@ async function scrapeBidNetDirectIN(): Promise<LocalOpportunity[]> {
     "https://www.bidnetdirect.com/indiana",
     "https://bidnetdirect.com/indiana",
   ];
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of urls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const seen = new Set<string>();
       const results: LocalOpportunity[] = [];
@@ -544,9 +572,11 @@ async function scrapeBidNetDirectIN(): Promise<LocalOpportunity[]> {
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] BidNet Direct IN (${base}) failed:`, (err as Error).message);
     }
   }
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log("[ky-local] BidNet Direct IN: unreachable or no matching bids");
   return [];
 }
@@ -563,9 +593,13 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
     "https://procurement.ky.gov",
   ];
 
+  let successfulFetch = false;
+  let lastFetchError: unknown = null;
+
   for (const base of searchUrls) {
     try {
       const html = await fetchHtml(base);
+      successfulFetch = true;
       const $ = cheerio.load(html);
       const results: LocalOpportunity[] = [];
 
@@ -629,10 +663,12 @@ async function scrapeKyEProcurement(): Promise<LocalOpportunity[]> {
         return results;
       }
     } catch (err) {
+      lastFetchError = err;
       console.warn(`[ky-local] KY eProcurement (${base}) failed:`, (err as Error).message);
     }
   }
 
+  if (!successfulFetch && lastFetchError) throw lastFetchError;
   console.log("[ky-local] KY eProcurement: portal unreachable or no matching bids");
   return [];
 }
