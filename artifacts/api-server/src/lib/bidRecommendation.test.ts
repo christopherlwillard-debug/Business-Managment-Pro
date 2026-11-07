@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeRecommendation } from "./bidRecommendation.js";
+import { setAsideScore } from "./bidScoring.js";
 
 const opportunity = (setAsideType: string | null) => ({
   title: "Asphalt sealcoating services",
@@ -48,5 +49,29 @@ describe("bid recommendation certification safeguards", () => {
       reviewedFit,
     );
     expect(result.recommendation).toBe("bid");
+  });
+});
+
+describe("set-aside scoring safeguards", () => {
+  it("does not award restricted-set-aside points from profile booleans alone", () => {
+    const marked = { isSdvosb: true, isVosb: true, isSmallBusiness: true };
+    expect(setAsideScore("sdvosb", marked)).toBe(0);
+    expect(setAsideScore("vosb", marked)).toBe(0);
+    expect(setAsideScore("small_business", marked)).toBe(0);
+  });
+
+  it("does not infer veteran preference eligibility from profile booleans", () => {
+    expect(setAsideScore("veteran_preference", {
+      isSdvosb: true, isVosb: true, isSmallBusiness: true,
+    })).toBe(3);
+    expect(setAsideScore("veteran_preference", {
+      isSdvosb: false, isVosb: false, isSmallBusiness: true,
+    })).toBe(3);
+  });
+
+  it("retains the baseline full-and-open score", () => {
+    expect(setAsideScore("open", {
+      isSdvosb: true, isVosb: true, isSmallBusiness: true,
+    })).toBe(5);
   });
 });
