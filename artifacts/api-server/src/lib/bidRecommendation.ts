@@ -56,7 +56,7 @@ export type NormalizedSetAside =
   | "8a"                 // 8(a) set-aside — requires SBA 8(a) certification
   | "veteran_preference" // Veteran preference in evaluation (not a set-aside)
   | "open"               // Full & open competition
-  | "cert_other"         // Other cert-specific (8(a), HUBZone, WOSB…)
+  | "cert_other"         // Other cert-specific programs (WOSB, EDWOSB, ISBEE…)
   | "unknown";           // Not specified or unrecognised
 
 export function classifySetAside(rawCode: string | null | undefined): NormalizedSetAside {
@@ -70,7 +70,7 @@ export function classifySetAside(rawCode: string | null | undefined): Normalized
   if (["8A", "8AN", "HS3"].includes(upper)) return "8a";
   // "veteran preference" signals — not formal set-asides
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
-  // Cert-specific that we cannot score (WOSB, EDWOSB, HZC, 8A, 8AN, ISBEE)
+  // Other cert-specific programs not represented by the current profile flags.
   if (["WOSB", "WOSBSS", "EDWOSB", "EDWOSBSS", "ISBEE", "BICIV", "IEE", "BI"].includes(upper)) return "cert_other";
   return "unknown";
 }
