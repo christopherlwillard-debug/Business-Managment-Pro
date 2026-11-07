@@ -1048,9 +1048,7 @@ export async function runBidSync(
   });
 
   // Partial SAM.gov results are still used for ingestion, even when health is degraded.
-  const samQuotaBlocked = samQuotaExhausted;
   const federal: OppWithSource[] = samResult?.opportunities ?? [];
-  const federal: OppWithSource[]   = samResult?.opportunities ?? [];
   const awards: UsaSpendingAward[] = awardsOk ? (awardsResult.value as UsaSpendingAward[]) : [];
 
   // Unpack the structured LocalScrapeResult from the KY/IN local scraper.
