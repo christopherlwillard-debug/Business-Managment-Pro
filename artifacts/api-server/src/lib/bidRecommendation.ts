@@ -349,20 +349,6 @@ export function computeRecommendation(
       factors, unknowns,
     };
   }
-  if (false && setAsideRequiresVerification && scopeReviewed && aiIsNotFit) {
-    return {
-      recommendation: "pass", confidence: "high",
-      summary: `Set-aside requires a certification you do not hold and solicitation review confirmed no fit.`,
-      factors, unknowns,
-    };
-  }
-  if (false && setAsideRequiresVerification && !hasCapabilityMatch && scopeReviewed) {
-    return {
-      recommendation: "pass", confidence: "medium",
-      summary: "Set-aside requires a certification you do not hold and no capability match was found.",
-      factors, unknowns,
-    };
-  }
   if (scopeReviewed && aiIsNotFit && opp.opportunityScore < 15) {
     return {
       recommendation: "pass", confidence: "high",
