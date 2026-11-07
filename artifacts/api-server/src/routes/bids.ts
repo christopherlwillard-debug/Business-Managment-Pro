@@ -483,8 +483,8 @@ async function buildSummarizePrompt(
   if (settingsRow?.isHubzone)       certLines.push("HUBZone");
   if (settingsRow?.is8a)            certLines.push("8(a)");
   const certBlock = certLines.length > 0
-    ? `\nCertifications held: ${certLines.join(", ")}.`
-    : "\nNo special certifications — evaluate set-asides that require SDVOSB/VOSB/8(a) as potentially ineligible.";
+    ? `\nBusiness profile flags: ${certLines.join(", ")}. These are user-maintained profile selections, NOT independent proof of active certification or SBA approval. Do not describe the business as SBA-certified or definitively eligible based only on these flags. For any certification-restricted opportunity, require the user to verify current certification status and active SAM.gov representations before treating the requirement as satisfied.`
+    : "\nNo special certifications are marked in the business profile — evaluate set-asides that require SDVOSB/VOSB/8(a) as potentially ineligible.";
 
   return `You are analyzing a government bid solicitation for a small contractor.
 
@@ -1861,7 +1861,7 @@ function buildQualifyPrompt(
     : equipment.map((e) => `- ${e.name} (${e.category ?? "general"}) — ${e.status ?? "in_service"}`).join("\n");
 
   const bizCerts: string[] = [];
-  if (settings?.isSdvosb)             bizCerts.push("SDVOSB (SBA-certified)");
+  if (settings?.isSdvosb)             bizCerts.push("SDVOSB profile flag (verify current SBA certification; profile flag is not proof of approval)");
   if (settings?.isVosb)               bizCerts.push("VOSB");
   if (settings?.isSmallBusiness !== false) bizCerts.push("Small Business");
 
@@ -2003,6 +2003,8 @@ router.post("/:id/qualify", async (req, res) => {
       .where(eq(bidBusinessSettingsTable.businessId, bizId))
       .limit(1);
 
+    // Certification booleans are owner-maintained profile flags, not evidence from SBA.
+    // The prompt must not convert a selected flag into a claim of verified certification.
     const prompt = buildQualifyPrompt(bid, crewWithCerts, equipment, settings ?? null);
 
     const completion = await openai.chat.completions.create({
