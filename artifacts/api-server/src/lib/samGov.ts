@@ -472,7 +472,7 @@ export async function fetchSamOpportunitiesGrouped(
   const apiKey = getCredential("sam_gov", "SAM_GOV_API_KEY");
   if (!apiKey) {
     console.warn("[sam-gov] SAM_GOV_API_KEY not configured, skipping");
-    return { opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0 };
+    return { opportunities: [], quotaExhausted: false, quotaResetAt: null, requestsAttempted: 0, requestsAccepted: 0, requestsFailed: 0, requestErrors: [] };
   }
 
   const lookback   = opts?.lookbackDays ?? SAM_LOOKBACK_DAYS;
