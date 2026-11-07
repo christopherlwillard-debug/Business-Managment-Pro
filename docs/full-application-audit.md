@@ -407,3 +407,22 @@ This is a source-only diagnosis. No schema, business assignment, financial logic
 - Source inspection only; no database records, tax filings, payment history, credentials, or production settings were read or changed.
 - No tests were executed in the target runtime. This is a documentation-only finding, not a claim that the financial calculation is fixed.
 - No schema, accounting, tax, ownership, or production behavior was changed.
+
+
+## Subcontractor payment report business-scope diagnosis (2026-11-07)
+
+- Continued the report audit across `GET /reports/dashboard`, `GET /reports/accounting`, `GET /reports/profit-loss`, and `GET /reports/year-end`, tracing the shared helper and every fixed/allocation `sub_payment_records` query.
+- The report helper `reportBusinessWhere(business, businessLineColumn, businessIdColumn?)` explicitly documents canonical ownership precedence: when a business ID column is supplied, it filters by canonical `businessId` and falls back to `businessLine` only for null-owned legacy rows. When the optional ID column is omitted, it filters only by `businessLine`.
+- The dashboard loads payment `businessId` and `businessLine` but its selected-business KPI filter compares only `r.businessLine === validBl`. Its payment query is intentionally unfiltered at SQL level to support the six-month chart and business breakdown, so the JS predicate is the decisive attribution gate.
+- Accounting, P&L, and Year-End fixed/allocation payment queries call `blWhere(subPaymentRecordsTable.businessLine)` without the available `subPaymentRecordsTable.businessId` column. Therefore canonical-owned rows whose legacy slug is null or stale can be omitted from the correct business report or attributed according to stale legacy text. This conflicts with the canonical ownership policy used by `business-scope.ts`, `computeYtd`, and the Schedule C query (which passes both columns).
+- Existing tests cover basic selected-business payment inclusion and unknown selectors, but the inspected fixtures do not exercise a payment with canonical `businessId` and null/mismatched `businessLine` across these report surfaces.
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Residual risk |
+|---|---|---|---|---|---|
+| RPT-001 | High | Accounting / Dashboard / P&L / Year-End → selected-business subcontractor costs | Several fixed/allocation payment paths filter by legacy `businessLine` only even though the payment row has canonical `businessId`; dashboard JS also ignores the selected `businessId`. | **Confirmed source-level ownership-filter inconsistency; diagnosis only** | Add null/stale legacy-slug fixtures for every report path, then use the shared canonical predicate consistently. Requires explicit approval because it changes financial report attribution and business scope (Constitution Rule 55). No source behavior or data changed. |
+
+### Validation boundary
+
+- Source inspection only; no payment rows, database contents, tax filings, or production settings were accessed or changed.
+- No report code was modified and no runtime test pass is claimed.
+- Any fix must preserve the all-business view and include legacy null-owned rows only when their fallback slug matches the selected business.
