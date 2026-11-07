@@ -64,6 +64,20 @@ export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()
   return "active";
 }
 
+/** Only untouched new rows may be automatically pruned for a scope mismatch. */
+export function shouldPruneScopeMismatch(stage: string | null | undefined): boolean {
+  return stage === "new";
+}
+
+/** Re-open a previously score-rejected row when an updated profile makes it relevant. */
+export function shouldRestoreScoreRejectedBid(
+  stage: string | null | undefined,
+  score: number,
+  minimumScore: number,
+): boolean {
+  return stage === "score_rejected" && score >= minimumScore;
+}
+
 export function isDefaultActiveBid(record: BidLifecycleInput, now = new Date()): boolean {
   return isActionableBid(record)
     && getBidLifecycleState(record, now) === "active"
