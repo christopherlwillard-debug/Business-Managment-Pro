@@ -1050,6 +1050,33 @@ router.post("/private", async (req, res) => {
     res.status(400).json({ error: "A positive businessId and companyName are required" });
     return;
   }
+  const optionalTextValues = [description, sourceType, contactName, contactEmail, contactPhone, url, deadline];
+  if (optionalTextValues.some((value) => value !== undefined && value !== null && typeof value !== "string")) {
+    res.status(400).json({ error: "Description, source, contact, URL, and deadline fields must be text" });
+    return;
+  }
+  if (companyName.trim().length > 200 || (description?.length ?? 0) > 20000
+    || (contactName?.length ?? 0) > 160 || (contactEmail?.length ?? 0) > 254
+    || (contactPhone?.length ?? 0) > 60 || (sourceType?.length ?? 0) > 80
+    || (url?.length ?? 0) > 2048) {
+    res.status(400).json({ error: "One or more private opportunity fields exceed the allowed length" });
+    return;
+  }
+  if (url?.trim()) {
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(url.trim()); } catch {
+      res.status(400).json({ error: "url must be a valid HTTP or HTTPS URL" });
+      return;
+    }
+    if (!["http:", "https:"].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+      res.status(400).json({ error: "url must be a valid HTTP or HTTPS URL without embedded credentials" });
+      return;
+    }
+  }
+  if (deadline && !/^\\d{4}-\\d{2}-\\d{2}$/.test(deadline)) {
+    res.status(400).json({ error: "deadline must use YYYY-MM-DD format" });
+    return;
+  }
   if (!(await requireExistingBusiness(res, parsedBusinessId))) return;
   if (jobId !== undefined && jobId !== null) {
     if (typeof jobId !== "number" || !Number.isSafeInteger(jobId) || jobId <= 0) {
@@ -1147,8 +1174,8 @@ router.patch("/:id", async (req, res) => {
   }
 
   if (notes !== undefined) {
-    if (typeof notes !== "string") {
-      res.status(400).json({ error: "notes must be a string" });
+    if (typeof notes !== "string" || notes.length > 20000) {
+      res.status(400).json({ error: "notes must be text no longer than 20,000 characters" });
       return;
     }
     updates.notes = notes;
@@ -1167,15 +1194,15 @@ router.patch("/:id", async (req, res) => {
   }
 
   if (privateOpportunityContact !== undefined) {
-    if (privateOpportunityContact !== null && typeof privateOpportunityContact !== "string") {
-      res.status(400).json({ error: "privateOpportunityContact must be a string or null" });
+    if (privateOpportunityContact !== null && (typeof privateOpportunityContact !== "string" || privateOpportunityContact.length > 500)) {
+      res.status(400).json({ error: "privateOpportunityContact must be text up to 500 characters or null" });
       return;
     }
     updates.privateOpportunityContact = privateOpportunityContact ?? null;
   }
   if (privateSourceType !== undefined) {
-    if (privateSourceType !== null && typeof privateSourceType !== "string") {
-      res.status(400).json({ error: "privateSourceType must be a string or null" });
+    if (privateSourceType !== null && (typeof privateSourceType !== "string" || privateSourceType.length > 80)) {
+      res.status(400).json({ error: "privateSourceType must be text up to 80 characters or null" });
       return;
     }
     updates.privateSourceType = privateSourceType ?? null;
