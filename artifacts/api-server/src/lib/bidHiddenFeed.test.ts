@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBidFilterReason, selectUnifiedCandidateGroup } from "./bidHiddenFeed.js";
+import { buildBidFilterReason, selectUnifiedCandidateGroup, unifiedBidIdentity } from "./bidHiddenFeed.js";
 
 describe("hidden bid recovery feed", () => {
   it("keeps recoverable rows while excluding active bids and award intelligence", () => {
@@ -12,6 +12,13 @@ describe("hidden bid recovery feed", () => {
 
     expect(selectUnifiedCandidateGroup(rows, true).map((row) => row.id)).toEqual([2, 3]);
     expect(selectUnifiedCandidateGroup(rows, false)).toBe(rows);
+  });
+
+  it("does not merge equal notice IDs from different procurement sources", () => {
+    expect(unifiedBidIdentity({ source: "federal", noticeId: "12345" }))
+      .not.toBe(unifiedBidIdentity({ source: "state-local", noticeId: "12345" }));
+    expect(unifiedBidIdentity({ source: "federal", noticeId: " ABC " }))
+      .toBe(unifiedBidIdentity({ source: "FEDERAL", noticeId: "abc" }));
   });
 
   it("returns a plain-language reason for each recoverable stage", () => {
