@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
+  it("keeps legacy status aligned across every pipeline stage", async () => {
+    const { legacyStatusForBidStage } = await import("./bidLifecycle.js");
+    expect(legacyStatusForBidStage("new")).toBe("new");
+    for (const stage of ["reviewing", "bidding", "submitted"]) {
+      expect(legacyStatusForBidStage(stage)).toBe("interested");
+    }
+    for (const stage of ["won", "lost", "no_bid"]) {
+      expect(legacyStatusForBidStage(stage)).toBe("dismissed");
+    }
+  });
+
   it("keeps USA Spending awards out of actionable work", () => {
     const award = { source: "usa-spending", opportunityType: "award_intelligence" };
     expect(isAwardIntelligence(award)).toBe(true);
