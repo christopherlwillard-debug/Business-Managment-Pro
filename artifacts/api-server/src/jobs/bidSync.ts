@@ -40,7 +40,7 @@ import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
-import { isActionableBid, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
+import { isActionableBid, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -516,6 +516,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     // score 0 but may have been inserted before a suppress term was added.
     // Only touch 'new' rows — never auto-move a row the user has already reviewed.
     const autoNobd = opportunityScore === 0 && bid.stage === "new" && isHardSuppressedByTitle(bid.title);
+    const autoRejectNew = !autoNobd && shouldRejectNewBid(bid.stage, opportunityScore, MIN_SCORE_TO_STORE);
     // A previously score-rejected row may become relevant after capability profiles
     // change. Restore it automatically once it clears the current score floor.
     const autoRestoreRejected = shouldRestoreScoreRejectedBid(bid.stage, opportunityScore, MIN_SCORE_TO_STORE);
@@ -540,6 +541,15 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
           geographyReason: geography.geographyReason,
         // Suppress stale bids: move them out of 'new' so they don't clutter the feed
         ...(autoNobd ? { stage: "no_bid" as const, status: "dismissed" } : {}),
+        ...(autoRejectNew ? {
+          stage: "score_rejected" as const,
+          status: "score_rejected",
+          notes: bid.notes?.startsWith("Filtered:")
+            ? `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
+            : bid.notes
+              ? `${bid.notes}\\n\\nFiltered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`
+              : `Filtered: score ${opportunityScore} below ${MIN_SCORE_TO_STORE} minimum`,
+        } : {}),
         ...(autoRestoreRejected ? {
           stage: "new" as const,
           status: "new",
