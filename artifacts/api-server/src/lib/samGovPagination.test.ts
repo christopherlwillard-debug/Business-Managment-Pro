@@ -383,6 +383,44 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
     expect(result.requestsAccepted).toBe(0);
   });
 
+  it("counts non-429 HTTP failures as failed requests, not accepted empty results", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: () => Promise.resolve("temporarily unavailable"),
+    } as unknown as Response));
+
+    const counters = { attempted: 0, accepted: 0, failed: 0, errors: [] as string[] };
+    const rows = await fetchAllPages("test-key", { naics: "238310" }, "server-error", counters);
+
+    expect(rows).toEqual([]);
+    expect(counters.attempted).toBe(1);
+    expect(counters.accepted).toBe(0);
+    expect(counters.failed).toBe(1);
+    expect(counters.errors[0]).toContain("HTTP 503");
+  });
+
+  it("reports network and timeout failures without discarding earlier successful pages", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          totalRecords: SAM_PAGE_SIZE + 1,
+          opportunitiesData: Array.from({ length: SAM_PAGE_SIZE }, (_, i) => makeSamRecord(`first-${i}`, "238350")),
+        }),
+      } as unknown as Response)
+      .mockRejectedValueOnce(new Error("socket timeout")));
+
+    const counters = { attempted: 0, accepted: 0, failed: 0, errors: [] as string[] };
+    const rows = await fetchAllPages("test-key", { naics: "238350" }, "partial-network-error", counters);
+
+    expect(rows).toHaveLength(SAM_PAGE_SIZE);
+    expect(counters.attempted).toBe(2);
+    expect(counters.accepted).toBe(1);
+    expect(counters.failed).toBe(1);
+    expect(counters.errors[0]).toContain("socket timeout");
+  });
+
   it("signals quotaExhausted=true even when 429 response body is missing or unparseable", async () => {
     // SAM.gov returns 429 with a non-JSON body (e.g. an HTML error page)
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() =>
