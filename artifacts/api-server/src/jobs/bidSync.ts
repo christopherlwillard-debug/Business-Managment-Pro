@@ -40,7 +40,7 @@ import { detectContractType } from "../lib/bidContractTypeDetector.js";
 import { classifyOpportunityScope, isScopeCompatibleWithBusiness, isAsphaltCrossRouteCandidate, isGeneralContractingCrossRouteCandidate, assessDataCompleteness } from "../lib/bidScopeClassifier.js";
 import { quarantineOrphanBidOpportunities } from "../lib/bid-ownership.js";
 import { classifyBidGeography } from "../lib/bidGeography.js";
-import { isActionableBid, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
+import { isActionableBid, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "../lib/bidLifecycle.js";
 
 // ── Resolved business search profile ─────────────────────────────────────────
 
@@ -799,17 +799,28 @@ async function upsertOpportunities(
       // Merge newly scraped fields with the last known values. A portal may omit
       // a field on a later scrape even though the solicitation has not removed it.
       // Refresh source data while preserving user-managed stage, notes, and job link.
-      const refreshed = {
-        title: opp.title || existing.title,
-        agency: opp.agency ?? existing.agency,
-        naicsCode: opp.naicsCode ?? existing.naicsCode,
-        description: opp.description ?? existing.description,
-        postedDate: opp.postedDate ?? existing.postedDate,
-        responseDeadline: opp.responseDeadline ?? existing.responseDeadline,
-        url: opp.url || existing.url,
-        noticeType: (opp as SamOpportunity).noticeType ?? existing.noticeType,
-        setAsideType: (opp as SamOpportunity).typeOfSetAside ?? existing.setAsideType,
-      };
+      const refreshed = mergeBidSourceFields({
+        title: existing.title,
+        agency: existing.agency,
+        naicsCode: existing.naicsCode,
+        description: existing.description,
+        postedDate: existing.postedDate,
+        responseDeadline: existing.responseDeadline,
+        url: existing.url,
+        noticeType: existing.noticeType,
+        setAsideType: existing.setAsideType,
+      }, {
+        title: opp.title,
+        agency: opp.agency,
+        naicsCode: opp.naicsCode,
+        description: opp.description,
+        postedDate: opp.postedDate,
+        responseDeadline: opp.responseDeadline,
+        url: opp.url,
+        noticeType: (opp as SamOpportunity).noticeType ?? null,
+        setAsideType: (opp as SamOpportunity).typeOfSetAside ?? null,
+      });
+      const refreshedScope = classifyOpportunityScope(refreshed.title, refreshed.naicsCode, effectiveSource);
       const refreshedCompleteness = assessDataCompleteness({
         responseDeadline: refreshed.responseDeadline,
         naicsCode: refreshed.naicsCode,
@@ -872,7 +883,7 @@ async function upsertOpportunities(
           licenseFlags:          detectedExisting.licenseFlags,
           outOfScopeFlags:       detectedExisting.outOfScopeFlags,
           // Phase 7 — keep scope + completeness current on every sync.
-          scopeCategory:         scope.primaryCategory,
+          scopeCategory:         refreshedScope.primaryCategory,
           dataCompleteness:      refreshedCompleteness,
           geography:             refreshedGeography.geography,
           placeOfPerformance:    refreshedGeography.placeOfPerformance,
