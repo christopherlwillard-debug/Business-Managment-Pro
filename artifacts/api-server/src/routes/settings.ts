@@ -380,6 +380,9 @@ router.get("/", async (req, res) => {
         settings.quickLinks = encryptedLinks as typeof settings.quickLinks;
       } catch (migrationError) {
         console.error("[settings] Could not encrypt legacy contractor portal credentials:", migrationError);
+        return res.status(503).json({
+          error: "Contractor portal credentials could not be secured. Configure SESSION_SECRET before accessing these settings.",
+        });
       }
     }
     const formatted = format(settings);
