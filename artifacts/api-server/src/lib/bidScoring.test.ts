@@ -57,12 +57,11 @@ describe("normalizeSetAsideType", () => {
   });
 
   // ── Certification-specific programs → undefined (no bonus) ─────────────────
-  it("returns undefined for WOSB (Women-Owned — requires certification)", () => {
-    expect(normalizeSetAsideType("WOSB")).toBeUndefined();
-  });
-
-  it("returns undefined for EDWOSB (Economically Disadvantaged WOSB)", () => {
-    expect(normalizeSetAsideType("EDWOSB")).toBeUndefined();
+  it("recognizes WOSB and EDWOSB restricted codes without awarding points", () => {
+    expect(normalizeSetAsideType("WOSB")).toBe("cert_other");
+    expect(normalizeSetAsideType("WOSBSS")).toBe("cert_other");
+    expect(normalizeSetAsideType("EDWOSB")).toBe("cert_other");
+    expect(normalizeSetAsideType("EDWOSBSS")).toBe("cert_other");
   });
 
   it("recognizes HUBZone set-aside and sole-source codes without awarding points", () => {
@@ -86,8 +85,10 @@ describe("normalizeSetAsideType", () => {
     expect(normalizeSetAsideType("SBP")).toBe("small_business");
   });
 
-  it("returns undefined for ISBEE (Indian Small Business)", () => {
-    expect(normalizeSetAsideType("ISBEE")).toBeUndefined();
+  it("recognizes other certification-specific codes without awarding points", () => {
+    expect(normalizeSetAsideType("ISBEE")).toBe("cert_other");
+    expect(normalizeSetAsideType("BICiv")).toBe("cert_other");
+    expect(normalizeSetAsideType("IEE")).toBe("cert_other");
   });
 
   it("returns undefined for an unrecognised future code", () => {
