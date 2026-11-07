@@ -65,16 +65,25 @@ describe("normalizeSetAsideType", () => {
     expect(normalizeSetAsideType("EDWOSB")).toBeUndefined();
   });
 
-  it("returns undefined for HZC (HUBZone — requires certification)", () => {
-    expect(normalizeSetAsideType("HZC")).toBeUndefined();
+  it("recognizes HUBZone set-aside and sole-source codes without awarding points", () => {
+    expect(normalizeSetAsideType("HZC")).toBe("hubzone");
+    expect(normalizeSetAsideType("HZS")).toBe("hubzone");
   });
 
-  it("returns undefined for 8A (8(a) program — requires certification)", () => {
-    expect(normalizeSetAsideType("8A")).toBeUndefined();
+  it("recognizes 8(a) competed and sole-source codes without awarding points", () => {
+    expect(normalizeSetAsideType("8A")).toBe("8a");
+    expect(normalizeSetAsideType("8AN")).toBe("8a");
   });
 
-  it("returns undefined for 8AN (8(a) sole source)", () => {
-    expect(normalizeSetAsideType("8AN")).toBeUndefined();
+  it("recognizes SDVOSB official SAM.gov variants", () => {
+    expect(normalizeSetAsideType("SDVOSBC")).toBe("sdvosb");
+    expect(normalizeSetAsideType("SDVOSBS")).toBe("sdvosb");
+  });
+
+  it("recognizes VOSB and partial small-business variants", () => {
+    expect(normalizeSetAsideType("VSA")).toBe("vosb");
+    expect(normalizeSetAsideType("VSS")).toBe("vosb");
+    expect(normalizeSetAsideType("SBP")).toBe("small_business");
   });
 
   it("returns undefined for ISBEE (Indian Small Business)", () => {
