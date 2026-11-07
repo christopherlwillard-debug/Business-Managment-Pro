@@ -45,6 +45,39 @@ async function extractTextFromPdf(buffer: Buffer, maxChars = 30000): Promise<str
 }
 
 const MAX_REDIRECTS = 5;
+const MAX_PDF_BYTES = 25 * 1024 * 1024;
+
+/** Read a response body with a hard byte ceiling to prevent oversized PDFs exhausting memory. */
+export async function readLimitedResponseBuffer(
+  response: Response,
+  maxBytes = MAX_PDF_BYTES,
+): Promise<Buffer | null> {
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null;
+
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, totalBytes);
+  } catch {
+    return null;
+  } finally {
+    try { reader.releaseLock(); } catch { /* stream may already be cancelled */ }
+  }
+}
 
 async function safeFetch(startUrl: string, init: RequestInit = {}): Promise<Response | null> {
   let currentUrl = startUrl;
@@ -78,7 +111,7 @@ async function fetchPdfBuffer(url: string): Promise<Buffer | null> {
     if (!res || !res.ok) return null;
     const ct = res.headers.get("content-type") ?? "";
     if (!ct.includes("pdf") && !url.toLowerCase().endsWith(".pdf")) return null;
-    return Buffer.from(await res.arrayBuffer());
+    return await readLimitedResponseBuffer(res);
   } catch {
     return null;
   }
