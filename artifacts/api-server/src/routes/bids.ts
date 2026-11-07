@@ -643,9 +643,8 @@ router.get("/settings", async (req, res) => {
 // GET /api/bids/capabilities — capability profiles for a business
 router.get("/capabilities", async (req, res) => {
   try {
-    const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    const bizId = parsePositiveId(req.query.businessId);
+    if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
     if (!(await requireExistingBusiness(res, bizId))) return;
 
     const rows = await db
@@ -919,9 +918,8 @@ router.get("/sources", async (req, res) => {
 router.patch("/sources/:slug", async (req, res) => {
   try {
     const { slug } = req.params;
-    const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    const bizId = parsePositiveId(req.query.businessId);
+    if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
     if (!(await requireExistingBusiness(res, bizId))) return;
 
     // Validate the slug exists in the catalog
@@ -934,21 +932,44 @@ router.patch("/sources/:slug", async (req, res) => {
     if (!catalog) { res.status(404).json({ error: "Source not found" }); return; }
 
     const { enabled, portalUrl, portalLabel } = req.body as {
-      enabled?: boolean;
-      portalUrl?: string;
-      portalLabel?: string;
+      enabled?: unknown;
+      portalUrl?: unknown;
+      portalLabel?: unknown;
     };
+    if (enabled !== undefined && typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be a boolean" });
+      return;
+    }
+    if (portalUrl !== undefined && portalUrl !== null && typeof portalUrl !== "string") {
+      res.status(400).json({ error: "portalUrl must be a string or null" });
+      return;
+    }
+    if (portalLabel !== undefined && portalLabel !== null && typeof portalLabel !== "string") {
+      res.status(400).json({ error: "portalLabel must be a string or null" });
+      return;
+    }
+    if (typeof portalUrl === "string" && portalUrl.trim()) {
+      let parsedPortalUrl: URL;
+      try { parsedPortalUrl = new URL(portalUrl.trim()); } catch {
+        res.status(400).json({ error: "portalUrl must be a valid HTTP or HTTPS URL" });
+        return;
+      }
+      if (!["http:", "https:"].includes(parsedPortalUrl.protocol) || parsedPortalUrl.username || parsedPortalUrl.password) {
+        res.status(400).json({ error: "portalUrl must be a valid HTTP or HTTPS URL without embedded credentials" });
+        return;
+      }
+    }
 
     const patch: Partial<typeof bidSourceConnectionsTable.$inferInsert> = {
       updatedAt: new Date(),
     };
-    if (enabled !== undefined) patch.enabled = enabled;
+    if (enabled !== undefined) patch.enabled = enabled as boolean;
 
     // Portal URL / label only allowed for portal-link-only sources
     const isPortalOnly = catalog.connectionMethod === "portal_link_only";
     if (isPortalOnly) {
-      if (portalUrl !== undefined) patch.portalUrl = portalUrl || null;
-      if (portalLabel !== undefined) patch.portalLabel = portalLabel || null;
+      if (portalUrl !== undefined) patch.portalUrl = typeof portalUrl === "string" && portalUrl.trim() ? portalUrl.trim() : null;
+      if (portalLabel !== undefined) patch.portalLabel = typeof portalLabel === "string" && portalLabel.trim() ? portalLabel.trim().slice(0, 120) : null;
     }
 
     // Derive connectionStatus
@@ -1310,12 +1331,13 @@ router.post("/:id/summarize", async (req, res) => {
 
 // POST /api/bids/:id/deep-read — extract the full solicitation requirements
 router.post("/:id/deep-read", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = parsePositiveId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "id must be a positive integer" }); return; }
 
   const rawBizId = req.body?.businessId ?? req.query.businessId;
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const bizId = parsePositiveId(rawBizId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   try {
     const [bid] = await db
@@ -1482,8 +1504,8 @@ router.post("/sync", async (req, res) => {
       return;
     }
 
-    const bizId = parseInt(String(rawId), 10);
-    if (isNaN(bizId)) { res.status(400).json({ error: "Invalid businessId" }); return; }
+    const bizId = parsePositiveId(rawId);
+    if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
 
     const [biz] = await db
       .select({ id: businessesTable.id })
@@ -1648,12 +1670,12 @@ function sanitizeEducation(raw: Record<string, unknown>): EducationSummaryData {
 
 // POST /api/bids/:id/educate — on-demand education analysis for new contractors
 router.post("/:id/educate", async (req, res) => {
-  const id = parseInt(req.params["id"] as string, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = parsePositiveId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "id must be a positive integer" }); return; }
 
-  const rawBizId = req.body?.businessId ?? req.query["businessId"];
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const rawBizId = req.body?.businessId ?? req.query.businessId;
+  const bizId = parsePositiveId(rawBizId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
   if (!(await requireExistingBusiness(res, bizId))) return;
 
   // Optional: force=true regenerates even if already cached
