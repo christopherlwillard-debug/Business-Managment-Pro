@@ -819,9 +819,8 @@ router.get("/unified", async (req, res) => {
 // IMPORTANT: registered before PATCH /:id so Express doesn't match "sources" as an id.
 router.get("/sources", async (req, res) => {
   try {
-    const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    const bizId = parsePositiveId(req.query.businessId);
+    if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
     if (!(await requireExistingBusiness(res, bizId))) return;
 
     // Load the full global catalog
@@ -1053,7 +1052,7 @@ router.post("/private", async (req, res) => {
   }
   if (!(await requireExistingBusiness(res, parsedBusinessId))) return;
   if (jobId !== undefined && jobId !== null) {
-    if (!Number.isInteger(jobId) || jobId <= 0) {
+    if (typeof jobId !== "number" || !Number.isSafeInteger(jobId) || jobId <= 0) {
       res.status(400).json({ error: "jobId must be a positive integer or null" });
       return;
     }
@@ -1182,7 +1181,7 @@ router.patch("/:id", async (req, res) => {
     updates.privateSourceType = privateSourceType ?? null;
   }
   if (jobId !== undefined) {
-    if (jobId !== null && (!Number.isInteger(jobId) || jobId <= 0)) {
+    if (jobId !== null && (typeof jobId !== "number" || !Number.isSafeInteger(jobId) || jobId <= 0)) {
       res.status(400).json({ error: "jobId must be a positive integer or null" });
       return;
     }
@@ -1929,12 +1928,12 @@ Return ONLY valid JSON (no markdown fences):
 
 // POST /api/bids/:id/qualify — AI industrial maintenance qualification analysis
 router.post("/:id/qualify", async (req, res) => {
-  const id = parseInt(req.params["id"] as string, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = parsePositiveId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "id must be a positive integer" }); return; }
 
-  const rawBizId = req.body?.businessId ?? req.query["businessId"];
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const rawBizId = req.body?.businessId ?? req.query.businessId;
+  const bizId = parsePositiveId(rawBizId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
   if (!(await requireExistingBusiness(res, bizId))) return;
 
   const force = req.body?.force === true || req.query["force"] === "true";
