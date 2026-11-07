@@ -661,6 +661,7 @@ async function upsertOpportunities(
         url: bidOpportunitiesTable.url,
         noticeType: bidOpportunitiesTable.noticeType,
         setAsideType: bidOpportunitiesTable.setAsideType,
+        placeOfPerformance: bidOpportunitiesTable.placeOfPerformance,
       })
       .from(bidOpportunitiesTable)
       .where(and(
@@ -831,6 +832,7 @@ async function upsertOpportunities(
       const refreshedGeography = geographyForOpportunity({
         ...opp,
         ...refreshed,
+        placeOfPerformance: opp.placeOfPerformance ?? existing.placeOfPerformance,
       }, defaultSourceLabel);
 
       // Re-score existing row so capability profile changes take effect immediately.
