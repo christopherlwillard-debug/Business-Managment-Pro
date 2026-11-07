@@ -22,8 +22,8 @@
 
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { integrationCredentialsTable, bidSourceConnectionsTable, dashboardTasksTable } from "@workspace/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { integrationCredentialsTable, bidSourceConnectionsTable, dashboardTasksTable, businessesTable } from "@workspace/db/schema";
+import { eq, and, isNull, or } from "drizzle-orm";
 import {
   INTEGRATION_CATALOG,
   testCredential,
@@ -138,11 +138,49 @@ function buildIntegrationResponse(
   };
 }
 
-async function loadPlatformRows() {
-  return db
-    .select()
-    .from(integrationCredentialsTable)
-    .where(isNull(integrationCredentialsTable.businessId));
+async function loadCredentialRows(businessId?: number | null) {
+  const scopeFilter = businessId == null
+    ? isNull(integrationCredentialsTable.businessId)
+    : or(
+        isNull(integrationCredentialsTable.businessId),
+        eq(integrationCredentialsTable.businessId, businessId),
+      );
+  return db.select().from(integrationCredentialsTable).where(scopeFilter);
+}
+
+function getScopedCredentialRow(
+  rows: typeof integrationCredentialsTable.$inferSelect[],
+  def: (typeof INTEGRATION_CATALOG)[0],
+  businessId?: number | null,
+) {
+  return rows.find((row) =>
+    row.slug === def.slug
+    && (def.scope === "business"
+      ? businessId != null && row.businessId === businessId
+      : row.businessId == null),
+  );
+}
+
+async function resolveBusinessScope(
+  def: (typeof INTEGRATION_CATALOG)[0],
+  rawBusinessId: unknown,
+  res: import("express").Response,
+): Promise<number | null | undefined> {
+  if (def.scope !== "business") return null;
+  const businessId = Number(rawBusinessId);
+  if (!Number.isInteger(businessId) || businessId <= 0) {
+    res.status(400).json({ error: "businessId is required for this business-scoped integration." });
+    return undefined;
+  }
+  const [business] = await db.select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.id, businessId))
+    .limit(1);
+  if (!business) {
+    res.status(404).json({ error: "Business not found." });
+    return undefined;
+  }
+  return businessId;
 }
 
 /** Aggregate bid_source_connections across ALL businesses, by catalogSlug. */
@@ -193,14 +231,16 @@ async function loadSyncHealthMap(): Promise<Map<string, SyncHealth>> {
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 /** GET /api/integrations — list all integrations with merged status */
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const [rows, syncHealthMap] = await Promise.all([loadPlatformRows(), loadSyncHealthMap()]);
-    const bySlug = new Map(rows.map(r => [r.slug, r]));
+    const rawBusinessId = req.query.businessId;
+    const parsedBusinessId = rawBusinessId == null ? null : Number(rawBusinessId);
+    const businessId = Number.isInteger(parsedBusinessId) && parsedBusinessId! > 0 ? parsedBusinessId : null;
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
 
     const result = INTEGRATION_CATALOG
       .filter(def => !def.comingSoon) // hide coming-soon from the main list
-      .map(def => buildIntegrationResponse(def, bySlug.get(def.slug), syncHealthMap));
+      .map(def => buildIntegrationResponse(def, getScopedCredentialRow(rows, def, businessId), syncHealthMap));
 
     res.json(result);
   } catch (err) {
@@ -210,13 +250,15 @@ router.get("/", async (_req, res) => {
 });
 
 /** GET /api/integrations/health — aggregated health summary */
-router.get("/health", async (_req, res) => {
+router.get("/health", async (req, res) => {
   try {
-    const [rows, syncHealthMap] = await Promise.all([loadPlatformRows(), loadSyncHealthMap()]);
-    const bySlug = new Map(rows.map(r => [r.slug, r]));
+    const rawBusinessId = req.query.businessId;
+    const parsedBusinessId = rawBusinessId == null ? null : Number(rawBusinessId);
+    const businessId = Number.isInteger(parsedBusinessId) && parsedBusinessId! > 0 ? parsedBusinessId : null;
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
 
     const allIntegrations = INTEGRATION_CATALOG.map(def =>
-      buildIntegrationResponse(def, bySlug.get(def.slug), syncHealthMap)
+      buildIntegrationResponse(def, getScopedCredentialRow(rows, def, businessId), syncHealthMap)
     );
 
     const summary = {
@@ -252,12 +294,15 @@ router.get("/:slug", async (req, res) => {
   if (!def) { res.status(404).json({ error: "Unknown integration" }); return; }
 
   try {
+    const businessId = await resolveBusinessScope(def, req.query.businessId, res);
+    if (businessId === undefined) return;
     const [[row], syncHealthMap] = await Promise.all([
-      db
-        .select()
-        .from(integrationCredentialsTable)
-        .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)))
-        .limit(1),
+      db.select().from(integrationCredentialsTable).where(and(
+        eq(integrationCredentialsTable.slug, slug),
+        businessId == null
+          ? isNull(integrationCredentialsTable.businessId)
+          : eq(integrationCredentialsTable.businessId, businessId),
+      )).limit(1),
       loadSyncHealthMap(),
     ]);
 
@@ -420,11 +465,14 @@ router.post("/:slug/portal", async (req, res) => {
   }
 
   const body = req.body as {
+    businessId?: number;
     portalUrl?:  string;
     username?:   string;
     password?:   string;
     notes?:      string;
   };
+  const businessId = await resolveBusinessScope(def, body.businessId, res);
+  if (businessId === undefined) return;
 
   if (!body.portalUrl?.trim() && !body.username?.trim() && !body.password?.trim()) {
     res.status(400).json({ error: "At least one of portalUrl, username, or password is required." });
@@ -437,12 +485,17 @@ router.post("/:slug/portal", async (req, res) => {
       username:  body.username?.trim()  ?? null,
       password:  body.password?.trim()  ?? null,
       notes:     body.notes?.trim()     ?? null,
-    });
+    }, businessId);
 
     const [updatedRow] = await db
       .select()
       .from(integrationCredentialsTable)
-      .where(and(eq(integrationCredentialsTable.slug, slug), isNull(integrationCredentialsTable.businessId)))
+      .where(and(
+        eq(integrationCredentialsTable.slug, slug),
+        businessId == null
+          ? isNull(integrationCredentialsTable.businessId)
+          : eq(integrationCredentialsTable.businessId, businessId),
+      ))
       .limit(1);
 
     res.json({
@@ -469,7 +522,9 @@ router.delete("/:slug/portal", async (req, res) => {
   if (!def) { res.status(404).json({ error: "Unknown integration" }); return; }
 
   try {
-    await removePortalCredential(slug);
+    const businessId = await resolveBusinessScope(def, req.query.businessId, res);
+    if (businessId === undefined) return;
+    await removePortalCredential(slug, businessId);
     res.json({
       ok:              true,
       message:         "Portal credentials cleared.",
