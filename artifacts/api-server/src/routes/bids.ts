@@ -1084,12 +1084,14 @@ router.post("/private", async (req, res) => {
 
 // PATCH /api/bids/:id — update stage/notes/private fields
 router.patch("/:id", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const rawBizId = req.body?.businessId ?? req.query.businessId;
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const bizId = typeof rawBizId === "number" || (typeof rawBizId === "string" && /^\\d+$/.test(rawBizId))
+    ? Number(rawBizId)
+    : NaN;
+  if (!Number.isSafeInteger(bizId) || bizId <= 0) { res.status(400).json({ error: "businessId is required" }); return; }
   if (!(await requireExistingBusiness(res, bizId))) return;
 
   const {
