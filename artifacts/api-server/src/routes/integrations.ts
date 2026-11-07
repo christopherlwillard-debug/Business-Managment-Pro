@@ -38,6 +38,7 @@ import {
   setPortalCredential,
   removePortalCredential,
 } from "../lib/credentialManager.js";
+import { validatePortalUrl } from "../lib/portalUrlValidation.js";
 
 const router = Router();
 
@@ -493,17 +494,13 @@ router.post("/:slug/portal", async (req, res) => {
     values[field] = typeof value === "string" ? value.trim() : null;
   }
 
-  const portalUrl = values.portalUrl;
-  if (typeof portalUrl === "string" && portalUrl) {
-    let parsedPortalUrl: URL;
-    try { parsedPortalUrl = new URL(portalUrl); } catch {
-      res.status(400).json({ error: "portalUrl must be a valid HTTP or HTTPS URL." });
+  if (typeof values.portalUrl === "string") {
+    const validation = validatePortalUrl(values.portalUrl);
+    if (!validation.ok) {
+      res.status(400).json({ error: validation.error });
       return;
     }
-    if (!["http:", "https:"].includes(parsedPortalUrl.protocol) || parsedPortalUrl.username || parsedPortalUrl.password) {
-      res.status(400).json({ error: "portalUrl must use HTTP or HTTPS and cannot contain embedded credentials." });
-      return;
-    }
+    values.portalUrl = validation.value;
   }
 
   if (![values.portalUrl, values.username, values.password].some(value => typeof value === "string" && value.length > 0)) {
