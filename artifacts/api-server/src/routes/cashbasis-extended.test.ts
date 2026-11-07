@@ -497,17 +497,6 @@ describe("Dashboard canonical business attribution", () => {
       isWageAdvance: false, voidedAt: null, businessId: null, businessLine: "mfh",
     };
 
-    for (let i = 0; i < 9; i++) h.selectQueue.push([]); // [0-8] KPI data
-    h.selectQueue.push([]);                              // [9] allSubPayments
-    h.selectQueue.push([]);                              // [10] YTD mileage
-    h.selectQueue.push([]);                              // [11] sub payment balance
-    h.selectQueue.push([business]);                       // [12] all businesses
-    // No unfiltered re-query occurs without a selector; seed the KPI expense slot above.
-    // Replace the empty expense slot with the legacy fixture through a dedicated second request.
-    // This test validates the same legacy fallback in the canonical dashboard path.
-    h.selectQueue.length = 0;
-    h.consumedSlots = 0;
-    h.missingSlots = [];
     h.selectQueue.push([]);                // [0] paid invoices
     h.selectQueue.push([]);                // [1] non-paid invoices
     h.selectQueue.push([legacyExpense]);   // [2] expenses
