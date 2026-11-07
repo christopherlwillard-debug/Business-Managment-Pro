@@ -553,7 +553,11 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
         ...(autoRestoreRejected ? {
           stage: "new" as const,
           status: "new",
-          ...(bid.notes?.startsWith("Filtered:") ? { notes: null } : {}),
+          ...(bid.notes?.startsWith("Filtered:")
+            ? { notes: null }
+            : bid.notes?.includes("\\n\\nFiltered:")
+              ? { notes: bid.notes.split("\\n\\nFiltered:")[0] || null }
+              : {}),
         } : {}),
         ...(completeness !== "complete" ? {
           recommendation: "review" as const,
