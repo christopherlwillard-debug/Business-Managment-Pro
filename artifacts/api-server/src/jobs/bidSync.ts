@@ -395,7 +395,7 @@ async function purgeIrrelevantLocalBids(businessId: number, relevantKeywords: st
   const isRelevant = [...titleConditions, ...descConditions].reduce((acc, cond) => sql`${acc} OR ${cond}`);
 
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND NOT (${isRelevant})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND NOT (${isRelevant})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} irrelevant local bid(s) for business ${businessId}`);
@@ -406,7 +406,7 @@ async function purgeNavLinkRows(businessId: number): Promise<number> {
   const likeConditions = NAV_PHRASE_DENYLIST.map((phrase) => sql`LOWER(title) LIKE ${"%" + phrase.toLowerCase() + "%"}`);
   const combined = likeConditions.reduce((acc, cond) => sql`${acc} OR ${cond}`);
   const result = await db.execute(
-    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND (${combined})`
+    sql`DELETE FROM bid_opportunities WHERE source = 'state-local' AND business_id = ${businessId} AND stage IN ('new', 'score_rejected') AND (${combined})`
   );
   const count = (result as { rowCount?: number }).rowCount ?? 0;
   if (count > 0) console.log(`[bid-sync] Purged ${count} nav-link row(s) for business ${businessId}`);
@@ -460,6 +460,7 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
       setAsideType:     bidOpportunitiesTable.setAsideType,
       // Phase 7 — needed for scope pruning and completeness re-assessment
       stage:            bidOpportunitiesTable.stage,
+      notes:             bidOpportunitiesTable.notes,
       naicsCode:        bidOpportunitiesTable.naicsCode,
       agency:           bidOpportunitiesTable.agency,
       url:              bidOpportunitiesTable.url,
@@ -491,10 +492,10 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     );
 
     // Scope pruning: delete rows that don't belong to this business type.
-    // Only auto-delete un-reviewed rows (new / no_bid) — never touch rows
-    // the user has actively moved into a workflow stage (reviewing / bidding / etc.).
+    // Only auto-delete untouched new rows. A no_bid row is a user decision/history
+    // record and must remain recoverable even if its capability scope later changes.
     if (!isScopeCompatibleWithBusiness(scope.primaryCategory, scope.confidence, profile.businessType)) {
-      if (bid.stage === "new" || bid.stage === "no_bid") {
+      if (bid.stage === "new") {
         await db.delete(bidOpportunitiesTable).where(eq(bidOpportunitiesTable.id, bid.id));
         console.log(`[bid-sync] Pruned wrong-business bid (scope: ${scope.primaryCategory ?? "unknown"}): "${bid.title.slice(0, 60)}" from ${profile.businessType}`);
         pruned++;
@@ -515,6 +516,9 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
     // score 0 but may have been inserted before a suppress term was added.
     // Only touch 'new' rows — never auto-move a row the user has already reviewed.
     const autoNobd = opportunityScore === 0 && bid.stage === "new" && isHardSuppressedByTitle(bid.title);
+    // A previously score-rejected row may become relevant after capability profiles
+    // change. Restore it automatically once it clears the current score floor.
+    const autoRestoreRejected = bid.stage === "score_rejected" && opportunityScore >= MIN_SCORE_TO_STORE;
     if (autoNobd) {
       console.log(`[bid-sync] Auto-dismissed hard-suppressed bid: "${bid.title.slice(0, 70)}"`);
     }
@@ -535,7 +539,12 @@ export async function rescoreExistingBids(businessId: number, profile: ResolvedP
           placeOfPerformance: geography.placeOfPerformance,
           geographyReason: geography.geographyReason,
         // Suppress stale bids: move them out of 'new' so they don't clutter the feed
-        ...(autoNobd ? { stage: "no_bid" as const } : {}),
+        ...(autoNobd ? { stage: "no_bid" as const, status: "dismissed" } : {}),
+        ...(autoRestoreRejected ? {
+          stage: "new" as const,
+          status: "new",
+          ...(bid.notes?.startsWith("Filtered:") ? { notes: null } : {}),
+        } : {}),
         ...(completeness !== "complete" ? {
           recommendation: "review" as const,
           recommendationFactors: [],
