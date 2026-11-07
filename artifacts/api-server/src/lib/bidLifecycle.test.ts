@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
+import { getBidLifecycleState, isActionableBid, isAwardIntelligence, isDefaultActiveBid, isExpiredDeadline, mergeBidSourceFields, normalizedBidIdentity, shouldPruneScopeMismatch, shouldRejectNewBid, shouldRestoreScoreRejectedBid } from "./bidLifecycle.js";
 
 describe("bid lifecycle boundary", () => {
   it("keeps USA Spending awards out of actionable work", () => {
@@ -10,6 +10,33 @@ describe("bid lifecycle boundary", () => {
 
   it("recognizes legacy rows by opportunity type too", () => {
     expect(isActionableBid({ source: "federal", opportunityType: "award_intelligence" })).toBe(false);
+  });
+
+  it("refreshes amended solicitation fields while retaining values omitted by a portal", () => {
+    const existing = {
+      title: "Old title",
+      agency: "City",
+      naicsCode: "238330",
+      description: "Existing full description",
+      postedDate: "2026-10-01",
+      responseDeadline: "2026-11-20",
+      url: "https://agency.gov/old.pdf",
+      noticeType: "solicitation",
+      setAsideType: "SBA",
+    };
+    const merged = mergeBidSourceFields(existing, {
+      title: "Amended title",
+      responseDeadline: "2026-11-27",
+      url: "https://agency.gov/amendment-1.pdf",
+      description: null,
+      naicsCode: "",
+    });
+    expect(merged.title).toBe("Amended title");
+    expect(merged.responseDeadline).toBe("2026-11-27");
+    expect(merged.url).toBe("https://agency.gov/amendment-1.pdf");
+    expect(merged.description).toBe("Existing full description");
+    expect(merged.naicsCode).toBe("238330");
+    expect(merged.agency).toBe("City");
   });
 
   it("keeps solicitations actionable", () => {
