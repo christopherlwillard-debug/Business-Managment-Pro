@@ -44,6 +44,15 @@ describe("bid dashboard statistics", () => {
     expect(stats.veteranOpportunities).toBe(3);
   });
 
+  it("recognizes raw SAM.gov veteran set-aside codes before AI analysis", () => {
+    const stats = calculateBidStats([
+      bid({ setAsideType: "SDVOSB" }),
+      bid({ id: 2, setAsideType: "VOSB" }),
+      bid({ id: 3, setAsideType: "SBA" }),
+    ], [], new Date(2026, 0, 5, 12));
+    expect(stats.veteranOpportunities).toBe(2);
+  });
+
   it("counts bidding only for current opportunities and calculates win rate from completed outcomes", () => {
     const stats = calculateBidStats([
       bid({ stage: "bidding" }),
