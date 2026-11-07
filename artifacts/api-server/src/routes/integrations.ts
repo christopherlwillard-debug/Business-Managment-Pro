@@ -481,10 +481,10 @@ router.post("/:slug/portal", async (req, res) => {
 
   try {
     await setPortalCredential(slug, {
-      portalUrl: body.portalUrl?.trim() ?? null,
-      username:  body.username?.trim()  ?? null,
-      password:  body.password?.trim()  ?? null,
-      notes:     body.notes?.trim()     ?? null,
+      portalUrl: body.portalUrl === undefined ? undefined : body.portalUrl.trim(),
+      username:  body.username === undefined ? undefined : body.username.trim(),
+      password:  body.password === undefined ? undefined : body.password.trim(),
+      notes:     body.notes === undefined ? undefined : body.notes.trim(),
     }, businessId);
 
     const [updatedRow] = await db
