@@ -24,7 +24,7 @@ import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 import { getExistingBusiness } from "../lib/bid-ownership.js";
 import { getBidLifecycleState, isDefaultActiveBid } from "../lib/bidLifecycle.js";
-import { buildBidFilterReason, selectUnifiedCandidateGroup } from "../lib/bidHiddenFeed.js";
+import { buildBidFilterReason, selectUnifiedCandidateGroup, unifiedBidIdentity } from "../lib/bidHiddenFeed.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
@@ -687,12 +687,14 @@ router.get("/unified", async (req, res) => {
 
     if (allRows.length === 0) { res.json([]); return; }
 
-    // Group by noticeId — insertion order preserved (newest first per above ORDER BY)
+    // Group by source + noticeId: source IDs are not globally unique across portals.
+    // Insertion order is preserved (newest first per above ORDER BY).
     const grouped = new Map<string, (typeof allRows)>();
     for (const row of allRows) {
-      const g = grouped.get(row.noticeId);
+      const groupKey = unifiedBidIdentity({ source: row.source, noticeId: row.noticeId });
+      const g = grouped.get(groupKey);
       if (g) g.push(row);
-      else grouped.set(row.noticeId, [row]);
+      else grouped.set(groupKey, [row]);
     }
 
     // Build the deduplicated unified response
