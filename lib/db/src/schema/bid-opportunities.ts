@@ -60,7 +60,7 @@ export const bidOpportunitiesTable = pgTable("bid_opportunities", {
   geographyReason:           text("geography_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
-  noticeBusinessUniq: uniqueIndex("bid_opportunities_notice_id_business_id_unique").on(table.noticeId, table.businessId),
+  noticeBusinessSourceUniq: uniqueIndex("bid_opportunities_notice_id_business_id_source_unique").on(table.noticeId, table.businessId, table.source),
 }));
 
 export type BidOpportunity = typeof bidOpportunitiesTable.$inferSelect;
