@@ -18,6 +18,7 @@ import {
   classifyOpportunityScope,
   isScopeCompatibleWithBusiness,
   isAsphaltCrossRouteCandidate,
+  isGeneralContractingCrossRouteCandidate,
 } from "./bidScopeClassifier.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -38,6 +39,17 @@ describe("cross-business asphalt routing", () => {
   it("routes confidently classified asphalt scope only", () => {
     expect(isAsphaltCrossRouteCandidate("Asphalt paving and resurfacing", null, "state-local")).toBe(true);
     expect(isAsphaltCrossRouteCandidate("Roadway sealcoating", "237310", "federal")).toBe(true);
+  });
+
+  it("routes flooring and manufactured-home opportunities back to general contracting", () => {
+    expect(isGeneralContractingCrossRouteCandidate("Flooring installation", "238330", "federal")).toBe(true);
+    expect(isGeneralContractingCrossRouteCandidate("Manufactured home drywall finishing", "238310", "federal")).toBe(true);
+  });
+
+  it("does not route asphalt or excluded sectors to general contracting", () => {
+    expect(isGeneralContractingCrossRouteCandidate("Asphalt paving", "237310", "federal")).toBe(false);
+    expect(isGeneralContractingCrossRouteCandidate("Engine block procurement", "333618", "federal")).toBe(false);
+    expect(isGeneralContractingCrossRouteCandidate("Unknown procurement", null, "federal")).toBe(false);
   });
 
   it("never routes excluded NAICS sectors or unrelated scopes to asphalt", () => {
