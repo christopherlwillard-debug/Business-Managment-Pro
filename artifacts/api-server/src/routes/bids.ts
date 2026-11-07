@@ -1088,7 +1088,7 @@ router.patch("/:id", async (req, res) => {
   if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const rawBizId = req.body?.businessId ?? req.query.businessId;
-  const bizId = typeof rawBizId === "number" || (typeof rawBizId === "string" && /^\\d+$/.test(rawBizId))
+  const bizId = typeof rawBizId === "number" || (typeof rawBizId === "string" && /^\d+$/.test(rawBizId))
     ? Number(rawBizId)
     : NaN;
   if (!Number.isSafeInteger(bizId) || bizId <= 0) { res.status(400).json({ error: "businessId is required" }); return; }
