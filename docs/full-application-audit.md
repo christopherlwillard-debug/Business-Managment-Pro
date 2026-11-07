@@ -407,3 +407,30 @@ This is a source-only diagnosis. No schema, business assignment, financial logic
 - Source inspection only; no database records, tax filings, payment history, credentials, or production settings were read or changed.
 - No tests were executed in the target runtime. This is a documentation-only finding, not a claim that the financial calculation is fixed.
 - No schema, accounting, tax, ownership, or production behavior was changed.
+
+
+## Dashboard business-breakdown canonical ownership diagnosis (2026-11-07)
+
+### RPT-002 — confirmed legacy-slug-only attribution in dashboard business breakdown
+
+**User-visible impact:** Dashboard per-business revenue, expense, subcontractor-cost, and active-job breakdowns can omit or misattribute records when their canonical `businessId` is correct but the compatibility `businessLine` value is null or stale. The selected-business KPI queries already use canonical ownership; the all-business breakdown is calculated separately and still groups by the legacy slug.
+
+**Source evidence on current `master`:**
+- `artifacts/api-server/src/routes/reports.ts` selects complete invoice, expense, other-income, job, and subcontractor payment rows, including canonical `businessId` where available.
+- The `reportBusinessWhere` helper in the same file explicitly prefers canonical `businessId` and uses `businessLine` only for rows whose canonical owner is null.
+- In the dashboard breakdown block, `rawInvoices.filter(i => i.businessLine === bl)`, `rawOtherIncome.filter(o => o.businessLine === bl)`, `rawExpenses.filter(e => e.businessLine === bl ...)`, and `rawActiveJobs.filter(j => j.businessLine === bl)` assign rows using only the legacy slug.
+- The same block groups fixed/allocation subcontractor payments in `subPayByBl` using `r.businessLine ?? "unattributed"`, despite selecting `r.businessId` in the query.
+- The resulting values feed `byBusinessLine` totals for revenue, expenses, operational net profit, and active jobs. This is separate from the already-canonical selected-business KPI query path.
+- The frontend's Expenses page uses canonical `businessId` first and only falls back to `businessLine` for legacy rows, consistent with the architecture memory and system registry.
+
+**Confirmed vs. unresolved:** The source-level attribution inconsistency is confirmed. Whether existing production records currently have null or stale slugs is not known; no production data was queried. This diagnosis does not claim a measured dollar impact.
+
+**Smallest proposed repair:** Use one shared canonical ownership predicate for each dashboard breakdown group: match a non-null `businessId` to the business ID; use the slug only when `businessId` is null. Apply the same rule to invoices, other income, expenses, jobs, and fixed/allocation subcontractor payments. Preserve the existing all-business view and unattributed bucket semantics, with explicit regression fixtures for (1) matching ID + matching slug, (2) matching ID + null slug, (3) matching ID + stale slug, (4) null ID + matching legacy slug, and (5) null ID + unknown slug.
+
+**Repair gate:** Rule 55 requires explicit approval because this changes financial report attribution and business scope. No implementation performed. Before code changes, confirm whether you approve correcting dashboard breakdown attribution to follow canonical `businessId` with legacy-slug fallback only for null-owned rows.
+
+### Validation boundary
+
+- Source inspection only; no production records or financial totals were accessed or changed.
+- No application code, schema, tax calculation, payroll, business ownership, credentials, or deployment was changed.
+- No runtime test or UI validation is claimed. Regression tests and the full validation workflow are required after approval.
