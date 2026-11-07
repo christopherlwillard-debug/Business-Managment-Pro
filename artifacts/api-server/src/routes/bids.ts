@@ -1296,12 +1296,14 @@ router.post("/:id/summarize", async (req, res) => {
         isSdvosb:        bidBusinessSettingsTable.isSdvosb,
         isVosb:          bidBusinessSettingsTable.isVosb,
         isSmallBusiness: bidBusinessSettingsTable.isSmallBusiness,
+        isHubzone:       bidBusinessSettingsTable.isHubzone,
+        is8a:            bidBusinessSettingsTable.is8a,
       })
       .from(bidBusinessSettingsTable)
       .where(eq(bidBusinessSettingsTable.businessId, bizId))
       .limit(1);
 
-    const recSettings = settingsForRec ?? { isSdvosb: false, isVosb: false, isSmallBusiness: true };
+    const recSettings = settingsForRec ?? { isSdvosb: false, isVosb: false, isSmallBusiness: true, isHubzone: false, is8a: false };
     const recResult = computeRecommendation(
       {
         title:             bid.title,
