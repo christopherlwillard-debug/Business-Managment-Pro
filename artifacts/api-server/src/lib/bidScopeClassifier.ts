@@ -299,6 +299,16 @@ const ASPHALT_EXCLUSIVE_SCOPES = new Set(["asphalt"]);
  */
 const NON_ASPHALT_SCOPES = new Set(["flooring", "mfg_homes"]);
 
+/** True only for a confidently classified asphalt opportunity eligible for GC-to-asphalt routing. */
+export function isAsphaltCrossRouteCandidate(
+  title: string,
+  naicsCode: string | null,
+  source: string,
+): boolean {
+  const scope = classifyOpportunityScope(title, naicsCode, source);
+  return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
+}
+
 /**
  * Returns true if this scope is compatible with the given business type.
  *
