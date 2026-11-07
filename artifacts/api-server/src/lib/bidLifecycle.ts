@@ -46,10 +46,16 @@ export function isExpiredDeadline(deadline: string | null | undefined, now = new
 
 export function normalizedBidIdentity(record: {
   source?: string | null;
+  noticeId?: string | null;
   title: string;
   agency?: string | null;
 }): string {
-  return `${record.source ?? ""}|${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
+  const source = (record.source ?? "").trim().toLowerCase();
+  const noticeId = record.noticeId?.trim().toLowerCase();
+  // A distinct official/source ID is a distinct opportunity even when an agency
+  // reuses the same title for recurring procurements.
+  if (noticeId) return `${source}|id:${noticeId}`;
+  return `${source}|title:${record.title.trim().toLowerCase()}|${(record.agency ?? "").trim().toLowerCase()}`;
 }
 
 export function getBidLifecycleState(record: BidLifecycleInput, now = new Date()): BidLifecycleState {
