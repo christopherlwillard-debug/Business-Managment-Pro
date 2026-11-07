@@ -75,6 +75,15 @@ export function shouldPruneScopeMismatch(stage: string | null | undefined): bool
   return stage === "new";
 }
 
+/** Move only untouched new rows below the relevance floor into the recoverable hidden feed. */
+export function shouldRejectNewBid(
+  stage: string | null | undefined,
+  score: number,
+  minimumScore: number,
+): boolean {
+  return stage === "new" && score < minimumScore;
+}
+
 /** Re-open a previously score-rejected row when an updated profile makes it relevant. */
 export function shouldRestoreScoreRejectedBid(
   stage: string | null | undefined,
