@@ -1050,6 +1050,17 @@ export async function runBidSync(
   ].filter((message): message is string => !!message).join("; ") || null;
 
   const localOk = localResult.status === "fulfilled";
+  const localHealthForLegacy: SiteHealthRecord[] = localOk
+    ? ((localResult.value as LocalScrapeResult)?.siteHealth ?? [])
+    : [];
+  const localFailedForLegacy = localHealthForLegacy.filter((site) => !site.success);
+  const localHasSuccessForLegacy = localOk
+    && (localHealthForLegacy.length === 0 || localHealthForLegacy.some((site) => site.success));
+  const localLegacyError = !localOk
+    ? String((localResult as PromiseRejectedResult).reason)
+    : localFailedForLegacy.length > 0
+      ? `${localFailedForLegacy.length} local procurement site(s) failed: ${localFailedForLegacy.map((site) => site.site).slice(0, 5).join(", ")}`
+      : null;
   const awardsFetchFulfilled = awardsResult.status === "fulfilled";
   const awardsFetchResult = awardsFetchFulfilled ? (awardsResult.value as UsaSpendingFetchResult) : null;
   const awardsOk = awardsFetchFulfilled && (awardsFetchResult?.errors.length ?? 0) === 0;
@@ -1062,8 +1073,8 @@ export async function runBidSync(
   await writeSyncHealth(businessId, {
     samLastSuccessAt:    (samActuallyRan && samOk) ? now : undefined,
     samLastError:        !samActuallyRan ? null : samOk ? null : samHealthError,
-    localLastSuccessAt:  (kyLocalActuallyRan && localOk) ? now : undefined,
-    localLastError:      !kyLocalActuallyRan ? null : localOk ? null : String((localResult as PromiseRejectedResult).reason),
+    localLastSuccessAt:  (kyLocalActuallyRan && localHasSuccessForLegacy) ? now : undefined,
+    localLastError:      !kyLocalActuallyRan ? null : localLegacyError,
     awardsLastSuccessAt: (awardsActuallyRan && awardsHealthSuccess) ? now : undefined,
     awardsLastError:     !awardsActuallyRan ? null : awardsOk ? null : awardsError,
   });
