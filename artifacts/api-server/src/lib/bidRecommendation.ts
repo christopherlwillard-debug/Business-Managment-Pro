@@ -199,9 +199,15 @@ export function computeRecommendation(
   }
 
   // ── Factor 2: Set-aside eligibility ───────────────────────────────────────
+  const setAsideNorm = classifySetAside(opp.setAsideType);
   factors.push(buildSetAsideFactor(opp.setAsideType, settings));
-  if (classifySetAside(opp.setAsideType) === "unknown") {
+  if (setAsideNorm === "unknown") {
     unknowns.push("Set-aside type and competition restrictions");
+  } else if (["sdvosb", "vosb", "small_business", "cert_other"].includes(setAsideNorm)) {
+    // The profile currently stores owner-maintained booleans, not verified
+    // certification evidence or effective dates. Never let these flags alone
+    // authorize a BID or definitive PASS for a restricted competition.
+    unknowns.push("Verify current certification/size status, SAM.gov representations, and solicitation-specific eligibility before bidding");
   }
 
   // ── Factor 3: Solicitation scope review (AI summary) ─────────────────────
@@ -316,12 +322,7 @@ export function computeRecommendation(
   }
 
   // ── Decision logic ─────────────────────────────────────────────────────────
-  const setAsideNorm        = classifySetAside(opp.setAsideType);
-  const setAsideIneligible  = (
-    (setAsideNorm === "sdvosb"    && !settings.isSdvosb) ||
-    (setAsideNorm === "vosb"      && !settings.isVosb && !settings.isSdvosb) ||
-    (setAsideNorm === "cert_other")
-  );
+  const setAsideRequiresVerification = ["sdvosb", "vosb", "small_business", "cert_other"].includes(setAsideNorm);
   const deadlineExpired     = daysOut !== null && daysOut < 0;
   const aiIsFit             = aiSummary?.["isFit"] === true;
   const aiIsNotFit          = aiSummary?.["isFit"] === false;
@@ -348,14 +349,14 @@ export function computeRecommendation(
       factors, unknowns,
     };
   }
-  if (setAsideIneligible && scopeReviewed && aiIsNotFit) {
+  if (false && setAsideRequiresVerification && scopeReviewed && aiIsNotFit) {
     return {
       recommendation: "pass", confidence: "high",
       summary: `Set-aside requires a certification you do not hold and solicitation review confirmed no fit.`,
       factors, unknowns,
     };
   }
-  if (setAsideIneligible && !hasCapabilityMatch && scopeReviewed) {
+  if (false && setAsideRequiresVerification && !hasCapabilityMatch && scopeReviewed) {
     return {
       recommendation: "pass", confidence: "medium",
       summary: "Set-aside requires a certification you do not hold and no capability match was found.",
@@ -371,21 +372,21 @@ export function computeRecommendation(
   }
 
   // BID: strong positive signals, scope reviewed (never BID without scope review)
-  if (scopeReviewed && aiIsFit && hasCapabilityMatch && highScore && !setAsideIneligible && !licenseRiskPresent && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && hasCapabilityMatch && highScore && !setAsideRequiresVerification && !licenseRiskPresent && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "high",
       summary: `Strong capability match and AI review confirmed fit — pursue this opportunity.`,
       factors, unknowns,
     };
   }
-  if (scopeReviewed && aiIsFit && hasCapabilityMatch && opp.opportunityScore >= 30 && !setAsideIneligible && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && hasCapabilityMatch && opp.opportunityScore >= 30 && !setAsideRequiresVerification && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "medium",
       summary: `AI review confirmed fit and capability match found — worth pursuing.`,
       factors, unknowns,
     };
   }
-  if (scopeReviewed && aiIsFit && !setAsideIneligible && !isNotYetSolicitation) {
+  if (scopeReviewed && aiIsFit && !setAsideRequiresVerification && !isNotYetSolicitation) {
     return {
       recommendation: "bid", confidence: "low",
       summary: `AI review confirmed fit — verify the concerns below before committing.`,
