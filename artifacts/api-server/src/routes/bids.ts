@@ -29,6 +29,14 @@ import { buildBidFilterReason, selectUnifiedCandidateGroup, unifiedBidIdentity }
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
 const VALID_STAGES: BidStage[] = ["new", "reviewing", "bidding", "submitted", "won", "lost", "no_bid"];
 
+/** Parse a positive safe integer without accepting parseInt prefixes, arrays, or coercion. */
+function parsePositiveId(value: unknown): number | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value > 0 ? value : null;
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function requireExistingBusiness(res: import("express").Response, businessId: number): Promise<boolean> {
   if (await getExistingBusiness(businessId)) return true;
   res.status(404).json({ error: "Business not found" });
@@ -560,9 +568,8 @@ const router = Router();
 // GET /api/bids — list opportunities for a business
 router.get("/", async (req, res) => {
   try {
-    const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId query param is required" }); return; }
+    const bizId = parsePositiveId(req.query.businessId);
+    if (bizId === null) { res.status(400).json({ error: "businessId query param must be a positive integer" }); return; }
     if (!(await requireExistingBusiness(res, bizId))) return;
 
     const rows = await db
@@ -591,9 +598,8 @@ router.get("/", async (req, res) => {
 // GET /api/bids/settings — bid settings + source health for a business
 router.get("/settings", async (req, res) => {
   try {
-    const { businessId } = req.query;
-    const bizId = businessId ? parseInt(businessId as string, 10) : NaN;
-    if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+    const bizId = parsePositiveId(req.query.businessId);
+    if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
     if (!(await requireExistingBusiness(res, bizId))) return;
 
     const settings = await db
@@ -660,8 +666,11 @@ router.get("/capabilities", async (req, res) => {
 router.get("/unified", async (req, res) => {
   try {
     const { scoringBusinessId } = req.query;
-    const rawScoringId = scoringBusinessId ? parseInt(scoringBusinessId as string, 10) : NaN;
-    const validScoringId = !isNaN(rawScoringId) ? rawScoringId : null;
+    const validScoringId = scoringBusinessId === undefined ? null : parsePositiveId(scoringBusinessId);
+    if (scoringBusinessId !== undefined && validScoringId === null) {
+      res.status(400).json({ error: "scoringBusinessId must be a positive integer" });
+      return;
+    }
     const includeHidden = String(req.query.includeHidden ?? "") === "true";
     if (validScoringId !== null && !(await requireExistingBusiness(res, validScoringId))) return;
 
@@ -980,9 +989,8 @@ router.patch("/sources/:slug", async (req, res) => {
 // ── POST /api/bids/private — create a manually-entered private opportunity ────
 // IMPORTANT: registered before PATCH /:id so Express doesn't treat "private" as an id.
 router.get("/jobs", async (req, res) => {
-  const rawBizId = req.query.businessId;
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const bizId = parsePositiveId(req.query.businessId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
   if (!(await requireExistingBusiness(res, bizId))) return;
   try {
     const jobs = await db.select({
@@ -1017,11 +1025,12 @@ router.post("/private", async (req, res) => {
     jobId?:        number | null;
   };
 
-  if (!businessId || !companyName?.trim()) {
-    res.status(400).json({ error: "businessId and companyName are required" });
+  const parsedBusinessId = parsePositiveId(businessId);
+  if (parsedBusinessId === null || typeof companyName !== "string" || !companyName.trim()) {
+    res.status(400).json({ error: "A positive businessId and companyName are required" });
     return;
   }
-  if (!(await requireExistingBusiness(res, businessId))) return;
+  if (!(await requireExistingBusiness(res, parsedBusinessId))) return;
   if (jobId !== undefined && jobId !== null) {
     if (!Number.isInteger(jobId) || jobId <= 0) {
       res.status(400).json({ error: "jobId must be a positive integer or null" });
@@ -1029,7 +1038,7 @@ router.post("/private", async (req, res) => {
     }
     const [job] = await db.select({ id: jobsTable.id })
       .from(jobsTable)
-      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.businessId, businessId)))
+      .where(and(eq(jobsTable.id, jobId), eq(jobsTable.businessId, parsedBusinessId)))
       .limit(1);
     if (!job) {
       res.status(400).json({ error: "Job not found for this business" });
@@ -1059,7 +1068,7 @@ router.post("/private", async (req, res) => {
       .insert(bidOpportunitiesTable)
       .values({
         noticeId,
-        businessId,
+        businessId: parsedBusinessId,
         title:                     `${companyName.trim()} — ${typeLabel}`,
         agency:                    companyName.trim(),
         description:               description?.trim() ?? null,
@@ -1191,12 +1200,13 @@ router.patch("/:id", async (req, res) => {
 
 // POST /api/bids/:id/summarize — on-demand AI summarization
 router.post("/:id/summarize", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = parsePositiveId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "id must be a positive integer" }); return; }
 
   const rawBizId = req.body?.businessId ?? req.query.businessId;
-  const bizId = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const bizId = parsePositiveId(rawBizId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
+  if (!(await requireExistingBusiness(res, bizId))) return;
 
   try {
     const [bid] = await db
@@ -1376,12 +1386,12 @@ router.post("/:id/deep-read", async (req, res) => {
 
 // POST /api/bids/:id/find-official-source — on-demand official government source lookup
 router.post("/:id/find-official-source", async (req, res) => {
-  const id    = parseInt(req.params["id"] as string, 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = parsePositiveId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "id must be a positive integer" }); return; }
 
-  const rawBizId = req.body?.businessId ?? req.query["businessId"];
-  const bizId    = rawBizId ? parseInt(String(rawBizId), 10) : NaN;
-  if (isNaN(bizId)) { res.status(400).json({ error: "businessId is required" }); return; }
+  const rawBizId = req.body?.businessId ?? req.query.businessId;
+  const bizId = parsePositiveId(rawBizId);
+  if (bizId === null) { res.status(400).json({ error: "businessId must be a positive integer" }); return; }
   if (!(await requireExistingBusiness(res, bizId))) return;
 
   try {
