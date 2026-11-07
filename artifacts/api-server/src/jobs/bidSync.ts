@@ -1141,29 +1141,41 @@ export async function runBidSync(
   // DIFFERENT business type (e.g. paving bids discovered during a GC sync),
   // route them to the correct business so they're not lost.
   // The scope gate above already prevented them from being inserted here.
-  const allScopeRejected = [...federalUpsert.scopeRejected, ...localUpsert.scopeRejected];
-  if (allScopeRejected.length > 0) {
+  // Only high/medium-confidence asphalt opportunities belong in the asphalt
+  // business. "excluded" NAICS sectors must never be re-routed as construction bids.
+  // Keep each source's original identity/label when routing so federal notices do
+  // not get silently rewritten as state-local records.
+  const asphaltFederalRejected = federalUpsert.scopeRejected.filter((opp) => {
+    const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, opp.source ?? "federal");
+    return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
+  });
+  const asphaltLocalRejected = localUpsert.scopeRejected.filter((opp) => {
+    const scope = classifyOpportunityScope(opp.title, opp.naicsCode ?? null, opp.source ?? "state-local");
+    return scope.primaryCategory === "asphalt" && scope.confidence !== "low";
+  });
+  const asphaltScopeRejected = [...asphaltFederalRejected, ...asphaltLocalRejected];
+  if (asphaltScopeRejected.length > 0 && business.type !== "asphalt_sealing") {
     try {
-      const allBusinesses = await db
+      const [asphaltBiz] = await db
         .select({ id: businessesTable.id, type: businessesTable.type, name: businessesTable.name })
-        .from(businessesTable);
-
-      // Group rejected bids by the business type they SHOULD go to
-      // For now: asphalt-scoped bids go to the asphalt_sealing business
-      if (business.type !== "asphalt_sealing") {
-        const asphaltBiz = allBusinesses.find((b) => b.type === "asphalt_sealing");
-        if (asphaltBiz) {
-          const asphaltProfile = await resolveProfile(asphaltBiz.id, "asphalt_sealing");
-          const crossRouted = await upsertOpportunities(
-            allScopeRejected, "state-local", "KY/IN Local", asphaltBiz.id, asphaltProfile
-          );
-          if (crossRouted.inserted.length > 0) {
-            console.log(`[bid-sync] Cross-routed ${crossRouted.inserted.length} bid(s) to "${asphaltBiz.name}" (scope mismatch from "${business.name}")`);
-          }
+        .from(businessesTable)
+        .where(eq(businessesTable.type, "asphalt_sealing"))
+        .limit(1);
+      if (asphaltBiz) {
+        const asphaltProfile = await resolveProfile(asphaltBiz.id, "asphalt_sealing");
+        const routedFederal = asphaltFederalRejected.length > 0
+          ? await upsertOpportunities(asphaltFederalRejected, "federal", "SAM.gov", asphaltBiz.id, asphaltProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedLocal = asphaltLocalRejected.length > 0
+          ? await upsertOpportunities(asphaltLocalRejected, "state-local", "KY/IN Local", asphaltBiz.id, asphaltProfile)
+          : { inserted: [], scopeRejected: [] };
+        const routedCount = routedFederal.inserted.length + routedLocal.inserted.length;
+        if (routedCount > 0) {
+          console.log(`[bid-sync] Cross-routed ${routedCount} asphalt bid(s) to "${asphaltBiz.name}" (scope mismatch from "${business.name}")`);
         }
       }
     } catch (crossErr) {
-      console.warn("[bid-sync] Cross-routing step failed (non-fatal):", crossErr);
+      console.warn("[bid-sync] Asphalt cross-routing step failed (non-fatal):", crossErr);
     }
   }
   // write opportunityType on awards row (backfill for existing records via DB migration)
