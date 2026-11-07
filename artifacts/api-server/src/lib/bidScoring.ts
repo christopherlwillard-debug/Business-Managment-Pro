@@ -49,8 +49,7 @@ export function normalizeSetAsideType(code: string | null | undefined): string |
   // Veteran preference in evaluation (not a formal set-aside; all may compete)
   if (upper === "VOB" || upper === "VETS" || upper === "VP") return "veteran_preference";
 
-  // Everything else (WOSB, EDWOSB, HZC/HZS, 8A, 8AN, ISBEE, …) requires
-  // certifications not tracked in the profile — return undefined (no bonus).
+  // Unrecognized codes receive no automatic score component.
   return undefined;
 }
 
