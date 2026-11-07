@@ -551,15 +551,15 @@ router.post("/health/tasks", async (req, res) => {
   }
 
   try {
-    const [rows, syncHealthMap] = await Promise.all([loadPlatformRows(), loadSyncHealthMap()]);
-    const bySlug = new Map(rows.map(r => [r.slug, r]));
+    const [rows, syncHealthMap] = await Promise.all([loadCredentialRows(businessId), loadSyncHealthMap()]);
+    
 
     const created: Array<{ title: string; notes: string; priority: string }> = [];
 
     for (const def of INTEGRATION_CATALOG) {
       if (def.comingSoon || def.managed) continue;
 
-      const row = bySlug.get(def.slug);
+      const row = getScopedCredentialRow(rows, def, businessId);
       const integrated = buildIntegrationResponse(def, row, syncHealthMap);
 
       // Check for expired credentials
