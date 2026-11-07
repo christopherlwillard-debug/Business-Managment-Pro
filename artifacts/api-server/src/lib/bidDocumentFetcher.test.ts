@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { readLimitedResponseBuffer } from "./bidDocumentFetcher.js";
+import { isUnsafeIpAddress, readLimitedResponseBuffer } from "./bidDocumentFetcher.js";
+
+describe("bid document URL safety", () => {
+  it("blocks private, loopback, link-local, shared, and non-routable IPv4 ranges", () => {
+    for (const address of [
+      "0.0.0.0",
+      "10.0.0.1",
+      "100.64.0.1",
+      "127.0.0.1",
+      "169.254.169.254",
+      "172.16.0.1",
+      "192.0.2.10",
+      "192.168.1.1",
+      "198.18.0.1",
+      "198.51.100.10",
+      "203.0.113.10",
+      "224.0.0.1",
+      "255.255.255.255",
+    ]) {
+      expect(isUnsafeIpAddress(address), address).toBe(true);
+    }
+  });
+
+  it("blocks non-global IPv6 ranges and allows public unicast addresses", () => {
+    for (const address of ["::", "::1", "fc00::1", "fd12::1", "fe80::1", "ff02::1", "::ffff:127.0.0.1", "2001:db8::1"]) {
+      expect(isUnsafeIpAddress(address), address).toBe(true);
+    }
+    expect(isUnsafeIpAddress("2606:4700:4700::1111")).toBe(false);
+  });
+});
 
 describe("bid document response size limits", () => {
   it("rejects a PDF whose declared content length exceeds the limit", async () => {
