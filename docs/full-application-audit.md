@@ -389,3 +389,21 @@ The client DELETE route currently returns HTTP 409 for all clients after its sco
 ### Validation boundary
 
 This is a source-only diagnosis. No schema, business assignment, financial logic, storage behavior, production data, credentials, or deployment was changed. No tests or runtime validation are claimed.
+
+
+## Subcontractor advance report-parity diagnosis (2026-11-07)
+
+- Reviewed current `master` after PR #4, including `artifacts/api-server/src/routes/reports.ts`, `artifacts/api-server/src/routes/tax-reports.ts`, `artifacts/api-server/src/routes/subcontractors.ts`, the subcontractor payment reversal route in `artifacts/api-server/src/routes/expenses.ts`, and the subcontractor YTD regression tests.
+- Confirmed a report-calculation inconsistency for fixed/allocation subcontractor payment rows: the Accounting report and `computeYtd` calculate the payment total as `amount + COALESCE(advance_amount, 0)`, while Schedule C Line 11 currently sums only `amount` from `sub_payment_records`. The Schedule C query otherwise filters by payment date, excludes reversed rows, limits compensation type to fixed/allocation, and applies the selected business predicate.
+- This means records with a nonzero `advanceAmount` can produce different contract-labor totals in Accounting / subcontractor YTD versus Schedule C. The current source comments describe advances as amounts deducted from net pay, and YTD includes them in total paid; however, the exact intended tax basis and whether `amount` is net or gross must be confirmed against the pay-worker write path and owner/accountant policy before changing the calculation.
+- Reversal behavior was also inspected: the existing reversal endpoint marks the original row `isReversal=true` with a required reason, and report/YTD queries exclude reversed rows. No duplicate reversal row is created by that endpoint.
+
+| ID | Severity | Subsystem / workflow | Evidence and root cause | Status | Residual risk |
+|---|---|---|---|---|---|
+| TAX-001 | High | Subcontractor payments → Accounting / 1099 YTD / Schedule C parity | Accounting and `computeYtd` include `amount + advanceAmount`; Schedule C Line 11 includes only `amount`. Payment records with advances may therefore be reported differently across surfaces. | **Confirmed source-level inconsistency; diagnosis only** | Verify pay-worker amount semantics and tax treatment with the owner/accountant. Then add a shared calculation helper and regression fixtures for normal, advance, reversed, hourly, and business-scoped records. No tax or payment behavior changed. |
+
+### Validation boundary
+
+- Source inspection only; no database records, tax filings, payment history, credentials, or production settings were read or changed.
+- No tests were executed in the target runtime. This is a documentation-only finding, not a claim that the financial calculation is fixed.
+- No schema, accounting, tax, ownership, or production behavior was changed.
