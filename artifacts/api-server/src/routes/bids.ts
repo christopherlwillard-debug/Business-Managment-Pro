@@ -23,7 +23,7 @@ import { findOfficialSource, classifySourceHeuristic, makeStatusLabel, makeStatu
 import { getCredential } from "../lib/credentialManager.js";
 import { CapabilityDefinition, getCapabilitiesForBusinessType } from "../lib/bidCapabilitySeeds.js";
 import { getExistingBusiness } from "../lib/bid-ownership.js";
-import { getBidLifecycleState, isDefaultActiveBid } from "../lib/bidLifecycle.js";
+import { getBidLifecycleState, isDefaultActiveBid, legacyStatusForBidStage } from "../lib/bidLifecycle.js";
 import { buildBidFilterReason, selectUnifiedCandidateGroup, unifiedBidIdentity } from "../lib/bidHiddenFeed.js";
 
 type BidStage = "new" | "reviewing" | "bidding" | "submitted" | "won" | "lost" | "no_bid";
@@ -1112,9 +1112,7 @@ router.patch("/:id", async (req, res) => {
       return;
     }
     updates.stage = stage;
-    if (stage === "no_bid")     updates.status = "dismissed";
-    else if (stage === "reviewing") updates.status = "interested";
-    else if (stage === "new")   updates.status = "new";
+    updates.status = legacyStatusForBidStage(stage);
   }
 
   if (notes !== undefined)  updates.notes = notes;
