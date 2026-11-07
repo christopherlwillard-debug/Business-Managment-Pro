@@ -83,8 +83,8 @@ function buildSetAsideFactor(
   switch (norm) {
     case "sdvosb":
       if (settings.isSdvosb) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: "SDVOSB set-aside — your SDVOSB certification makes you directly eligible for this restricted competition." };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: "SDVOSB set-aside — the business profile is marked SDVOSB, but this setting is not proof of active SBA certification. Verify the current SBA certification and SAM.gov representations before treating the business as eligible." };
       }
       if (settings.isVosb) {
         return { key, label: "Set-Aside Eligibility", signal: "negative",
@@ -95,24 +95,24 @@ function buildSetAsideFactor(
 
     case "vosb":
       if (settings.isVosb || settings.isSdvosb) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: `VOSB set-aside — you are eligible${settings.isSdvosb ? " (SDVOSB is a qualifying subset of VOSB)" : " as a Veteran-Owned Small Business"}.` };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: `VOSB set-aside — the business profile is marked ${settings.isSdvosb ? "SDVOSB" : "VOSB"}, but the profile flag is not proof of current certification. Verify the applicable SBA/VOSB status and SAM.gov representations before treating the business as eligible.` };
       }
       return { key, label: "Set-Aside Eligibility", signal: "negative",
         detail: "VOSB set-aside — restricted to Veteran-Owned Small Businesses. Veteran-owned certification is required." };
 
     case "small_business":
       if (settings.isSmallBusiness) {
-        return { key, label: "Set-Aside Eligibility", signal: "positive",
-          detail: "Small Business set-aside — you qualify as a small business. Verify your SB size standard under the specific NAICS code." };
+        return { key, label: "Set-Aside Eligibility", signal: "neutral",
+          detail: "Small Business set-aside — the business profile is marked small business. Verify the applicable SBA size standard for this NAICS code and the solicitation's eligibility requirements before treating the business as qualified." };
       }
       return { key, label: "Set-Aside Eligibility", signal: "neutral",
         detail: "Small Business set-aside — verify your small business status under the applicable NAICS code before bidding." };
 
     case "veteran_preference":
       if (settings.isVosb || settings.isSdvosb) {
-        return { key, label: "Veteran Evaluation Preference", signal: "positive",
-          detail: "Veteran preference in evaluation — this is not a set-aside (all businesses may compete), but your veteran-owned status provides a scoring advantage." };
+        return { key, label: "Veteran Evaluation Preference", signal: "neutral",
+          detail: "Veteran preference in evaluation — this is not a set-aside. The business profile is marked veteran-owned; verify the solicitation's exact preference rules and any required documentation before relying on an evaluation benefit." };
       }
       return { key, label: "Veteran Evaluation Preference", signal: "neutral",
         detail: "Veteran preference applies in proposal evaluation — full competition, but veteran-owned businesses receive evaluation bonus points." };
