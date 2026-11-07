@@ -1024,15 +1024,16 @@ export async function runBidSync(
   const samReqFailed = samResult?.requestsFailed ?? 0;
   const samRequestErrors = samResult?.requestErrors ?? [];
   const samOk = samFetchFulfilled && samReqFailed === 0 && !samQuotaExhausted;
-  const samHealthError = samRequestErrors.length > 0
-    ? samRequestErrors.slice(0, 5).join("; ")
-    : samQuotaExhausted
-      ? (samQuotaResetAt
-          ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted — resets ${samQuotaResetAt}`
-          : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted; reset time unavailable`)
-      : fedResult.status === "rejected"
-        ? String(fedResult.reason)
-        : null;
+  const samQuotaError = samQuotaExhausted
+    ? (samQuotaResetAt
+        ? `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted / ${samReqFailed} failed — resets ${samQuotaResetAt}`
+        : `SAM.gov API quota exhausted — ${samReqAttempted} HTTP request(s) / ${samReqAccepted} accepted / ${samReqFailed} failed; reset time unavailable`)
+    : null;
+  const samHealthError = [
+    ...samRequestErrors.slice(0, 5),
+    samQuotaError,
+    fedResult.status === "rejected" ? String(fedResult.reason) : null,
+  ].filter((message): message is string => !!message).join("; ") || null;
 
   const localOk  = localResult.status === "fulfilled";
   const awardsOk = awardsResult.status === "fulfilled";
