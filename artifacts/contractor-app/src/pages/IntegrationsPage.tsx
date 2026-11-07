@@ -447,7 +447,6 @@ export default function IntegrationsPage() {
                       description={section.description}
                       items={items}
                       onUpdated={handleUpdated}
-                  businessId={activeBusiness?.id ?? null}
                       businessId={activeBusiness?.id ?? null}
                     />
                   );
@@ -479,7 +478,7 @@ export default function IntegrationsPage() {
                     description="Additional portal integrations planned for future releases."
                     items={currentTabItems.filter(i => i.comingSoon)}
                     onUpdated={handleUpdated}
-                  businessId={activeBusiness?.id ?? null}
+                    businessId={activeBusiness?.id ?? null}
                   />
                 )}
 
