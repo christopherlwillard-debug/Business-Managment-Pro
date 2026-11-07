@@ -1106,7 +1106,7 @@ export async function runBidSync(
   const localHealthErrorMsg = !localOk
     ? String((localResult as PromiseRejectedResult).reason)
     : failedLocalSites.length > 0
-      ? `Partial: ${failedLocalSites.length} site(s) unreachable: ${failedLocalSites.map((s: SiteHealthRecord) => s.site).join(", ")}`
+      ? `${anyLocalSiteSucceeded ? "Partial" : "All"}: ${failedLocalSites.length} of ${localSiteHealth.length} site(s) unreachable: ${failedLocalSites.map((s: SiteHealthRecord) => s.site).slice(0, 8).join(", ")}`
       : null;
 
   // Write connection health only for sources that were actually attempted
