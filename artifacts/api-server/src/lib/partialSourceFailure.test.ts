@@ -18,12 +18,14 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  fetchKyLocalBids,
   SiteHealthRecord,
   LocalScrapeResult,
 } from "./kyLocalBids.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 // ── Type-level contract tests (no I/O) ───────────────────────────────────────
@@ -65,6 +67,19 @@ describe("LocalScrapeResult contract", () => {
 });
 
 // ── Aggregation logic tests ────────────────────────────────────────────────────
+
+describe("actual local scraper health reporting", () => {
+  it("marks unreachable procurement portals as failed instead of healthy empty results", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("simulated network failure")));
+
+    const result = await fetchKyLocalBids();
+
+    expect(result.opportunities).toHaveLength(0);
+    expect(result.siteHealth.length).toBeGreaterThan(0);
+    expect(result.siteHealth.every((site) => site.success === false)).toBe(true);
+    expect(result.siteHealth.every((site) => !!site.error)).toBe(true);
+  });
+});
 
 describe("partial-failure siteHealth aggregation logic", () => {
   /**
