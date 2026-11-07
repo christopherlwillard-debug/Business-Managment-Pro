@@ -447,6 +447,7 @@ export default function IntegrationsPage() {
                       description={section.description}
                       items={items}
                       onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                       businessId={activeBusiness?.id ?? null}
                     />
                   );
@@ -470,6 +471,7 @@ export default function IntegrationsPage() {
                   description="Contractor accounts at supply, lumber, and materials distributors. Credentials stored encrypted for quick access. Per-business — GC and Asphalt Sealing can have separate accounts."
                   items={currentTabItems.filter(i => !i.comingSoon)}
                   onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                 />
                 {currentTabItems.filter(i => i.comingSoon).length > 0 && (
                   <IntegrationSection
@@ -477,6 +479,7 @@ export default function IntegrationsPage() {
                     description="Additional portal integrations planned for future releases."
                     items={currentTabItems.filter(i => i.comingSoon)}
                     onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                   />
                 )}
 
@@ -497,6 +500,7 @@ export default function IntegrationsPage() {
                 description="Banking connections and financial data. Plaid credentials are platform-wide; individual bank account links are per-business from the Banking page."
                 items={currentTabItems}
                 onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
               />
             )}
 
@@ -508,18 +512,21 @@ export default function IntegrationsPage() {
                   description="AI inference services for bid analysis and summaries. Managed through Replit's AI proxy — no manual key management needed."
                   items={currentTabItems.filter(i => i.category === "ai")}
                   onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                 />
                 <IntegrationSection
                   label="Fuel & Maps"
                   description="Mapping, geocoding, and fuel price data for mileage tracking and route planning."
                   items={integrations.filter(i => i.category === "fuel_maps")}
                   onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                 />
                 <IntegrationSection
                   label="Communication"
                   description="Email notification channels for invoices, compliance alerts, and bid updates."
                   items={currentTabItems.filter(i => i.category === "communication")}
                   onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                 />
               </div>
             )}
@@ -532,6 +539,7 @@ export default function IntegrationsPage() {
                   description="Government surplus and commercial equipment auction portals. Store your bidder account logins for quick access during live auctions. See My Equipment for inventory management."
                   items={currentTabItems}
                   onUpdated={handleUpdated}
+                  businessId={activeBusiness?.id ?? null}
                 />
               </div>
             )}
