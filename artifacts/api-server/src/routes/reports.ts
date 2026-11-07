@@ -10,7 +10,7 @@ import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
 import { calculateOwnerPayFromJobProfit } from "../lib/job-profit-reports.js";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
-import { requestedBusiness, resolveMutationBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
 import {
   filterCashReceipts,
   filterDashboardRevenueInvoices,
@@ -334,7 +334,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const kpiSubPayments = allSubPayments.filter(r =>
       r.paymentDate >= startDate &&
       r.paymentDate <= expenseEndDate &&
-      (!validBl || r.businessLine === validBl),
+      (!reportBusiness || belongsToBusiness(r, reportBusiness)),
     );
     const fixedAllocSubPaymentTotal = kpiSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
@@ -428,32 +428,45 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const OWNER_DRAW_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
-    const allBusinesses = await db.select({ slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    const allBusinesses = await db.select({ id: businessesTable.id, slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    const knownBusinessIds = new Set(allBusinesses.map(b => b.id));
+    const knownBusinessSlugs = new Set(allBusinesses.map(b => b.slug));
 
-    // Group KPI-period sub payments by business line for the per-BL breakdown.
-    // Only include payments within startDate..expenseEndDate so the BL breakdown stays
-    // period-consistent with invoices and ordinary expenses.
-    // (subPayByMonth uses the wider allSubPayments array for the 6-month chart window.)
+    // Canonical numeric businessId is authoritative. other_income historically
+    // stores its businessId as text, so accept either the canonical ID string or
+    // its slug in that column for compatibility; only null IDs use businessLine.
+    const belongsToOtherIncomeBusiness = (row: { businessId?: string | number | null; businessLine?: string | null }, biz: { id: number; slug: string }) => {
+      if (row.businessId != null) return String(row.businessId) === String(biz.id) || String(row.businessId) === biz.slug;
+      return row.businessLine === biz.slug;
+    };
+    const isKnownBusinessRecord = (row: { businessId?: string | number | null; businessLine?: string | null }) => {
+      if (row.businessId != null) {
+        const id = Number(row.businessId);
+        return Number.isSafeInteger(id) && knownBusinessIds.has(id)
+          || typeof row.businessId === "string" && knownBusinessSlugs.has(row.businessId);
+      }
+      return !!row.businessLine && knownBusinessSlugs.has(row.businessLine);
+    };
+
+    // The KPI period is shared across every business breakdown. Canonical IDs
+    // decide ownership; legacy businessLine is only a fallback for null IDs.
     const kpiSubPayForBl = allSubPayments.filter(r =>
       r.paymentDate >= startDate && r.paymentDate <= expenseEndDate
     );
-    const subPayByBl = new Map<string, number>();
-    for (const r of kpiSubPayForBl) {
-      const bl = r.businessLine ?? "unattributed";
-      subPayByBl.set(bl, (subPayByBl.get(bl) ?? 0) + parseFloat(r.amount ?? "0"));
-    }
 
     const byBusinessLine = allBusinesses.map(biz => {
       const bl = biz.slug;
-      const blInvoices = rawInvoices.filter(i => i.businessLine === bl);
-      const blOther = rawOtherIncome.filter(o => o.businessLine === bl);
+      const blInvoices = rawInvoices.filter(i => belongsToBusiness(i, biz));
+      const blOther = rawOtherIncome.filter(o => belongsToOtherIncomeBusiness(o, biz));
       // Exclude outstanding cost-bookings (cash-basis: not yet paid) and wage-advance
       // pre-payments (already captured in jsh accruals) from the BL breakdown too.
-      const blExpenses = rawExpenses.filter(e => e.businessLine === bl && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
-      const blActiveJobs = rawActiveJobs.filter(j => j.businessLine === bl);
+      const blExpenses = rawExpenses.filter(e => belongsToBusiness(e, biz) && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
+      const blActiveJobs = rawActiveJobs.filter(j => belongsToBusiness(j, biz));
       const blRevenue = sumDashboardRevenue(blInvoices, startDate, endDate)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-      const blSubPayTotal = subPayByBl.get(bl) ?? 0;
+      const blSubPayTotal = kpiSubPayForBl
+        .filter(r => belongsToBusiness(r, biz))
+        .reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
       const blOwnerDrawTotal = blExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
       // Union of owner-draw categories and the excludeFromNetProfit flag.
@@ -475,22 +488,21 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       };
     });
 
-    // Unattributed: revenue/expenses not tagged to any registered business slug
-    const knownBls = new Set(allBusinesses.map(b => b.slug));
+    // Unattributed means no canonical owner resolves to a registered business.
+    // Legacy slugs are considered only when businessId is null.
     const unattribExpenses = rawExpenses.filter(e =>
-      (!e.businessLine || !knownBls.has(e.businessLine)) &&
+      !isKnownBusinessRecord(e) &&
       e.category !== "mileage" &&
       !isOutstandingCostBooking(e) &&
       !e.isWageAdvance,
     );
-    const unattribInvoices = rawInvoices.filter(i => !i.businessLine || !knownBls.has(i.businessLine));
-    const unattribOther = rawOtherIncome.filter(o => !o.businessLine || !knownBls.has(o.businessLine));
+    const unattribInvoices = rawInvoices.filter(i => !isKnownBusinessRecord(i));
+    const unattribOther = rawOtherIncome.filter(o => !isKnownBusinessRecord(o));
     const unattribRevenue = sumDashboardRevenue(unattribInvoices, startDate, endDate)
       + unattribOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
-    // Unattributed sub payments: those with null/unknown businessLine or a slug not in registered businesses
-    const unattribSubPay = Array.from(subPayByBl.entries())
-      .filter(([bl]) => bl === "unattributed" || !knownBls.has(bl))
-      .reduce((s, [, v]) => s + v, 0);
+    const unattribSubPay = kpiSubPayForBl
+      .filter(r => !isKnownBusinessRecord(r))
+      .reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const unattribExpenseTotal = unattribExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + unattribSubPay;
     // Match the attribution logic: union of owner-category OR excludeFromNetProfit flag
     const unattribOwnerTotal = unattribExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -511,7 +523,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Uses the already-fetched allSubPayments so no extra DB round trip.
     const subPayByMonth = new Map<string, number>();
     for (const r of allSubPayments) {
-      if (validBl && r.businessLine !== validBl) continue;
+      if (reportBusiness && !belongsToBusiness(r, reportBusiness)) continue;
       const month = r.paymentDate.slice(0, 7); // YYYY-MM
       subPayByMonth.set(month, (subPayByMonth.get(month) ?? 0) + parseFloat(r.amount ?? "0"));
     }

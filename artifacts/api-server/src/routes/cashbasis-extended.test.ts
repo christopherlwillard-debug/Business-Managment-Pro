@@ -431,6 +431,94 @@ describe("Dashboard byBusinessLine — sub payment period isolation", () => {
   });
 });
 
+
+describe("Dashboard canonical business attribution", () => {
+  it("uses canonical businessId before stale or missing businessLine in every breakdown", async () => {
+    const currentMonth = monthAgo(0);
+    const date = `${currentMonth}-01`;
+    const business = { id: 10, slug: "mfh", name: "Manufactured Homes" };
+
+    const canonicalInvoice = {
+      id: 1001, status: "sent", issueDate: date, total: "200.00",
+      businessId: 10, businessLine: null,
+    };
+    const canonicalExpense = {
+      id: 1002, date, amount: "100.00", category: "Supplies",
+      description: "Canonical owner expense", excludeFromNetProfit: false,
+      isWageAdvance: false, voidedAt: null, businessId: 10, businessLine: "stale_slug",
+    };
+    const canonicalOtherIncome = {
+      id: 1003, date, amount: "50.00", businessId: "10", businessLine: null,
+      voidedAt: null,
+    };
+    const canonicalJob = {
+      id: 1004, status: "in_progress", businessId: 10, businessLine: null,
+    };
+    const canonicalSubPayment = {
+      id: 1005, amount: "25.00", paymentDate: date,
+      businessId: 10, businessLine: null,
+    };
+
+    h.selectQueue.push([]);                    // [0] kpiPaidInvoices
+    h.selectQueue.push([canonicalInvoice]);    // [1] kpiNonPaidInvoices
+    h.selectQueue.push([canonicalExpense]);    // [2] kpiExpenses
+    h.selectQueue.push([]);                    // [3] allMileage
+    h.selectQueue.push([canonicalOtherIncome]);// [4] kpiOtherIncome
+    h.selectQueue.push([canonicalJob]);        // [5] kpiActiveJobs
+    h.selectQueue.push([]);                    // [6] recentJobsRows
+    h.selectQueue.push([]);                    // [7] recentInvoicesRows
+    h.selectQueue.push([]);                    // [8] kpiOwnerCapital
+    h.selectQueue.push([canonicalSubPayment]); // [9] allSubPayments
+    h.selectQueue.push([]);                    // [10] ytdMileageLogs
+    h.selectQueue.push([]);                    // [11] subPayRows
+    h.selectQueue.push([business]);             // [12] allBusinesses
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]); // [13-36] monthly chart
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+
+    const line = (res.body.byBusinessLine as any[]).find((row: any) => row.businessLine === "mfh");
+    expect(line).toBeDefined();
+    expect(line.totalRevenue).toBeCloseTo(50, 10);
+    expect(line.totalExpenses).toBeCloseTo(125, 10);
+    expect(line.activeJobs).toBe(1);
+
+    // The canonical-owned rows must not also be counted in the unattributed bucket.
+    const unattributed = (res.body.byBusinessLine as any[]).find((row: any) => row.businessLine === "unattributed");
+    expect(unattributed).toBeUndefined();
+  });
+
+  it("uses businessLine only when canonical businessId is null", async () => {
+    const date = `${monthAgo(0)}-01`;
+    const business = { id: 10, slug: "mfh", name: "Manufactured Homes" };
+    const legacyExpense = {
+      id: 1010, date, amount: "40.00", category: "Supplies",
+      description: "Legacy row", excludeFromNetProfit: false,
+      isWageAdvance: false, voidedAt: null, businessId: null, businessLine: "mfh",
+    };
+
+    h.selectQueue.push([]);                // [0] paid invoices
+    h.selectQueue.push([]);                // [1] non-paid invoices
+    h.selectQueue.push([legacyExpense]);   // [2] expenses
+    h.selectQueue.push([]);                // [3] mileage
+    h.selectQueue.push([]);                // [4] other income
+    h.selectQueue.push([]);                // [5] active jobs
+    h.selectQueue.push([]);                // [6] recent jobs
+    h.selectQueue.push([]);                // [7] recent invoices
+    h.selectQueue.push([]);                // [8] owner capital
+    h.selectQueue.push([]);                // [9] sub payments
+    h.selectQueue.push([]);                // [10] YTD mileage
+    h.selectQueue.push([]);                // [11] sub payment balance
+    h.selectQueue.push([business]);         // [12] all businesses
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]); // [13-36] monthly chart
+
+    const res = await request(app).get("/reports/dashboard");
+    expect(res.status).toBe(200);
+    const line = (res.body.byBusinessLine as any[]).find((row: any) => row.businessLine === "mfh");
+    expect(line?.totalExpenses).toBeCloseTo(40, 10);
+  });
+});
+
 // ── Accounting monthly income chart: sub payment inclusion ────────────────────
 //
 // Guards that accFixedAllocSubPayments appear in the per-month expenses bar of
