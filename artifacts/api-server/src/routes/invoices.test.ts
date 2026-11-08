@@ -106,6 +106,7 @@ vi.mock("./material-lists", () => ({
 vi.mock("../lib/business-scope.js", () => ({
   hasRequestedBusiness: () => false,
   requestedBusiness: async () => null,
+  invalidBusinessScope: () => false,
   resolveMutationBusiness: async () => h.mutationResolution,
   canonicalRecordBusiness: async () => h.canonicalOwner,
   generalContractingBusiness: async () => ({ id: 1, slug: "general_contracting" }),

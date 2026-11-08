@@ -73,6 +73,8 @@ app.use("/", geocodeRouter);
 const createdAt = new Date("2026-08-20T00:00:00.000Z");
 const client = {
   id: 7,
+  businessId: 1,
+  businessLine: "general_contracting",
   name: "Threshold Client",
   createdAt,
   mileageSurchargeEnabled: true,

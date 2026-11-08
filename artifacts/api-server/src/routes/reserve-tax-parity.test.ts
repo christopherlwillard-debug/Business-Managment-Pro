@@ -1245,7 +1245,7 @@ describe("Business-line-filtered monthly income includes fixed/allocation sub pa
   };
 
   it("/accounting?businessLine=mfh monthlyIncome includes the filtered sub payment", async () => {
-    h.selectQueue.push([{ id: 1 }]);              // [0] business lookup
+    h.selectQueue.push([{ id: 1, slug: "mfh" }]); // [0] business lookup
     h.selectQueue.push([]);                      // [1] paidInvoices
     h.selectQueue.push([]);                      // [2] nonPaidInvoices
     h.selectQueue.push([]);                      // [3] expenses

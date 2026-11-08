@@ -44,6 +44,7 @@ vi.mock("@workspace/db", () => {
 vi.mock("../lib/business-scope.js", () => ({
   hasRequestedBusiness: () => false,
   requestedBusiness: vi.fn().mockResolvedValue(null),
+  invalidBusinessScope: () => false,
   belongsToBusiness: vi.fn().mockReturnValue(true),
 }));
 vi.mock("./material-lists", () => ({ syncMaterialsToJobInvoice: vi.fn() }));

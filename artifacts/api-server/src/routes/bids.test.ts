@@ -121,10 +121,14 @@ vi.mock("../lib/bidCapabilitySeeds.js", () => ({
 vi.mock("../lib/bid-ownership.js", () => ({
   getExistingBusiness: vi.fn(async () => true),
 }));
-vi.mock("../lib/bidLifecycle.js", () => ({
-  getBidLifecycleState: vi.fn(),
-  isDefaultActiveBid: vi.fn(),
-}));
+vi.mock("../lib/bidLifecycle.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/bidLifecycle.js")>();
+  return {
+    ...actual,
+    getBidLifecycleState: vi.fn(),
+    isDefaultActiveBid: vi.fn(),
+  };
+});
 vi.mock("../lib/bidHiddenFeed.js", () => ({
   buildBidFilterReason: vi.fn(),
   selectUnifiedCandidateGroup: vi.fn(),

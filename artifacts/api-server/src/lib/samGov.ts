@@ -160,8 +160,9 @@ async function fetchPage(
     });
   } catch (err) {
     const errorName = err instanceof Error ? err.name : "UnknownError";
-    console.error(`[sam-gov] Fetch failed for ${label}: ${errorName}`);
-    return { records: [], totalRecords: 0, error: `Network/timeout error for ${label} (${errorName})` };
+    const errorMessage = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+    console.error(`[sam-gov] Fetch failed for ${label}: ${errorName}: ${errorMessage}`);
+    return { records: [], totalRecords: 0, error: `Network/timeout error for ${label} (${errorName}: ${errorMessage})` };
   }
 
   // ── 429: quota exhausted — throw so the grouped-search coordinator can ───

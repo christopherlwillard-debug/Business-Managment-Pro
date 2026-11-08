@@ -401,6 +401,7 @@ describe("fetchSamOpportunitiesGrouped — capability-grouped search", () => {
   });
 
   it("reports network and timeout failures without discarding earlier successful pages", async () => {
+    vi.useRealTimers();
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce({
         ok: true,

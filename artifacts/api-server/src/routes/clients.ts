@@ -47,10 +47,10 @@ router.param("id", (req, res, next, rawId) => {
     // source record owner from dedicated source fields or the query selector.
     const scopeRequest = req.method === "PUT" || req.method === "PATCH"
       ? {
-          ...req,
+          query: req.query,
           body: {
-            businessId: req.body?.sourceBusinessId,
-            businessLine: req.body?.sourceBusinessLine,
+            businessId: req.body?.sourceBusinessId ?? req.query.businessId,
+            businessLine: req.body?.sourceBusinessLine ?? req.query.businessLine,
           },
         } as Request
       : req;

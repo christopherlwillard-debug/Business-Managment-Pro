@@ -775,7 +775,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
     expect([UNTAGGED_PAYMENT, OTHER_LINE_PAYMENT].every(p => p.businessLine !== FILTERED_LINE)).toBe(true);
 
     function pushFilteredPAndLFixture() {
-      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
       h.selectQueue.push([FILTERED_INVOICE]);       // invRows
       h.selectQueue.push([]);                       // expRows
       h.selectQueue.push(NO_MILEAGE);               // mileage
@@ -791,7 +791,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
     }
 
     function pushFilteredAccountingFixture() {
-      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
       h.selectQueue.push([FILTERED_INVOICE]);       // paid invoices
       h.selectQueue.push([]);                       // non-paid invoices
       h.selectQueue.push([]);                       // expenses
@@ -809,7 +809,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
     }
 
     function pushFilteredYearEndFixture() {
-      h.selectQueue.push([{ id: 1 }]);              // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
       h.selectQueue.push([FILTERED_INVOICE]);       // invoices
       h.selectQueue.push([]);                       // expenses
       h.selectQueue.push([]);                       // mileage
