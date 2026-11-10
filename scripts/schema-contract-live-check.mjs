@@ -55,17 +55,37 @@ const PAY_WORKER_REQUIRED_COLUMNS = [
   const [tableName, columnName] = qualifiedName.split(".");
   return { tableName, columnName, qualifiedName };
 });
+const MATERIAL_LIST_REQUIRED_COLUMNS = [
+  "material_lists.invoice_id",
+  "material_lists.invoice_assignment_initialized",
+].map((qualifiedName) => {
+  const [tableName, columnName] = qualifiedName.split(".");
+  return { tableName, columnName, qualifiedName };
+});
 const REQUIRED_SCHEMA_COLUMNS = [
   ...new Map(
-    [...REQUIRED_OWNERSHIP_COLUMNS, ...PAY_WORKER_REQUIRED_COLUMNS]
+    [...REQUIRED_OWNERSHIP_COLUMNS, ...PAY_WORKER_REQUIRED_COLUMNS, ...MATERIAL_LIST_REQUIRED_COLUMNS]
       .map((requirement) => [requirement.qualifiedName, requirement]),
   ).values(),
 ];
+const REQUIRED_SCHEMA_TABLES = [
+  {
+    tableName: "material_list_invoice_events",
+    requiredBy: "material-list invoice assignment",
+  },
+];
+const REQUIRED_SCHEMA_TABLE_NAMES = [...new Set([
+  ...REQUIRED_SCHEMA_COLUMNS.map(({ tableName }) => tableName),
+  ...REQUIRED_SCHEMA_TABLES.map(({ tableName }) => tableName),
+])];
 const OWNERSHIP_COLUMN_NAMES = new Set(
   REQUIRED_OWNERSHIP_COLUMNS.map(({ qualifiedName }) => qualifiedName),
 );
 const PAY_WORKER_COLUMN_NAMES = new Set(
   PAY_WORKER_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
+);
+const MATERIAL_LIST_COLUMN_NAMES = new Set(
+  MATERIAL_LIST_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
 );
 
 const DATABASE_SCHEMA = "public";
@@ -79,6 +99,7 @@ function describeRequirement(qualifiedName) {
   const requiredBy = [];
   if (OWNERSHIP_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("business ownership contract");
   if (PAY_WORKER_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("POST /api/jobs/:id/pay-worker");
+  if (MATERIAL_LIST_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("material-list invoice assignment");
   return requiredBy.join(" and ");
 }
 
@@ -96,11 +117,22 @@ function validateMetadata({ tables, columns, foreignKeys }) {
   }
 
   const errors = [];
+  for (const requirement of REQUIRED_SCHEMA_TABLES) {
+    if (!tableNames.has(requirement.tableName)) {
+      errors.push(
+        `${requirement.tableName}: table is missing from schema ${DATABASE_SCHEMA} (required by ${requirement.requiredBy}; apply lib/db/migrations/0075_material_list_invoice_assignment.sql)`,
+      );
+    }
+  }
+
   for (const requirement of REQUIRED_SCHEMA_COLUMNS) {
     const context = describeRequirement(requirement.qualifiedName);
     if (!tableNames.has(requirement.tableName)) {
+      const migration = MATERIAL_LIST_COLUMN_NAMES.has(requirement.qualifiedName)
+        ? "; apply lib/db/migrations/0075_material_list_invoice_assignment.sql"
+        : "";
       errors.push(
-        `${requirement.qualifiedName}: table is missing from schema ${DATABASE_SCHEMA} (required by ${context})`,
+        `${requirement.qualifiedName}: table is missing from schema ${DATABASE_SCHEMA} (required by ${context}${migration})`,
       );
       continue;
     }
@@ -109,7 +141,9 @@ function validateMetadata({ tables, columns, foreignKeys }) {
     if (!column) {
       const migration = requirement.qualifiedName === "sub_payment_records.business_id"
         ? "; apply lib/db/migrations/0069_financial_business_ownership.sql"
-        : "";
+        : MATERIAL_LIST_COLUMN_NAMES.has(requirement.qualifiedName)
+          ? "; apply lib/db/migrations/0075_material_list_invoice_assignment.sql"
+          : "";
       errors.push(`${requirement.qualifiedName}: column is missing (required by ${context}${migration})`);
       continue;
     }
@@ -152,7 +186,7 @@ async function main() {
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
   try {
-    const tableNames = [...new Set(REQUIRED_SCHEMA_COLUMNS.map(({ tableName }) => tableName))];
+    const tableNames = REQUIRED_SCHEMA_TABLE_NAMES;
     const [{ rows: tables }, { rows: columns }, { rows: foreignKeys }] = await Promise.all([
       pool.query(
         `SELECT table_name
@@ -222,7 +256,7 @@ async function main() {
     }
 
     console.log(
-      `Target database schema contract check passed: ${REQUIRED_OWNERSHIP_COLUMNS.length} ownership columns and ${PAY_WORKER_REQUIRED_COLUMNS.length} pay-worker columns verified.`,
+      `Target database schema contract check passed: ${REQUIRED_OWNERSHIP_COLUMNS.length} ownership columns, ${PAY_WORKER_REQUIRED_COLUMNS.length} pay-worker columns, ${MATERIAL_LIST_REQUIRED_COLUMNS.length} material-list columns, and the material-list invoice events table verified.`,
     );
   } finally {
     await pool.end();
@@ -231,8 +265,10 @@ async function main() {
 
 export {
   PAY_WORKER_REQUIRED_COLUMNS,
+  MATERIAL_LIST_REQUIRED_COLUMNS,
   REQUIRED_OWNERSHIP_COLUMNS,
   REQUIRED_SCHEMA_COLUMNS,
+  REQUIRED_SCHEMA_TABLES,
   validateMetadata,
 };
 
