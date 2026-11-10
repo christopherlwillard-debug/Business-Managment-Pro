@@ -34,6 +34,7 @@ type SubPayHistoryEntry = {
   id: number;
   date: string;
   amount: number;
+  isReversal?: boolean;
   workHours?: number;
   workRate?: number;
   travelHours?: number;
@@ -231,7 +232,7 @@ function WorkerPayCard({
   }, [getAutoSimpleAmount, isHourly]);
 
   const grossPay = isHourly ? workPay + travelPay + bonusAmt : (parseFloat(simpleAmount) || balance || 0);
-  const netToPay = Math.max(0, grossPay - advancementDeduction);
+  const netToPay = Math.max(0, (isHourly ? Math.max(0, grossPay - paid) : (balance ?? 0)) - advancementDeduction);
 
   // Earnings summary figures (for the 3-column summary strip)
   // Gross Earned = computed hours earnings (from DB snapshots) + accrued bonus as saved
@@ -239,6 +240,7 @@ function WorkerPayCard({
   const grossEarned   = isHourly
     ? (p.computedOwed ?? 0) + savedBonusAmt
     : (owed ?? 0) > 0 ? owed ?? 0 : 0;
+  const checklistBalance = Math.max(0, grossEarned - paid);
 
   const [historyOpen, setHistoryOpen] = useState(() => (p.paymentHistory?.length ?? 0) > 0);
   const [paying,      setPaying]      = useState(false);
@@ -390,6 +392,7 @@ function WorkerPayCard({
 
   // Review-sheet draft
   type ReviewDraft = {
+  idempotencyKey: string;
     amount: string;
     paymentDate: string;
     bonus: string;
@@ -402,10 +405,9 @@ function WorkerPayCard({
   const reviewOpen = reviewDraft !== null;
 
   function openReview() {
-    const amount = isHourly
-      ? grossPay
-      : (parseFloat(simpleAmount) || balance || 0);
+    const amount = checklistBalance;
     setReviewDraft({
+      idempotencyKey: crypto.randomUUID(),
       amount: amount > 0 ? amount.toFixed(2) : "",
       paymentDate: localDateInputValue(),
       bonus,
@@ -479,6 +481,7 @@ function WorkerPayCard({
     const draftBonus  = parseFloat(draft.bonus) || 0;
     const draftGross  = parseFloat(draft.amount) || 0;
     const draftNet    = Math.max(0, draftGross - advancementDeduction);
+    const isSettlingBalance = draftGross >= checklistBalance - 0.005;
     if (draftNet <= 0) {
       toast({ title: "Nothing to pay — check amounts", variant: "destructive" });
       return;
@@ -487,9 +490,9 @@ function WorkerPayCard({
     try {
       const body: Record<string, unknown> = {
         subName: p.subName,
-        idempotencyKey: crypto.randomUUID(),
-        agreedOwed: (isHourly ? grossEarned : owed) != null && Number(isHourly ? grossEarned : owed) > 0
-          ? Number(isHourly ? grossEarned : owed)
+        idempotencyKey: draft.idempotencyKey,
+        agreedOwed: (isHourly ? (p.computedOwed ?? 0) + draftBonus : owed) != null && Number(isHourly ? (p.computedOwed ?? 0) + draftBonus : owed) > 0
+          ? Number(isHourly ? (p.computedOwed ?? 0) + draftBonus : owed)
           : undefined,
         paymentDate: draft.paymentDate,
         notes: draft.notes.trim() || undefined,
@@ -498,14 +501,20 @@ function WorkerPayCard({
         ...(draft.paymentReference ? { paymentReference: draft.paymentReference } : {}),
         amount: draftGross,
       };
-      if (isHourly) {
+      if (isHourly && isSettlingBalance) {
         const wh = parseFloat(workHours) || 0;
         const wr = parseFloat(workRate)  || 0;
         if (wh > 0 && wr > 0) {
-        body.workHours = wh; body.workRate = wr;
-        if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
+          body.workHours = wh; body.workRate = wr;
+          if ((parseFloat(travelHours) || 0) > 0) {
+            body.travelHours = parseFloat(travelHours);
+            body.travelRate = parseFloat(travelRate) || 0;
+          }
         }
-        if (draftBonus > 0) { body.bonusAmount = draftBonus; if (draft.bonusNote) body.bonusNote = draft.bonusNote; }
+        if (isSettlingBalance && draftBonus > 0) {
+          body.bonusAmount = draftBonus;
+          if (draft.bonusNote) body.bonusNote = draft.bonusNote;
+        }
         if (advancementDeduction > 0) { body.advanceAmount = advancementDeduction; }
       }
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
@@ -550,7 +559,7 @@ function WorkerPayCard({
 
   return (
     // NOTE: no overflow-hidden so the sticky action bar can escape the card's clip
-    <div className={`bg-white rounded-2xl shadow-sm border border-border border-l-4 ${borderColor}`}>
+    <div className={`bg-white rounded-2xl shadow-sm border border-border border-l-4 ${borderColor} ${isFullyPaid ? "opacity-75" : ""}`}>
       {/* Header row */}
       <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -560,12 +569,16 @@ function WorkerPayCard({
             {isFullyPaid && !isOvpd && <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">✓ Paid in Full</span>}
             {isOvpd      && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">⚠ Payroll Correction</span>}
             {isPartial   && <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Partially Paid</span>}
+            {!isFullyPaid && !isPartial && (balance ?? 0) > 0.005 && <span className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">Unpaid</span>}
+            {!isFullyPaid && owed != null && grossEarned <= 0.005 && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">No amount due yet</span>}
             {isDraft && !isPartial && !isFullyPaid && (
               <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-full">Draft</span>
             )}
           </div>
           {isAlloc   && <p className="text-xs text-purple-600">{(p.allocationPct ?? 0).toFixed(1)}% of split pool</p>}
-          {isPartial && balance != null && <p className="text-xs text-muted-foreground">Paid ${fmt(paid)} · Balance ${fmt(balance)}</p>}
+          <p className="text-xs text-muted-foreground">
+            Owed ${fmt(grossEarned)} · Paid ${fmt(paid)} · Remaining ${fmt(checklistBalance)}
+          </p>
           {isOvpd && owed != null && (
             <p className="text-xs text-amber-600">Payroll correction on file — ${fmt(Math.max(0, paid - owed))} overpaid</p>
           )}
@@ -979,6 +992,9 @@ function WorkerPayCard({
                       {h.paymentMethod && (
                         <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded-full">{h.paymentMethod}</span>
                       )}
+                      {h.isReversal && (
+                        <span className="text-[10px] font-semibold text-red-700 bg-red-50 border border-red-100 px-1.5 py-0.5 rounded-full">Reversed</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <span className="font-black text-emerald-700 text-sm">${fmt(h.netPaid ?? h.amount)}</span>
@@ -997,6 +1013,7 @@ function WorkerPayCard({
                     </div>
                   </div>
                   {h.referenceNumber && <p className="text-muted-foreground">Ref: {h.referenceNumber}</p>}
+                  {h.notes && <p className="text-muted-foreground">{h.notes}</p>}
                   {h.workHours != null && <p className="text-muted-foreground">Work: {h.workHours} hrs @ ${h.workRate}/hr = ${fmt((h.workHours || 0) * (h.workRate || 0))}</p>}
                   {(h.travelHours ?? 0) > 0 && <p className="text-muted-foreground">Travel: {h.travelHours} hrs @ ${h.travelRate}/hr = ${fmt((h.travelHours || 0) * (h.travelRate || 0))}</p>}
                   {(h.bonusAmount ?? 0) > 0 && <p className="text-emerald-600">Bonus: +${fmt(h.bonusAmount ?? 0)}{h.bonusNote ? ` (${h.bonusNote})` : ""}</p>}
@@ -1035,6 +1052,21 @@ function WorkerPayCard({
               >
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 px-5 pt-4">
+              <div className="rounded-xl bg-muted/30 p-3">
+                <p className="text-[10px] text-muted-foreground">Total owed</p>
+                <p className="mt-1 text-sm font-bold">${fmt(grossEarned)}</p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="text-[10px] text-emerald-700">Previously paid</p>
+                <p className="mt-1 text-sm font-bold text-emerald-800">${fmt(paid)}</p>
+              </div>
+              <div className="rounded-xl bg-orange-50 p-3">
+                <p className="text-[10px] text-orange-700">Remaining</p>
+                <p className="mt-1 text-sm font-bold text-orange-800">${fmt(checklistBalance)}</p>
+              </div>
             </div>
 
             {/* Breakdown — read-only */}
@@ -1106,7 +1138,7 @@ function WorkerPayCard({
                   placeholder="0.00"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Remaining after this payment: ${fmt(Math.max(0, (balance ?? owed ?? 0) - (parseFloat(reviewDraft?.amount ?? "") || 0) + advancementDeduction))}
+                  Remaining after this payment: ${fmt(Math.max(0, checklistBalance - (parseFloat(reviewDraft?.amount ?? "") || 0)))}
                 </p>
               </div>
               <div>
@@ -1415,6 +1447,36 @@ export default function JobPayroll() {
     authoritativeSplitPool: profit?.splitPool,
   });
   const { growthReserve, toSplit, ownerPct, ownerShare, taxReserve, ownerTakeHome } = waterfall;
+  const payrollSummaryRows = payments.map(p => {
+    const splitPoolAvailable = profit?.splitPool != null;
+    const baseOwed = p.compensationType === "hourly"
+      ? (p.computedOwed ?? 0) + (p.accruedBonus ?? 0)
+      : computeSubOwed(p, splitPoolAvailable ? toSplit : 0);
+    const known = baseOwed != null && !(p.compensationType === "allocation" && !splitPoolAvailable && p.amountOwed == null);
+    const owed = known ? Math.max(0, baseOwed ?? 0) : null;
+    const paid = Math.max(0, p.amountPaid ?? 0);
+    const balance = owed == null ? null : Math.max(0, owed - paid);
+    const status = owed == null
+      ? "Unavailable"
+      : owed <= 0.005 && paid <= 0.005
+        ? "No amount due yet"
+        : balance! <= 0.005
+        ? "Paid"
+        : paid > 0.005 && balance! > 0.005
+          ? "Partially paid"
+          : "Unpaid";
+    return { subcontractorId: p.subcontractorId, owed, paid, balance, status };
+  });
+  const knownPayrollRows = payrollSummaryRows.filter(row => row.balance != null);
+  const totalPayrollOwed = knownPayrollRows.reduce((sum, row) => sum + (row.owed ?? 0), 0);
+  const totalPayrollOutstanding = knownPayrollRows.reduce((sum, row) => sum + (row.balance ?? 0), 0);
+  const totalPayrollPaid = knownPayrollRows.reduce((sum, row) => sum + Math.min(row.owed ?? 0, row.paid), 0);
+  const unpaidWorkerCount = payrollSummaryRows.filter(row => row.status === "Unpaid").length;
+  const partialWorkerCount = payrollSummaryRows.filter(row => row.status === "Partially paid").length;
+  const paidWorkerCount = payrollSummaryRows.filter(row => row.status === "Paid").length;
+  const payrollProgress = totalPayrollOwed > 0
+    ? Math.min(100, (totalPayrollPaid / totalPayrollOwed) * 100)
+    : 0;
 
   function handleBack() {
     if (anyDirty) {
@@ -1557,6 +1619,41 @@ export default function JobPayroll() {
               )}
             </div>
           )}
+
+          {/* ── Payroll Checklist Summary ── */}
+          <section className="rounded-2xl border border-border bg-white p-5 shadow-sm" aria-label="Payroll checklist summary">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payroll Checklist</p>
+                <p className="mt-1 text-2xl font-black text-foreground">${fmt(totalPayrollOutstanding)}</p>
+                <p className="text-xs text-muted-foreground">Total outstanding worker payments</p>
+              </div>
+              <p className="text-sm font-bold text-emerald-700">{fmt(payrollProgress)}% paid</p>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted/60" role="progressbar" aria-label="Payroll payment progress" aria-valuenow={Math.round(payrollProgress)} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${payrollProgress}%` }} />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <div className="rounded-xl bg-orange-50 px-3 py-2">
+                <p className="text-lg font-bold text-orange-800">{unpaidWorkerCount}</p>
+                <p className="text-[10px] font-semibold text-orange-700">Awaiting payment</p>
+              </div>
+              <div className="rounded-xl bg-amber-50 px-3 py-2">
+                <p className="text-lg font-bold text-amber-800">{partialWorkerCount}</p>
+                <p className="text-[10px] font-semibold text-amber-700">Partially paid</p>
+              </div>
+              <div className="rounded-xl bg-emerald-50 px-3 py-2">
+                <p className="text-lg font-bold text-emerald-800">{paidWorkerCount}</p>
+                <p className="text-[10px] font-semibold text-emerald-700">Paid in full</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              ${fmt(totalPayrollPaid)} paid of ${fmt(totalPayrollOwed)} total compensation.
+            </p>
+            {payrollSummaryRows.some(row => row.status === "Unavailable") && (
+              <p className="mt-3 text-xs text-amber-700">Some worker balances are unavailable until job profit finishes loading.</p>
+            )}
+          </section>
 
           {/* ── Worker Cards ── */}
           {payments.length === 0 ? (

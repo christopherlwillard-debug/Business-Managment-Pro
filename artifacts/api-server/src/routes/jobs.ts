@@ -3200,6 +3200,7 @@ router.get("/:id/sub-payments", async (req, res) => {
         netPaid: subPaymentRecordsTable.netPaid,
         paymentMethod: subPaymentRecordsTable.paymentMethod,
         referenceNumber: subPaymentRecordsTable.referenceNumber,
+        notes: subPaymentRecordsTable.notes,
          isReversal: subPaymentRecordsTable.isReversal,
          reversesPaymentId: subPaymentRecordsTable.reversesPaymentId,
          reversalReason: subPaymentRecordsTable.reversalReason,
@@ -3217,6 +3218,7 @@ router.get("/:id/sub-payments", async (req, res) => {
       advanceAmount?: number; advanceNote?: string | null;
       netPaid?: number;
        paymentMethod?: string; referenceNumber?: string;
+        notes?: string | null;
        isReversal: boolean;
        reversesPaymentId: number | null;
        reversalReason: string | null;
@@ -3244,6 +3246,7 @@ router.get("/:id/sub-payments", async (req, res) => {
         ...(rec.netPaid  != null ? { netPaid: parseFloat(rec.netPaid) } : {}),
         ...(rec.paymentMethod    ? { paymentMethod:   rec.paymentMethod    } : {}),
         ...(rec.referenceNumber  ? { referenceNumber: rec.referenceNumber  } : {}),
+        ...(rec.notes            ? { notes: rec.notes } : {}),
          isReversal: Boolean(rec.isReversal),
          reversesPaymentId: rec.reversesPaymentId ?? null,
          reversalReason: rec.reversalReason ?? null,
@@ -3539,14 +3542,24 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     const advanceNote   = req.body.advanceNote  ? String(req.body.advanceNote) : null;
     const paymentMethod   = req.body.paymentMethod   ? String(req.body.paymentMethod)   : null;
     const paymentReference = req.body.paymentReference ? String(req.body.paymentReference) : null;
+    const notes = req.body.notes != null ? String(req.body.notes).trim() : null;
+    if (notes && notes.length > 1000) return res.status(400).json({ error: "Payment notes must be 1,000 characters or fewer" });
     const advanceIds: number[] = Array.isArray(req.body.advanceIds)
       ? req.body.advanceIds.map((x: unknown) => parseInt(String(x))).filter((n: number) => !isNaN(n))
       : [];
 
-    // If breakdown is supplied, compute net from parts; otherwise fall back to explicit amount field.
+    // New checklist payments explicitly use the entered amount. Legacy callers
+    // that send only the hourly breakdown keep the existing calculation path.
     const hasBreakdown = workHours != null && workRate != null;
+    const useExplicitAmount = req.body.useExplicitAmount === true;
+    const explicitGrossAmount = req.body.amount != null ? parseFloat(String(req.body.amount)) : null;
+    if (useExplicitAmount && (explicitGrossAmount == null || !Number.isFinite(explicitGrossAmount) || explicitGrossAmount <= 0)) {
+      return res.status(400).json({ error: "Enter a valid payment amount" });
+    }
     let paymentAmount: number;
-    if (hasBreakdown) {
+    if (useExplicitAmount) {
+      paymentAmount = Math.max(0, explicitGrossAmount! - (advanceAmount ?? 0));
+    } else if (hasBreakdown) {
       const workPay   = workHours  * workRate;
       const travelPay = (travelHours ?? 0) * (travelRate ?? 0);
       const bonus     = bonusAmount  ?? 0;
@@ -3561,7 +3574,13 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
     if (paymentAmount <= 0) return res.status(400).json({ error: "No amount to pay" });
 
     const today = new Date().toISOString();
-    const paymentDateStr = today.split("T")[0]; // YYYY-MM-DD for sub_payment_records
+    const requestedPaymentDate = req.body.paymentDate != null ? String(req.body.paymentDate) : today.slice(0, 10);
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(requestedPaymentDate);
+    const parsedPaymentDate = dateMatch ? new Date(`${requestedPaymentDate}T00:00:00.000Z`) : null;
+    if (!parsedPaymentDate || Number.isNaN(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== requestedPaymentDate) {
+      return res.status(400).json({ error: "Payment date must be a valid YYYY-MM-DD date" });
+    }
+    const paymentDateStr = requestedPaymentDate;
     const subName = String(req.body.subName ?? `Sub #${subId}`);
     const clientAgreedOwed = req.body.agreedOwed != null ? parseFloat(String(req.body.agreedOwed)) : null;
 
@@ -3667,6 +3686,7 @@ router.post("/:id/pay-worker/:subId", async (req, res) => {
         amount: paymentAmount.toFixed(2),
         paymentDate: paymentDateStr,
         description: `${subName} — ${typeLabel}`,
+        ...(notes ? { notes } : {}),
         createdFrom: "pay-worker",
         ...(idempotencyKey ? { idempotencyKey } : {}),
         ...(agreedOwed != null ? { agreedOwedSnapshot: agreedOwed.toFixed(2) } : {}),
