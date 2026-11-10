@@ -3,15 +3,9 @@ import { db } from "@workspace/db";
 import { estimatesTable, clientsTable, jobsTable } from "@workspace/db/schema";
 import { eq, asc, getTableColumns } from "drizzle-orm";
 import { canonicalRecordBusiness, generalContractingBusiness } from "../lib/business-scope.js";
+import { calculateEstimateTotals, estimateLineAmount } from "../lib/estimate-totals.js";
 
 const router = Router();
-
-function calcTotals(lineItems: any[], markupPercent: number | null, contingencyPercent: number | null) {
-  const subtotal = lineItems.reduce((s, li) => s + parseFloat(li.quantity) * parseFloat(li.unitCost), 0);
-  const withMarkup = markupPercent ? subtotal * (1 + markupPercent / 100) : subtotal;
-  const total = contingencyPercent ? withMarkup * (1 + contingencyPercent / 100) : withMarkup;
-  return { subtotal, total };
-}
 
 function format(e: any, clientName?: string | null, jobTitle?: string | null) {
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
@@ -30,7 +24,7 @@ function format(e: any, clientName?: string | null, jobTitle?: string | null) {
       quantity: parseFloat(li.quantity),
       unit: li.unit ?? null,
       unitCost: parseFloat(li.unitCost),
-      total: parseFloat(li.quantity) * parseFloat(li.unitCost),
+      total: estimateLineAmount(li),
     })),
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
   };
@@ -72,7 +66,7 @@ router.post("/", async (req, res) => {
   try {
     const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
-    const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
+    const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
 
     const [estimate] = await db.insert(estimatesTable).values({
       title, clientId: clientId || null, template,
@@ -119,7 +113,7 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
-    const { subtotal, total } = calcTotals(lineItems, markupPercent, contingencyPercent);
+    const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
 
     await db.update(estimatesTable).set({
       title, clientId: clientId || null, template, status,

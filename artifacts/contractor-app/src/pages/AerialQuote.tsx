@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
+import { buildAerialQuoteLineItems, calculateAerialQuote } from "@/lib/aerialQuotePricing";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const OWENSBORO: [number, number] = [37.7719, -87.1111];
@@ -30,10 +31,6 @@ function autoRate(sf: number): number {
   if (sf < 1000) return 0.40;
   if (sf <= 3000) return 0.28;
   return 0.20;
-}
-
-function ceil50(n: number): number {
-  return Math.max(300, Math.ceil(n / 50) * 50);
 }
 
 function sqFtFromPolygon(pts: LatLng[]): number {
@@ -254,17 +251,21 @@ export default function AerialQuote() {
     }
   }, [measurements.totalSqFt]);
 
+  const quoteInputs = useMemo(() => ({
+      squareFeet: measurements.totalSqFt,
+      ratePerSqFt,
+      crackLinearFeet: parseFloat(crackLF || "0") || 0,
+      crackRate,
+      secondCoat,
+      secondCoatRate,
+      oilStain,
+      oilStainRate,
+      taxPercent: taxPct,
+  }), [measurements.totalSqFt, ratePerSqFt, crackLF, crackRate, secondCoat, secondCoatRate, oilStain, oilStainRate, taxPct]);
+
   const quote = useMemo(() => {
-    const sf = measurements.totalSqFt;
-    const base = ceil50(sf * ratePerSqFt);
-    const crack = parseFloat(crackLF || "0") * crackRate;
-    const coat = secondCoat ? sf * secondCoatRate : 0;
-    const oil = oilStain ? sf * oilStainRate : 0;
-    const subtotal = base + crack + coat + oil;
-    const tax = subtotal * (taxPct / 100);
-    const total = subtotal + tax;
-    return { base, crack, coat, oil, subtotal, tax, total };
-  }, [measurements.totalSqFt, ratePerSqFt, crackLF, crackRate, secondCoat, secondCoatRate, oilStain, oilStainRate, taxPct]);
+    return calculateAerialQuote(quoteInputs);
+  }, [quoteInputs]);
 
   function selectGeoResult(r: GeoResult) {
     setGeoResults([]);
@@ -408,46 +409,7 @@ export default function AerialQuote() {
     setSaving(true);
     setSavedLinked(false);
     try {
-      const lineItems = [
-        {
-          id: 1,
-          category: "Sealing",
-          description: `Asphalt Sealing — ${Math.round(measurements.totalSqFt).toLocaleString()} SF`,
-          quantity: Math.round(measurements.totalSqFt),
-          unit: "SF",
-          unitCost: ratePerSqFt,
-        },
-      ];
-      if (parseFloat(crackLF || "0") > 0) {
-        lineItems.push({
-          id: 2,
-          category: "Crack Repair",
-          description: "Crack Sealing",
-          quantity: parseFloat(crackLF || "0"),
-          unit: "LF",
-          unitCost: crackRate,
-        });
-      }
-      if (secondCoat) {
-        lineItems.push({
-          id: 3,
-          category: "Sealing",
-          description: "Second Coat Application",
-          quantity: Math.round(measurements.totalSqFt),
-          unit: "SF",
-          unitCost: secondCoatRate,
-        });
-      }
-      if (oilStain) {
-        lineItems.push({
-          id: 4,
-          category: "Prep",
-          description: "Oil Stain Treatment",
-          quantity: Math.round(measurements.totalSqFt),
-          unit: "SF",
-          unitCost: oilStainRate,
-        });
-      }
+      const lineItems = buildAerialQuoteLineItems(quoteInputs, quote);
 
       const title = clientName
         ? `Asphalt Sealing — ${clientName}`
@@ -1002,8 +964,14 @@ export default function AerialQuote() {
                   <span className="text-muted-foreground">
                     Base sealing ({Math.round(measurements.totalSqFt).toLocaleString()} SF @ ${ratePerSqFt.toFixed(2)}/SF)
                   </span>
-                  <span className="font-medium tabular-nums">{formatCurrency(quote.base)}</span>
+                  <span className="font-medium tabular-nums">{formatCurrency(quote.base - quote.baseAdjustment)}</span>
                 </div>
+                {quote.baseAdjustment > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Minimum/rounding adjustment</span>
+                    <span className="font-medium tabular-nums">{formatCurrency(quote.baseAdjustment)}</span>
+                  </div>
+                )}
                 {quote.crack > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Crack sealing</span>

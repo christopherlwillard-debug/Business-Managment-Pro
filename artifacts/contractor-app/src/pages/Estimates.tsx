@@ -13,6 +13,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { roundQuoteMoney } from "@/lib/aerialQuotePricing";
 import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
@@ -119,7 +120,7 @@ const emptyLine = (): DraftLine => ({
 function lineTotal(l: DraftLine): number {
   const q = parseFloat(l.quantity) || 0;
   const u = parseFloat(l.unitCost) || 0;
-  return q * u;
+  return roundQuoteMoney(q * u);
 }
 
 // ─── Estimate modal ───────────────────────────────────────────────────────────
@@ -187,11 +188,13 @@ export function EstimateModal({
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; amount: number } | null>(null);
   const createQuickCharge = useCreateQuickCharge();
 
-  const subtotal = lines.reduce((acc, l) => acc + lineTotal(l), 0);
-  const markupAmt = markup ? subtotal * (parseFloat(markup) / 100) : 0;
+  const isTaxLine = (line: DraftLine) => line.category.trim().toLowerCase() === "tax";
+  const subtotal = roundQuoteMoney(lines.filter(line => !isTaxLine(line)).reduce((acc, line) => acc + lineTotal(line), 0));
+  const taxAmount = roundQuoteMoney(lines.filter(isTaxLine).reduce((acc, line) => acc + lineTotal(line), 0));
+  const markupAmt = markup ? roundQuoteMoney(subtotal * (parseFloat(markup) / 100)) : 0;
   const afterMarkup = subtotal + markupAmt;
-  const contAmt = cont ? afterMarkup * (parseFloat(cont) / 100) : 0;
-  const grandTotal = afterMarkup + contAmt;
+  const contAmt = cont ? roundQuoteMoney(afterMarkup * (parseFloat(cont) / 100)) : 0;
+  const grandTotal = roundQuoteMoney(afterMarkup + contAmt + taxAmount);
 
   const effectiveLogoUrl: string | null =
     (businessLine === "asphalt_sealing" ? (s.dbaLogoUrl ?? s.logoUrl) : s.logoUrl) ?? null;
@@ -389,6 +392,8 @@ export function EstimateModal({
                     <option>Material</option>
                     <option>Subcontractor</option>
                     <option>Equipment</option>
+                    <option>Adjustment</option>
+                    <option>Tax</option>
                     <option>Other</option>
                   </select>
                   <input
@@ -490,6 +495,12 @@ export function EstimateModal({
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Contingency ({cont}%)</span>
                   <span className="text-blue-600 font-medium">+ {formatCurrency(contAmt)}</span>
+                </div>
+              )}
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Sales tax</span>
+                  <span className="text-gray-700 font-medium">+ {formatCurrency(taxAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between pt-2 border-t border-gray-200">

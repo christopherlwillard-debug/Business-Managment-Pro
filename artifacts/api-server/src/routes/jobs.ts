@@ -34,6 +34,7 @@ import {
   syncJobProductionComponents,
   type ProductionComponentView,
 } from "../lib/job-production-components.js";
+import { expandEstimateLinesForInvoice, type InvoiceDraftLine } from "../lib/estimate-totals.js";
 
 const router = Router();
 
@@ -2333,38 +2334,21 @@ router.get("/:id/invoice-draft", async (req, res) => {
       ? []
       : await db.select().from(estimatesTable).where(eq(estimatesTable.jobId, id));
 
-    type InvoiceLine = { description: string; quantity: number; unitPrice: number };
-    // Shape of each line item stored in the estimates.line_items jsonb column
-    type EstimateLineItem = {
-      description?: string;
-      quantity?: string | number;
-      unitCost?: string | number;
-      unitPrice?: string | number;
-    };
-    function isEstimateLineItem(v: unknown): v is EstimateLineItem {
-      return typeof v === "object" && v !== null;
-    }
-    let lineItems: InvoiceLine[] = [];
+    let lineItems: InvoiceDraftLine[] = [];
 
     for (const est of estimates) {
       const rawLines = Array.isArray(est.lineItems) ? est.lineItems : [];
-      const estLines: EstimateLineItem[] = rawLines.filter(isEstimateLineItem);
+      const estLines = rawLines.filter((line): line is Record<string, unknown> => typeof line === "object" && line !== null);
       if (estLines.length > 0) {
-        // Scale each unit cost by markup × contingency so the expanded line items
-        // sum to the same total as the estimate.
         const markup = parseFloat(est.markupPercent ?? "0");
         const contingency = parseFloat(est.contingencyPercent ?? "0");
-        const scaleFactor = (1 + markup / 100) * (1 + contingency / 100);
-        for (const li of estLines) {
-          if (!String(li.description ?? "").trim()) continue;
-          const rawUnit = parseFloat(String(li.unitCost ?? li.unitPrice ?? "0"));
-          const qty = parseFloat(String(li.quantity ?? "1"));
-          lineItems.push({
-            description: li.description ?? est.title,
-            quantity: qty,
-            unitPrice: parseFloat((rawUnit * scaleFactor).toFixed(2)),
-          });
-        }
+        lineItems.push(...expandEstimateLinesForInvoice(estLines.map(line => ({
+          description: typeof line.description === "string" ? line.description : undefined,
+          category: typeof line.category === "string" ? line.category : undefined,
+          quantity: typeof line.quantity === "number" || typeof line.quantity === "string" ? line.quantity : undefined,
+          unitCost: typeof line.unitCost === "number" || typeof line.unitCost === "string" ? line.unitCost : undefined,
+          unitPrice: typeof line.unitPrice === "number" || typeof line.unitPrice === "string" ? line.unitPrice : undefined,
+        })), Number.isFinite(markup) ? markup : null, Number.isFinite(contingency) ? contingency : null));
       } else {
         // Estimate has no line items — use a single summary line at the estimate total
         lineItems.push({ description: est.title, quantity: 1, unitPrice: parseFloat(est.total ?? "0") });
@@ -2414,7 +2398,7 @@ router.get("/:id/invoice-draft", async (req, res) => {
         : (snap.driveRate2Tech ?? 0);
       const mileageRate = snap.mileageRate ?? 0;
 
-      const sbLines: InvoiceLine[] = [];
+      const sbLines: InvoiceDraftLine[] = [];
 
       const techLabel = sb.techCount === 1 ? "1 Tech" : `${sb.techCount} Techs`;
 
