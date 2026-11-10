@@ -24,16 +24,16 @@ description: How data is scoped per business; businessId vs businessLine; parent
 **How to apply:** When adding new data features, use businessId FK pattern. When touching reports/tax routes, be aware they still filter on businessLine.
 
 ## Data migration reference
-- Asphalt Sealing: parentBusinessId = General Contracting id (already set in DB)
+- Production currently has Asphalt Sealing as a separate root business; development has it parented to General Contracting. Verify the environment before relying on the hierarchy.
 - All pre-existing recurring_expenses: businessId = General Contracting id (migrated)
 - Expenses: businessId derived from businessLine slug via `UPDATE expenses SET business_id = b.id FROM businesses b WHERE expenses.business_line = b.slug`
 
 ## Parent, DBA, and workflow boundary
 
-General Contracting is the permanent parent and default financial owner. Asphalt is a child DBA that keeps explicit ownership even while inactive. MH Production, MH Service, and General Contracting are operational job workflows, not businesses.
+Willard's General Contracting, LLC is one legal business. General Contracting and Asphalt Sealing are operating divisions; Asphalt Sealing is a DBA of the same LLC. Kinora and other unrelated businesses remain separate. MH Production, MH Service, and General Contracting are operational job workflows, not businesses.
 
-**Why:** Treating workflows as businesses produced ownerless and inconsistently scoped jobs and invoices. Ownership must remain stable even when an operational workflow or DBA is inactive.
+**Why:** The user confirmed the legal ownership structure. Production and development currently represent Asphalt differently, so the database hierarchy alone is not a reliable source for legal ownership.
 
-**How to apply:** Mutations without an explicit DBA resolve the business with stable slug `general_contracting`; never hardcode its numeric ID. Linked invoices inherit the job owner and reject conflicts, and a job with linked invoices cannot be reassigned. “All businesses” remains read-only scope, and historical DBA ownership is preserved.
+**How to apply:** Model legal ownership separately from operating division. Keep Kinora and every unrelated business isolated. Do not assign ambiguous legacy records or rewrite history without a reviewed mapping. Mutations without an explicit division resolve to General Contracting; never hardcode numeric IDs. “All businesses” remains read-only scope.
 
 Financial mutation routes follow the same contract: canonical `businessId` is authoritative, legacy `businessLine` is fallback-only, and child rows inherit ownership from jobs/templates/providers rather than accepting a client-selected conflicting owner.

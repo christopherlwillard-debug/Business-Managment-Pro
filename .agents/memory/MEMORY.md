@@ -4,7 +4,7 @@
 - [Contractor App production identity](contractor-app-production-identity.md) — validate the internal app at business-managment-pro.replit.app, never the public willardsgc.com website
 - [API publish health probe](deployment-health-probe-path.md) — autoscale promotion may probe the API service path (/api) despite the configured /api/healthz startup path
 - [Post-merge schema push behavior](post-merge-schema-push.md) — post-merge tolerates Drizzle push failures; always verify development metadata explicitly
-- [Business isolation architecture](business-isolation.md) — General Contracting is the permanent parent/default owner; Asphalt is a child DBA; workflows never determine financial ownership
+- [Business isolation architecture](business-isolation.md) — one legal LLC owns General Contracting and Asphalt divisions; Kinora and unrelated businesses stay separate
 - [Legacy job ownership](legacy-job-ownership.md) — unassigned legacy jobs may be claimed during an explicitly business-scoped edit; scoped reads still require ownership
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
