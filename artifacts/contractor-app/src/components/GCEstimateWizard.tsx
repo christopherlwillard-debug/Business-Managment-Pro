@@ -1158,7 +1158,6 @@ export function GCEstimateWizard({ job, onClose, onCreated }: {
         title: estimateTitle.trim(),
         jobId: job.id,
         clientId: job.clientId ?? undefined,
-        businessLine: "general_contracting",
         jobType: JOB_TYPES.find(x => x.id === jobType)?.label ?? jobType,
         status: "draft",
         markupPercent: parseFloat(markup) || null,

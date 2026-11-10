@@ -2,10 +2,39 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { estimatesTable, clientsTable, jobsTable } from "@workspace/db/schema";
 import { eq, asc, getTableColumns } from "drizzle-orm";
-import { canonicalRecordBusiness, generalContractingBusiness } from "../lib/business-scope.js";
+import {
+  canonicalRecordBusiness,
+  generalContractingBusiness,
+  resolveMutationBusiness,
+  type BusinessScope,
+} from "../lib/business-scope.js";
 import { calculateEstimateTotals, estimateLineAmount } from "../lib/estimate-totals.js";
 
 const router = Router();
+
+async function resolveLinkedJobOwner(jobId: number): Promise<
+  | { ok: true; business: BusinessScope }
+  | { ok: false; status: 400 | 409; error: string }
+> {
+  const [job] = await db.select({
+    id: jobsTable.id,
+    businessId: jobsTable.businessId,
+    businessLine: jobsTable.businessLine,
+  }).from(jobsTable).where(eq(jobsTable.id, jobId));
+  if (!job) return { ok: false, status: 400, error: "Job not found" };
+
+  const ownership = await canonicalRecordBusiness(job);
+  if (ownership.state === "invalid") {
+    return { ok: false, status: 409, error: "Linked job has invalid business ownership" };
+  }
+  const business = ownership.state === "resolved"
+    ? ownership.business
+    : await generalContractingBusiness();
+  if (!business) {
+    return { ok: false, status: 409, error: "General Contracting business was not found" };
+  }
+  return { ok: true, business };
+}
 
 function format(e: any, clientName?: string | null, jobTitle?: string | null) {
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
@@ -64,8 +93,21 @@ router.get("/by-job/:jobId", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
+    const requestedOwner = await resolveMutationBusiness(req);
+    if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
+
+    let owner = requestedOwner.business;
+    if (jobId) {
+      const linkedOwner = await resolveLinkedJobOwner(Number(jobId));
+      if (!linkedOwner.ok) return res.status(linkedOwner.status).json({ error: linkedOwner.error });
+      if (requestedOwner.explicit && requestedOwner.business.id !== linkedOwner.business.id) {
+        return res.status(409).json({ error: "Estimate business conflicts with the linked job" });
+      }
+      owner = linkedOwner.business;
+    }
+
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
 
     const [estimate] = await db.insert(estimatesTable).values({
@@ -78,7 +120,8 @@ router.post("/", async (req, res) => {
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId || null,
-      businessLine: businessLine || null,
+      businessId: owner.id,
+      businessLine: owner.slug,
     }).returning();
 
     let clientName = null;
@@ -112,7 +155,37 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, businessLine } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
+    const [currentEstimate] = await db.select({
+      id: estimatesTable.id,
+      businessId: estimatesTable.businessId,
+      businessLine: estimatesTable.businessLine,
+      jobId: estimatesTable.jobId,
+    }).from(estimatesTable).where(eq(estimatesTable.id, id));
+    if (!currentEstimate) return res.status(404).json({ error: "Estimate not found" });
+
+    const requestedOwner = await resolveMutationBusiness(req);
+    if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
+    const currentOwnership = await canonicalRecordBusiness(currentEstimate);
+    if (currentOwnership.state === "invalid") {
+      return res.status(409).json({ error: "Estimate has an unknown business owner" });
+    }
+
+    const effectiveJobId = jobId !== undefined ? (jobId || null) : currentEstimate.jobId;
+    let owner: BusinessScope | null = requestedOwner.explicit
+      ? requestedOwner.business
+      : currentOwnership.state === "resolved"
+        ? currentOwnership.business
+        : null;
+    if (effectiveJobId) {
+      const linkedOwner = await resolveLinkedJobOwner(Number(effectiveJobId));
+      if (!linkedOwner.ok) return res.status(linkedOwner.status).json({ error: linkedOwner.error });
+      if (requestedOwner.explicit && requestedOwner.business.id !== linkedOwner.business.id) {
+        return res.status(409).json({ error: "Estimate business conflicts with the linked job" });
+      }
+      owner = linkedOwner.business;
+    }
+
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
 
     await db.update(estimatesTable).set({
@@ -124,7 +197,8 @@ router.put("/:id", async (req, res) => {
       jobType, notes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId !== undefined ? (jobId || null) : undefined,
-      ...(businessLine !== undefined ? { businessLine: businessLine || null } : {}),
+      businessId: owner?.id ?? null,
+      businessLine: owner?.slug ?? null,
     }).where(eq(estimatesTable.id, id));
 
     const [e] = await db.select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, id));

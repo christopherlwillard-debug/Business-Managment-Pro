@@ -12,6 +12,17 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-11-10
+
+### Persist canonical ownership for estimates
+
+- Estimate creation now resolves and stores `business_id` with the canonical `business_line`; job-linked estimates inherit the job's owner and reject explicit conflicts.
+- Estimate edits preserve a valid saved owner and resolve legacy `business_line` values for the edited record only. Estimate-to-job conversion continues to assign the resolved owner to the new job.
+- No schema changes or historical backfill were introduced. Estimate pricing, reports, and accounting calculations remain unchanged.
+- Verified with the full API suite, API and contractor-app typechecks, the production contractor-app build, and focused ownership route tests.
+
+---
+
 ## 2026-09-29
 
 ### Use confirmed Here dates as the sole source of estimated gas days

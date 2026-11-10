@@ -146,10 +146,15 @@ export function EstimateModal({
   const qc = useQueryClient();
   const { data: clients = [] } = useListClients();
   const { data: settings } = useGetSettings();
+  const { businesses } = useBusiness();
   const s = (settings ?? {}) as AppSettings;
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   const seedData = fromTemplate === "asphalt_sealing_proposal" ? ASPHALT_SEALING_PROPOSAL : null;
+  const initialBusinessId = typeof initial?.businessId === "number" ? initial.businessId : null;
+  const initialOwner = initialBusinessId == null
+    ? undefined
+    : businesses.find(business => business.id === initialBusinessId);
 
   const [title, setTitle]     = useState(initial?.title ?? "");
   const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? prelinkedClientId ?? ""));
@@ -157,9 +162,10 @@ export function EstimateModal({
   const [notes, setNotes]     = useState(initial?.notes ?? seedData?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
   const [cont, setCont]       = useState(String(initial?.contingencyPercent ?? ""));
-  const [businessLine] = useState<string>(
-    initial?.businessLine ?? (fromTemplate === "asphalt_sealing_proposal" ? "asphalt_sealing" : (initialBusinessLine ?? "general_contracting"))
-  );
+  const businessLine = initial
+    ? (initialOwner?.slug ?? initial.businessLine ?? "")
+    : (fromTemplate === "asphalt_sealing_proposal" ? "asphalt_sealing" : (initialBusinessLine ?? "general_contracting"));
+  const selectedBusiness = businesses.find(business => business.slug === businessLine) ?? initialOwner;
   const [lines, setLines]     = useState<DraftLine[]>(
     initial?.lineItems?.length
       ? initial.lineItems.map(l => ({
@@ -228,7 +234,12 @@ export function EstimateModal({
         unit: l.unit || null,
         unitCost: parseFloat(l.unitCost) || 0,
       })),
-      businessLine: businessLine || null,
+      businessLine: selectedBusiness?.slug ?? (initialBusinessId != null ? null : (businessLine || null)),
+      ...(selectedBusiness
+        ? { businessId: selectedBusiness.id }
+        : initialBusinessId != null
+          ? { businessId: initialBusinessId }
+          : {}),
     };
     const jobId = prelinkedJobId ?? (initial as Estimate & { jobId?: number })?.jobId ?? null;
     if (jobId) (req as unknown as Record<string, unknown>).jobId = jobId;
@@ -816,7 +827,9 @@ export default function Estimates() {
         contingencyPercent: est.contingencyPercent ?? null,
         status: status as CreateEstimateRequestStatus,
         lineItems,
-        businessLine: est.businessLine ?? null,
+        ...(typeof est.businessId === "number"
+          ? { businessId: est.businessId }
+          : { businessLine: est.businessLine ?? null }),
       },
     });
     invalidate();
