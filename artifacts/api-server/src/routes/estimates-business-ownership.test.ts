@@ -105,6 +105,7 @@ const estimateRow = (overrides: Record<string, unknown> = {}) => ({
   jobType: "Asphalt Sealing",
   notes: null,
   workAddress: null,
+  customerNotes: null,
   lineItems: [],
   createdAt: new Date("2026-11-10T12:00:00.000Z"),
   ...overrides,
@@ -175,10 +176,26 @@ describe("estimate canonical business ownership", () => {
     expect(response.body.workAddress).toBe(h.inserts[0].workAddress);
   });
 
+  it("stores customer-facing terms separately from private estimate notes", async () => {
+    const response = await request(app).post("/estimates").send({
+      title: "Service quote",
+      notes: "Internal labor planning",
+      customerNotes: "Payment is due after completion.",
+      lineItems: [],
+    });
+
+    expect(response.status).toBe(201);
+    expect(h.inserts[0]).toMatchObject({
+      notes: "Internal labor planning",
+      customerNotes: "Payment is due after completion.",
+    });
+    expect(response.body.customerNotes).toBe("Payment is due after completion.");
+  });
+
   it("fills canonical ownership on an edited legacy estimate from its saved business line", async () => {
     h.selectQueue.push(
-      [estimateRow({ workAddress: "Saved job location" })],
-      [estimateRow({ businessId: asphalt.id, workAddress: "Saved job location" })],
+      [estimateRow({ workAddress: "Saved job location", customerNotes: "Saved terms" })],
+      [estimateRow({ businessId: asphalt.id, workAddress: "Saved job location", customerNotes: "Saved terms" })],
     );
 
     const response = await request(app).put("/estimates/31").send({
@@ -192,6 +209,7 @@ describe("estimate canonical business ownership", () => {
       businessId: asphalt.id,
       businessLine: asphalt.slug,
       workAddress: "Saved job location",
+      customerNotes: "Saved terms",
     });
     expect(response.body.businessId).toBe(asphalt.id);
   });

@@ -3610,6 +3610,7 @@ export const ListEstimatesResponseItem = zod.object({
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
   workAddress: zod.string().nullish(),
+  customerNotes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
   jobId: zod.number().nullish(),
   depositPaidAt: zod.string().nullish(),
@@ -3646,6 +3647,7 @@ export const CreateEstimateBody = zod.object({
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
   workAddress: zod.string().nullish(),
+  customerNotes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
   lineItems: zod
     .array(
@@ -3681,6 +3683,7 @@ export const GetEstimateResponse = zod.object({
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
   workAddress: zod.string().nullish(),
+  customerNotes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
   jobId: zod.number().nullish(),
   depositPaidAt: zod.string().nullish(),
@@ -3720,6 +3723,7 @@ export const UpdateEstimateBody = zod.object({
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
   workAddress: zod.string().nullish(),
+  customerNotes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
   lineItems: zod
     .array(
@@ -3748,6 +3752,7 @@ export const UpdateEstimateResponse = zod.object({
   jobType: zod.string().nullish(),
   notes: zod.string().nullish(),
   workAddress: zod.string().nullish(),
+  customerNotes: zod.string().nullish(),
   businessLine: zod.string().nullish(),
   jobId: zod.number().nullish(),
   depositPaidAt: zod.string().nullish(),

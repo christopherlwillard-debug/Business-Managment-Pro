@@ -171,6 +171,9 @@ export function EstimateModal({
   );
   const [jobType] = useState(initial?.jobType ?? seedData?.jobType ?? "");
   const [notes, setNotes]     = useState(initial?.notes ?? seedData?.notes ?? "");
+  const [customerNotes, setCustomerNotes] = useState<string>(
+    typeof initial?.customerNotes === "string" ? initial.customerNotes : "",
+  );
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
   const [cont, setCont]       = useState(String(initial?.contingencyPercent ?? ""));
   const businessLine = initial
@@ -236,6 +239,7 @@ export function EstimateModal({
       workAddress: workAddress.trim() || defaultWorkAddress || null,
       jobType: jobType || null,
       notes: notes || null,
+      customerNotes: customerNotes || null,
       markupPercent: markup ? parseFloat(markup) : null,
       contingencyPercent: cont ? parseFloat(cont) : null,
       status: (initial?.status ?? "draft") as CreateEstimateRequestStatus,
@@ -505,14 +509,25 @@ export function EstimateModal({
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Internal notes</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={2}
-                  placeholder="Scope notes, exclusions, payment terms…"
+                  placeholder="Private estimating or job notes — not shown to customers."
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Customer-facing notes and terms</label>
+                <textarea
+                  value={customerNotes}
+                  onChange={e => setCustomerNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Payment terms, exclusions, or instructions for the customer."
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-y"
+                />
+                <p className="mt-1 text-xs text-gray-500">This text appears on the customer quote preview. Keep private details in Internal notes.</p>
               </div>
             </div>
 

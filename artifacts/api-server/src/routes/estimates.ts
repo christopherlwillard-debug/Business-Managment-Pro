@@ -125,7 +125,7 @@ router.get("/by-job/:jobId", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, workAddress } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, customerNotes, lineItems = [], jobId, workAddress } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     const requestedOwner = await resolveMutationBusiness(req);
     if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
@@ -150,7 +150,7 @@ router.post("/", async (req, res) => {
       markupPercent: markupPercent?.toString() ?? null,
       contingencyPercent: contingencyPercent?.toString() ?? null,
       total: total.toString(),
-      jobType, notes, workAddress: savedWorkAddress,
+      jobType, notes, workAddress: savedWorkAddress, customerNotes: customerNotes ?? null,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId || null,
       businessId: owner.id,
@@ -188,13 +188,14 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, workAddress } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, customerNotes, lineItems = [], jobId, workAddress } = req.body;
     const [currentEstimate] = await db.select({
       id: estimatesTable.id,
       businessId: estimatesTable.businessId,
       businessLine: estimatesTable.businessLine,
       jobId: estimatesTable.jobId,
       workAddress: estimatesTable.workAddress,
+      customerNotes: estimatesTable.customerNotes,
     }).from(estimatesTable).where(eq(estimatesTable.id, id));
     if (!currentEstimate) return res.status(404).json({ error: "Estimate not found" });
 
@@ -232,6 +233,9 @@ router.put("/:id", async (req, res) => {
       contingencyPercent: contingencyPercent?.toString() ?? null,
       total: total.toString(),
       jobType, notes, workAddress: savedWorkAddress,
+      customerNotes: Object.prototype.hasOwnProperty.call(req.body, "customerNotes")
+        ? (customerNotes ?? null)
+        : currentEstimate.customerNotes,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId !== undefined ? (jobId || null) : undefined,
       businessId: owner?.id ?? null,

@@ -18,6 +18,7 @@ export const estimatesTable = pgTable("estimates", {
   jobType: text("job_type"),
   notes: text("notes"),
   workAddress: text("work_address"),
+  customerNotes: text("customer_notes"),
   lineItems: jsonb("line_items").default("[]"),
   jobId: integer("job_id").references(() => jobsTable.id),
   businessLine: text("business_line"),

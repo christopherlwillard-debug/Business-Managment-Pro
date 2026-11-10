@@ -1402,6 +1402,7 @@ export interface Estimate {
   jobType?: string | null;
   notes?: string | null;
   workAddress?: string | null;
+  customerNotes?: string | null;
   businessLine?: string | null;
   jobId?: number | null;
   depositPaidAt?: string | null;
@@ -1441,6 +1442,7 @@ export interface CreateEstimateRequest {
   jobType?: string | null;
   notes?: string | null;
   workAddress?: string | null;
+  customerNotes?: string | null;
   businessLine?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
   [key: string]: unknown;

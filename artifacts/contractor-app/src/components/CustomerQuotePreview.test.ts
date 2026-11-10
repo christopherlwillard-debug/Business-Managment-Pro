@@ -14,6 +14,7 @@ describe("buildCustomerQuoteView", () => {
       total: 396,
       jobType: "Maintenance",
       notes: "INTERNAL: labor rate and margin notes",
+      customerNotes: "Balance due upon completion.",
       workAddress: "100 Main St, Town, ST",
       lineItems: [
         { id: 1, category: "Labor", description: "Seasonal maintenance", quantity: 1, unit: "LOT", unitCost: 300, total: 300 },
@@ -32,6 +33,7 @@ describe("buildCustomerQuoteView", () => {
     expect(view).not.toHaveProperty("markupPercent");
     expect(view).not.toHaveProperty("contingencyPercent");
     expect(view).not.toHaveProperty("notes");
+    expect(view.customerNotes).toBe("Balance due upon completion.");
     expect(view.scope[0]).not.toHaveProperty("unitCost");
   });
 });

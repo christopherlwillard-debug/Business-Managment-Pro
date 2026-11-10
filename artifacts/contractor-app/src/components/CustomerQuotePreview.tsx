@@ -7,6 +7,7 @@ type CustomerQuoteView = {
   clientName: string | null;
   jobType: string | null;
   workAddress: string | null;
+  customerNotes: string | null;
   scope: Array<{ description: string; quantity: number; unit: string | null }>;
   tax: number;
   total: number;
@@ -22,6 +23,7 @@ export function buildCustomerQuoteView(estimate: Estimate): CustomerQuoteView {
     clientName: estimate.clientName ?? null,
     jobType: estimate.jobType ?? null,
     workAddress: typeof estimate.workAddress === "string" ? estimate.workAddress : null,
+    customerNotes: typeof estimate.customerNotes === "string" ? estimate.customerNotes : null,
     scope: items
       .filter(item => item.category.trim().toLowerCase() !== "tax")
       .map(({ description, quantity, unit }) => ({ description, quantity, unit: unit ?? null }))
@@ -79,6 +81,12 @@ export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate
               </ul>
             ) : <p className="text-sm text-gray-500">Scope details will be confirmed with the customer.</p>}
           </section>
+          {quote.customerNotes && (
+            <section className="border-t border-gray-200 pt-4">
+              <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-gray-500">Notes and terms</h2>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{quote.customerNotes}</p>
+            </section>
+          )}
           <section className="ml-auto max-w-sm space-y-2 border-t border-gray-200 pt-4">
             {quote.tax > 0 && (
               <div className="flex justify-between text-sm text-gray-600">

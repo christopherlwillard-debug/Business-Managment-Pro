@@ -15,11 +15,11 @@ Generated: 2026-11-10
 
 ## Migration ledger
 
-Canonical files: 35; numbered IDs: 35; duplicate canonical IDs: none.
+Canonical files: 36; numbered IDs: 36; duplicate canonical IDs: none.
 
 | tree | role | files | duplicates |
 | --- | --- | --- | --- |
-| lib/db/migrations | Canonical post-baseline ledger | 35 | none |
+| lib/db/migrations | Canonical post-baseline ledger | 36 | none |
 | lib/db/src/migrations | Historical / reconciliation only | 66 | 4, 62 |
 | artifacts/api-server/src/migrations | Historical / reconciliation only | 5 | none |
 
