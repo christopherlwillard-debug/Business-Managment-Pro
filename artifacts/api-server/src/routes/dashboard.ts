@@ -16,9 +16,10 @@ import {
   subPaymentRecordsTable,
   ownerCapitalEntriesTable,
 } from "@workspace/db/schema";
-import { eq, asc, lte, ne, and, isNotNull, desc, inArray, isNull, not, lt } from "drizzle-orm";
+import { eq, asc, lte, ne, and, or, isNotNull, desc, inArray, isNull, not, lt } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { OWNER_WITHDRAWAL_EXPENSE_CATEGORIES } from "../lib/owner-withdrawals.js";
+import { hasRequestedBusiness, invalidBusinessScope, mutationBusinessPredicate, requestedBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -38,8 +39,30 @@ function formatComplianceItem(item: any) {
 }
 
 router.get("/today", wrapAsync(async (req, res) => {
+  const scope = await requestedBusiness(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  const routeStopScope = scope
+    ? or(
+        and(
+          isNotNull(routeStopsTable.clientId),
+          mutationBusinessPredicate(
+            { businessId: clientsTable.businessId, businessLine: clientsTable.businessLine },
+            scope,
+          ),
+        ),
+        and(
+          isNotNull(routeStopsTable.prospectId),
+          mutationBusinessPredicate(
+            { businessId: prospectsTable.businessId, businessLine: prospectsTable.businessLine },
+            scope,
+          ),
+        ),
+      )
+    : undefined;
 
   const [complianceRows, routeStopRows, prospectRows, overdueInvoiceRows] = await Promise.all([
     db.select({
@@ -62,7 +85,7 @@ router.get("/today", wrapAsync(async (req, res) => {
       .from(routeStopsTable)
       .leftJoin(clientsTable, eq(routeStopsTable.clientId, clientsTable.id))
       .leftJoin(prospectsTable, eq(routeStopsTable.prospectId, prospectsTable.id))
-      .where(eq(routeStopsTable.scheduledDate, todayStr)),
+      .where(and(eq(routeStopsTable.scheduledDate, todayStr), routeStopScope)),
 
     db.select({
       id: prospectsTable.id,
@@ -78,6 +101,12 @@ router.get("/today", wrapAsync(async (req, res) => {
           isNotNull(prospectsTable.followUpDate),
           lte(prospectsTable.followUpDate, todayStr),
           ne(prospectsTable.status, "lost"),
+          scope
+            ? mutationBusinessPredicate(
+                { businessId: prospectsTable.businessId, businessLine: prospectsTable.businessLine },
+                scope,
+              )
+            : undefined,
         )
       ),
 
@@ -90,7 +119,15 @@ router.get("/today", wrapAsync(async (req, res) => {
     })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-      .where(eq(invoicesTable.status, "overdue")),
+      .where(and(
+        eq(invoicesTable.status, "overdue"),
+        scope
+          ? mutationBusinessPredicate(
+              { businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine },
+              scope,
+            )
+          : undefined,
+      )),
   ]);
 
   res.json({
@@ -107,7 +144,18 @@ router.get("/today", wrapAsync(async (req, res) => {
 // ─── Continue Working ──────────────────────────────────────────────────────────
 // Returns the most-recently-active job (by checklist updatedAt fallback createdAt).
 router.get("/continue-working", wrapAsync(async (req, res) => {
-  const activeWhere = and(ne(jobsTable.status, "closed"), ne(jobsTable.status, "cancelled"));
+  const scope = await requestedBusiness(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+  const activeWhere = and(
+    ne(jobsTable.status, "closed"),
+    ne(jobsTable.status, "cancelled"),
+    scope
+      ? mutationBusinessPredicate(
+          { businessId: jobsTable.businessId, businessLine: jobsTable.businessLine },
+          scope,
+        )
+      : undefined,
+  );
 
   // Primary: jobs that have checklist activity — innerJoin ensures only rows with a real
   // checklist record are returned. Secondary sort on jobsTable.id is a deterministic tiebreaker.
@@ -187,13 +235,8 @@ router.get("/continue-working", wrapAsync(async (req, res) => {
 // canonical owner withdrawals.
 router.get("/recent-activity", wrapAsync(async (req, res) => {
   const OWNER_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
-  const rawBusinessId = req.query.businessId;
-  const businessId = rawBusinessId != null && String(rawBusinessId) !== ""
-    ? Number.parseInt(String(rawBusinessId), 10)
-    : null;
-  if (rawBusinessId != null && (!Number.isFinite(businessId) || businessId == null)) {
-    return res.status(400).json({ error: "Invalid business id" });
-  }
+  const scope = await requestedBusiness(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
   const [expenses, invoicesRows, subPays, ownerPay] = await Promise.all([
     // Regular expenses (not owner withdrawals, not auto-generated sub hours)
@@ -208,7 +251,12 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .where(and(
         not(inArray(expensesTable.category, [...OWNER_CATS, "mileage"])),
         isNull(expensesTable.jobSubHoursId),
-        businessId != null ? eq(expensesTable.businessId, businessId) : undefined,
+        scope
+          ? mutationBusinessPredicate(
+              { businessId: expensesTable.businessId, businessLine: expensesTable.businessLine },
+              scope,
+            )
+          : undefined,
       ))
       .orderBy(desc(expensesTable.createdAt))
       .limit(10),
@@ -224,7 +272,12 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
     })
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-      .where(businessId != null ? eq(invoicesTable.businessId, businessId) : undefined)
+      .where(scope
+        ? mutationBusinessPredicate(
+            { businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine },
+            scope,
+          )
+        : undefined)
       .orderBy(desc(invoicesTable.createdAt))
       .limit(10),
 
@@ -239,7 +292,12 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .from(subPaymentRecordsTable)
       .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
       .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
-      .where(businessId != null ? eq(jobsTable.businessId, businessId) : undefined)
+      .where(scope
+        ? mutationBusinessPredicate(
+            { businessId: jobsTable.businessId, businessLine: jobsTable.businessLine },
+            scope,
+          )
+        : undefined)
       .orderBy(desc(subPaymentRecordsTable.createdAt))
       .limit(5),
 
@@ -254,7 +312,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .where(and(
         lt(ownerCapitalEntriesTable.amount, "0"),
         isNull(ownerCapitalEntriesTable.voidedAt),
-        businessId != null ? eq(ownerCapitalEntriesTable.businessId, businessId) : undefined,
+        scope ? eq(ownerCapitalEntriesTable.businessId, scope.id) : undefined,
       ))
       .orderBy(desc(ownerCapitalEntriesTable.createdAt))
       .limit(5),

@@ -75,12 +75,13 @@ interface DashboardToday {
   overdueInvoices: Array<{ id: number; invoiceNumber: string; clientName: string | null; dueDate: string | null; total: number }>;
 }
 
-function useDashboardToday() {
+function useDashboardToday(businessId?: number | null) {
   const today = getTodayStr();
   return useQuery<DashboardToday>({
-    queryKey: ["dashboard-today", today],
+    queryKey: ["dashboard-today", today, businessId ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/dashboard/today`);
+      const params = businessId != null ? `?businessId=${businessId}` : "";
+      const res = await fetch(`${BASE}/api/dashboard/today${params}`);
       if (!res.ok) throw new Error("Failed to load dashboard data");
       return res.json();
     },
@@ -287,11 +288,12 @@ interface ContinueWorkingData {
   crewNames: string[];
 }
 
-function useContinueWorking() {
+function useContinueWorking(businessId?: number | null) {
   return useQuery<ContinueWorkingData | null>({
-    queryKey: ["dashboard-continue-working"],
+    queryKey: ["dashboard-continue-working", businessId ?? "all"],
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/dashboard/continue-working`);
+      const params = businessId != null ? `?businessId=${businessId}` : "";
+      const res = await fetch(`${BASE}/api/dashboard/continue-working${params}`);
       if (!res.ok) return null;
       return res.json();
     },
@@ -410,8 +412,8 @@ function QuickActionsV2({ onNavigate, onRecordPay }: {
   );
 }
 
-function ContinueWorkingCard({ onNavigate }: { onNavigate: (p: string) => void }) {
-  const { data: job, isLoading } = useContinueWorking();
+function ContinueWorkingCard({ onNavigate, businessId }: { onNavigate: (p: string) => void; businessId?: number | null }) {
+  const { data: job, isLoading } = useContinueWorking(businessId);
   if (isLoading) return <div className="h-24 rounded-2xl bg-muted/30 animate-pulse" />;
   if (!job) return null;
   const invColors: Record<string, string> = { sent: "text-blue-600", paid: "text-emerald-600", overdue: "text-red-600", draft: "text-muted-foreground" };
@@ -858,11 +860,13 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const { activeBusiness, hasSelection, businesses } = useBusiness();
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
-  const businessLine = activeBusiness ? activeBusiness.slug : localBLFilter;
+  const selectedBusiness = activeBusiness ?? businesses.find(business => business.slug === localBLFilter) ?? null;
+  const businessId = selectedBusiness?.id ?? null;
+  const businessLine = selectedBusiness?.slug ?? "";
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: (businessLine || undefined) as any });
-  const { data: todayData } = useDashboardToday();
+  const { data: todayData } = useDashboardToday(businessId);
   const complianceItems = todayData?.complianceItems ?? [];
   const todayStops = todayData?.routeStops ?? [];
   const followUpProspects = todayData?.followUpProspects ?? [];
@@ -942,7 +946,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── 4. CONTINUE WORKING ── */}
-      <ContinueWorkingCard onNavigate={navigate} />
+      <ContinueWorkingCard onNavigate={navigate} businessId={businessId} />
 
       {/* ── 5. TODAY'S SCHEDULE ── */}
       <TodayScheduleCard stops={todayStops} onNavigate={navigate} />
@@ -1034,16 +1038,16 @@ export default function Dashboard() {
       />
 
       {/* ── 8. CASH FLOW ── */}
-      <CashFlowCard />
+      {businessId == null && <CashFlowCard />}
 
       {/* ── 9. OWNER PAY ── */}
       <div>
         <SectionHeader title="Owner Withdrawals" />
-        <MyPayCard businessId={activeBusiness?.id ?? null} externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
+        <MyPayCard businessId={businessId} externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
       </div>
 
       {/* ── 10. RECENT ACTIVITY ── */}
-      <RecentActivityCard onNavigate={navigate} businessId={activeBusiness?.id} />
+      <RecentActivityCard onNavigate={navigate} businessId={businessId} />
 
     </div>
   );

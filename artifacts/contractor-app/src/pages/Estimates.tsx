@@ -14,6 +14,7 @@ import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { roundQuoteMoney } from "@/lib/aerialQuotePricing";
+import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
 import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
@@ -820,6 +821,7 @@ export default function Estimates() {
   }, [activeBusiness, businesses]);
 
   const activeBusinessLine = activeTab;
+  const selectedBusiness = businesses.find(business => business.slug === activeBusinessLine);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
 
@@ -915,8 +917,10 @@ export default function Estimates() {
   }, [modal, estimates]);
 
   const tabEstimates = useMemo(() =>
-    estimates.filter(e => e.businessLine === activeBusinessLine),
-    [estimates, activeBusinessLine]);
+    selectedBusiness
+      ? estimates.filter(estimate => belongsToSelectedBusiness(estimate, selectedBusiness))
+      : [],
+    [estimates, selectedBusiness]);
 
   const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
 
