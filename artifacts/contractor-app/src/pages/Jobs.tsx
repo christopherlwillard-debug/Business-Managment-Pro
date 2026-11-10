@@ -90,6 +90,7 @@ import {
 } from "lucide-react";
 import { GCEstimateWizard } from "@/components/GCEstimateWizard";
 import { JobChecklistPanel } from "@/components/JobChecklistPanel";
+import { MaterialListsQueryState } from "@/components/MaterialListsQueryState";
 import { MfhPanel } from "@/components/MfhPanel";
 import { ApplyProductionPricingDialog } from "@/components/ApplyProductionPricingDialog";
 import { KbTrainingModal } from "@/components/KbTrainingModal";
@@ -1070,7 +1071,15 @@ function SubcontractorPicker({
 // ─── Job Materials Panel ───────────────────────────────────────────────────────
 function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) {
   const qc = useQueryClient();
-  const { data: lists = [], isLoading } = useListMaterialLists({ jobId: job.id });
+  const {
+    data: listsData,
+    isLoading,
+    isError,
+    isSuccess,
+    isFetching,
+    refetch: refetchLists,
+  } = useListMaterialLists({ jobId: job.id });
+  const lists = listsData ?? [];
   const { data: allMaterials = [] } = useListMaterials({ includeInactive: false });
   const { data: settings } = useGetSettings();
   const createList = useCreateMaterialList();
@@ -1359,17 +1368,21 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
               )}
             </h3>
 
-            {isLoading ? (
-              <div className="flex justify-center py-6">
-                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : lists.length === 0 ? (
-              <div className="py-8 text-center space-y-2">
-                <Package className="w-8 h-8 text-muted-foreground/30 mx-auto" />
-                <p className="text-sm text-muted-foreground">No material lists yet. Create one above.</p>
-              </div>
-            ) : (
-              lists.map((list: MaterialList) => {
+            <MaterialListsQueryState
+              isLoading={isLoading}
+              isError={isError}
+              isSuccess={isSuccess}
+              isFetching={isFetching}
+              hasLists={lists.length > 0}
+              onRetry={() => { void refetchLists(); }}
+              emptyState={(
+                <div className="py-8 text-center space-y-2">
+                  <Package className="w-8 h-8 text-muted-foreground/30 mx-auto" />
+                  <p className="text-sm text-muted-foreground">No material lists yet. Create one above.</p>
+                </div>
+              )}
+            >
+              {lists.map((list: MaterialList) => {
                 const subtotal = list.items.reduce((s, it) => s + it.unitCostSnapshot * it.qty * (list.markup / 100 + 1), 0);
                 const isExpanded = expandedId === list.id;
                 return (
@@ -1436,8 +1449,8 @@ function JobMaterialsPanel({ job, onClose }: { job: Job; onClose: () => void }) 
                     )}
                   </div>
                 );
-              })
-            )}
+              })}
+            </MaterialListsQueryState>
           </div>
         </div>
       </div>
@@ -1454,7 +1467,15 @@ function JobDailyLogPanel({
 }) {
   const queryClient = useQueryClient();
   const { data: logs = [], isLoading } = useListDailyLogs({ jobId: job.id });
-  const { data: materialLists = [] } = useListMaterialLists({ jobId: job.id });
+  const {
+    data: materialListsData,
+    isLoading: materialListsLoading,
+    isError: materialListsError,
+    isSuccess: materialListsSuccess,
+    isFetching: materialListsFetching,
+    refetch: refetchMaterialLists,
+  } = useListMaterialLists({ jobId: job.id });
+  const materialLists = materialListsData ?? [];
   const createLog  = useCreateDailyLog();
   const deleteLog  = useDeleteDailyLog();
   const { canEdit } = useUserPermissions();
@@ -1580,20 +1601,30 @@ function JobDailyLogPanel({
               </div>
 
               {/* Material List picker */}
-              {materialLists.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Attach Material List</label>
-                  <select
-                    className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    value={form.materialListId}
-                    onChange={e => setForm(f => ({ ...f, materialListId: e.target.value }))}>
-                    <option value="">None</option>
-                    {materialLists.map(l => (
-                      <option key={l.id} value={String(l.id)}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <MaterialListsQueryState
+                isLoading={materialListsLoading}
+                isError={materialListsError}
+                isSuccess={materialListsSuccess}
+                isFetching={materialListsFetching}
+                hasLists={materialLists.length > 0}
+                onRetry={() => { void refetchMaterialLists(); }}
+                emptyState={null}
+              >
+                {materialLists.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Attach Material List</label>
+                    <select
+                      className="w-full px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={form.materialListId}
+                      onChange={e => setForm(f => ({ ...f, materialListId: e.target.value }))}>
+                      <option value="">None</option>
+                      {materialLists.map(l => (
+                        <option key={l.id} value={String(l.id)}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </MaterialListsQueryState>
 
               {/* Photo upload */}
               <div>

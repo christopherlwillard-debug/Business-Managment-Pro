@@ -19,6 +19,7 @@ import {
   type Job,
 } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
+import { MaterialListsQueryState } from "@/components/MaterialListsQueryState";
 import {
   Package, Plus, Search, Pencil, Trash2, X, Check,
   ListChecks, Filter, AlertTriangle, ChevronDown, ChevronUp,
@@ -606,7 +607,15 @@ export default function Materials() {
     includeInactive: showInactive,
   });
   const { data: allActiveMaterials = [] } = useListMaterials({ includeInactive: false });
-  const { data: materialLists = [], isLoading: listsLoading } = useListMaterialLists();
+  const {
+    data: materialListsData,
+    isLoading: listsLoading,
+    isError: listsError,
+    isSuccess: listsSuccess,
+    isFetching: listsFetching,
+    refetch: refetchLists,
+  } = useListMaterialLists();
+  const materialLists = materialListsData ?? [];
   const { data: jobs = [] } = useListJobs();
 
   const createMaterial = useCreateMaterial();
@@ -859,25 +868,29 @@ export default function Materials() {
           </button>
         </div>
 
-        {listsLoading ? (
-          <div className="flex items-center justify-center h-24">
-            <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : materialLists.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 gap-3">
-            <ListChecks className="w-10 h-10" />
-            <div className="text-center">
-              <p className="font-semibold text-gray-600">No material lists yet</p>
-              <p className="text-sm mt-1">Create a list to track materials for a specific job and attach them to invoices.</p>
+        <MaterialListsQueryState
+          isLoading={listsLoading}
+          isError={listsError}
+          isSuccess={listsSuccess}
+          isFetching={listsFetching}
+          hasLists={materialLists.length > 0}
+          onRetry={() => { void refetchLists(); }}
+          emptyState={(
+            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-200 rounded-2xl text-gray-400 gap-3">
+              <ListChecks className="w-10 h-10" />
+              <div className="text-center">
+                <p className="font-semibold text-gray-600">No material lists yet</p>
+                <p className="text-sm mt-1">Create a list to track materials for a specific job and attach them to invoices.</p>
+              </div>
+              <button
+                onClick={openNewList}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 shadow"
+              >
+                <Plus className="w-4 h-4" /> Create First List
+              </button>
             </div>
-            <button
-              onClick={openNewList}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 text-white hover:bg-amber-600 shadow"
-            >
-              <Plus className="w-4 h-4" /> Create First List
-            </button>
-          </div>
-        ) : (
+          )}
+        >
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {materialLists.map(list => (
               <MaterialListCard
@@ -888,7 +901,7 @@ export default function Materials() {
               />
             ))}
           </div>
-        )}
+        </MaterialListsQueryState>
       </div>
 
       {/* ── Material Create/Edit Dialog ─────────────────────────────────────────── */}
