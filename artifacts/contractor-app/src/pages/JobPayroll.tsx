@@ -45,6 +45,7 @@ type SubPayHistoryEntry = {
   netPaid?: number;
   paymentMethod?: string | null;
   referenceNumber?: string | null;
+  notes?: string | null;
 };
 
 type SubPaymentRow = {
@@ -90,6 +91,11 @@ function fmtDate(d: string) {
     const [y, m, day] = d.split("-");
     return `${parseInt(m)}/${parseInt(day)}/${y.slice(2)}`;
   } catch { return d; }
+}
+
+function localDateInputValue() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 
 const PAYMENT_METHODS = ["Zelle", "Cash App", "Cash", "Check", "Venmo", "ACH / Bank Transfer", "Other"];
@@ -224,7 +230,7 @@ function WorkerPayCard({
     autoSimpleAmount.current = nextAutoAmount;
   }, [getAutoSimpleAmount, isHourly]);
 
-  const grossPay = isHourly ? workPay + travelPay + bonusAmt : parseFloat(simpleAmount) || 0;
+  const grossPay = isHourly ? workPay + travelPay + bonusAmt : (parseFloat(simpleAmount) || balance || 0);
   const netToPay = Math.max(0, grossPay - advancementDeduction);
 
   // Earnings summary figures (for the 3-column summary strip)
@@ -383,17 +389,36 @@ function WorkerPayCard({
   }
 
   // Review-sheet draft
-  type ReviewDraft = { bonus: string; bonusNote: string; paymentMethod: string; paymentReference: string };
+  type ReviewDraft = {
+    amount: string;
+    paymentDate: string;
+    bonus: string;
+    bonusNote: string;
+    paymentMethod: string;
+    paymentReference: string;
+    notes: string;
+  };
   const [reviewDraft, setReviewDraft] = useState<ReviewDraft | null>(null);
   const reviewOpen = reviewDraft !== null;
 
   function openReview() {
-    setReviewDraft({ bonus, bonusNote, paymentMethod, paymentReference });
+    const amount = isHourly
+      ? grossPay
+      : (parseFloat(simpleAmount) || balance || 0);
+    setReviewDraft({
+      amount: amount > 0 ? amount.toFixed(2) : "",
+      paymentDate: localDateInputValue(),
+      bonus,
+      bonusNote,
+      paymentMethod,
+      paymentReference,
+      notes: "",
+    });
   }
   function closeReview() { setReviewDraft(null); }
 
   const draftBonusAmt  = reviewDraft ? (parseFloat(reviewDraft.bonus) || 0) : bonusAmt;
-  const draftGrossPay  = isHourly ? workPay + travelPay + draftBonusAmt : (parseFloat(simpleAmount) || 0);
+  const draftGrossPay  = reviewDraft ? (parseFloat(reviewDraft.amount) || 0) : grossPay;
   const draftNetToPay  = Math.max(0, draftGrossPay - advancementDeduction);
 
   const history = p.paymentHistory ?? [];
@@ -452,7 +477,7 @@ function WorkerPayCard({
       return;
     }
     const draftBonus  = parseFloat(draft.bonus) || 0;
-    const draftGross  = isHourly ? workPay + travelPay + draftBonus : (parseFloat(simpleAmount) || 0);
+    const draftGross  = parseFloat(draft.amount) || 0;
     const draftNet    = Math.max(0, draftGross - advancementDeduction);
     if (draftNet <= 0) {
       toast({ title: "Nothing to pay — check amounts", variant: "destructive" });
@@ -463,22 +488,24 @@ function WorkerPayCard({
       const body: Record<string, unknown> = {
         subName: p.subName,
         idempotencyKey: crypto.randomUUID(),
-        agreedOwed: owed != null && owed > 0 ? owed : undefined,
+        agreedOwed: (isHourly ? grossEarned : owed) != null && Number(isHourly ? grossEarned : owed) > 0
+          ? Number(isHourly ? grossEarned : owed)
+          : undefined,
+        paymentDate: draft.paymentDate,
+        notes: draft.notes.trim() || undefined,
+        useExplicitAmount: true,
         ...(draft.paymentMethod    ? { paymentMethod: draft.paymentMethod }       : {}),
         ...(draft.paymentReference ? { paymentReference: draft.paymentReference } : {}),
+        amount: draftGross,
       };
       if (isHourly) {
         const wh = parseFloat(workHours) || 0;
         const wr = parseFloat(workRate)  || 0;
-        if (wh <= 0 || wr <= 0) { setPaying(false); return; }
+        if (wh > 0 && wr > 0) {
         body.workHours = wh; body.workRate = wr;
         if ((parseFloat(travelHours) || 0) > 0) { body.travelHours = parseFloat(travelHours); body.travelRate = parseFloat(travelRate) || 0; }
+        }
         if (draftBonus > 0) { body.bonusAmount = draftBonus; if (draft.bonusNote) body.bonusNote = draft.bonusNote; }
-        if (advancementDeduction > 0) { body.advanceAmount = advancementDeduction; }
-      } else {
-        const amt = parseFloat(simpleAmount) || 0;
-        if (amt <= 0) { toast({ title: "Enter an amount", variant: "destructive" }); setPaying(false); return; }
-        body.amount = amt;
         if (advancementDeduction > 0) { body.advanceAmount = advancementDeduction; }
       }
       const r = await fetch(`${BASE}/api/jobs/${jobId}/pay-worker/${p.subcontractorId}`, {
@@ -750,20 +777,17 @@ function WorkerPayCard({
                 )}
               </div>
             ) : (
+            <div className="flex items-center justify-between">
               <div>
-                <label className="text-xs text-muted-foreground block mb-1">
-                  {isPartial ? "Amount to Pay Now" : "Payment Amount"}
-                </label>
-                <input type="number" value={simpleAmount} onChange={e => setSimpleAmount(e.target.value)}
-                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300" placeholder="0.00" />
+                <p className="text-xs text-muted-foreground">Remaining balance</p>
                 {isAlloc && (
                   <p className="text-xs text-purple-600 mt-1">
-                    {owed == null
-                      ? "Calc unavailable until job profit recovers"
-                      : `Calc: $${fmt(owed)}`}
+                    {owed == null ? "Calc unavailable until job profit recovers" : `Calculated: $${fmt(owed)}`}
                   </p>
                 )}
               </div>
+              <p className="text-base font-bold text-foreground">${fmt(balance ?? owed ?? 0)}</p>
+            </div>
             )}
           </div>
 
@@ -1064,6 +1088,47 @@ function WorkerPayCard({
                   <span>${fmt(draftGrossPay)}</span>
                 </div>
               )}
+            </div>
+
+            <div className="h-px bg-border/50 mx-5" />
+
+            <div className="px-5 pt-4 pb-3 space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Payment</p>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Amount to pay</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={reviewDraft?.amount ?? ""}
+                  onChange={e => setReviewDraft(d => d && ({ ...d, amount: e.target.value }))}
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  placeholder="0.00"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Remaining after this payment: ${fmt(Math.max(0, (balance ?? owed ?? 0) - (parseFloat(reviewDraft?.amount ?? "") || 0) + advancementDeduction))}
+                </p>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Payment date</label>
+                <input
+                  type="date"
+                  value={reviewDraft?.paymentDate ?? ""}
+                  onChange={e => setReviewDraft(d => d && ({ ...d, paymentDate: e.target.value }))}
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1">Notes (optional)</label>
+                <textarea
+                  value={reviewDraft?.notes ?? ""}
+                  onChange={e => setReviewDraft(d => d && ({ ...d, notes: e.target.value }))}
+                  maxLength={1000}
+                  rows={2}
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                  placeholder="Add a note about this payment"
+                />
+              </div>
             </div>
 
             <div className="h-px bg-border/50 mx-5" />
