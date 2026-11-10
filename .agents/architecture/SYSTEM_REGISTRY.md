@@ -144,9 +144,10 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Table:** `estimates`
 - **Schema:** `lib/db/src/schema/estimates.ts`
 - **API:** `artifacts/api-server/src/routes/estimates.ts`
-- **UI:** `artifacts/contractor-app/src/pages/Estimates.tsx`
+- **UI:** `artifacts/contractor-app/src/pages/Estimates.tsx` (Quote Center), `artifacts/contractor-app/src/pages/Jobs.tsx`
 - **Reports:** Not directly used in reports
 - **Source of truth:** `estimates`. Pre-sale pricing documents; do not affect revenue until converted to invoices.
+- **Boundary:** Work address is snapshotted per estimate; customer preview omits internal markup, contingency, unit rates, and notes.
 
 ---
 

@@ -107,7 +107,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     { name: "Website",               href: "/website",              icon: Globe,           feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
     { name: "Home Knowledge Base",   href: "/mfh-homes",            icon: Home,            feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
     { name: "Trim-Out Catalog",      href: "/trim-out-catalog",     icon: Image,           feature: null,           section: null,       ownerOnly: true,  group: "operations" },
-    { name: "Estimates",             href: "/estimates",            icon: FilePen,         feature: "estimates",    section: null,       ownerOnly: true,  group: "finance" },
+    { name: "Quote Center",          href: "/estimates",            icon: FilePen,         feature: "estimates",    section: null,       ownerOnly: true,  group: "finance" },
     { name: "Invoices",              href: "/invoices",             icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true,  group: "finance" },
     { name: "Square Transactions",   href: "/square-transactions",  icon: CreditCard,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
     { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },

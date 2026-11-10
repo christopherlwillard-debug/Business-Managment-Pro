@@ -104,6 +104,7 @@ const estimateRow = (overrides: Record<string, unknown> = {}) => ({
   total: "100",
   jobType: "Asphalt Sealing",
   notes: null,
+  workAddress: null,
   lineItems: [],
   createdAt: new Date("2026-11-10T12:00:00.000Z"),
   ...overrides,
@@ -137,7 +138,10 @@ describe("estimate canonical business ownership", () => {
   });
 
   it("inherits the linked job owner instead of defaulting a job-card estimate to General Contracting", async () => {
-    h.selectQueue.push([{ id: 88, businessId: asphalt.id, businessLine: asphalt.slug }]);
+    h.selectQueue.push(
+      [{ id: 88, businessId: asphalt.id, businessLine: asphalt.slug }],
+      [{ address: "42 Oak Rd", city: "Fairview", state: "IL" }],
+    );
 
     const response = await request(app).post("/estimates").send({
       title: "Job-card estimate",
@@ -150,13 +154,31 @@ describe("estimate canonical business ownership", () => {
       jobId: 88,
       businessId: asphalt.id,
       businessLine: asphalt.slug,
+      workAddress: "42 Oak Rd, Fairview, IL",
     });
+  });
+
+  it("snapshots the selected client's address when the estimate has no work address", async () => {
+    h.selectQueue.push(
+      [{ id: 12, name: "Customer", address: "9 Cedar St", city: "Fairview", state: "IL", zip: "60000" }],
+      [{ id: 12, name: "Customer" }],
+    );
+
+    const response = await request(app).post("/estimates").send({
+      title: "Maintenance visit",
+      clientId: 12,
+      lineItems: [],
+    });
+
+    expect(response.status).toBe(201);
+    expect(h.inserts[0].workAddress).toBe("9 Cedar St, Fairview, IL, 60000");
+    expect(response.body.workAddress).toBe(h.inserts[0].workAddress);
   });
 
   it("fills canonical ownership on an edited legacy estimate from its saved business line", async () => {
     h.selectQueue.push(
-      [estimateRow()],
-      [estimateRow({ businessId: asphalt.id })],
+      [estimateRow({ workAddress: "Saved job location" })],
+      [estimateRow({ businessId: asphalt.id, workAddress: "Saved job location" })],
     );
 
     const response = await request(app).put("/estimates/31").send({
@@ -169,12 +191,13 @@ describe("estimate canonical business ownership", () => {
     expect(h.updates[0]).toMatchObject({
       businessId: asphalt.id,
       businessLine: asphalt.slug,
+      workAddress: "Saved job location",
     });
     expect(response.body.businessId).toBe(asphalt.id);
   });
 
   it("converts a legacy estimate using its saved business line without backfilling historical estimates", async () => {
-    h.selectQueue.push([estimateRow()]);
+    h.selectQueue.push([estimateRow({ workAddress: "Saved job location" })]);
 
     const response = await request(app).post("/estimates/31/convert-to-job");
 
@@ -182,6 +205,7 @@ describe("estimate canonical business ownership", () => {
     expect(h.inserts[0]).toMatchObject({
       businessId: asphalt.id,
       businessLine: asphalt.slug,
+      address: "Saved job location",
     });
     expect(h.updates).toEqual([{ status: "won" }]);
   });

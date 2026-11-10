@@ -25,6 +25,7 @@ import { ContractingCalculator } from "@/components/calculators/ContractingCalcu
 import { FlooringCalculator } from "@/components/calculators/FlooringCalculator";
 import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
 import { PunchListCalculator } from "@/components/calculators/PunchListCalculator";
+import { CustomerQuotePreview } from "@/components/CustomerQuotePreview";
 
 // ─── Asphalt Sealing Proposal template seed data ─────────────────────────────
 const ASPHALT_SEALING_PROPOSAL = {
@@ -55,14 +56,14 @@ function TemplatePicker({ onSelect, onClose, businessLine }: {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <Calculator className="w-5 h-5 text-amber-500" />
-            <h2 className="text-lg font-bold text-gray-900">New Estimate</h2>
+            <h2 className="text-lg font-bold text-gray-900">New Quote</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
         <div className="px-6 py-5">
-          <p className="text-sm text-gray-500 mb-4">Choose a starting point for your estimate:</p>
+          <p className="text-sm text-gray-500 mb-4">Choose a starting point for your quote:</p>
           <div className="space-y-3">
             <button
               onClick={() => onSelect("blank")}
@@ -72,7 +73,7 @@ function TemplatePicker({ onSelect, onClose, businessLine }: {
                 <FileText className="w-5 h-5 text-gray-500 group-hover:text-amber-600" />
               </div>
               <div>
-                <p className="font-semibold text-gray-900 text-sm">Blank Estimate</p>
+                <p className="font-semibold text-gray-900 text-sm">Blank Quote</p>
                 <p className="text-xs text-gray-500 mt-0.5">Start from scratch with empty line items and no preset values.</p>
               </div>
             </button>
@@ -128,6 +129,7 @@ export function EstimateModal({
   initial,
   prelinkedJobId,
   prelinkedJobTitle,
+  prelinkedJobAddress,
   prelinkedClientId,
   fromTemplate,
   initialBusinessLine,
@@ -137,6 +139,7 @@ export function EstimateModal({
   initial?: Estimate;
   prelinkedJobId?: number;
   prelinkedJobTitle?: string;
+  prelinkedJobAddress?: string;
   prelinkedClientId?: number;
   fromTemplate?: EstimateTemplate;
   initialBusinessLine?: string;
@@ -158,6 +161,14 @@ export function EstimateModal({
 
   const [title, setTitle]     = useState(initial?.title ?? "");
   const [clientId, setClientId] = useState<string>(String(initial?.clientId ?? prelinkedClientId ?? ""));
+  const selectedClient = clients.find(client => client.id === Number(clientId));
+  const clientAddress = selectedClient
+    ? [selectedClient.address, selectedClient.city, selectedClient.state, selectedClient.zip].filter(Boolean).join(", ")
+    : "";
+  const defaultWorkAddress = prelinkedJobAddress || clientAddress;
+  const [workAddress, setWorkAddress] = useState<string>(
+    typeof initial?.workAddress === "string" ? initial.workAddress : (prelinkedJobAddress ?? ""),
+  );
   const [jobType] = useState(initial?.jobType ?? seedData?.jobType ?? "");
   const [notes, setNotes]     = useState(initial?.notes ?? seedData?.notes ?? "");
   const [markup, setMarkup]   = useState(String(initial?.markupPercent ?? ""));
@@ -222,6 +233,7 @@ export function EstimateModal({
     const req: CreateEstimateRequest = {
       title: title.trim(),
       clientId: clientId ? parseInt(clientId) : null,
+      workAddress: workAddress.trim() || defaultWorkAddress || null,
       jobType: jobType || null,
       notes: notes || null,
       markupPercent: markup ? parseFloat(markup) : null,
@@ -259,7 +271,7 @@ export function EstimateModal({
               <Calculator className="w-5 h-5 text-amber-500" />
             )}
             <h2 className="text-lg font-bold text-gray-900">
-              {initial ? "Edit Estimate" : "Build Estimate"}
+              {initial ? "Edit Quote" : "Build Quote"}
             </h2>
             {(prelinkedJobTitle ?? (initial as Estimate & { jobTitle?: string })?.jobTitle) && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
@@ -290,7 +302,7 @@ export function EstimateModal({
           {/* Basic info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Estimate Title *</label>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Quote Title *</label>
               <input
                 value={title}
                 onChange={e => setTitle(e.target.value)}
@@ -318,6 +330,21 @@ export function EstimateModal({
                 </select>
               </div>
             )}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Work address</label>
+              <input
+                value={workAddress}
+                onChange={e => setWorkAddress(e.target.value)}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                placeholder={defaultWorkAddress || "Enter the service or job location"}
+                autoComplete="street-address"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                {prelinkedJobAddress
+                  ? "Prefilled from this job. You can change it for this quote."
+                  : "Defaults to the client address when left blank. Saved on this quote."}
+              </p>
+            </div>
             {/* Trade-specific calculators */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Calculators</label>
@@ -756,6 +783,7 @@ export default function Estimates() {
   const depositLinkMut = useCreateEstimateDepositLink();
 
   const [modal, setModal]         = useState<"create" | number | null>(null);
+  const [previewEstimate, setPreviewEstimate] = useState<Estimate | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<EstimateTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
@@ -892,15 +920,15 @@ export default function Estimates() {
       {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Estimates & Bidding</h1>
-          <p className="text-muted-foreground mt-1">Build proposals with trade-specific calculators.</p>
+          <h1 className="text-3xl font-display font-bold text-foreground">Quote Center</h1>
+          <p className="text-muted-foreground mt-1">Create service, maintenance, and project quotes in one place.</p>
         </div>
         {canEdit("estimates") && (
           <button
-            onClick={() => setShowTemplatePicker(true)}
+            onClick={() => activeBusinessLine === "asphalt_sealing" ? setShowTemplatePicker(true) : setModal("create")}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-semibold bg-amber-500 text-white hover:bg-amber-600 shadow-md transition-all hover:shadow-lg active:scale-95 text-sm"
           >
-            <Calculator className="w-4 h-4 mr-2" /> Build Estimate
+            <Calculator className="w-4 h-4 mr-2" /> Build Quote
           </button>
         )}
       </div>
@@ -968,12 +996,12 @@ export default function Estimates() {
             <Calculator className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground">
               {filterStatus === "all"
-                ? `No ${businesses.find(b => b.slug === activeTab)?.name ?? activeTab} estimates yet`
-                : `No ${filterStatus} estimates`}
+                ? `No ${businesses.find(b => b.slug === activeTab)?.name ?? activeTab} quotes yet`
+                : `No ${filterStatus} quotes`}
             </h3>
             <p className="text-muted-foreground mt-1 text-sm">
               {filterStatus === "all"
-                ? 'Tap "Build Estimate" to create your first bid.'
+                ? 'Tap "Build Quote" to create your first quote.'
                 : "Change the filter to see other estimates."}
             </p>
           </div>
@@ -1024,7 +1052,7 @@ export default function Estimates() {
                       </div>
                     ))}
                     {est.lineItems.length > 3 && (
-                      <p className="text-xs text-muted-foreground italic">+{est.lineItems.length - 3} more items</p>
+              <p className="text-xs text-muted-foreground italic">+{est.lineItems.length - 3} more items</p>
                     )}
                   </div>
                 )}
@@ -1055,6 +1083,12 @@ export default function Estimates() {
                       <Edit2 className="w-3 h-3" /> Edit
                     </button>
                   )}
+                  <button
+                    onClick={() => setPreviewEstimate(est)}
+                    className="flex items-center gap-1 text-xs text-blue-700 hover:text-blue-900 border border-blue-200 rounded-lg px-3 py-1.5 hover:bg-blue-50 transition-colors"
+                  >
+                    <FileText className="w-3 h-3" /> Customer Preview
+                  </button>
                   {(est.status === "sent" || est.status === "won") && canEdit("estimates") && (
                     <button
                       onClick={() => handleConvert(est.id)}
@@ -1123,6 +1157,9 @@ export default function Estimates() {
       )}
 
       {/* Modals */}
+      {previewEstimate && (
+        <CustomerQuotePreview estimate={previewEstimate} onClose={() => setPreviewEstimate(null)} />
+      )}
       {modal === "create" && (
         <EstimateModal
           fromTemplate={activeTemplate ?? undefined}

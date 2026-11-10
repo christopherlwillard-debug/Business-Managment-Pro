@@ -62,6 +62,8 @@ export interface Client {
   zip?: string | null;
   notes?: string | null;
   businessLine?: string | null;
+  sourceBusinessId?: number;
+  sourceBusinessLine?: string;
   nextServiceDate?: string | null;
   squareCustomerId?: string | null;
   reminderOptOut?: boolean;
@@ -82,8 +84,6 @@ export interface CreateClientRequest {
   zip?: string | null;
   notes?: string | null;
   businessLine?: string | null;
-  sourceBusinessId?: number;
-  sourceBusinessLine?: string;
   nextServiceDate?: string | null;
   serviceIntervalMonths?: number | null;
   reminderOptOut?: boolean;
@@ -1401,6 +1401,7 @@ export interface Estimate {
   total: number;
   jobType?: string | null;
   notes?: string | null;
+  workAddress?: string | null;
   businessLine?: string | null;
   jobId?: number | null;
   depositPaidAt?: string | null;
@@ -1439,6 +1440,7 @@ export interface CreateEstimateRequest {
   contingencyPercent?: number | null;
   jobType?: string | null;
   notes?: string | null;
+  workAddress?: string | null;
   businessLine?: string | null;
   lineItems?: CreateEstimateRequestLineItemsItem[];
   [key: string]: unknown;

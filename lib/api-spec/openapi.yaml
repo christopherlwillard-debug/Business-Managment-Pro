@@ -3913,6 +3913,9 @@ components:
         notes:
           type: string
           nullable: true
+        workAddress:
+          type: string
+          nullable: true
         businessLine: { type: string, nullable: true }
         jobId: { type: integer, nullable: true }
         depositPaidAt: { type: string, nullable: true }
@@ -3972,6 +3975,9 @@ components:
           type: string
           nullable: true
         notes:
+          type: string
+          nullable: true
+        workAddress:
           type: string
           nullable: true
         businessLine: { type: string, nullable: true }

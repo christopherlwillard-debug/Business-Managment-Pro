@@ -21,6 +21,7 @@ export interface Estimate {
   total: number;
   jobType?: string | null;
   notes?: string | null;
+  workAddress?: string | null;
   businessLine?: string | null;
   jobId?: number | null;
   depositPaidAt?: string | null;

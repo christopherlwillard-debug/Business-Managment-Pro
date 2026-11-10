@@ -59,6 +59,38 @@ function format(e: any, clientName?: string | null, jobTitle?: string | null) {
   };
 }
 
+function joinAddress(parts: Array<string | null | undefined>): string | null {
+  const address = parts.map(part => part?.trim()).filter(Boolean).join(", ");
+  return address || null;
+}
+
+async function resolveWorkAddress(
+  workAddress: unknown,
+  clientId: unknown,
+  jobId: unknown,
+): Promise<string | null> {
+  if (typeof workAddress === "string" && workAddress.trim()) return workAddress.trim();
+  if (jobId) {
+    const [job] = await db.select({
+      address: jobsTable.address,
+      city: jobsTable.city,
+      state: jobsTable.state,
+    }).from(jobsTable).where(eq(jobsTable.id, Number(jobId)));
+    const jobAddress = job ? joinAddress([job.address, job.city, job.state]) : null;
+    if (jobAddress) return jobAddress;
+  }
+  if (clientId) {
+    const [client] = await db.select({
+      address: clientsTable.address,
+      city: clientsTable.city,
+      state: clientsTable.state,
+      zip: clientsTable.zip,
+    }).from(clientsTable).where(eq(clientsTable.id, Number(clientId)));
+    return client ? joinAddress([client.address, client.city, client.state, client.zip]) : null;
+  }
+  return null;
+}
+
 router.get("/", async (req, res) => {
   try {
     const estimates = await db
@@ -93,7 +125,7 @@ router.get("/by-job/:jobId", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, workAddress } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     const requestedOwner = await resolveMutationBusiness(req);
     if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
@@ -109,6 +141,7 @@ router.post("/", async (req, res) => {
     }
 
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
+    const savedWorkAddress = await resolveWorkAddress(workAddress, clientId, jobId);
 
     const [estimate] = await db.insert(estimatesTable).values({
       title, clientId: clientId || null, template,
@@ -117,7 +150,7 @@ router.post("/", async (req, res) => {
       markupPercent: markupPercent?.toString() ?? null,
       contingencyPercent: contingencyPercent?.toString() ?? null,
       total: total.toString(),
-      jobType, notes,
+      jobType, notes, workAddress: savedWorkAddress,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId || null,
       businessId: owner.id,
@@ -155,12 +188,13 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, lineItems = [], jobId, workAddress } = req.body;
     const [currentEstimate] = await db.select({
       id: estimatesTable.id,
       businessId: estimatesTable.businessId,
       businessLine: estimatesTable.businessLine,
       jobId: estimatesTable.jobId,
+      workAddress: estimatesTable.workAddress,
     }).from(estimatesTable).where(eq(estimatesTable.id, id));
     if (!currentEstimate) return res.status(404).json({ error: "Estimate not found" });
 
@@ -187,6 +221,9 @@ router.put("/:id", async (req, res) => {
     }
 
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
+    const savedWorkAddress = Object.prototype.hasOwnProperty.call(req.body, "workAddress")
+      ? await resolveWorkAddress(workAddress, clientId, effectiveJobId)
+      : currentEstimate.workAddress;
 
     await db.update(estimatesTable).set({
       title, clientId: clientId || null, template, status,
@@ -194,7 +231,7 @@ router.put("/:id", async (req, res) => {
       markupPercent: markupPercent?.toString() ?? null,
       contingencyPercent: contingencyPercent?.toString() ?? null,
       total: total.toString(),
-      jobType, notes,
+      jobType, notes, workAddress: savedWorkAddress,
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId !== undefined ? (jobId || null) : undefined,
       businessId: owner?.id ?? null,
@@ -236,6 +273,7 @@ router.post("/:id/convert-to-job", async (req, res) => {
     const [job] = await db.insert(jobsTable).values({
       title: estimate.title,
       clientId: estimate.clientId,
+      address: estimate.workAddress,
       status: "scheduled",
       jobType: estimate.jobType,
       notes: estimate.notes,

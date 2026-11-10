@@ -14,6 +14,14 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-11-10
 
+### Consolidate estimates into the Quote Center
+
+- Renamed the existing Estimates surface to Quote Center and kept it as the sole estimate list and builder; Job Card and Aerial Quote entry points still write to the same `estimates` records.
+- Added a nullable estimate work-address snapshot with job/client defaults, preserving previously stored addresses and leaving historical estimates unchanged.
+- Added a customer-safe print preview that shows scope, saved work location, sales tax, and final total without exposing internal pricing fields or mixed-use notes.
+- Preserved the existing total engine, tax-line treatment, business ownership, and estimate-to-job/invoice handoffs.
+- Verified development schema, API and app typechecks, focused address/ownership and customer-view tests.
+
 ### Persist canonical ownership for estimates
 
 - Estimate creation now resolves and stores `business_id` with the canonical `business_line`; job-linked estimates inherit the job's owner and reject explicit conflicts.

@@ -433,6 +433,7 @@ export default function AerialQuote() {
         status: "draft",
         template: "asphalt_sealing",
         businessLine: "asphalt_sealing",
+        workAddress: jobAddress || null,
         lineItems,
         notes: notesText,
         subtotal: String(quote.subtotal.toFixed(2)),

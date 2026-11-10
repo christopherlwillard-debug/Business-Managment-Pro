@@ -1815,7 +1815,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
           <div>
             <h2 className="font-bold text-foreground flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-amber-500" /> Estimates
+               <Calculator className="w-4 h-4 text-amber-500" /> Quotes
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[260px]">{job.title}</p>
           </div>
@@ -1851,7 +1851,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
               onClick={() => setShowModal(true)}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-amber-300 text-amber-600 text-sm font-semibold hover:bg-amber-50 transition-colors"
             >
-              <Plus className="w-4 h-4" /> Build Estimate for this Job
+               <Plus className="w-4 h-4" /> Build Quote for this Job
             </button>
             <p className="text-center text-[11px] text-muted-foreground mt-1.5">
               Add one estimate per trade or scope — siding, trim, drywall, etc.
@@ -1944,6 +1944,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
         <EstimateModal
           prelinkedJobId={job.id}
           prelinkedJobTitle={job.title}
+          prelinkedJobAddress={[job.address, job.city, job.state].filter(Boolean).join(", ")}
           prelinkedClientId={job.clientId ?? undefined}
           onClose={() => setShowModal(false)}
           onSave={handleCreate}
@@ -1954,6 +1955,7 @@ function JobEstimatesPanel({ job, onClose, onLoadAllIntoInvoice }: { job: Job; o
           initial={editEst}
           prelinkedJobId={job.id}
           prelinkedJobTitle={job.title}
+          prelinkedJobAddress={[job.address, job.city, job.state].filter(Boolean).join(", ")}
           onClose={() => setEditEst(null)}
           onSave={req => handleUpdate(editEst.id, req)}
         />
