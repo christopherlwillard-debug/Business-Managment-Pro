@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700;800&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+.qcp-current {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --border: 214 32% 91%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --primary: 222 47% 11%;
+  --primary-foreground: 210 40% 98%;
+  --accent: 38 92% 50%;
+  --accent-foreground: 222 47% 11%;
+  font-family: 'Inter', sans-serif;
+  color: hsl(var(--foreground));
+}
+
+.qcp-current h1, .qcp-current h2, .qcp-current h3 {
+  font-family: 'Barlow', sans-serif;
+}
+
+.qcp-phase3 {
+  --ink: #203244;
+  --navy: #223b52;
+  --amber: #d9901d;
+  --paper: #f4f5f2;
+  --line: #dce2e4;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--ink);
+}
+
+.qcp-phase3 h1, .qcp-phase3 h2, .qcp-phase3 h3, .qcp-phase3 .display {
+  font-family: 'Barlow', sans-serif;
+}
+
+.qcp-phase3 button, .qcp-current button { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease; }
+.qcp-phase3 button:active, .qcp-current button:active { transform: translateY(1px); }
