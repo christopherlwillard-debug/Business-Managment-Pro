@@ -51,6 +51,7 @@ const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
 const CrewManagement = lazy(() => import("./pages/CrewManagement"));
 const Grants = lazy(() => import("./pages/Grants"));
 const TrimOutCatalog = lazy(() => import("./pages/TrimOutCatalog"));
+const PublicQuote = lazy(() => import("./pages/PublicQuote"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -375,6 +376,7 @@ function Router() {
         <Route path="/pay/:payToken" component={Pay} />
         <Route path="/site/:slug/:page" component={PublicSite} />
         <Route path="/site/:slug" component={PublicSite} />
+        <Route path="/quote/:token" component={PublicQuote} />
         <Route>
           {onCustomDomain ? <PublicSite /> : <AdminApp />}
         </Route>
@@ -383,16 +385,26 @@ function Router() {
   );
 }
 
+function AppRouter() {
+  const [location] = useLocation();
+  const quoteIsPublic = location.startsWith("/quote/");
+  const routes = <Router />;
+  if (quoteIsPublic) return routes;
+  return (
+    <GoogleAuthProvider>
+      <UserPermissionsProvider>
+        {routes}
+      </UserPermissionsProvider>
+    </GoogleAuthProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <GoogleAuthProvider>
-            <UserPermissionsProvider>
-              <Router />
-            </UserPermissionsProvider>
-          </GoogleAuthProvider>
+          <AppRouter />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

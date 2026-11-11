@@ -41,6 +41,8 @@ import type {
   DashboardStats,
   ErrorEnvelope,
   Estimate,
+  EstimateQuoteEvent,
+  EstimateQuoteSendResult,
   Expense,
   FinalizeInvoiceCommunicationRequest,
   Get1099ReportParams,
@@ -88,9 +90,13 @@ import type {
   PrepareInvoiceCommunicationRequest,
   ProductionComponent,
   ProductionScopeSectionInput,
+  PublicEstimateQuote,
+  PublicEstimateQuoteResponseInput,
   ReadyToStartResponse,
+  ReconcileEstimateQuoteInput,
   RecurringExpense,
   ResetPortalPin200,
+  SendEstimateQuoteInput,
   StartJobRequest,
   Subcontractor,
   TaxReportRow,
@@ -7636,6 +7642,745 @@ export const useConvertEstimateToJob = <
   TContext
 > => {
   return useMutation(getConvertEstimateToJobMutationOptions(options));
+};
+
+/**
+ * @summary Send a customer quote
+ */
+export const getSendEstimateQuoteUrl = (id: number) => {
+  return `/api/estimates/${id}/send`;
+};
+
+export const sendEstimateQuote = async (
+  id: number,
+  sendEstimateQuoteInput: SendEstimateQuoteInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteSendResult> => {
+  return customFetch<EstimateQuoteSendResult>(getSendEstimateQuoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(sendEstimateQuoteInput),
+  });
+};
+
+export const getSendEstimateQuoteMutationOptions = <
+  TError = ErrorType<void | EstimateQuoteSendResult>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<SendEstimateQuoteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof sendEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<SendEstimateQuoteInput> },
+  TContext
+> => {
+  const mutationKey = ["sendEstimateQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof sendEstimateQuote>>,
+    { id: number; data: BodyType<SendEstimateQuoteInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return sendEstimateQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SendEstimateQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof sendEstimateQuote>>
+>;
+export type SendEstimateQuoteMutationBody = BodyType<SendEstimateQuoteInput>;
+export type SendEstimateQuoteMutationError =
+  ErrorType<void | EstimateQuoteSendResult>;
+
+/**
+ * @summary Send a customer quote
+ */
+export const useSendEstimateQuote = <
+  TError = ErrorType<void | EstimateQuoteSendResult>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof sendEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<SendEstimateQuoteInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof sendEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<SendEstimateQuoteInput> },
+  TContext
+> => {
+  return useMutation(getSendEstimateQuoteMutationOptions(options));
+};
+
+/**
+ * @summary List quote revision and response history
+ */
+export const getListEstimateQuoteEventsUrl = (id: number) => {
+  return `/api/estimates/${id}/quote-events`;
+};
+
+export const listEstimateQuoteEvents = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent[]> => {
+  return customFetch<EstimateQuoteEvent[]>(getListEstimateQuoteEventsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListEstimateQuoteEventsQueryKey = (id: number) => {
+  return [`/api/estimates/${id}/quote-events`] as const;
+};
+
+export const getListEstimateQuoteEventsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEstimateQuoteEvents>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEstimateQuoteEvents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEstimateQuoteEventsQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEstimateQuoteEvents>>
+  > = ({ signal }) =>
+    listEstimateQuoteEvents(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEstimateQuoteEvents>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEstimateQuoteEventsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEstimateQuoteEvents>>
+>;
+export type ListEstimateQuoteEventsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List quote revision and response history
+ */
+
+export function useListEstimateQuoteEvents<
+  TData = Awaited<ReturnType<typeof listEstimateQuoteEvents>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEstimateQuoteEvents>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEstimateQuoteEventsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Download a saved quote revision PDF
+ */
+export const getGetEstimateQuoteEventPdfUrl = (id: number, eventId: number) => {
+  return `/api/estimates/${id}/quote-events/${eventId}/pdf`;
+};
+
+export const getEstimateQuoteEventPdf = async (
+  id: number,
+  eventId: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getGetEstimateQuoteEventPdfUrl(id, eventId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEstimateQuoteEventPdfQueryKey = (
+  id: number,
+  eventId: number,
+) => {
+  return [`/api/estimates/${id}/quote-events/${eventId}/pdf`] as const;
+};
+
+export const getGetEstimateQuoteEventPdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  eventId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEstimateQuoteEventPdfQueryKey(id, eventId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>
+  > = ({ signal }) =>
+    getEstimateQuoteEventPdf(id, eventId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!(id && eventId),
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEstimateQuoteEventPdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>
+>;
+export type GetEstimateQuoteEventPdfQueryError = ErrorType<void>;
+
+/**
+ * @summary Download a saved quote revision PDF
+ */
+
+export function useGetEstimateQuoteEventPdf<
+  TData = Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>,
+  TError = ErrorType<void>,
+>(
+  id: number,
+  eventId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEstimateQuoteEventPdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEstimateQuoteEventPdfQueryOptions(
+    id,
+    eventId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Reconcile a quote send using provider evidence
+ */
+export const getReconcileEstimateQuoteSendUrl = (
+  id: number,
+  eventId: number,
+) => {
+  return `/api/estimates/${id}/quote-events/${eventId}/reconcile`;
+};
+
+export const reconcileEstimateQuoteSend = async (
+  id: number,
+  eventId: number,
+  reconcileEstimateQuoteInput: ReconcileEstimateQuoteInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(
+    getReconcileEstimateQuoteSendUrl(id, eventId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(reconcileEstimateQuoteInput),
+    },
+  );
+};
+
+export const getReconcileEstimateQuoteSendMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<ReconcileEstimateQuoteInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>,
+  TError,
+  { id: number; eventId: number; data: BodyType<ReconcileEstimateQuoteInput> },
+  TContext
+> => {
+  const mutationKey = ["reconcileEstimateQuoteSend"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>,
+    { id: number; eventId: number; data: BodyType<ReconcileEstimateQuoteInput> }
+  > = (props) => {
+    const { id, eventId, data } = props ?? {};
+
+    return reconcileEstimateQuoteSend(id, eventId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReconcileEstimateQuoteSendMutationResult = NonNullable<
+  Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>
+>;
+export type ReconcileEstimateQuoteSendMutationBody =
+  BodyType<ReconcileEstimateQuoteInput>;
+export type ReconcileEstimateQuoteSendMutationError = ErrorType<void>;
+
+/**
+ * @summary Reconcile a quote send using provider evidence
+ */
+export const useReconcileEstimateQuoteSend = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<ReconcileEstimateQuoteInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof reconcileEstimateQuoteSend>>,
+  TError,
+  { id: number; eventId: number; data: BodyType<ReconcileEstimateQuoteInput> },
+  TContext
+> => {
+  return useMutation(getReconcileEstimateQuoteSendMutationOptions(options));
+};
+
+/**
+ * @summary View a sent quote
+ */
+export const getGetPublicEstimateQuoteUrl = (token: string) => {
+  return `/api/public/quotes/${token}`;
+};
+
+export const getPublicEstimateQuote = async (
+  token: string,
+  options?: RequestInit,
+): Promise<PublicEstimateQuote> => {
+  return customFetch<PublicEstimateQuote>(getGetPublicEstimateQuoteUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicEstimateQuoteQueryKey = (token: string) => {
+  return [`/api/public/quotes/${token}`] as const;
+};
+
+export const getGetPublicEstimateQuoteQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuote>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuote>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublicEstimateQuoteQueryKey(token);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicEstimateQuote>>
+  > = ({ signal }) =>
+    getPublicEstimateQuote(token, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!token,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicEstimateQuote>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicEstimateQuoteQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicEstimateQuote>>
+>;
+export type GetPublicEstimateQuoteQueryError = ErrorType<void>;
+
+/**
+ * @summary View a sent quote
+ */
+
+export function useGetPublicEstimateQuote<
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuote>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuote>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicEstimateQuoteQueryOptions(token, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary View a sent quote PDF
+ */
+export const getGetPublicEstimateQuotePdfUrl = (token: string) => {
+  return `/api/public/quotes/${token}/pdf`;
+};
+
+export const getPublicEstimateQuotePdf = async (
+  token: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getGetPublicEstimateQuotePdfUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicEstimateQuotePdfQueryKey = (token: string) => {
+  return [`/api/public/quotes/${token}/pdf`] as const;
+};
+
+export const getGetPublicEstimateQuotePdfQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublicEstimateQuotePdfQueryKey(token);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>
+  > = ({ signal }) =>
+    getPublicEstimateQuotePdf(token, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!token,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicEstimateQuotePdfQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>
+>;
+export type GetPublicEstimateQuotePdfQueryError = ErrorType<void>;
+
+/**
+ * @summary View a sent quote PDF
+ */
+
+export function useGetPublicEstimateQuotePdf<
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuotePdf>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicEstimateQuotePdfQueryOptions(token, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary View a sent quote logo
+ */
+export const getGetPublicEstimateQuoteLogoUrl = (token: string) => {
+  return `/api/public/quotes/${token}/logo`;
+};
+
+export const getPublicEstimateQuoteLogo = async (
+  token: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getGetPublicEstimateQuoteLogoUrl(token), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPublicEstimateQuoteLogoQueryKey = (token: string) => {
+  return [`/api/public/quotes/${token}/logo`] as const;
+};
+
+export const getGetPublicEstimateQuoteLogoQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetPublicEstimateQuoteLogoQueryKey(token);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>
+  > = ({ signal }) =>
+    getPublicEstimateQuoteLogo(token, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!token,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetPublicEstimateQuoteLogoQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>
+>;
+export type GetPublicEstimateQuoteLogoQueryError = ErrorType<void>;
+
+/**
+ * @summary View a sent quote logo
+ */
+
+export function useGetPublicEstimateQuoteLogo<
+  TData = Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>,
+  TError = ErrorType<void>,
+>(
+  token: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getPublicEstimateQuoteLogo>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetPublicEstimateQuoteLogoQueryOptions(
+    token,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Submit a quote response
+ */
+export const getSubmitPublicEstimateQuoteResponseUrl = (token: string) => {
+  return `/api/public/quotes/${token}/responses`;
+};
+
+export const submitPublicEstimateQuoteResponse = async (
+  token: string,
+  publicEstimateQuoteResponseInput: PublicEstimateQuoteResponseInput,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getSubmitPublicEstimateQuoteResponseUrl(token), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(publicEstimateQuoteResponseInput),
+  });
+};
+
+export const getSubmitPublicEstimateQuoteResponseMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>,
+    TError,
+    { token: string; data: BodyType<PublicEstimateQuoteResponseInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>,
+  TError,
+  { token: string; data: BodyType<PublicEstimateQuoteResponseInput> },
+  TContext
+> => {
+  const mutationKey = ["submitPublicEstimateQuoteResponse"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>,
+    { token: string; data: BodyType<PublicEstimateQuoteResponseInput> }
+  > = (props) => {
+    const { token, data } = props ?? {};
+
+    return submitPublicEstimateQuoteResponse(token, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitPublicEstimateQuoteResponseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>
+>;
+export type SubmitPublicEstimateQuoteResponseMutationBody =
+  BodyType<PublicEstimateQuoteResponseInput>;
+export type SubmitPublicEstimateQuoteResponseMutationError = ErrorType<void>;
+
+/**
+ * @summary Submit a quote response
+ */
+export const useSubmitPublicEstimateQuoteResponse = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>,
+    TError,
+    { token: string; data: BodyType<PublicEstimateQuoteResponseInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitPublicEstimateQuoteResponse>>,
+  TError,
+  { token: string; data: BodyType<PublicEstimateQuoteResponseInput> },
+  TContext
+> => {
+  return useMutation(
+    getSubmitPublicEstimateQuoteResponseMutationOptions(options),
+  );
 };
 
 /**

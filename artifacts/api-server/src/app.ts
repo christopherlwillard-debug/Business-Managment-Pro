@@ -5,6 +5,7 @@ import { authMiddleware } from "./middlewares/authMiddleware";
 import router from "./routes";
 import squareWebhookRouter from "./routes/square-webhook";
 import publicStatusRouter from "./routes/public-status";
+import publicQuotesRouter from "./routes/public-quotes";
 import seoCrawlRouter from "./routes/seo-crawl";
 
 const app: Express = express();
@@ -35,6 +36,7 @@ app.use("/api/webhooks/square", squareWebhookRouter);
 
 // Public routes — no auth required
 app.use("/api/public", publicStatusRouter);
+app.use("/api/public/quotes", publicQuotesRouter);
 
 app.use(authMiddleware);
 

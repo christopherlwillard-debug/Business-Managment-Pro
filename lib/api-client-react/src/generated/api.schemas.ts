@@ -1448,6 +1448,158 @@ export interface CreateEstimateRequest {
   [key: string]: unknown;
 }
 
+export interface SendEstimateQuoteInput {
+  recipient: string;
+  /**
+   * @minLength 16
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+}
+
+export interface ReconcileEstimateQuoteInput {
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  providerMessageId: string;
+  /** @maxLength 500 */
+  providerThreadId?: string;
+}
+
+export interface EstimateQuoteEvent {
+  id: number;
+  estimateId: number;
+  revision: number;
+  eventType: string;
+  status: string;
+  /** @nullable */
+  recipient?: string | null;
+  /** @nullable */
+  actorName?: string | null;
+  requestedAt: string;
+  /** @nullable */
+  completedAt?: string | null;
+  /** @nullable */
+  providerMessageId?: string | null;
+  /** @nullable */
+  responseType?: string | null;
+  /** @nullable */
+  responseText?: string | null;
+  /** @nullable */
+  responseAt?: string | null;
+  /** @nullable */
+  errorMessage?: string | null;
+}
+
+export type EstimateQuoteSendResultStatus =
+  (typeof EstimateQuoteSendResultStatus)[keyof typeof EstimateQuoteSendResultStatus];
+
+export const EstimateQuoteSendResultStatus = {
+  accepted: "accepted",
+  failed: "failed",
+  unresolved: "unresolved",
+} as const;
+
+export interface EstimateQuoteSendResult {
+  status: EstimateQuoteSendResultStatus;
+  revision: number;
+  eventId: number;
+  message: string;
+}
+
+export interface PublicEstimateQuoteLine {
+  description: string;
+  quantity: number;
+  /** @nullable */
+  unit?: string | null;
+  amount: number;
+}
+
+export interface PublicEstimateQuoteBrand {
+  name: string;
+  /** @nullable */
+  address?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  zip?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  website?: string | null;
+}
+
+export type PublicEstimateQuoteResponseType =
+  (typeof PublicEstimateQuoteResponseType)[keyof typeof PublicEstimateQuoteResponseType];
+
+export const PublicEstimateQuoteResponseType = {
+  approved: "approved",
+  declined: "declined",
+  changes_requested: "changes_requested",
+} as const;
+
+export interface PublicEstimateQuoteResponse {
+  type: PublicEstimateQuoteResponseType;
+  /** @nullable */
+  text?: string | null;
+  createdAt: string;
+}
+
+export interface PublicEstimateQuote {
+  quoteNumber: string;
+  revision: number;
+  title: string;
+  issuedAt: string;
+  /** @nullable */
+  expiresAt?: string | null;
+  /** @nullable */
+  customerName?: string | null;
+  /** @nullable */
+  customerEmail?: string | null;
+  /** @nullable */
+  customerPhone?: string | null;
+  /** @nullable */
+  billingAddress?: string | null;
+  /** @nullable */
+  workAddress?: string | null;
+  /** @nullable */
+  jobType?: string | null;
+  /** @nullable */
+  terms?: string | null;
+  items: PublicEstimateQuoteLine[];
+  subtotal: number;
+  adjustment: number;
+  tax: number;
+  total: number;
+  brand: PublicEstimateQuoteBrand;
+  /** @nullable */
+  logoUrl?: string | null;
+  response?: null | PublicEstimateQuoteResponse;
+}
+
+export type PublicEstimateQuoteResponseInputType =
+  (typeof PublicEstimateQuoteResponseInputType)[keyof typeof PublicEstimateQuoteResponseInputType];
+
+export const PublicEstimateQuoteResponseInputType = {
+  approved: "approved",
+  declined: "declined",
+  changes_requested: "changes_requested",
+} as const;
+
+export interface PublicEstimateQuoteResponseInput {
+  type: PublicEstimateQuoteResponseInputType;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  text?: string | null;
+}
+
 export interface DailyLog {
   id: number;
   jobId?: number | null;

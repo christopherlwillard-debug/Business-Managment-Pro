@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "wouter";
 import {
   useListEstimates, useListClients, useGetSettings,
-  useCreateEstimate, useUpdateEstimate, useDeleteEstimate, useConvertEstimateToJob,
+  useCreateEstimate, useUpdateEstimate, useConvertEstimateToJob,
   getListEstimatesQueryKey,
   Estimate, CreateEstimateRequest, CreateEstimateRequestStatus, AppSettings,
   useCreateQuickCharge,
@@ -19,6 +19,7 @@ import {
   Calculator, FileText, Plus, Trash2, Edit2, X,
   ChevronRight, Check, Briefcase, DollarSign, Layers, ClipboardList,
   CreditCard, ExternalLink, Copy, CheckCircle2,
+  Mail,
 } from "lucide-react";
 import { AllTradesCalculator } from "@/components/calculators/AllTradesCalculator";
 import { AsphaltCalculator } from "@/components/calculators/AsphaltCalculator";
@@ -27,6 +28,8 @@ import { FlooringCalculator } from "@/components/calculators/FlooringCalculator"
 import { PlumbingCalculator } from "@/components/calculators/PlumbingCalculator";
 import { PunchListCalculator } from "@/components/calculators/PunchListCalculator";
 import { CustomerQuotePreview } from "@/components/CustomerQuotePreview";
+import { QuoteSendDialog } from "@/components/estimates/QuoteSendDialog";
+import { QuoteHistoryPanel } from "@/components/estimates/QuoteHistoryPanel";
 
 // ─── Asphalt Sealing Proposal template seed data ─────────────────────────────
 const ASPHALT_SEALING_PROPOSAL = {
@@ -794,15 +797,18 @@ export default function Estimates() {
 
   const createMut   = useCreateEstimate();
   const updateMut   = useUpdateEstimate();
-  const deleteMut   = useDeleteEstimate();
   const convertMut  = useConvertEstimateToJob();
   const depositLinkMut = useCreateEstimateDepositLink();
+  const { data: clients = [] } = useListClients();
 
   const [modal, setModal]         = useState<"create" | number | null>(null);
   const [previewEstimate, setPreviewEstimate] = useState<Estimate | null>(null);
+  const [sendTarget, setSendTarget] = useState<Estimate | null>(null);
+  const [historyTarget, setHistoryTarget] = useState<Estimate | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<EstimateTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [deletingEstimateId, setDeletingEstimateId] = useState<number | null>(null);
   const [converting, setConverting] = useState<number | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
@@ -890,9 +896,28 @@ export default function Estimates() {
   }
 
   async function handleDelete(id: number) {
-    await deleteMut.mutateAsync({ id });
-    invalidate();
-    setDeleteTarget(null);
+    const estimate = estimates.find(item => item.id === id);
+    const params = new URLSearchParams();
+    if (typeof estimate?.businessId === "number") params.set("businessId", String(estimate.businessId));
+    else params.set("businessLine", estimate?.businessLine ?? activeBusinessLine);
+    setDeletingEstimateId(id);
+    try {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const response = await fetch(`${base}/api/estimates/${id}?${params.toString()}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? "Could not delete this quote.");
+      }
+      invalidate();
+      setDeleteTarget(null);
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Could not delete this quote.", variant: "destructive" });
+    } finally {
+      setDeletingEstimateId(null);
+    }
   }
 
   async function handleConvert(id: number) {
@@ -1121,6 +1146,22 @@ export default function Estimates() {
                   >
                     <FileText className="w-3 h-3" /> Customer Preview
                   </button>
+                  {canEdit("estimates") && est.status !== "lost" && (
+                    <button
+                      onClick={() => setSendTarget(est)}
+                      className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-amber-200 rounded-lg px-3 py-1.5 hover:bg-amber-50 transition-colors"
+                    >
+                      <Mail className="w-3 h-3" /> Send Quote
+                    </button>
+                  )}
+                  {canEdit("estimates") && (
+                    <button
+                      onClick={() => setHistoryTarget(est)}
+                      className="flex items-center gap-1 text-xs text-slate-700 hover:text-slate-900 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
+                    >
+                      <FileText className="w-3 h-3" /> Quote History
+                    </button>
+                  )}
                   {(est.status === "sent" || est.status === "won") && canEdit("estimates") && (
                     <button
                       onClick={() => handleConvert(est.id)}
@@ -1191,6 +1232,24 @@ export default function Estimates() {
       {/* Modals */}
       {previewEstimate && (
         <CustomerQuotePreview estimate={previewEstimate} onClose={() => setPreviewEstimate(null)} />
+      )}
+      {sendTarget && (
+        <QuoteSendDialog
+          estimate={{ id: sendTarget.id, title: sendTarget.title, total: sendTarget.total }}
+          recipient={clients.find(client => client.id === sendTarget.clientId)?.email ?? ""}
+          businessId={typeof sendTarget.businessId === "number" ? sendTarget.businessId : null}
+          businessLine={sendTarget.businessLine ?? activeBusinessLine}
+          onClose={() => setSendTarget(null)}
+          onSent={invalidate}
+        />
+      )}
+      {historyTarget && (
+        <QuoteHistoryPanel
+          estimate={{ id: historyTarget.id, title: historyTarget.title }}
+          businessId={typeof historyTarget.businessId === "number" ? historyTarget.businessId : null}
+          businessLine={historyTarget.businessLine ?? activeBusinessLine}
+          onClose={() => setHistoryTarget(null)}
+        />
       )}
       {modal === "create" && (
         <EstimateModal
@@ -1281,10 +1340,10 @@ export default function Estimates() {
               </button>
               <button
                 onClick={() => handleDelete(deleteTarget)}
-                disabled={deleteMut.isPending}
+                disabled={deletingEstimateId === deleteTarget}
                 className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-semibold hover:bg-red-600 disabled:opacity-60"
               >
-                {deleteMut.isPending ? "Deleting…" : "Delete"}
+                {deletingEstimateId === deleteTarget ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>

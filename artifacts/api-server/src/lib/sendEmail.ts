@@ -36,6 +36,7 @@ export interface SendEmailOptions {
   html: string;
   text?: string;
   attachment?: EmailAttachment;
+  headers?: Record<string, string>;
 }
 
 export interface EmailSendResult {
@@ -44,8 +45,15 @@ export interface EmailSendResult {
   threadId?: string | null;
 }
 
+export class EmailProviderRejectedError extends Error {
+  constructor() {
+    super("The email provider rejected the message.");
+    this.name = "EmailProviderRejectedError";
+  }
+}
+
 export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult> {
-  const { to, subject, html, text, attachment } = opts;
+  const { to, subject, html, text, attachment, headers = {} } = opts;
 
   const safeToHeader = sanitizeHeader(to);
   const safeSubject = sanitizeHeader(subject);
@@ -56,6 +64,11 @@ export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult
 
   const boundary = `==BP${Date.now()}==`;
   const rfcLines: string[] = [];
+  const safeExtraHeaders = Object.entries(headers).flatMap(([name, value]) => {
+    const safeName = name.trim();
+    if (!/^[A-Za-z0-9-]{1,80}$/.test(safeName)) return [];
+    return [`${safeName}: ${sanitizeHeader(value)}`];
+  });
 
   if (attachment) {
     const outerBoundary = `==OUTER${Date.now()}==`;
@@ -63,6 +76,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult
     rfcLines.push(
       `To: ${safeToHeader}`,
       `Subject: ${safeSubject}`,
+      ...safeExtraHeaders,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
       ``,
@@ -94,6 +108,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult
     rfcLines.push(
       `To: ${safeToHeader}`,
       `Subject: ${safeSubject}`,
+      ...safeExtraHeaders,
       `MIME-Version: 1.0`,
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
       ``,
@@ -125,8 +140,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<EmailSendResult
   );
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gmail send failed (${response.status}): ${body}`);
+    throw new EmailProviderRejectedError();
   }
 
   const result = await response.json().catch(() => ({})) as {

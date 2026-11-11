@@ -1,7 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { estimatesTable, clientsTable, jobsTable, businessesTable, settingsTable } from "@workspace/db/schema";
-import { eq, asc, getTableColumns, and } from "drizzle-orm";
+import {
+  estimateQuoteEventsTable,
+  estimatesTable,
+  clientsTable,
+  jobsTable,
+  businessesTable,
+  settingsTable,
+} from "@workspace/db/schema";
+import { eq, asc, getTableColumns, and, sql } from "drizzle-orm";
 import {
   canonicalRecordBusiness,
   requestedBusinessReadScope,
@@ -395,7 +402,56 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    await db.delete(estimatesTable).where(eq(estimatesTable.id, parseInt(req.params.id)));
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid estimate ID" });
+      return;
+    }
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) {
+      res.status(400).json({ error: "Select a business before deleting an estimate" });
+      return;
+    }
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM estimates WHERE id = ${id} FOR UPDATE`);
+      const [estimate] = await tx.select({
+        id: estimatesTable.id,
+        businessId: estimatesTable.businessId,
+        businessLine: estimatesTable.businessLine,
+      }).from(estimatesTable).where(eq(estimatesTable.id, id));
+      if (!estimate || !belongsToBusinessReadScope(estimate, scope)) {
+        return { kind: "not_found" as const };
+      }
+      const events = await tx.select().from(estimateQuoteEventsTable)
+        .where(eq(estimateQuoteEventsTable.estimateId, id));
+      if (events.some(event =>
+        (event.eventType === "send_attempt" && ["pending", "unresolved", "accepted"].includes(event.status))
+        || (event.eventType === "revision" && event.tokenActivatedAt != null)
+        || !["revision", "send_attempt"].includes(event.eventType)
+        || (event.eventType === "send_attempt" && event.status !== "failed")
+      )) {
+        return { kind: "protected" as const };
+      }
+      await tx.delete(estimateQuoteEventsTable).where(and(
+        eq(estimateQuoteEventsTable.estimateId, id),
+        sql`${estimateQuoteEventsTable.eventType} <> 'revision'`,
+      ));
+      await tx.delete(estimateQuoteEventsTable).where(and(
+        eq(estimateQuoteEventsTable.estimateId, id),
+        eq(estimateQuoteEventsTable.eventType, "revision"),
+      ));
+      await tx.delete(estimatesTable).where(eq(estimatesTable.id, id));
+      return { kind: "deleted" as const };
+    });
+    if (result.kind === "not_found") {
+      res.status(404).json({ error: "Estimate not found" });
+      return;
+    }
+    if (result.kind === "protected") {
+      res.status(409).json({ error: "This estimate has sent or unresolved quote history and cannot be deleted." });
+      return;
+    }
     res.status(204).send();
   } catch (err) {
     console.error(err);

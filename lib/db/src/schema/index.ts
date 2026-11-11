@@ -4,6 +4,7 @@ export * from "./jobs";
 export * from "./job-subcontractors";
 export * from "./invoices";
 export * from "./invoice-communication-events";
+export * from "./estimate-quote-events";
 export * from "./expenses";
 export * from "./job-expense-allocations";
 export * from "./job-mileage-reimbursements";

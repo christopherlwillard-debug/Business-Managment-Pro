@@ -3813,6 +3813,192 @@ export const ConvertEstimateToJobParams = zod.object({
 });
 
 /**
+ * @summary Send a customer quote
+ */
+export const SendEstimateQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const sendEstimateQuoteBodyIdempotencyKeyMin = 16;
+export const sendEstimateQuoteBodyIdempotencyKeyMax = 128;
+
+export const SendEstimateQuoteBody = zod.object({
+  recipient: zod.string().email(),
+  idempotencyKey: zod
+    .string()
+    .min(sendEstimateQuoteBodyIdempotencyKeyMin)
+    .max(sendEstimateQuoteBodyIdempotencyKeyMax),
+});
+
+export const SendEstimateQuoteResponse = zod.object({
+  status: zod.enum(["accepted", "failed", "unresolved"]),
+  revision: zod.number(),
+  eventId: zod.number(),
+  message: zod.string(),
+});
+
+/**
+ * @summary List quote revision and response history
+ */
+export const ListEstimateQuoteEventsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListEstimateQuoteEventsResponseItem = zod.object({
+  id: zod.number(),
+  estimateId: zod.number(),
+  revision: zod.number(),
+  eventType: zod.string(),
+  status: zod.string(),
+  recipient: zod.string().nullish(),
+  actorName: zod.string().nullish(),
+  requestedAt: zod.date(),
+  completedAt: zod.date().nullish(),
+  providerMessageId: zod.string().nullish(),
+  responseType: zod.string().nullish(),
+  responseText: zod.string().nullish(),
+  responseAt: zod.date().nullish(),
+  errorMessage: zod.string().nullish(),
+});
+export const ListEstimateQuoteEventsResponse = zod.array(
+  ListEstimateQuoteEventsResponseItem,
+);
+
+/**
+ * @summary Download a saved quote revision PDF
+ */
+export const GetEstimateQuoteEventPdfParams = zod.object({
+  id: zod.coerce.number(),
+  eventId: zod.coerce.number(),
+});
+
+/**
+ * @summary Reconcile a quote send using provider evidence
+ */
+export const ReconcileEstimateQuoteSendParams = zod.object({
+  id: zod.coerce.number(),
+  eventId: zod.coerce.number(),
+});
+
+export const reconcileEstimateQuoteSendBodyProviderMessageIdMax = 500;
+
+export const reconcileEstimateQuoteSendBodyProviderThreadIdMax = 500;
+
+export const ReconcileEstimateQuoteSendBody = zod.object({
+  providerMessageId: zod
+    .string()
+    .min(1)
+    .max(reconcileEstimateQuoteSendBodyProviderMessageIdMax),
+  providerThreadId: zod
+    .string()
+    .max(reconcileEstimateQuoteSendBodyProviderThreadIdMax)
+    .optional(),
+});
+
+export const ReconcileEstimateQuoteSendResponse = zod.object({
+  id: zod.number(),
+  estimateId: zod.number(),
+  revision: zod.number(),
+  eventType: zod.string(),
+  status: zod.string(),
+  recipient: zod.string().nullish(),
+  actorName: zod.string().nullish(),
+  requestedAt: zod.date(),
+  completedAt: zod.date().nullish(),
+  providerMessageId: zod.string().nullish(),
+  responseType: zod.string().nullish(),
+  responseText: zod.string().nullish(),
+  responseAt: zod.date().nullish(),
+  errorMessage: zod.string().nullish(),
+});
+
+/**
+ * @summary View a sent quote
+ */
+export const GetPublicEstimateQuoteParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const GetPublicEstimateQuoteResponse = zod.object({
+  quoteNumber: zod.string(),
+  revision: zod.number(),
+  title: zod.string(),
+  issuedAt: zod.date(),
+  expiresAt: zod.string().nullish(),
+  customerName: zod.string().nullish(),
+  customerEmail: zod.string().nullish(),
+  customerPhone: zod.string().nullish(),
+  billingAddress: zod.string().nullish(),
+  workAddress: zod.string().nullish(),
+  jobType: zod.string().nullish(),
+  terms: zod.string().nullish(),
+  items: zod.array(
+    zod.object({
+      description: zod.string(),
+      quantity: zod.number(),
+      unit: zod.string().nullish(),
+      amount: zod.number(),
+    }),
+  ),
+  subtotal: zod.number(),
+  adjustment: zod.number(),
+  tax: zod.number(),
+  total: zod.number(),
+  brand: zod.object({
+    name: zod.string(),
+    address: zod.string().nullish(),
+    city: zod.string().nullish(),
+    state: zod.string().nullish(),
+    zip: zod.string().nullish(),
+    phone: zod.string().nullish(),
+    email: zod.string().nullish(),
+    website: zod.string().nullish(),
+  }),
+  logoUrl: zod.string().nullish(),
+  response: zod
+    .union([
+      zod.null(),
+      zod.object({
+        type: zod.enum(["approved", "declined", "changes_requested"]),
+        text: zod.string().nullish(),
+        createdAt: zod.date(),
+      }),
+    ])
+    .optional(),
+});
+
+/**
+ * @summary View a sent quote PDF
+ */
+export const GetPublicEstimateQuotePdfParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+/**
+ * @summary View a sent quote logo
+ */
+export const GetPublicEstimateQuoteLogoParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+/**
+ * @summary Submit a quote response
+ */
+export const SubmitPublicEstimateQuoteResponseParams = zod.object({
+  token: zod.coerce.string(),
+});
+
+export const submitPublicEstimateQuoteResponseBodyTextMax = 4000;
+
+export const SubmitPublicEstimateQuoteResponseBody = zod.object({
+  type: zod.enum(["approved", "declined", "changes_requested"]),
+  text: zod
+    .string()
+    .max(submitPublicEstimateQuoteResponseBodyTextMax)
+    .nullish(),
+});
+
+/**
  * @summary List daily logs
  */
 export const ListDailyLogsQueryParams = zod.object({
