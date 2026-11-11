@@ -1,6 +1,6 @@
 # Quote Delivery and Customer Responses — Phase 2
 
-**Status:** Architecture approved; this written specification is awaiting user review.  
+**Status:** Architecture approved; user-approved deletion rule incorporated; written specification is awaiting final review.
 **Scope:** Secure delivery and online customer responses for the existing Quote Center only.  
 **Date:** 2026-11-10
 
@@ -45,38 +45,39 @@ The table must support:
 - Estimate ID, canonical business ID, revision number, event type/status, actor, recipient, timestamps, provider/message IDs, idempotency key, and safe error details.
 - A canonical customer-safe JSON snapshot and stable content hash for the exact document and public page.
 - A private PDF object path, populated only for the successfully sent snapshot; unique paths prevent overwrite.
+- A private immutable logo asset copy for the sent revision when the quote uses a logo. The public page and PDF use this copy, never the business's mutable current-logo path.
 - A one-way reference from send/view/response events to the immutable revision snapshot.
-- A hash of a cryptographically random public token, expiry time, and revocation time. Never store the raw token.
+- A hash of a cryptographically random public token, expiry time, activation state, and revocation time. Never store the raw token.
 - A uniqueness constraint that makes repeated customer decision submissions idempotent for the same revision.
 
-The snapshot allow-list includes business display identity/contact and logo reference, quote number/date/revision/expiry, customer and work-site details, work description, customer-facing line amounts, subtotal, adjustment, tax, total, and terms. It excludes internal estimate notes, costs, markup/contingency inputs, formulas, and internal API fields.
+The snapshot allow-list includes business display identity/contact, quote number/date/revision/expiry, customer and work-site details, work description, customer-facing line amounts, subtotal, adjustment, tax, total, and terms. The logo is stored as a separate immutable private asset and referenced internally by the snapshot; the reference is never returned to public clients. The snapshot excludes internal estimate notes, costs, markup/contingency inputs, formulas, and internal API fields.
 
-The same customer-visible content hash identifies an unchanged revision. Resending it reuses its existing snapshot and PDF. Changed customer-visible content creates the next revision and a new PDF when sent. New revisions revoke older public tokens for that estimate. Customer responses remain attached to the immutable revision they opened. Existing estimates without a saved expiry use the existing business validity setting for the sent snapshot without rewriting the historic estimate row.
+The same customer-visible content hash identifies an unchanged revision. Resending it reuses its existing snapshot and PDF. Editing the working estimate does not create a customer-visible revision or revoke a sent token. At send time, changed customer-visible content creates the next revision and its new PDF. The currently active token stays valid until the new revision has provider acceptance durably checkpointed; then the new token is activated and older tokens for that estimate are revoked as one transition. If the new send definitely fails or remains unresolved, the previously accepted revision stays active. Customer responses remain attached to the immutable revision they opened. Existing estimates without a saved expiry use the existing business validity setting for the sent snapshot without rewriting the historic estimate row.
 
-Snapshots are retained indefinitely. Estimate deletion must not cascade into sent quote history or stored PDFs; protect such estimates from destructive deletion while preserving current behavior for unsent drafts.
+Snapshots and their logo assets are retained indefinitely. Estimate deletion is rejected once any revision has been provider-accepted, and is also blocked while a send outcome is unresolved; unsent estimates with only definitively failed attempts retain the existing draft-deletion behavior. Accepted quote history and stored files must not cascade-delete.
 
 ## 5. Delivery and failure behavior
 
 1. The Send Quote action opens a confirmation surface with the customer's saved email prefilled and editable; sending requires a valid confirmed recipient.
 2. The server rechecks estimate ownership/access, recomputes the customer-safe snapshot with existing calculations, and refuses to send if the saved quote total does not reconcile.
-3. A pending event is created before provider work. The server generates the PDF in memory, writes a private staging object, and attaches that same PDF to an email containing the secure link.
-4. On confirmed Gmail acceptance with a message ID, retain the staged PDF as the immutable snapshot, finalize the event as accepted, and only then mark the estimate Sent. A resend of unchanged content references the existing snapshot and does not create another PDF.
-5. On a definite provider rejection, finalize the attempt as failed, delete the staged object, leave a never-sent estimate unsent, and permit a deliberate retry. The App Storage 7-day minimum may still bill for a deleted staging object.
-6. On an uncertain provider outcome, retain the staged object and provider evidence, leave the attempt unresolved, and block automatic resend. Resolve or reconcile the event before allowing a retry; never risk a duplicate email silently.
-7. If provider acceptance succeeds but event finalization fails, retain the provider message ID and staged object so an internal repair can finalize without resending.
+3. A pending event and inactive token are created before provider work. The server generates the PDF and logo copy, writes them to private staging objects, and attaches the same PDF to an email containing the secure link. The token is not usable while delivery is pending.
+4. After confirmed Gmail acceptance, persist the provider message ID as an acceptance checkpoint before finalizing the event. Once that checkpoint exists, activate the new token and revoke tokens for older accepted revisions in the same transition, even if later event finalization fails; an internal repair can finish the event without resending. Only then mark the estimate Sent.
+5. On a definite provider rejection, finalize the attempt as failed, revoke its token, delete staged objects, leave a never-sent estimate unsent, and permit a deliberate retry. The App Storage 7-day minimum may still bill for deleted staging objects.
+6. On an uncertain provider outcome, retain staged objects and provider evidence, keep the token inactive, leave the attempt unresolved, and block automatic resend. Resolve or reconcile the event before allowing a retry; never risk a duplicate email silently.
+7. If the provider accepted the email but the process failed before saving the message-ID checkpoint, keep the token inactive and the attempt unresolved. Reconcile against provider evidence before activating the token or permitting a retry. A customer who clicks before activation receives a safe unavailable/retry message, not quote data.
 
 “Sent” means provider acceptance, not confirmed inbox delivery. “Delivered” appears only when an explicit provider delivery confirmation exists. With the current Gmail sender, delivery generally remains unconfirmed.
 
 ## 6. Public quote access and responses
 
 - Add a customer page at a dedicated public route (for example `/quote/:token`) and public API routes mounted before `requireAuth`.
-- A token is generated with cryptographic randomness; only its hash is stored. It expires on the quote's effective expiry date and can be revoked. Unknown, expired, or revoked tokens fail closed.
+- A token is generated with cryptographic randomness; only its hash is stored. It expires on the quote's effective expiry date and can be revoked. It is inactive until provider acceptance is durably checkpointed; a checkpointed token remains usable during event-finalization recovery. Unknown, inactive, expired, or revoked tokens fail closed.
 - Public APIs return only the saved customer-safe snapshot for that revision. They never expose the estimate row, internal notes, costs, margins, object path, or signed storage URL.
 - The customer page renders business branding/logo, quote number/date, customer/work-site information, scope, customer-facing pricing, tax/total, terms, and expiration.
 - The page offers Approve Quote, Decline Quote, Request Changes, and Contact Willard's. Responses are attributed to the exact revision, recorded with server timestamp, and protected against duplicate/conflicting submissions. Decline reason is optional; change-request text is recorded without changing the sent snapshot.
 - Opening the public page creates a verified view event. Public requests are rate-limited and do not require contractor-app login.
 - Online approval records “approved online” only. It does not set work authorization, create a job, or rewrite the estimate's pricing/status into a won/authorized state.
-- Internal historical-PDF retrieval is authenticated, access-checked, and estimate/business-scoped. Public token endpoints stream the PDF only after token validation; they do not return storage paths or direct object URLs.
+- Internal historical-PDF retrieval is authenticated, access-checked, and estimate/business-scoped. Public token endpoints stream the PDF and immutable logo only after token validation; they do not return storage paths or direct object URLs.
 
 ## 7. API and UI work
 
@@ -92,14 +93,17 @@ Snapshots are retained indefinitely. Estimate deletion must not cascade into sen
 1. A valid recipient is confirmed/edited before send; the email includes the existing branded PDF and tokenized link.
 2. Successful provider acceptance with a message ID records the recipient, timestamp, revision, result, and snapshot and only then marks a first send Sent.
 3. Definite failure does not mark an unsent quote Sent and permits an explicit retry; uncertain outcomes block duplicate sends.
-4. A resend of unchanged customer-visible content reuses its PDF object; changed content creates a new snapshot; old snapshots are never overwritten.
+4. A resend of unchanged customer-visible content reuses its PDF object; changed content creates a new snapshot; old snapshots are never overwritten. Editing a draft does not revoke the currently accepted revision's token; a newer accepted send does.
 5. Sent PDF objects are private, owner/authorized-user retrieval is scoped, and no public response includes storage paths or signed URLs.
 6. Customers without accounts can open only valid tokens; another estimate's token, revoked tokens, and expired tokens fail closed.
 7. Public data includes only the allow-listed snapshot and never includes costs, internal notes, markup, contingency, or internal estimate responses.
 8. Views, approval, decline, and change requests refer to the correct revision; repeated submissions cannot duplicate an approval or create conflicting decisions.
 9. Online approval does not authorize work or create a Job Card.
 10. PDF generation and existing estimate calculations remain unchanged; historical estimates are not migrated or rewritten.
-11. Replit storage billing assumptions, indefinite retention, and 7-day minimum for failed staged files are represented in product/operations notes.
+11. Changing or deleting the current business logo does not change the logo shown on an already-sent revision.
+12. Pending, failed, unresolved, and accepted send states enforce the specified token activation and retry rules; the prior accepted token remains active until the newer revision is checkpointed; a provider-accepted message with a failed finalization can be repaired without resending.
+13. Deletion is blocked after a provider-accepted revision or while a send outcome is unresolved; unsent drafts remain deletable after only definite failures.
+14. Replit storage billing assumptions, indefinite retention, and 7-day minimum for failed staged files are represented in product/operations notes. The estimate excludes the small logo-copy storage overhead.
 
 ## 9. Out of scope
 
