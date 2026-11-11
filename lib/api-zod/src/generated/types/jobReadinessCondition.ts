@@ -10,7 +10,8 @@ import type { JobReadinessConditionReason } from "./jobReadinessConditionReason"
 export interface JobReadinessCondition {
   id: number;
   jobId: number;
-  businessId: number;
+  /** @nullable */
+  businessId: number | null;
   reason: JobReadinessConditionReason;
   detail?: string | null;
   expectedDate?: Date | null;

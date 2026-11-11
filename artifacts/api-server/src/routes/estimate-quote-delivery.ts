@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { Router } from "express";
-import { and, desc, eq, getTableColumns, isNull, sql } from "drizzle-orm";
+import { Router, type Request, type Response } from "express";
+import { and, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   businessesTable,
@@ -10,11 +10,19 @@ import {
   settingsTable,
 } from "@workspace/db/schema";
 import {
+  RecordManualEstimateQuoteResponseBody,
+  RecordEstimateWorkAuthorizationBody,
+  ScheduleEstimateQuoteFollowUpBody,
+  CompleteEstimateQuoteFollowUpBody,
+} from "@workspace/api-zod";
+import {
+  businessReadPredicate,
   belongsToBusinessReadScope,
   requestedBusinessReadScope,
   invalidBusinessScope,
   hasRequestedBusiness,
 } from "../lib/business-scope.js";
+import { buildEstimateQuoteCenter } from "../lib/estimateQuoteCenter.js";
 import { getOwnerId, getRequestUser, getRequestUserId } from "./guards.js";
 import { buildEstimateQuoteSnapshot } from "../lib/estimateQuoteSnapshot.js";
 import { stageEstimateQuoteArchive, removeStagedEstimateQuoteArchive } from "../lib/estimateQuoteArchive.js";
@@ -41,10 +49,388 @@ function safeEvent(event: typeof estimateQuoteEventsTable.$inferSelect) {
     providerMessageId: event.providerMessageId,
     responseType: event.responseType,
     responseText: event.responseText,
-    responseAt: event.eventType === "response" ? event.requestedAt : null,
+    responseAt: event.eventType === "response" || event.eventType === "manual_response"
+      ? event.requestedAt
+      : null,
     errorMessage: event.errorMessage,
+    relatedEventId: event.relatedEventId,
+    dueAt: event.dueAt,
+    metadata: event.metadata,
   };
 }
+
+async function scopedEstimate(req: Request, res: Response, id: number) {
+  const scopeRequest = {
+    ...req,
+    query: {
+      ...req.query,
+      businessId: req.query.businessId ?? req.body?.businessId,
+      businessLine: req.query.businessLine ?? req.body?.businessLine,
+    },
+  } as unknown as Request;
+  const scope = await requestedBusinessReadScope(scopeRequest);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return null;
+  if (!scope || !Number.isSafeInteger(id) || id <= 0) {
+    res.status(400).json({ error: "A valid estimate and business are required" });
+    return null;
+  }
+  const [estimate] = await db.select().from(estimatesTable).where(eq(estimatesTable.id, id));
+  if (!estimate || !belongsToBusinessReadScope(estimate, scope)) {
+    res.status(404).json({ error: "Estimate not found" });
+    return null;
+  }
+  return { estimate, scope };
+}
+
+function eventActor(req: Request) {
+  const user = getRequestUser(req);
+  return {
+    actorUserId: getRequestUserId(req) ?? null,
+    actorName: [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.email || null,
+  };
+}
+
+function eventIdempotencyKey(estimateId: number, action: string, key: string) {
+  return createHash("sha256").update(`${estimateId}:${action}:${key}`).digest("hex");
+}
+
+router.get("/quote-center", async (req, res): Promise<void> => {
+  const scope = await requestedBusinessReadScope(req);
+  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+  if (!scope) {
+    res.status(400).json({ error: "A business scope is required" });
+    return;
+  }
+  const rows = await db.select({
+    ...getTableColumns(estimatesTable),
+    clientName: clientsTable.name,
+  }).from(estimatesTable)
+    .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+    .where(businessReadPredicate(estimatesTable, scope));
+  const ids = rows.map((row) => row.id);
+  const events = ids.length
+    ? await db.select().from(estimateQuoteEventsTable).where(inArray(estimateQuoteEventsTable.estimateId, ids))
+    : [];
+  res.json(buildEstimateQuoteCenter(rows as never, events));
+});
+
+router.post("/:id/quote-events/manual-response", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  const parsed = RecordManualEstimateQuoteResponseBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid manual response" });
+    return;
+  }
+  const input = parsed.data;
+  const [revision] = await db.select().from(estimateQuoteEventsTable).where(and(
+    eq(estimateQuoteEventsTable.id, input.revisionSnapshotId),
+    eq(estimateQuoteEventsTable.estimateId, id),
+    eq(estimateQuoteEventsTable.eventType, "revision"),
+  )).limit(1);
+  if (!revision) {
+    res.status(404).json({ error: "Quote revision not found" });
+    return;
+  }
+  const idempotencyKey = eventIdempotencyKey(id, "manual-response", input.idempotencyKey);
+  const [event] = await db.insert(estimateQuoteEventsTable).values({
+    estimateId: id,
+    businessId: revision.businessId,
+    revisionSnapshotId: revision.id,
+    revision: revision.revision,
+    eventType: "manual_response",
+    status: "recorded",
+    responseType: input.responseType,
+    responseText: input.responseText ?? null,
+    actorUserId: eventActor(req).actorUserId,
+    actorName: eventActor(req).actorName,
+    requestedAt: new Date(),
+    completedAt: new Date(),
+    idempotencyKey,
+    metadata: {
+      source: "manual",
+      method: input.method,
+      contactName: input.contactName ?? null,
+      reference: input.reference ?? null,
+    },
+  }).onConflictDoNothing().returning();
+  if (!event) {
+    res.status(409).json({ error: "This manual response was already recorded" });
+    return;
+  }
+  res.status(201).json(safeEvent(event));
+});
+
+router.post("/:id/quote-events/work-authorization", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  const parsed = RecordEstimateWorkAuthorizationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Explicit authorization confirmation is required" });
+    return;
+  }
+  const input = parsed.data;
+  const [revision] = await db.select().from(estimateQuoteEventsTable).where(and(
+    eq(estimateQuoteEventsTable.id, input.revisionSnapshotId),
+    eq(estimateQuoteEventsTable.estimateId, id),
+    eq(estimateQuoteEventsTable.eventType, "revision"),
+  )).limit(1);
+  if (!revision) {
+    res.status(404).json({ error: "Quote revision not found" });
+    return;
+  }
+  const [latest] = await db.select({ id: estimateQuoteEventsTable.id })
+    .from(estimateQuoteEventsTable)
+    .where(and(eq(estimateQuoteEventsTable.estimateId, id), eq(estimateQuoteEventsTable.eventType, "revision")))
+    .orderBy(desc(estimateQuoteEventsTable.revision))
+    .limit(1);
+  const decisions = await db.select().from(estimateQuoteEventsTable).where(and(
+    eq(estimateQuoteEventsTable.revisionSnapshotId, revision.id),
+    inArray(estimateQuoteEventsTable.eventType, ["response", "manual_response"]),
+  ));
+  const latestDecision = decisions.sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0];
+  if (latest?.id !== revision.id || latestDecision?.responseType !== "approved") {
+    res.status(409).json({ error: "Only the currently accepted revision can be authorized" });
+    return;
+  }
+  const [existingAuthorization] = await db.select({ id: estimateQuoteEventsTable.id })
+    .from(estimateQuoteEventsTable)
+    .where(and(
+      eq(estimateQuoteEventsTable.revisionSnapshotId, revision.id),
+      eq(estimateQuoteEventsTable.eventType, "work_authorization"),
+    ))
+    .limit(1);
+  if (existingAuthorization) {
+    res.status(409).json({ error: "Work authorization is already recorded for this revision" });
+    return;
+  }
+  const actor = eventActor(req);
+  const [event] = await db.insert(estimateQuoteEventsTable).values({
+    estimateId: id,
+    businessId: revision.businessId,
+    revisionSnapshotId: revision.id,
+    revision: revision.revision,
+    eventType: "work_authorization",
+    status: "authorized",
+    actorUserId: actor.actorUserId,
+    actorName: actor.actorName,
+    requestedAt: new Date(),
+    completedAt: new Date(),
+    idempotencyKey: eventIdempotencyKey(id, "work-authorization", input.idempotencyKey),
+    metadata: { note: input.note ?? null, confirmed: true },
+  }).onConflictDoNothing().returning();
+  if (!event) {
+    res.status(409).json({ error: "Work authorization was already recorded" });
+    return;
+  }
+  res.status(201).json(safeEvent(event));
+});
+
+router.post("/:id/quote-events/follow-ups", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  const parsed = ScheduleEstimateQuoteFollowUpBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid follow-up schedule" });
+    return;
+  }
+  const input = parsed.data;
+  const [revision] = await db.select().from(estimateQuoteEventsTable).where(and(
+    eq(estimateQuoteEventsTable.id, input.revisionSnapshotId),
+    eq(estimateQuoteEventsTable.estimateId, id),
+    eq(estimateQuoteEventsTable.eventType, "revision"),
+  )).limit(1);
+  if (!revision) {
+    res.status(404).json({ error: "Quote revision not found" });
+    return;
+  }
+  const [latestRevision] = await db.select({ id: estimateQuoteEventsTable.id })
+    .from(estimateQuoteEventsTable)
+    .where(and(eq(estimateQuoteEventsTable.estimateId, id), eq(estimateQuoteEventsTable.eventType, "revision")))
+    .orderBy(desc(estimateQuoteEventsTable.revision))
+    .limit(1);
+  if (latestRevision?.id !== revision.id) {
+    res.status(409).json({ error: "Follow-ups can only be scheduled for the current revision" });
+    return;
+  }
+  const revisionHistory = await db.select().from(estimateQuoteEventsTable)
+    .where(eq(estimateQuoteEventsTable.estimateId, id));
+  const alreadyResponded = revisionHistory.some((event) =>
+    (event.eventType === "response" || event.eventType === "manual_response")
+    && event.revisionSnapshotId === revision.id,
+  );
+  const currentlyArchived = revisionHistory
+    .filter((event) => event.eventType === "archive" || event.eventType === "restore")
+    .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0]?.eventType === "archive";
+  const hasAcceptedSend = revisionHistory.some((event) =>
+    event.eventType === "send_attempt"
+    && event.status === "accepted"
+    && event.revisionSnapshotId === revision.id,
+  );
+  if (alreadyResponded || currentlyArchived || !hasAcceptedSend) {
+    res.status(409).json({ error: "Only unanswered sent quotes can have follow-ups" });
+    return;
+  }
+  const dueAt = new Date(input.dueAt);
+  if (Number.isNaN(dueAt.getTime())) {
+    res.status(400).json({ error: "A valid follow-up date is required" });
+    return;
+  }
+  const actor = eventActor(req);
+  const [event] = await db.insert(estimateQuoteEventsTable).values({
+    estimateId: id,
+    businessId: revision.businessId,
+    revisionSnapshotId: revision.id,
+    revision: revision.revision,
+    eventType: "follow_up_scheduled",
+    status: "scheduled",
+    dueAt,
+    actorUserId: actor.actorUserId,
+    actorName: actor.actorName,
+    requestedAt: new Date(),
+    idempotencyKey: eventIdempotencyKey(id, "follow-up", input.idempotencyKey),
+    metadata: { method: input.method ?? null, note: input.note ?? null },
+  }).onConflictDoNothing().returning();
+  if (!event) {
+    res.status(409).json({ error: "This follow-up was already scheduled" });
+    return;
+  }
+  res.status(201).json(safeEvent(event));
+});
+
+router.post("/:id/quote-events/:eventId/complete-follow-up", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const eventId = Number(req.params.eventId);
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  const parsed = CompleteEstimateQuoteFollowUpBody.safeParse(req.body);
+  if (!parsed.success || !Number.isSafeInteger(eventId) || eventId <= 0) {
+    res.status(400).json({ error: "Invalid follow-up completion" });
+    return;
+  }
+  const input = parsed.data;
+  const [source] = await db.select().from(estimateQuoteEventsTable).where(and(
+    eq(estimateQuoteEventsTable.id, eventId),
+    eq(estimateQuoteEventsTable.estimateId, id),
+  )).limit(1);
+  const validSource = input.source === "scheduled"
+    ? source?.eventType === "follow_up_scheduled" && source.status === "scheduled"
+    : source?.eventType === "send_attempt" && source.status === "accepted";
+  if (!source || !validSource || !source.revisionSnapshotId) {
+    res.status(404).json({ error: "Follow-up is unavailable" });
+    return;
+  }
+  const events = await db.select().from(estimateQuoteEventsTable)
+    .where(eq(estimateQuoteEventsTable.estimateId, id));
+  const latestRevision = events
+    .filter((event) => event.eventType === "revision")
+    .sort((a, b) => b.revision - a.revision)[0];
+  const hasDecision = events.some((event) =>
+    (event.eventType === "response" || event.eventType === "manual_response")
+    && event.revisionSnapshotId === source.revisionSnapshotId,
+  );
+  if (latestRevision?.id !== source.revisionSnapshotId || hasDecision) {
+    res.status(409).json({ error: "Follow-up is no longer active for this quote" });
+    return;
+  }
+  const reminderDay = input.source === "three_day" ? 3 : input.source === "seven_day" ? 7 : null;
+  const alreadyCompleted = events.some((event) =>
+    event.eventType === "follow_up_completed"
+    && event.relatedEventId === source.id
+    && (input.source === "scheduled" || Number((event.metadata as Record<string, unknown> | null)?.reminderDay) === reminderDay),
+  );
+  if (alreadyCompleted) {
+    res.status(409).json({ error: "This follow-up is already complete" });
+    return;
+  }
+  if (input.source !== "scheduled") {
+    const days = input.source === "three_day" ? 3 : 7;
+    if (Date.now() < source.requestedAt.getTime() + days * 86400000) {
+      res.status(409).json({ error: "This reminder is not due yet" });
+      return;
+    }
+  }
+  const actor = eventActor(req);
+  const [event] = await db.insert(estimateQuoteEventsTable).values({
+    estimateId: id,
+    businessId: source.businessId,
+    revisionSnapshotId: source.revisionSnapshotId,
+    relatedEventId: source.id,
+    revision: source.revision,
+    eventType: "follow_up_completed",
+    status: "completed",
+    actorUserId: actor.actorUserId,
+    actorName: actor.actorName,
+    requestedAt: new Date(),
+    completedAt: new Date(),
+    idempotencyKey: eventIdempotencyKey(id, "follow-up-complete", input.idempotencyKey),
+    metadata: {
+      source: input.source,
+      reminderDay,
+      method: input.method ?? null,
+      note: input.note ?? null,
+    },
+  }).onConflictDoNothing().returning();
+  if (!event) {
+    res.status(409).json({ error: "This follow-up completion was already recorded" });
+    return;
+  }
+  res.status(201).json(safeEvent(event));
+});
+
+async function setQuoteArchiveState(req: Request, res: Response, id: number, archived: boolean): Promise<void> {
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM estimates WHERE id = ${id} FOR UPDATE`);
+    const events = await tx.select().from(estimateQuoteEventsTable)
+      .where(eq(estimateQuoteEventsTable.estimateId, id));
+    const latestState = events
+      .filter((event) => event.eventType === "archive" || event.eventType === "restore")
+      .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0];
+    if (Boolean(latestState?.eventType === "archive") === archived) return null;
+    const revision = events
+      .filter((event) => event.eventType === "revision")
+      .sort((a, b) => b.revision - a.revision)[0];
+    const hasSentRevision = revision && events.some((event) =>
+      event.eventType === "send_attempt"
+      && event.status === "accepted"
+      && event.revisionSnapshotId === revision.id,
+    );
+    if (!revision || (archived && !hasSentRevision)) return null;
+    const actor = eventActor(req);
+    const [event] = await tx.insert(estimateQuoteEventsTable).values({
+      estimateId: id,
+      businessId: revision.businessId,
+      revisionSnapshotId: revision.id,
+      revision: revision.revision,
+      eventType: archived ? "archive" : "restore",
+      status: archived ? "archived" : "restored",
+      actorUserId: actor.actorUserId,
+      actorName: actor.actorName,
+      requestedAt: new Date(),
+      completedAt: new Date(),
+      metadata: {},
+    }).returning();
+    return event;
+  });
+  if (!result) {
+    res.status(409).json({ error: archived ? "Only sent quotes can be archived" : "Quote is not archived" });
+    return;
+  }
+  res.status(201).json(safeEvent(result));
+}
+
+router.post("/:id/archive", async (req, res): Promise<void> => {
+  await setQuoteArchiveState(req, res, Number(req.params.id), true);
+});
+
+router.post("/:id/restore", async (req, res): Promise<void> => {
+  await setQuoteArchiveState(req, res, Number(req.params.id), false);
+});
 
 router.get("/:id/quote-events", async (req, res): Promise<void> => {
   const id = Number(req.params.id);

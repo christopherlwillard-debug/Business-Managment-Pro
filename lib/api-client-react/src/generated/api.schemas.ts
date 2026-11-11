@@ -320,7 +320,8 @@ export const JobReadinessConditionReason = {
 export interface JobReadinessCondition {
   id: number;
   jobId: number;
-  businessId: number;
+  /** @nullable */
+  businessId: number | null;
   reason: JobReadinessConditionReason;
   detail?: string | null;
   expectedDate?: string | null;
@@ -1469,6 +1470,237 @@ export interface ReconcileEstimateQuoteInput {
   providerThreadId?: string;
 }
 
+export interface EstimateQuoteCenterSummary {
+  totalQuotes: number;
+  draftCount: number;
+  awaitingCount: number;
+  viewedCount: number;
+  acceptedCount: number;
+  authorizedCount: number;
+  declinedCount: number;
+  expiredCount: number;
+  followUpsDueCount: number;
+  archivedCount: number;
+  potentialValue: number;
+  acceptedValue: number;
+  authorizedValue: number;
+  convertedValue: number;
+}
+
+export type EstimateQuoteCenterItemDocumentStatus =
+  (typeof EstimateQuoteCenterItemDocumentStatus)[keyof typeof EstimateQuoteCenterItemDocumentStatus];
+
+export const EstimateQuoteCenterItemDocumentStatus = {
+  draft: "draft",
+  sent: "sent",
+  viewed: "viewed",
+  expired: "expired",
+  archived: "archived",
+} as const;
+
+/**
+ * @nullable
+ */
+export type EstimateQuoteCenterItemDecision =
+  | (typeof EstimateQuoteCenterItemDecision)[keyof typeof EstimateQuoteCenterItemDecision]
+  | null;
+
+export const EstimateQuoteCenterItemDecision = {
+  approved: "approved",
+  declined: "declined",
+  changes_requested: "changes_requested",
+} as const;
+
+export type EstimateQuoteCenterItemAuthorizationStatus =
+  (typeof EstimateQuoteCenterItemAuthorizationStatus)[keyof typeof EstimateQuoteCenterItemAuthorizationStatus];
+
+export const EstimateQuoteCenterItemAuthorizationStatus = {
+  not_authorized: "not_authorized",
+  authorized: "authorized",
+} as const;
+
+/**
+ * @nullable
+ */
+export type EstimateQuoteCenterItemNextFollowUpSource =
+  | (typeof EstimateQuoteCenterItemNextFollowUpSource)[keyof typeof EstimateQuoteCenterItemNextFollowUpSource]
+  | null;
+
+export const EstimateQuoteCenterItemNextFollowUpSource = {
+  scheduled: "scheduled",
+  three_day: "three_day",
+  seven_day: "seven_day",
+} as const;
+
+export interface EstimateQuoteCenterItem {
+  estimateId: number;
+  businessId: number;
+  title: string;
+  /** @nullable */
+  clientName?: string | null;
+  total: number;
+  /** @nullable */
+  jobId?: number | null;
+  /** @nullable */
+  revisionSnapshotId?: number | null;
+  /** @minimum 0 */
+  revision: number;
+  documentStatus: EstimateQuoteCenterItemDocumentStatus;
+  /** @nullable */
+  decision?: EstimateQuoteCenterItemDecision;
+  authorizationStatus: EstimateQuoteCenterItemAuthorizationStatus;
+  /** @nullable */
+  nextFollowUpAt?: string | null;
+  /** @nullable */
+  nextFollowUpEventId?: number | null;
+  /** @nullable */
+  nextFollowUpSource?: EstimateQuoteCenterItemNextFollowUpSource;
+  followUpDue: boolean;
+}
+
+export interface EstimateQuoteCenterResponse {
+  items: EstimateQuoteCenterItem[];
+  summary: EstimateQuoteCenterSummary;
+}
+
+export type ManualEstimateQuoteResponseInputResponseType =
+  (typeof ManualEstimateQuoteResponseInputResponseType)[keyof typeof ManualEstimateQuoteResponseInputResponseType];
+
+export const ManualEstimateQuoteResponseInputResponseType = {
+  approved: "approved",
+  declined: "declined",
+  changes_requested: "changes_requested",
+} as const;
+
+export type ManualEstimateQuoteResponseInputMethod =
+  (typeof ManualEstimateQuoteResponseInputMethod)[keyof typeof ManualEstimateQuoteResponseInputMethod];
+
+export const ManualEstimateQuoteResponseInputMethod = {
+  phone: "phone",
+  text: "text",
+  email: "email",
+  in_person: "in_person",
+  other: "other",
+} as const;
+
+export interface ManualEstimateQuoteResponseInput {
+  businessId?: number;
+  businessLine?: string;
+  revisionSnapshotId: number;
+  responseType: ManualEstimateQuoteResponseInputResponseType;
+  method: ManualEstimateQuoteResponseInputMethod;
+  /**
+   * @maxLength 200
+   * @nullable
+   */
+  contactName?: string | null;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  responseText?: string | null;
+  /**
+   * @maxLength 500
+   * @nullable
+   */
+  reference?: string | null;
+  /**
+   * @minLength 16
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+}
+
+export interface EstimateWorkAuthorizationInput {
+  businessId?: number;
+  businessLine?: string;
+  revisionSnapshotId: number;
+  confirmed: boolean;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  note?: string | null;
+  /**
+   * @minLength 16
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+}
+
+export type ScheduleEstimateQuoteFollowUpInputMethod =
+  (typeof ScheduleEstimateQuoteFollowUpInputMethod)[keyof typeof ScheduleEstimateQuoteFollowUpInputMethod];
+
+export const ScheduleEstimateQuoteFollowUpInputMethod = {
+  phone: "phone",
+  text: "text",
+  email: "email",
+  in_person: "in_person",
+  other: "other",
+} as const;
+
+export interface ScheduleEstimateQuoteFollowUpInput {
+  businessId?: number;
+  businessLine?: string;
+  revisionSnapshotId: number;
+  dueAt: string;
+  method?: ScheduleEstimateQuoteFollowUpInputMethod;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  note?: string | null;
+  /**
+   * @minLength 16
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+}
+
+export type CompleteEstimateQuoteFollowUpInputSource =
+  (typeof CompleteEstimateQuoteFollowUpInputSource)[keyof typeof CompleteEstimateQuoteFollowUpInputSource];
+
+export const CompleteEstimateQuoteFollowUpInputSource = {
+  scheduled: "scheduled",
+  three_day: "three_day",
+  seven_day: "seven_day",
+} as const;
+
+export type CompleteEstimateQuoteFollowUpInputMethod =
+  (typeof CompleteEstimateQuoteFollowUpInputMethod)[keyof typeof CompleteEstimateQuoteFollowUpInputMethod];
+
+export const CompleteEstimateQuoteFollowUpInputMethod = {
+  phone: "phone",
+  text: "text",
+  email: "email",
+  in_person: "in_person",
+  other: "other",
+} as const;
+
+export interface CompleteEstimateQuoteFollowUpInput {
+  businessId?: number;
+  businessLine?: string;
+  source: CompleteEstimateQuoteFollowUpInputSource;
+  method?: CompleteEstimateQuoteFollowUpInputMethod;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  note?: string | null;
+  /**
+   * @minLength 16
+   * @maxLength 128
+   */
+  idempotencyKey: string;
+}
+
+export interface EstimateQuoteBusinessScopeInput {
+  businessId?: number;
+  businessLine?: string;
+}
+
+export type EstimateQuoteEventMetadata = { [key: string]: unknown };
+
 export interface EstimateQuoteEvent {
   id: number;
   estimateId: number;
@@ -1492,6 +1724,11 @@ export interface EstimateQuoteEvent {
   responseAt?: string | null;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  relatedEventId?: number | null;
+  /** @nullable */
+  dueAt?: string | null;
+  metadata?: EstimateQuoteEventMetadata;
 }
 
 export type EstimateQuoteSendResultStatus =
@@ -2247,6 +2484,11 @@ export type ResetPortalPin200 = {
 };
 
 export type ListEstimatesParams = {
+  businessId?: number;
+  businessLine?: string;
+};
+
+export type GetEstimateQuoteCenterParams = {
   businessId?: number;
   businessLine?: string;
 };

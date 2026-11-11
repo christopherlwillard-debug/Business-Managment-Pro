@@ -146,8 +146,8 @@ Before implementing any financial, schema, or business logic feature — consult
 - **API:** `artifacts/api-server/src/routes/estimates.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Estimates.tsx` (Quote Center), `artifacts/contractor-app/src/pages/Jobs.tsx`
 - **Reports:** Not directly used in reports
-- **Source of truth:** `estimates`. Pre-sale pricing documents; do not affect revenue until converted to invoices.
-- **Boundary:** Work address and customer-facing terms are stored per estimate. The preview uses only customer-safe fields; internal notes, markup, contingency, and unit rates stay private.
+- **Source of truth:** `estimates` owns estimate content/pricing; `estimate_quote_events` owns frozen revisions, quote delivery/view/response, manual decision history, explicit work authorization, follow-up, and archive/restore events.
+- **Boundary:** Quotes remain pre-sale documents and do not affect revenue until converted to invoices. Existing estimate status/conversion semantics remain intact. An online approval records a decision only; work authorization must be separately recorded against the exact frozen revision and never transfers to a newer revision. Keep customer-safe preview fields separate from internal notes, markup, contingency, and unit rates.
 
 ---
 

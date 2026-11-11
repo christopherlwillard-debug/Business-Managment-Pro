@@ -708,7 +708,7 @@ export const GetReadyToStartJobsResponse = zod.object({
             .object({
               id: zod.number(),
               jobId: zod.number(),
-              businessId: zod.number(),
+              businessId: zod.number().nullable(),
               reason: zod.enum([
                 "electricity",
                 "water",
@@ -946,7 +946,7 @@ export const GetReadyToStartJobsResponse = zod.object({
             .object({
               id: zod.number(),
               jobId: zod.number(),
-              businessId: zod.number(),
+              businessId: zod.number().nullable(),
               reason: zod.enum([
                 "electricity",
                 "water",
@@ -1775,7 +1775,7 @@ export const ListJobReadinessConditionsParams = zod.object({
 export const ListJobReadinessConditionsResponseItem = zod.object({
   id: zod.number(),
   jobId: zod.number(),
-  businessId: zod.number(),
+  businessId: zod.number().nullable(),
   reason: zod.enum([
     "electricity",
     "water",
@@ -1830,7 +1830,7 @@ export const ClearJobReadinessConditionParams = zod.object({
 export const ClearJobReadinessConditionResponse = zod.object({
   id: zod.number(),
   jobId: zod.number(),
-  businessId: zod.number(),
+  businessId: zod.number().nullable(),
   reason: zod.enum([
     "electricity",
     "water",
@@ -3692,6 +3692,76 @@ export const CreateEstimateBody = zod.object({
 });
 
 /**
+ * @summary List estimates with quote workflow state
+ */
+export const GetEstimateQuoteCenterQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
+});
+
+export const getEstimateQuoteCenterResponseItemsItemRevisionMin = 0;
+
+export const GetEstimateQuoteCenterResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      estimateId: zod.number(),
+      businessId: zod.number(),
+      title: zod.string(),
+      clientName: zod.string().nullish(),
+      total: zod.number(),
+      jobId: zod.number().nullish(),
+      revisionSnapshotId: zod.number().nullish(),
+      revision: zod
+        .number()
+        .min(getEstimateQuoteCenterResponseItemsItemRevisionMin),
+      documentStatus: zod.enum([
+        "draft",
+        "sent",
+        "viewed",
+        "expired",
+        "archived",
+      ]),
+      decision: zod
+        .union([
+          zod.literal("approved"),
+          zod.literal("declined"),
+          zod.literal("changes_requested"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      authorizationStatus: zod.enum(["not_authorized", "authorized"]),
+      nextFollowUpAt: zod.date().nullish(),
+      nextFollowUpEventId: zod.number().nullish(),
+      nextFollowUpSource: zod
+        .union([
+          zod.literal("scheduled"),
+          zod.literal("three_day"),
+          zod.literal("seven_day"),
+          zod.literal(null),
+        ])
+        .nullish(),
+      followUpDue: zod.boolean(),
+    }),
+  ),
+  summary: zod.object({
+    totalQuotes: zod.number(),
+    draftCount: zod.number(),
+    awaitingCount: zod.number(),
+    viewedCount: zod.number(),
+    acceptedCount: zod.number(),
+    authorizedCount: zod.number(),
+    declinedCount: zod.number(),
+    expiredCount: zod.number(),
+    followUpsDueCount: zod.number(),
+    archivedCount: zod.number(),
+    potentialValue: zod.number(),
+    acceptedValue: zod.number(),
+    authorizedValue: zod.number(),
+    convertedValue: zod.number(),
+  }),
+});
+
+/**
  * @summary Get an estimate
  */
 export const GetEstimateParams = zod.object({
@@ -3865,10 +3935,151 @@ export const ListEstimateQuoteEventsResponseItem = zod.object({
   responseText: zod.string().nullish(),
   responseAt: zod.date().nullish(),
   errorMessage: zod.string().nullish(),
+  relatedEventId: zod.number().nullish(),
+  dueAt: zod.date().nullish(),
+  metadata: zod.record(zod.string(), zod.unknown()).optional(),
 });
 export const ListEstimateQuoteEventsResponse = zod.array(
   ListEstimateQuoteEventsResponseItem,
 );
+
+/**
+ * @summary Record a customer response received outside the quote page
+ */
+export const RecordManualEstimateQuoteResponseParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const recordManualEstimateQuoteResponseBodyContactNameMax = 200;
+
+export const recordManualEstimateQuoteResponseBodyResponseTextMax = 4000;
+
+export const recordManualEstimateQuoteResponseBodyReferenceMax = 500;
+
+export const recordManualEstimateQuoteResponseBodyIdempotencyKeyMin = 16;
+export const recordManualEstimateQuoteResponseBodyIdempotencyKeyMax = 128;
+
+export const RecordManualEstimateQuoteResponseBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+  revisionSnapshotId: zod.number(),
+  responseType: zod.enum(["approved", "declined", "changes_requested"]),
+  method: zod.enum(["phone", "text", "email", "in_person", "other"]),
+  contactName: zod
+    .string()
+    .max(recordManualEstimateQuoteResponseBodyContactNameMax)
+    .nullish(),
+  responseText: zod
+    .string()
+    .max(recordManualEstimateQuoteResponseBodyResponseTextMax)
+    .nullish(),
+  reference: zod
+    .string()
+    .max(recordManualEstimateQuoteResponseBodyReferenceMax)
+    .nullish(),
+  idempotencyKey: zod
+    .string()
+    .min(recordManualEstimateQuoteResponseBodyIdempotencyKeyMin)
+    .max(recordManualEstimateQuoteResponseBodyIdempotencyKeyMax),
+});
+
+/**
+ * @summary Record explicit authorization for a frozen quote revision
+ */
+export const RecordEstimateWorkAuthorizationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const recordEstimateWorkAuthorizationBodyNoteMax = 4000;
+
+export const recordEstimateWorkAuthorizationBodyIdempotencyKeyMin = 16;
+export const recordEstimateWorkAuthorizationBodyIdempotencyKeyMax = 128;
+
+export const RecordEstimateWorkAuthorizationBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+  revisionSnapshotId: zod.number(),
+  confirmed: zod.literal(true),
+  note: zod.string().max(recordEstimateWorkAuthorizationBodyNoteMax).nullish(),
+  idempotencyKey: zod
+    .string()
+    .min(recordEstimateWorkAuthorizationBodyIdempotencyKeyMin)
+    .max(recordEstimateWorkAuthorizationBodyIdempotencyKeyMax),
+});
+
+/**
+ * @summary Schedule an internal quote follow-up
+ */
+export const ScheduleEstimateQuoteFollowUpParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const scheduleEstimateQuoteFollowUpBodyNoteMax = 4000;
+
+export const scheduleEstimateQuoteFollowUpBodyIdempotencyKeyMin = 16;
+export const scheduleEstimateQuoteFollowUpBodyIdempotencyKeyMax = 128;
+
+export const ScheduleEstimateQuoteFollowUpBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+  revisionSnapshotId: zod.number(),
+  dueAt: zod.date(),
+  method: zod.enum(["phone", "text", "email", "in_person", "other"]).optional(),
+  note: zod.string().max(scheduleEstimateQuoteFollowUpBodyNoteMax).nullish(),
+  idempotencyKey: zod
+    .string()
+    .min(scheduleEstimateQuoteFollowUpBodyIdempotencyKeyMin)
+    .max(scheduleEstimateQuoteFollowUpBodyIdempotencyKeyMax),
+});
+
+/**
+ * @summary Complete a scheduled or standard quote follow-up
+ */
+export const CompleteEstimateQuoteFollowUpParams = zod.object({
+  id: zod.coerce.number(),
+  eventId: zod.coerce.number(),
+});
+
+export const completeEstimateQuoteFollowUpBodyNoteMax = 4000;
+
+export const completeEstimateQuoteFollowUpBodyIdempotencyKeyMin = 16;
+export const completeEstimateQuoteFollowUpBodyIdempotencyKeyMax = 128;
+
+export const CompleteEstimateQuoteFollowUpBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+  source: zod.enum(["scheduled", "three_day", "seven_day"]),
+  method: zod.enum(["phone", "text", "email", "in_person", "other"]).optional(),
+  note: zod.string().max(completeEstimateQuoteFollowUpBodyNoteMax).nullish(),
+  idempotencyKey: zod
+    .string()
+    .min(completeEstimateQuoteFollowUpBodyIdempotencyKeyMin)
+    .max(completeEstimateQuoteFollowUpBodyIdempotencyKeyMax),
+});
+
+/**
+ * @summary Archive a sent quote without deleting its history
+ */
+export const ArchiveEstimateQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ArchiveEstimateQuoteBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+});
+
+/**
+ * @summary Restore an archived quote
+ */
+export const RestoreEstimateQuoteParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const RestoreEstimateQuoteBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+});
 
 /**
  * @summary Download a saved quote revision PDF
@@ -3916,6 +4127,9 @@ export const ReconcileEstimateQuoteSendResponse = zod.object({
   responseText: zod.string().nullish(),
   responseAt: zod.date().nullish(),
   errorMessage: zod.string().nullish(),
+  relatedEventId: zod.number().nullish(),
+  dueAt: zod.date().nullish(),
+  metadata: zod.record(zod.string(), zod.unknown()).optional(),
 });
 
 /**

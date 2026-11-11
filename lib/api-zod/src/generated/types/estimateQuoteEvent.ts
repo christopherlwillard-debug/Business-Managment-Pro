@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { EstimateQuoteEventMetadata } from "./estimateQuoteEventMetadata";
 
 export interface EstimateQuoteEvent {
   id: number;
@@ -29,4 +30,9 @@ export interface EstimateQuoteEvent {
   responseAt?: Date | null;
   /** @nullable */
   errorMessage?: string | null;
+  /** @nullable */
+  relatedEventId?: number | null;
+  /** @nullable */
+  dueAt?: Date | null;
+  metadata?: EstimateQuoteEventMetadata;
 }

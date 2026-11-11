@@ -79,3 +79,4 @@
 - [Workday source constraint](workday-source-constraint.md) — published presence constraints must allow workday_action before START WORK can persist
 - [Banking auth recovery](banking-auth-recovery.md) — never auto-replay a financial POST after re-auth; preserve its draft and serialize expense filing on the bank row
 - [Usage-cost constraint](usage-cost-constraint.md) — keep edits and ongoing usage free; avoid introducing paid services or per-use charges
+- [Quote decision and authorization boundary](quote-decision-authorization.md) — customer decisions and work authorization are separate append-only events tied to frozen revisions; online acceptance never authorizes work

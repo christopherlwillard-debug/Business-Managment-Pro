@@ -4,6 +4,7 @@ import {
   useListEstimates, useListClients, useGetSettings,
   useCreateEstimate, useUpdateEstimate, useConvertEstimateToJob,
   getListEstimatesQueryKey,
+  useGetEstimateQuoteCenter, getGetEstimateQuoteCenterQueryKey,
   Estimate, CreateEstimateRequest, CreateEstimateRequestStatus, AppSettings,
   useCreateQuickCharge,
   useCreateEstimateDepositLink,
@@ -30,6 +31,7 @@ import { PunchListCalculator } from "@/components/calculators/PunchListCalculato
 import { CustomerQuotePreview } from "@/components/CustomerQuotePreview";
 import { QuoteSendDialog } from "@/components/estimates/QuoteSendDialog";
 import { QuoteHistoryPanel } from "@/components/estimates/QuoteHistoryPanel";
+import { QuoteCenterBoard } from "@/components/estimates/QuoteCenterBoard";
 
 // ─── Asphalt Sealing Proposal template seed data ─────────────────────────────
 const ASPHALT_SEALING_PROPOSAL = {
@@ -47,6 +49,29 @@ const ASPHALT_SEALING_PROPOSAL = {
 } as const;
 
 type EstimateTemplate = "blank" | "asphalt_sealing_proposal";
+
+const STATUS_STYLES: Record<string, string> = {
+  draft: "bg-gray-100 text-gray-700",
+  sent: "bg-blue-100 text-blue-700",
+  won: "bg-emerald-100 text-emerald-700",
+  lost: "bg-red-100 text-red-700",
+};
+
+function StatusMenu({ current, onChange }: { current: string; onChange: (status: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(value => !value)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${STATUS_STYLES[current] ?? "bg-gray-100 text-gray-700"}`}>
+        {current} <ChevronRight className="h-3 w-3 rotate-90" />
+      </button>
+      {open && <div className="absolute left-0 top-full z-20 mt-1 min-w-[100px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+        {(["draft", "sent", "won", "lost"] as const).filter(status => status !== current).map(status => (
+          <button key={status} onClick={() => { onChange(status); setOpen(false); }} className="block w-full px-4 py-2 text-left text-xs font-semibold capitalize hover:bg-gray-50">{status}</button>
+        ))}
+      </div>}
+    </div>
+  );
+}
 
 // ─── Template picker modal ────────────────────────────────────────────────────
 function TemplatePicker({ onSelect, onClose, businessLine }: {
@@ -101,13 +126,6 @@ function TemplatePicker({ onSelect, onClose, businessLine }: {
     </div>
   );
 }
-
-const STATUS_STYLES: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  sent:  "bg-blue-100 text-blue-700",
-  won:   "bg-emerald-100 text-emerald-700",
-  lost:  "bg-red-100 text-red-700",
-};
 
 // ─── Local line-item type (editable) ─────────────────────────────────────────
 interface DraftLine {
@@ -757,36 +775,6 @@ export function EstimateModal({
   );
 }
 
-// ─── Status change dropdown ───────────────────────────────────────────────────
-const STATUS_SEQUENCE = ["draft", "sent", "won", "lost"] as const;
-
-function StatusMenu({ current, onChange }: { current: string; onChange: (s: string) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide cursor-pointer ${STATUS_STYLES[current] ?? "bg-gray-100 text-gray-700"}`}
-      >
-        {current} <ChevronRight className="w-3 h-3 rotate-90" />
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden min-w-[100px]">
-          {STATUS_SEQUENCE.filter(s => s !== current).map(s => (
-            <button
-              key={s}
-              onClick={() => { onChange(s); setOpen(false); }}
-              className="block w-full text-left px-4 py-2 text-xs font-semibold hover:bg-gray-50 capitalize"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function Estimates() {
   const { canEdit } = useUserPermissions();
@@ -836,9 +824,19 @@ export default function Estimates() {
       ? { businessId: activeBusiness.id }
       : { businessLine: activeBusinessLine })
     : (activeBusinessLine ? { businessLine: activeBusinessLine } : undefined);
-  const { data: estimates = [], isLoading } = useListEstimates(estimateParams);
+  const { data: estimates = [], isLoading, isError, error: estimatesError, refetch } = useListEstimates(estimateParams);
+  const {
+    data: quoteCenter,
+    isLoading: quoteCenterLoading,
+    isError: quoteCenterError,
+    error: quoteCenterLoadError,
+    refetch: refetchQuoteCenter,
+  } = useGetEstimateQuoteCenter(estimateParams);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
+    qc.invalidateQueries({ queryKey: getGetEstimateQuoteCenterQueryKey(estimateParams) });
+  };
 
   useEffect(() => {
     const openId = searchParams.get("open");
@@ -958,17 +956,14 @@ export default function Estimates() {
       : [],
     [estimates, selectedBusiness, activeTab]);
 
-  const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
-
-  const totals = useMemo<Record<string, number>>(() => ({
-    all:   tabEstimates.length,
-    draft: tabEstimates.filter(e => e.status === "draft").length,
-    sent:  tabEstimates.filter(e => e.status === "sent").length,
-    won:   tabEstimates.filter(e => e.status === "won").length,
-    lost:  tabEstimates.filter(e => e.status === "lost").length,
-  }), [tabEstimates]);
-
-  const totalValue = tabEstimates.filter(e => e.status === "won").reduce((s, e) => s + e.total, 0);
+  const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(estimate => estimate.status === filterStatus);
+  const totals: Record<string, number> = {
+    all: tabEstimates.length,
+    draft: tabEstimates.filter(estimate => estimate.status === "draft").length,
+    sent: tabEstimates.filter(estimate => estimate.status === "sent").length,
+    won: tabEstimates.filter(estimate => estimate.status === "won").length,
+    lost: tabEstimates.filter(estimate => estimate.status === "lost").length,
+  };
 
   return (
     <div className="space-y-6">
@@ -1005,6 +1000,41 @@ export default function Estimates() {
       </div>
       )}
 
+      {(quoteCenterLoading || isLoading) ? (
+        <div className="space-y-3" aria-label="Loading Quote Center">
+          {[1, 2, 3].map(i => <div key={i} className="h-24 animate-pulse rounded-xl border border-[#dce2e4] bg-card" />)}
+        </div>
+      ) : quoteCenterError || isError ? (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <p className="font-semibold">Quote Center could not be loaded.</p>
+          <p className="mt-1">{quoteCenterLoadError instanceof Error ? quoteCenterLoadError.message : estimatesError instanceof Error ? estimatesError.message : "Please try again."}</p>
+          <button onClick={() => { void refetchQuoteCenter(); void refetch(); }} className="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-bold hover:bg-red-100">Retry</button>
+        </div>
+      ) : (
+        <QuoteCenterBoard
+          items={quoteCenter?.items ?? []}
+          summary={quoteCenter?.summary}
+          estimates={tabEstimates}
+          centerParams={estimateParams}
+          canEdit={canEdit("estimates")}
+          onEdit={estimate => setModal(estimate.id)}
+          onPreview={setPreviewEstimate}
+          onSend={setSendTarget}
+          onHistory={setHistoryTarget}
+          onConvert={estimate => { void handleConvert(estimate.id); }}
+          onDeposit={estimate => {
+            if (estimate.depositPaidAt) return;
+            if (estimate.squarePaymentLinkUrl ?? estimate.stripePaymentLinkUrl) {
+              setDepositLinkResult({ url: (estimate.squarePaymentLinkUrl ?? estimate.stripePaymentLinkUrl)!, title: estimate.title });
+            } else {
+              void handleRequestDeposit(estimate);
+            }
+          }}
+          onDeleteDraft={estimate => setDeleteTarget(estimate.id)}
+        />
+      )}
+
+      <div className="hidden" aria-hidden="true">
       {/* Summary bar */}
       {tabEstimates.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1022,7 +1052,7 @@ export default function Estimates() {
           </div>
           <div className="bg-card rounded-xl border border-border/50 p-4">
             <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><DollarSign className="w-3 h-3" /> Won Value</p>
-            <p className="text-xl font-bold text-emerald-600">{formatCurrency(totalValue)}</p>
+            <p className="text-xl font-bold text-emerald-600">—</p>
           </div>
         </div>
       )}
@@ -1214,6 +1244,7 @@ export default function Estimates() {
             </div>
           ))
         )}
+      </div>
       </div>
 
       {/* Template picker */}

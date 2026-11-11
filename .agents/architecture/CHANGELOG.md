@@ -820,3 +820,15 @@ Created the four-document architecture governance system:
 - Captured the exact raw JSON bytes for Square HMAC verification; the handler no longer re-serializes parsed JSON for signature checks.
 - Made webhook verification fail closed when the signature key or signature header is missing, reject missing raw-body data, and compare HMAC bytes with a constant-time comparison.
 - Added focused signature-boundary tests. Runtime execution remains pending; no Square credentials or live payment records were changed.
+
+## 2026-11-11
+
+### Quote Center decision and authorization history
+
+- Extended the existing quote event history with manual customer decisions,
+  separate revision-specific work authorization, internal follow-up reminders,
+  and archive/restore records.
+- Added a scoped Quote Center read model with frozen-revision stage summaries;
+  existing estimate status and estimate-to-job conversion semantics remain
+  unchanged.
+- Online approval remains decision-only and never authorizes work.

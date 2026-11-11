@@ -1,23 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Download, X } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-
-type QuoteEvent = {
-  id: number;
-  estimateId: number;
-  revision: number;
-  eventType: string;
-  status: string;
-  recipient: string | null;
-  actorName: string | null;
-  requestedAt: string;
-  completedAt: string | null;
-  providerMessageId: string | null;
-  responseType: string | null;
-  responseText: string | null;
-  responseAt: string | null;
-  errorMessage: string | null;
-};
+import { getListEstimateQuoteEventsQueryKey, useListEstimateQuoteEvents, type EstimateQuoteEvent } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function QuoteHistoryPanel({
   estimate,
@@ -30,38 +15,13 @@ export function QuoteHistoryPanel({
   businessLine?: string | null;
   onClose: () => void;
 }) {
-  const [events, setEvents] = useState<QuoteEvent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
   const [messageIds, setMessageIds] = useState<Record<number, string>>({});
   const [threadIds, setThreadIds] = useState<Record<number, string>>({});
   const [savingEventId, setSavingEventId] = useState<number | null>(null);
+  const qc = useQueryClient();
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-
-  useEffect(() => {
-    let cancelled = false;
-    const params = new URLSearchParams();
-    if (businessId != null) params.set("businessId", String(businessId));
-    else if (businessLine) params.set("businessLine", businessLine);
-    fetch(`${base}/api/estimates/${estimate.id}/quote-events?${params.toString()}`, {
-      credentials: "include",
-      headers: { Accept: "application/json" },
-    }).then(async response => {
-      if (!response.ok) {
-        const body = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(body?.error ?? "Could not load quote history.");
-      }
-      return await response.json() as QuoteEvent[];
-    }).then(data => {
-      if (!cancelled) setEvents(data);
-    }).catch(err => {
-      if (!cancelled) setError(err instanceof Error ? err.message : "Could not load quote history.");
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; };
-  }, [base, estimate.id, businessId, businessLine, refreshKey]);
+  const { data: events = [], isLoading: loading, isError, error: historyError, refetch } = useListEstimateQuoteEvents(estimate.id);
 
   async function reconcile(eventId: number) {
     const providerMessageId = messageIds[eventId]?.trim();
@@ -84,7 +44,8 @@ export function QuoteHistoryPanel({
       }
       setMessageIds(current => ({ ...current, [eventId]: "" }));
       setThreadIds(current => ({ ...current, [eventId]: "" }));
-      setRefreshKey(key => key + 1);
+      await qc.invalidateQueries({ queryKey: getListEstimateQuoteEventsQueryKey(estimate.id) });
+      await refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not reconcile the quote send.");
     } finally {
@@ -93,6 +54,44 @@ export function QuoteHistoryPanel({
   }
 
   const revisions = events.filter(event => event.eventType === "revision");
+  const eventDescription = (event: EstimateQuoteEvent) => {
+    const metadata = event.metadata ?? {};
+    const method = typeof metadata.method === "string" ? metadata.method.replaceAll("_", " ") : "";
+    const type = event.eventType.toLowerCase();
+    if (type.includes("manual") && type.includes("response")) {
+      return `Manual customer response recorded${event.responseType ? ` · ${event.responseType.replaceAll("_", " ")}` : ""}${method ? ` · ${method}` : ""}`;
+    }
+    if (type.includes("authoriz")) return "Work authorization confirmed separately";
+    if (type.includes("follow") && (type.includes("complete") || type.includes("done"))) {
+      return `Internal follow-up completed${method ? ` · ${method}` : ""}`;
+    }
+    if (type.includes("follow") && (type.includes("schedule") || type.includes("reminder"))) {
+      return `Internal follow-up scheduled${event.dueAt ? ` · ${formatDate(event.dueAt)}` : ""}${method ? ` · ${method}` : ""}`;
+    }
+    if (type.includes("archive") && !type.includes("restore")) return "Quote archived; sent history retained";
+    if (type.includes("restore") || type.includes("unarchive")) return "Quote restored to active list";
+    switch (event.eventType) {
+      case "manual_response":
+        return `Manual customer response recorded${event.responseType ? ` · ${event.responseType.replaceAll("_", " ")}` : ""}${method ? ` · ${method}` : ""}`;
+      case "work_authorization":
+      case "authorization":
+        return "Work authorization confirmed separately";
+      case "follow_up_scheduled":
+      case "follow_up_schedule":
+        return `Internal follow-up scheduled${event.dueAt ? ` · ${formatDate(event.dueAt)}` : ""}${method ? ` · ${method}` : ""}`;
+      case "follow_up_completed":
+      case "follow_up_complete":
+        return `Internal follow-up completed${method ? ` · ${method}` : ""}`;
+      case "archived":
+      case "archive":
+        return "Quote archived; sent history retained";
+      case "restored":
+      case "restore":
+        return "Quote restored to active list";
+      default:
+        return event.eventType.replaceAll("_", " ");
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="quote-history-title">
@@ -103,12 +102,12 @@ export function QuoteHistoryPanel({
         </header>
         <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5">
           {loading && <p className="text-sm text-slate-500">Loading history…</p>}
-          {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+          {(error || isError) && <div role="alert" className="text-sm text-red-700">{error || (historyError instanceof Error ? historyError.message : "Could not load quote history.")} <button onClick={() => void refetch()} className="ml-2 font-semibold underline">Retry</button></div>}
           {!loading && !error && revisions.length === 0 && <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">No sent quote history yet.</p>}
           {revisions.map(revision => {
             const related = events.filter(event => event.revision === revision.revision);
             const sends = related.filter(event => event.eventType === "send_attempt");
-            const response = related.find(event => event.eventType === "response");
+            const response = related.find(event => event.eventType === "response" && event.responseType != null);
             const accepted = sends.some(event => event.status === "accepted");
             const currentStatus = response
               ? response.responseType === "approved" ? "Customer approved online" : response.responseType === "declined" ? "Customer declined" : "Customer requested changes"
@@ -141,6 +140,15 @@ export function QuoteHistoryPanel({
                     </div>
                   ))}
                   {response && <p className="mt-2 rounded-lg bg-blue-50 p-2 text-blue-900">{currentStatus}{response.responseText ? `: ${response.responseText}` : ""}</p>}
+                  {related.filter(event => event.eventType !== "revision" && event.eventType !== "send_attempt" && event.eventType !== "response").map(event => (
+                    <p key={event.id} className={`mt-2 rounded-lg p-2 ${event.eventType.includes("authorization") ? "bg-emerald-50 text-emerald-900" : "bg-slate-50 text-slate-700"}`}>
+                      <strong className="capitalize">{eventDescription(event)}</strong>
+                      {event.actorName ? ` · ${event.actorName}` : ""}
+                      {event.completedAt ? ` · ${formatDate(event.completedAt)}` : event.requestedAt ? ` · ${formatDate(event.requestedAt)}` : ""}
+                      {event.responseText ? ` · ${event.responseText}` : ""}
+                      {typeof event.metadata?.note === "string" ? ` · ${event.metadata.note}` : ""}
+                    </p>
+                  ))}
                 </div>
               </article>
             );

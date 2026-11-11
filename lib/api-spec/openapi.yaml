@@ -1772,6 +1772,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Estimate"
 
+  /estimates/quote-center:
+    get:
+      operationId: getEstimateQuoteCenter
+      tags: [estimates]
+      summary: List estimates with quote workflow state
+      parameters:
+        - name: businessId
+          in: query
+          schema: { type: integer }
+        - name: businessLine
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Quote Center rows and independent summary values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteCenterResponse" }
+
   /estimates/{id}:
     get:
       operationId: getEstimate
@@ -1897,6 +1916,147 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+
+  /estimates/{id}/quote-events/manual-response:
+    post:
+      operationId: recordManualEstimateQuoteResponse
+      tags: [estimates]
+      summary: Record a customer response received outside the quote page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualEstimateQuoteResponseInput" }
+      responses:
+        "201":
+          description: Manual response recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+        "409": { description: Response conflicts with the current quote revision }
+
+  /estimates/{id}/quote-events/work-authorization:
+    post:
+      operationId: recordEstimateWorkAuthorization
+      tags: [estimates]
+      summary: Record explicit authorization for a frozen quote revision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateWorkAuthorizationInput" }
+      responses:
+        "201":
+          description: Work authorization recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+        "409": { description: Revision is not eligible for authorization }
+
+  /estimates/{id}/quote-events/follow-ups:
+    post:
+      operationId: scheduleEstimateQuoteFollowUp
+      tags: [estimates]
+      summary: Schedule an internal quote follow-up
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScheduleEstimateQuoteFollowUpInput" }
+      responses:
+        "201":
+          description: Follow-up scheduled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+
+  /estimates/{id}/quote-events/{eventId}/complete-follow-up:
+    post:
+      operationId: completeEstimateQuoteFollowUp
+      tags: [estimates]
+      summary: Complete a scheduled or standard quote follow-up
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompleteEstimateQuoteFollowUpInput" }
+      responses:
+        "201":
+          description: Follow-up completion recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+        "409": { description: Follow-up is already complete or unavailable }
+
+  /estimates/{id}/archive:
+    post:
+      operationId: archiveEstimateQuote
+      tags: [estimates]
+      summary: Archive a sent quote without deleting its history
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateQuoteBusinessScopeInput" }
+      responses:
+        "201":
+          description: Quote archived
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+        "409": { description: Quote cannot be archived }
+
+  /estimates/{id}/restore:
+    post:
+      operationId: restoreEstimateQuote
+      tags: [estimates]
+      summary: Restore an archived quote
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateQuoteBusinessScopeInput" }
+      responses:
+        "201":
+          description: Quote restored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateQuoteEvent" }
+        "409": { description: Quote is not archived }
 
   /estimates/{id}/quote-events/{eventId}/pdf:
     get:
@@ -3227,7 +3387,7 @@ components:
       properties:
         id: { type: integer }
         jobId: { type: integer }
-        businessId: { type: integer }
+        businessId: { type: ["integer", "null"] }
         reason: { type: string, enum: [electricity, water, materials, inspection, crew, access, other] }
         detail: { type: string, nullable: true }
         expectedDate: { type: string, format: date, nullable: true }
@@ -4243,6 +4403,108 @@ components:
           maxLength: 500
       required: [providerMessageId]
 
+    EstimateQuoteCenterSummary:
+      type: object
+      properties:
+        totalQuotes: { type: integer }
+        draftCount: { type: integer }
+        awaitingCount: { type: integer }
+        viewedCount: { type: integer }
+        acceptedCount: { type: integer }
+        authorizedCount: { type: integer }
+        declinedCount: { type: integer }
+        expiredCount: { type: integer }
+        followUpsDueCount: { type: integer }
+        archivedCount: { type: integer }
+        potentialValue: { type: number }
+        acceptedValue: { type: number }
+        authorizedValue: { type: number }
+        convertedValue: { type: number }
+      required: [totalQuotes, draftCount, awaitingCount, viewedCount, acceptedCount, authorizedCount, declinedCount, expiredCount, followUpsDueCount, archivedCount, potentialValue, acceptedValue, authorizedValue, convertedValue]
+
+    EstimateQuoteCenterItem:
+      type: object
+      properties:
+        estimateId: { type: integer }
+        businessId: { type: integer }
+        title: { type: string }
+        clientName: { type: ["string", "null"] }
+        total: { type: number }
+        jobId: { type: ["integer", "null"] }
+        revisionSnapshotId: { type: ["integer", "null"] }
+        revision: { type: integer, minimum: 0 }
+        documentStatus: { type: string, enum: [draft, sent, viewed, expired, archived] }
+        decision: { type: ["string", "null"], enum: [approved, declined, changes_requested, null] }
+        authorizationStatus: { type: string, enum: [not_authorized, authorized] }
+        nextFollowUpAt: { type: ["string", "null"], format: date-time }
+        nextFollowUpEventId: { type: ["integer", "null"] }
+        nextFollowUpSource: { type: ["string", "null"], enum: [scheduled, three_day, seven_day, null] }
+        followUpDue: { type: boolean }
+      required: [estimateId, businessId, title, total, revision, documentStatus, authorizationStatus, followUpDue]
+
+    EstimateQuoteCenterResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EstimateQuoteCenterItem" }
+        summary: { $ref: "#/components/schemas/EstimateQuoteCenterSummary" }
+      required: [items, summary]
+
+    ManualEstimateQuoteResponseInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        businessLine: { type: string }
+        revisionSnapshotId: { type: integer }
+        responseType: { type: string, enum: [approved, declined, changes_requested] }
+        method: { type: string, enum: [phone, text, email, in_person, other] }
+        contactName: { type: ["string", "null"], maxLength: 200 }
+        responseText: { type: ["string", "null"], maxLength: 4000 }
+        reference: { type: ["string", "null"], maxLength: 500 }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 128 }
+      required: [revisionSnapshotId, responseType, method, idempotencyKey]
+
+    EstimateWorkAuthorizationInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        businessLine: { type: string }
+        revisionSnapshotId: { type: integer }
+        confirmed: { type: boolean, enum: [true] }
+        note: { type: ["string", "null"], maxLength: 4000 }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 128 }
+      required: [revisionSnapshotId, confirmed, idempotencyKey]
+
+    ScheduleEstimateQuoteFollowUpInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        businessLine: { type: string }
+        revisionSnapshotId: { type: integer }
+        dueAt: { type: string, format: date-time }
+        method: { type: string, enum: [phone, text, email, in_person, other] }
+        note: { type: ["string", "null"], maxLength: 4000 }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 128 }
+      required: [revisionSnapshotId, dueAt, idempotencyKey]
+
+    CompleteEstimateQuoteFollowUpInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        businessLine: { type: string }
+        source: { type: string, enum: [scheduled, three_day, seven_day] }
+        method: { type: string, enum: [phone, text, email, in_person, other] }
+        note: { type: ["string", "null"], maxLength: 4000 }
+        idempotencyKey: { type: string, minLength: 16, maxLength: 128 }
+      required: [source, idempotencyKey]
+
+    EstimateQuoteBusinessScopeInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        businessLine: { type: string }
+
     EstimateQuoteEvent:
       type: object
       properties:
@@ -4260,6 +4522,9 @@ components:
         responseText: { type: ["string", "null"] }
         responseAt: { type: ["string", "null"], format: date-time }
         errorMessage: { type: ["string", "null"] }
+        relatedEventId: { type: ["integer", "null"] }
+        dueAt: { type: ["string", "null"], format: date-time }
+        metadata: { type: object, additionalProperties: true }
       required: [id, estimateId, revision, eventType, status, requestedAt]
 
     EstimateQuoteSendResult:

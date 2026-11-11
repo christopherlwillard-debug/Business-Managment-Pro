@@ -613,3 +613,31 @@ without overloading invoice-delivery communication history.
 
 **Status:** Accepted
 **Date:** 2026-11-10
+
+---
+
+## ADR-033
+
+**Title:** Quote decisions and work authorization share append-only quote history
+
+**Decision:** Keep `estimates` as the estimate content and pricing source, and extend
+`estimate_quote_events` for immutable revisions, customer responses, explicit
+work authorization, follow-up, and archive/restore history. Online approval is
+decision-only. Authorization must be a separate event tied to the exact frozen
+revision; it never carries to a newer revision. Keep estimate status and
+estimate-to-job conversion behavior unchanged.
+
+**Reason:** A customer decision, permission to begin work, internal reminders,
+and job conversion are distinct workflow facts. Recording them in the existing
+quote history preserves an auditable source without creating a competing quote
+or CRM ledger.
+
+**Rejected Alternatives:**
+
+- Treating online approval as automatic work authorization
+- Backfilling historical `won` or `lost` statuses as customer responses
+- Adding a separate CRM, quote, or follow-up table
+- Rewriting old quote history or changing estimate conversion semantics
+
+**Status:** Accepted
+**Date:** 2026-11-11

@@ -22,6 +22,7 @@ import type {
   BeginBrowserLoginParams,
   Client,
   ClientBillingProfile,
+  CompleteEstimateQuoteFollowUpInput,
   ComplianceReport,
   ComponentWorkSession,
   ComponentWorkSessionsResponse,
@@ -41,12 +42,16 @@ import type {
   DashboardStats,
   ErrorEnvelope,
   Estimate,
+  EstimateQuoteBusinessScopeInput,
+  EstimateQuoteCenterResponse,
   EstimateQuoteEvent,
   EstimateQuoteSendResult,
+  EstimateWorkAuthorizationInput,
   Expense,
   FinalizeInvoiceCommunicationRequest,
   Get1099ReportParams,
   GetDashboardStatsParams,
+  GetEstimateQuoteCenterParams,
   GetInvoiceTaxReportParams,
   GetJobsProfitSummary200,
   GetJobsProfitSummaryParams,
@@ -72,6 +77,7 @@ import type {
   ListJobsParams,
   ListMileageLogsParams,
   LogoutSuccess,
+  ManualEstimateQuoteResponseInput,
   MaterialListInvoiceAssignmentHistoryEvent,
   MaterialListInvoiceAssignmentInput,
   MaterialListInvoiceAssignmentResult,
@@ -96,6 +102,7 @@ import type {
   ReconcileEstimateQuoteInput,
   RecurringExpense,
   ResetPortalPin200,
+  ScheduleEstimateQuoteFollowUpInput,
   SendEstimateQuoteInput,
   StartJobRequest,
   Subcontractor,
@@ -7303,6 +7310,109 @@ export const useCreateEstimate = <
 };
 
 /**
+ * @summary List estimates with quote workflow state
+ */
+export const getGetEstimateQuoteCenterUrl = (
+  params?: GetEstimateQuoteCenterParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/estimates/quote-center?${stringifiedParams}`
+    : `/api/estimates/quote-center`;
+};
+
+export const getEstimateQuoteCenter = async (
+  params?: GetEstimateQuoteCenterParams,
+  options?: RequestInit,
+): Promise<EstimateQuoteCenterResponse> => {
+  return customFetch<EstimateQuoteCenterResponse>(
+    getGetEstimateQuoteCenterUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetEstimateQuoteCenterQueryKey = (
+  params?: GetEstimateQuoteCenterParams,
+) => {
+  return [`/api/estimates/quote-center`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetEstimateQuoteCenterQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEstimateQuoteCenter>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetEstimateQuoteCenterParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEstimateQuoteCenter>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEstimateQuoteCenterQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEstimateQuoteCenter>>
+  > = ({ signal }) =>
+    getEstimateQuoteCenter(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEstimateQuoteCenter>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEstimateQuoteCenterQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEstimateQuoteCenter>>
+>;
+export type GetEstimateQuoteCenterQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List estimates with quote workflow state
+ */
+
+export function useGetEstimateQuoteCenter<
+  TData = Awaited<ReturnType<typeof getEstimateQuoteCenter>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetEstimateQuoteCenterParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEstimateQuoteCenter>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEstimateQuoteCenterQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * @summary Get an estimate
  */
 export const getGetEstimateUrl = (id: number) => {
@@ -7820,6 +7930,574 @@ export function useListEstimateQuoteEvents<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Record a customer response received outside the quote page
+ */
+export const getRecordManualEstimateQuoteResponseUrl = (id: number) => {
+  return `/api/estimates/${id}/quote-events/manual-response`;
+};
+
+export const recordManualEstimateQuoteResponse = async (
+  id: number,
+  manualEstimateQuoteResponseInput: ManualEstimateQuoteResponseInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(
+    getRecordManualEstimateQuoteResponseUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(manualEstimateQuoteResponseInput),
+    },
+  );
+};
+
+export const getRecordManualEstimateQuoteResponseMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>,
+    TError,
+    { id: number; data: BodyType<ManualEstimateQuoteResponseInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>,
+  TError,
+  { id: number; data: BodyType<ManualEstimateQuoteResponseInput> },
+  TContext
+> => {
+  const mutationKey = ["recordManualEstimateQuoteResponse"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>,
+    { id: number; data: BodyType<ManualEstimateQuoteResponseInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return recordManualEstimateQuoteResponse(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecordManualEstimateQuoteResponseMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>
+>;
+export type RecordManualEstimateQuoteResponseMutationBody =
+  BodyType<ManualEstimateQuoteResponseInput>;
+export type RecordManualEstimateQuoteResponseMutationError = ErrorType<void>;
+
+/**
+ * @summary Record a customer response received outside the quote page
+ */
+export const useRecordManualEstimateQuoteResponse = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>,
+    TError,
+    { id: number; data: BodyType<ManualEstimateQuoteResponseInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recordManualEstimateQuoteResponse>>,
+  TError,
+  { id: number; data: BodyType<ManualEstimateQuoteResponseInput> },
+  TContext
+> => {
+  return useMutation(
+    getRecordManualEstimateQuoteResponseMutationOptions(options),
+  );
+};
+
+/**
+ * @summary Record explicit authorization for a frozen quote revision
+ */
+export const getRecordEstimateWorkAuthorizationUrl = (id: number) => {
+  return `/api/estimates/${id}/quote-events/work-authorization`;
+};
+
+export const recordEstimateWorkAuthorization = async (
+  id: number,
+  estimateWorkAuthorizationInput: EstimateWorkAuthorizationInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(
+    getRecordEstimateWorkAuthorizationUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(estimateWorkAuthorizationInput),
+    },
+  );
+};
+
+export const getRecordEstimateWorkAuthorizationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>,
+    TError,
+    { id: number; data: BodyType<EstimateWorkAuthorizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>,
+  TError,
+  { id: number; data: BodyType<EstimateWorkAuthorizationInput> },
+  TContext
+> => {
+  const mutationKey = ["recordEstimateWorkAuthorization"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>,
+    { id: number; data: BodyType<EstimateWorkAuthorizationInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return recordEstimateWorkAuthorization(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecordEstimateWorkAuthorizationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>
+>;
+export type RecordEstimateWorkAuthorizationMutationBody =
+  BodyType<EstimateWorkAuthorizationInput>;
+export type RecordEstimateWorkAuthorizationMutationError = ErrorType<void>;
+
+/**
+ * @summary Record explicit authorization for a frozen quote revision
+ */
+export const useRecordEstimateWorkAuthorization = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>,
+    TError,
+    { id: number; data: BodyType<EstimateWorkAuthorizationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recordEstimateWorkAuthorization>>,
+  TError,
+  { id: number; data: BodyType<EstimateWorkAuthorizationInput> },
+  TContext
+> => {
+  return useMutation(
+    getRecordEstimateWorkAuthorizationMutationOptions(options),
+  );
+};
+
+/**
+ * @summary Schedule an internal quote follow-up
+ */
+export const getScheduleEstimateQuoteFollowUpUrl = (id: number) => {
+  return `/api/estimates/${id}/quote-events/follow-ups`;
+};
+
+export const scheduleEstimateQuoteFollowUp = async (
+  id: number,
+  scheduleEstimateQuoteFollowUpInput: ScheduleEstimateQuoteFollowUpInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(
+    getScheduleEstimateQuoteFollowUpUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(scheduleEstimateQuoteFollowUpInput),
+    },
+  );
+};
+
+export const getScheduleEstimateQuoteFollowUpMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>,
+    TError,
+    { id: number; data: BodyType<ScheduleEstimateQuoteFollowUpInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>,
+  TError,
+  { id: number; data: BodyType<ScheduleEstimateQuoteFollowUpInput> },
+  TContext
+> => {
+  const mutationKey = ["scheduleEstimateQuoteFollowUp"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>,
+    { id: number; data: BodyType<ScheduleEstimateQuoteFollowUpInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return scheduleEstimateQuoteFollowUp(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ScheduleEstimateQuoteFollowUpMutationResult = NonNullable<
+  Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>
+>;
+export type ScheduleEstimateQuoteFollowUpMutationBody =
+  BodyType<ScheduleEstimateQuoteFollowUpInput>;
+export type ScheduleEstimateQuoteFollowUpMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Schedule an internal quote follow-up
+ */
+export const useScheduleEstimateQuoteFollowUp = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>,
+    TError,
+    { id: number; data: BodyType<ScheduleEstimateQuoteFollowUpInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof scheduleEstimateQuoteFollowUp>>,
+  TError,
+  { id: number; data: BodyType<ScheduleEstimateQuoteFollowUpInput> },
+  TContext
+> => {
+  return useMutation(getScheduleEstimateQuoteFollowUpMutationOptions(options));
+};
+
+/**
+ * @summary Complete a scheduled or standard quote follow-up
+ */
+export const getCompleteEstimateQuoteFollowUpUrl = (
+  id: number,
+  eventId: number,
+) => {
+  return `/api/estimates/${id}/quote-events/${eventId}/complete-follow-up`;
+};
+
+export const completeEstimateQuoteFollowUp = async (
+  id: number,
+  eventId: number,
+  completeEstimateQuoteFollowUpInput: CompleteEstimateQuoteFollowUpInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(
+    getCompleteEstimateQuoteFollowUpUrl(id, eventId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(completeEstimateQuoteFollowUpInput),
+    },
+  );
+};
+
+export const getCompleteEstimateQuoteFollowUpMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<CompleteEstimateQuoteFollowUpInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>,
+  TError,
+  {
+    id: number;
+    eventId: number;
+    data: BodyType<CompleteEstimateQuoteFollowUpInput>;
+  },
+  TContext
+> => {
+  const mutationKey = ["completeEstimateQuoteFollowUp"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<CompleteEstimateQuoteFollowUpInput>;
+    }
+  > = (props) => {
+    const { id, eventId, data } = props ?? {};
+
+    return completeEstimateQuoteFollowUp(id, eventId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteEstimateQuoteFollowUpMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>
+>;
+export type CompleteEstimateQuoteFollowUpMutationBody =
+  BodyType<CompleteEstimateQuoteFollowUpInput>;
+export type CompleteEstimateQuoteFollowUpMutationError = ErrorType<void>;
+
+/**
+ * @summary Complete a scheduled or standard quote follow-up
+ */
+export const useCompleteEstimateQuoteFollowUp = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>,
+    TError,
+    {
+      id: number;
+      eventId: number;
+      data: BodyType<CompleteEstimateQuoteFollowUpInput>;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeEstimateQuoteFollowUp>>,
+  TError,
+  {
+    id: number;
+    eventId: number;
+    data: BodyType<CompleteEstimateQuoteFollowUpInput>;
+  },
+  TContext
+> => {
+  return useMutation(getCompleteEstimateQuoteFollowUpMutationOptions(options));
+};
+
+/**
+ * @summary Archive a sent quote without deleting its history
+ */
+export const getArchiveEstimateQuoteUrl = (id: number) => {
+  return `/api/estimates/${id}/archive`;
+};
+
+export const archiveEstimateQuote = async (
+  id: number,
+  estimateQuoteBusinessScopeInput: EstimateQuoteBusinessScopeInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(getArchiveEstimateQuoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(estimateQuoteBusinessScopeInput),
+  });
+};
+
+export const getArchiveEstimateQuoteMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof archiveEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof archiveEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+  TContext
+> => {
+  const mutationKey = ["archiveEstimateQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof archiveEstimateQuote>>,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return archiveEstimateQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ArchiveEstimateQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof archiveEstimateQuote>>
+>;
+export type ArchiveEstimateQuoteMutationBody =
+  BodyType<EstimateQuoteBusinessScopeInput>;
+export type ArchiveEstimateQuoteMutationError = ErrorType<void>;
+
+/**
+ * @summary Archive a sent quote without deleting its history
+ */
+export const useArchiveEstimateQuote = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof archiveEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof archiveEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+  TContext
+> => {
+  return useMutation(getArchiveEstimateQuoteMutationOptions(options));
+};
+
+/**
+ * @summary Restore an archived quote
+ */
+export const getRestoreEstimateQuoteUrl = (id: number) => {
+  return `/api/estimates/${id}/restore`;
+};
+
+export const restoreEstimateQuote = async (
+  id: number,
+  estimateQuoteBusinessScopeInput: EstimateQuoteBusinessScopeInput,
+  options?: RequestInit,
+): Promise<EstimateQuoteEvent> => {
+  return customFetch<EstimateQuoteEvent>(getRestoreEstimateQuoteUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(estimateQuoteBusinessScopeInput),
+  });
+};
+
+export const getRestoreEstimateQuoteMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof restoreEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+  TContext
+> => {
+  const mutationKey = ["restoreEstimateQuote"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof restoreEstimateQuote>>,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return restoreEstimateQuote(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RestoreEstimateQuoteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof restoreEstimateQuote>>
+>;
+export type RestoreEstimateQuoteMutationBody =
+  BodyType<EstimateQuoteBusinessScopeInput>;
+export type RestoreEstimateQuoteMutationError = ErrorType<void>;
+
+/**
+ * @summary Restore an archived quote
+ */
+export const useRestoreEstimateQuote = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof restoreEstimateQuote>>,
+    TError,
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof restoreEstimateQuote>>,
+  TError,
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
+  TContext
+> => {
+  return useMutation(getRestoreEstimateQuoteMutationOptions(options));
+};
 
 /**
  * @summary Download a saved quote revision PDF

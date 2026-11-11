@@ -26,6 +26,8 @@ export const estimateQuoteEventsTable = pgTable("estimate_quote_events", {
     .references(() => businessesTable.id, { onDelete: "restrict" }),
   revisionSnapshotId: integer("revision_snapshot_id")
     .references((): AnyPgColumn => estimateQuoteEventsTable.id, { onDelete: "restrict" }),
+  relatedEventId: integer("related_event_id")
+    .references((): AnyPgColumn => estimateQuoteEventsTable.id, { onDelete: "restrict" }),
   revision: integer("revision").notNull(),
   eventType: text("event_type").notNull(),
   status: text("status").notNull(),
@@ -34,6 +36,7 @@ export const estimateQuoteEventsTable = pgTable("estimate_quote_events", {
   actorName: text("actor_name"),
   requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  dueAt: timestamp("due_at", { withTimezone: true }),
   provider: text("provider"),
   providerMessageId: text("provider_message_id"),
   providerThreadId: text("provider_thread_id"),
@@ -60,14 +63,24 @@ export const estimateQuoteEventsTable = pgTable("estimate_quote_events", {
     OR (${table.eventType} = 'send_attempt' AND ${table.status} IN ('pending', 'accepted', 'failed', 'unresolved'))
     OR (${table.eventType} = 'view' AND ${table.status} = 'viewed')
     OR (${table.eventType} = 'response' AND ${table.status} = 'recorded')
+    OR (${table.eventType} = 'manual_response' AND ${table.status} = 'recorded')
+    OR (${table.eventType} = 'work_authorization' AND ${table.status} = 'authorized')
+    OR (${table.eventType} = 'follow_up_scheduled' AND ${table.status} = 'scheduled')
+    OR (${table.eventType} = 'follow_up_completed' AND ${table.status} = 'completed')
+    OR (${table.eventType} = 'archive' AND ${table.status} = 'archived')
+    OR (${table.eventType} = 'restore' AND ${table.status} = 'restored')
   )`),
   check("estimate_quote_events_response_shape_check", sql`(
-    (${table.eventType} = 'response' AND ${table.responseType} IS NOT NULL)
-    OR (${table.eventType} <> 'response' AND ${table.responseType} IS NULL)
+    (${table.eventType} IN ('response', 'manual_response') AND ${table.responseType} IS NOT NULL)
+    OR (${table.eventType} NOT IN ('response', 'manual_response') AND ${table.responseType} IS NULL)
   )`),
   index("estimate_quote_events_estimate_requested_idx").on(table.estimateId, table.requestedAt),
   index("estimate_quote_events_business_requested_idx").on(table.businessId, table.requestedAt),
   index("estimate_quote_events_revision_snapshot_idx").on(table.revisionSnapshotId),
+  index("estimate_quote_events_related_event_idx").on(table.relatedEventId),
+  index("estimate_quote_events_follow_up_due_idx")
+    .on(table.businessId, table.dueAt)
+    .where(sql`${table.eventType} = 'follow_up_scheduled' AND ${table.status} = 'scheduled'`),
   uniqueIndex("estimate_quote_events_idempotency_key_unique")
     .on(table.idempotencyKey)
     .where(sql`${table.idempotencyKey} IS NOT NULL`),

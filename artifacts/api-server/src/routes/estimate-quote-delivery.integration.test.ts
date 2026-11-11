@@ -11,6 +11,8 @@ const h = vi.hoisted(() => {
   return {
     selectQueue: [] as any[][],
     whereClauses: [] as unknown[],
+    scopeRequests: [] as any[],
+    requireBusinessScope: false,
     insertQueue: [] as any[][],
     inserts: [] as any[],
     updates: [] as any[],
@@ -81,10 +83,15 @@ const fakeDb = {
 
 vi.mock("@workspace/db", () => ({ db: fakeDb }));
 vi.mock("../lib/business-scope.js", () => ({
-  requestedBusinessReadScope: async () => ({ businessIds: [1], businessLines: ["general_contracting"] }),
+  requestedBusinessReadScope: async (req: any) => {
+    h.scopeRequests.push(req.query);
+    if (h.requireBusinessScope && req.query.businessId == null && req.query.businessLine == null) return null;
+    return { businessIds: [1], businessLines: ["general_contracting"] };
+  },
   invalidBusinessScope: () => false,
   hasRequestedBusiness: () => false,
   belongsToBusinessReadScope: () => true,
+  businessReadPredicate: () => undefined,
 }));
 vi.mock("./guards.js", () => ({
   getRequestUser: () => ({ firstName: "Test", lastName: "Owner" }),
@@ -224,6 +231,8 @@ beforeEach(() => {
   process.env.SESSION_SECRET = "test-secret";
   h.selectQueue.length = 0;
   h.whereClauses.length = 0;
+  h.scopeRequests.length = 0;
+  h.requireBusinessScope = false;
   h.insertQueue.length = 0;
   h.inserts.length = 0;
   h.updates.length = 0;
@@ -236,6 +245,59 @@ beforeEach(() => {
   h.failAcceptedWrite = false;
   h.failPdfUpload = false;
   h.transactionCount = 0;
+});
+
+describe("scoped Quote Center actions", () => {
+  it("requires an explicit business scope before recording a manual decision", async () => {
+    h.requireBusinessScope = true;
+    const response = await request(app).post("/estimates/12/quote-events/manual-response").send({
+      revisionSnapshotId: 701,
+      responseType: "approved",
+      method: "phone",
+      idempotencyKey: "manual-response-key-0001",
+    }).expect(400);
+    expect(response.body.error).toContain("business");
+    expect(h.selectQueue).toHaveLength(0);
+  });
+
+  it("records a manual decision against the requested business and exact revision", async () => {
+    h.requireBusinessScope = true;
+    h.selectQueue.push([{ ...estimate }], [revision()]);
+    h.insertQueue.push([{
+      id: 801,
+      estimateId: 12,
+      revisionSnapshotId: 701,
+      revision: 1,
+      eventType: "manual_response",
+      status: "recorded",
+      responseType: "approved",
+      requestedAt: new Date("2026-11-11T12:00:00.000Z"),
+      metadata: { method: "phone", source: "manual" },
+    }]);
+    const response = await request(app).post("/estimates/12/quote-events/manual-response").send({
+      businessId: 1,
+      revisionSnapshotId: 701,
+      responseType: "approved",
+      method: "phone",
+      contactName: "Jordan Lee",
+      idempotencyKey: "manual-response-key-0002",
+    }).expect(201);
+
+    expect(h.scopeRequests.at(-1)).toMatchObject({ businessId: 1 });
+    expect(h.inserts.at(-1)).toMatchObject({
+      eventType: "manual_response",
+      status: "recorded",
+      responseType: "approved",
+      estimateId: 12,
+      revisionSnapshotId: 701,
+      metadata: { source: "manual", method: "phone", contactName: "Jordan Lee" },
+    });
+    expect(response.body).toMatchObject({
+      eventType: "manual_response",
+      responseType: "approved",
+      responseAt: "2026-11-11T12:00:00.000Z",
+    });
+  });
 });
 
 afterEach(() => {
