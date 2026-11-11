@@ -61,12 +61,13 @@ interface ProfitLossReport {
   closedJobCount?: number;
 }
 
-function useProfitLoss(year: number, businessLine?: string) {
+function useProfitLoss(year: number, businessLine?: string, businessId?: number) {
   return useQuery<ProfitLossReport>({
     queryKey: ["profit-loss", year, businessLine ?? "all"],
     queryFn: async () => {
       const params = new URLSearchParams({ year: String(year) });
       if (businessLine) params.set("businessLine", businessLine);
+      if (businessId != null) params.set("businessId", String(businessId));
       const res = await fetch(`${BASE}/api/reports/profit-loss?${params}`);
       if (!res.ok) throw new Error("Failed to load P&L report");
       return res.json();
@@ -165,7 +166,13 @@ function OwnerActivityCard({
 
 function ProfitLossTab({ year }: { year: number }) {
   const { activeBusiness } = useBusiness();
-  const { data: report, isLoading, error } = useProfitLoss(year, activeBusiness?.slug);
+  const isLegalBusinessSelection = !!activeBusiness
+    && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+  const { data: report, isLoading, error } = useProfitLoss(
+    year,
+    activeBusiness && !isLegalBusinessSelection ? activeBusiness.slug : undefined,
+    activeBusiness && isLegalBusinessSelection ? activeBusiness.id : undefined,
+  );
   const taxProfile = report?.taxProfile ?? DEFAULT_TAX_PROFILE;
 
   function handlePrint() {

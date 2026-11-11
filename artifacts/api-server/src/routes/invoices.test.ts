@@ -272,6 +272,18 @@ describe("validateLineItems", () => {
 // POST / — line item validation on create
 // ─────────────────────────────────────────────────────────────────────────────
 describe("POST / — line item validation", () => {
+  it("rejects a Kinora owner instead of storing it as a Willard invoice", async () => {
+    h.mutationResolution = { ok: false, error: "Unknown business" };
+
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      businessLine: "kinora",
+    });
+
+    expect(res.status).toBe(400);
+    expect(h.inserts).toHaveLength(0);
+  });
+
   it("creates a draft invoice when line items are valid", async () => {
     // buildInvoiceQuery().where() after insert
     h.selectQueue.push([fakeInvoice({ status: "draft", invoiceNumber: null })]);

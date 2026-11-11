@@ -2,12 +2,12 @@ import { Router } from "express";
 import { isOwnerWithdrawalExpenseCategoryInsensitive } from "../lib/owner-withdrawals.js";
 import { db } from "@workspace/db";
 import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns } from "drizzle-orm";
+import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns, inArray } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { reconcileExpense } from "../lib/matchingEngine.js";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, requestedBusinessReadScope, businessReadPredicate, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, sameLegalBusiness } from "../lib/business-scope.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { settingsTable } from "@workspace/db/schema";
 
@@ -21,10 +21,15 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid expense ID" });
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
-    const [expense] = await db.select().from(expensesTable).where(eq(expensesTable.id, id));
-    if (!expense || !belongsToBusiness(expense, scope)) return res.status(404).json({ error: "Expense not found" });
+    const scope = await requestedBusinessReadScope(req);
+    if (hasRequestedBusiness(req) && !scope) return res.status(400).json({ error: "Unknown business" });
+    const ownership = businessReadPredicate(
+      { businessId: expensesTable.businessId, businessLine: expensesTable.businessLine },
+      scope,
+    );
+    const [expense] = await db.select().from(expensesTable)
+      .where(and(eq(expensesTable.id, id), ownership));
+    if (!expense) return res.status(404).json({ error: "Expense not found" });
     res.locals.businessScopedExpense = expense;
     next();
   })().catch(next);
@@ -150,10 +155,10 @@ const allocationSelect = {
 // row in the expenses ledger.
 router.get("/job-allocations", async (req, res) => {
   try {
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const scope = await requestedBusinessReadScope(req);
+    if (hasRequestedBusiness(req) && !scope) return res.status(400).json({ error: "Unknown business" });
     const conditions: any[] = [];
-    if (scope) conditions.push(eq(jobExpenseAllocationsTable.businessId, scope.id));
+    if (scope) conditions.push(inArray(jobExpenseAllocationsTable.businessId, scope.memberIds));
     if (req.query.jobId) conditions.push(eq(jobExpenseAllocationsTable.jobId, parseInt(String(req.query.jobId))));
     const rows = await db
       .select(allocationSelect)
@@ -171,8 +176,8 @@ router.get("/job-allocations", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const { category, jobId, startDate, endDate } = req.query;
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const scope = await requestedBusinessReadScope(req);
+    if (hasRequestedBusiness(req) && !scope) return res.status(400).json({ error: "Unknown business" });
     // Exclude auto-expenses linked to sub hours (jobSubHoursId IS NOT NULL).
     // Those are internal job-cost entries used for P&L math; actual cash paid
     // to hourly subs is captured by sub_payment_records rows (shown below).
@@ -181,10 +186,11 @@ router.get("/", async (req, res) => {
     if (jobId) conditions.push(eq(expensesTable.jobId, parseInt(jobId as string)));
     if (startDate) conditions.push(gte(expensesTable.date, startDate as string));
     if (endDate) conditions.push(lte(expensesTable.date, endDate as string));
-    if (scope) conditions.push(or(
-      eq(expensesTable.businessId, scope.id),
-      and(isNull(expensesTable.businessId), eq(expensesTable.businessLine, scope.slug)),
-    ));
+    const expenseOwnership = businessReadPredicate(
+      { businessId: expensesTable.businessId, businessLine: expensesTable.businessLine },
+      scope,
+    );
+    if (expenseOwnership) conditions.push(expenseOwnership);
 
     // sub_payment_records should appear alongside expenses for reconciliation.
     // Only include them when the category filter is absent or set to "Subcontractor".
@@ -203,7 +209,7 @@ router.get("/", async (req, res) => {
             notes: subPaymentRecordsTable.notes,
             paymentMethod: subPaymentRecordsTable.paymentMethod,
             referenceNumber: subPaymentRecordsTable.referenceNumber,
-            businessLine: subPaymentRecordsTable.businessLine,
+            businessLine: jobsTable.businessLine,
             jobId: subPaymentRecordsTable.jobId,
             subcontractorId: subPaymentRecordsTable.subcontractorId,
             createdAt: subPaymentRecordsTable.createdAt,
@@ -216,10 +222,10 @@ router.get("/", async (req, res) => {
           .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
           .where(and(
             sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
-            ...(scope ? [or(
-              eq(subPaymentRecordsTable.businessId, scope.id),
-              and(isNull(subPaymentRecordsTable.businessId), eq(subPaymentRecordsTable.businessLine, scope.slug)),
-            )] : []),
+            ...(scope ? [businessReadPredicate(
+              { businessId: jobsTable.businessId, businessLine: jobsTable.businessLine },
+              scope,
+            )!] : []),
             ...(jobId ? [eq(subPaymentRecordsTable.jobId, parseInt(jobId as string))] : []),
             ...(startDate ? [gte(subPaymentRecordsTable.paymentDate, startDate as string)] : []),
             ...(endDate ? [lte(subPaymentRecordsTable.paymentDate, endDate as string)] : []),
@@ -350,7 +356,7 @@ router.post("/", async (req, res) => {
   try {
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
-       excludeFromNetProfit, countsTowardJobProfit,
+       excludeFromNetProfit, countsTowardJobProfit, isSharedOverhead,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
@@ -360,6 +366,7 @@ router.post("/", async (req, res) => {
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ error: "Amount must be greater than zero" });
     }
+    if (isSharedOverhead === true && jobId) return res.status(400).json({ error: "Shared overhead cannot be linked to a job" });
     if (receiptStatus === "missing" && !receiptMissingExplanation?.trim()) {
       return res.status(400).json({ error: "receiptMissingExplanation is required when receiptStatus is 'missing'" });
     }
@@ -392,7 +399,10 @@ router.post("/", async (req, res) => {
         businessLine: jobsTable.businessLine,
       }).from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
       if (!job) return res.status(404).json({ error: "Job not found" });
-      if (!belongsToBusiness(job, owner)) {
+      const sameLegalOwner = job.businessId != null
+        ? await sameLegalBusiness(job.businessId, owner.id)
+        : job.businessLine === owner.slug;
+      if (!sameLegalOwner) {
         return res.status(404).json({ error: "Job not found" });
       }
       // A job-linked expense always inherits the job's business. Never let a
@@ -415,7 +425,8 @@ router.post("/", async (req, res) => {
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: excludeFromNetProfit === true,
       countsTowardJobProfit: countsTowardJobProfit === false ? false : true,
-      businessLine: owner.slug,
+      isSharedOverhead: isSharedOverhead === true,
+      businessLine: jobId ? (await db.select({ businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).then(rows => rows[0]?.businessLine ?? owner.slug)) : owner.slug,
       businessId: resolvedBusinessId ?? owner.id,
       tripId: tripId ? parseInt(tripId) : null,
       overnightTravel: overnightTravel === true ? true : (overnightTravel === false ? false : null),
@@ -463,7 +474,7 @@ router.put("/:id", async (req, res) => {
     const id = Number(req.params.id);
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
-       excludeFromNetProfit, countsTowardJobProfit,
+       excludeFromNetProfit, countsTowardJobProfit, isSharedOverhead,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
@@ -476,6 +487,25 @@ router.put("/:id", async (req, res) => {
     const [before] = await db.select().from(expensesTable)
       .where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, owner)));
     if (!before) return res.status(404).json({ error: "Expense not found" });
+    let resolvedBusinessId = before.businessId ?? owner.id;
+    let resolvedBusinessLine = before.businessLine ?? owner.slug;
+    if (jobId !== undefined && jobId) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, parseInt(String(jobId)))).limit(1);
+      if (!job) return res.status(404).json({ error: "Job not found" });
+      let jobBusinessId = job.businessId;
+      if (jobBusinessId == null && job.businessLine) {
+        const [jobBusiness] = await db.select({ id: businessesTable.id }).from(businessesTable)
+          .where(eq(businessesTable.slug, job.businessLine)).limit(1);
+        jobBusinessId = jobBusiness?.id ?? null;
+      }
+      const belongsToLegalOwner = jobBusinessId != null
+        ? await sameLegalBusiness(jobBusinessId, owner.id)
+        : job.businessLine === owner.slug;
+      if (!belongsToLegalOwner) return res.status(404).json({ error: "Job not found" });
+      if (job.businessId != null) resolvedBusinessId = job.businessId;
+      resolvedBusinessLine = job.businessLine ?? resolvedBusinessLine;
+    }
 
     // Validate receipt proof: check resulting status (request value or existing)
     const resultingReceiptStatus = receiptStatus !== undefined ? receiptStatus : before.receiptStatus;
@@ -514,6 +544,13 @@ router.put("/:id", async (req, res) => {
     }
 
     const effectiveCat = category !== undefined ? category : (before.category ?? "");
+    const effectiveJobId = jobId !== undefined ? jobId : before.jobId;
+    const effectiveSharedOverhead = isSharedOverhead !== undefined
+      ? isSharedOverhead === true
+      : before.isSharedOverhead === true;
+    if (effectiveSharedOverhead && effectiveJobId) {
+      return res.status(400).json({ error: "Shared overhead cannot be linked to a job" });
+    }
     if (isOwnerPayCategory(effectiveCat)) {
       return res.status(400).json({
         error: "Owner withdrawals are managed in their own ledger. Historical owner expense rows must be migrated and voided, not edited.",
@@ -543,8 +580,9 @@ router.put("/:id", async (req, res) => {
       ...(notes !== undefined && { notes }),
       excludeFromNetProfit: excludeFromNetProfit !== undefined ? excludeFromNetProfit === true : (before.excludeFromNetProfit ?? false),
       ...(countsTowardJobProfit !== undefined && { countsTowardJobProfit: countsTowardJobProfit === false ? false : true }),
-      businessLine: before.businessLine ?? owner.slug,
-      businessId: before.businessId ?? owner.id,
+      ...(isSharedOverhead !== undefined && { isSharedOverhead: isSharedOverhead === true }),
+      businessLine: resolvedBusinessLine,
+      businessId: resolvedBusinessId,
       ...(tripId !== undefined && { tripId: tripId ? parseInt(tripId) : null }),
       ...(overnightTravel !== undefined && { overnightTravel }),
       ...(isPotentiallyNondeductible !== undefined && { isPotentiallyNondeductible: isPotentiallyNondeductible === true }),

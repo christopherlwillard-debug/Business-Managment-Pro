@@ -50,6 +50,8 @@ export const expensesTable = pgTable("expenses", {
   // page as a cash-flow record (it is a real cash outflow). Never set this flag on non-wage
   // payments (bonuses, materials reimbursements, etc.) — those belong in Accounting.
   isWageAdvance: boolean("is_wage_advance").default(false),
+  // Explicit reporting-only classification; null keeps historical overhead unclassified.
+  isSharedOverhead: boolean("is_shared_overhead"),
 });
 
 export const insertExpenseSchema = createInsertSchema(expensesTable).omit({ id: true, createdAt: true });

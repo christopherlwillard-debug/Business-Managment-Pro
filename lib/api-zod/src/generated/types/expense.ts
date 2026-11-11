@@ -21,6 +21,7 @@ export interface Expense {
   businessLine?: string | null;
   countsTowardJobProfit?: boolean | null;
   excludeFromNetProfit?: boolean | null;
+  isSharedOverhead?: boolean | null;
   legacyPayrollDuplicate?: boolean | null;
   createdAt: string;
   [key: string]: unknown;

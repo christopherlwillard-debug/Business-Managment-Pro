@@ -2978,6 +2978,7 @@ export const ListExpensesResponseItem = zod.object({
   businessLine: zod.string().nullish(),
   countsTowardJobProfit: zod.boolean().nullish(),
   excludeFromNetProfit: zod.boolean().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
   legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
@@ -2996,6 +2997,7 @@ export const CreateExpenseBody = zod.object({
   subcontractorId: zod.number().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
 });
 
 /**
@@ -3020,6 +3022,7 @@ export const GetExpenseResponse = zod.object({
   businessLine: zod.string().nullish(),
   countsTowardJobProfit: zod.boolean().nullish(),
   excludeFromNetProfit: zod.boolean().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
   legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
@@ -3041,6 +3044,7 @@ export const UpdateExpenseBody = zod.object({
   subcontractorId: zod.number().nullish(),
   receiptUrl: zod.string().nullish(),
   notes: zod.string().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
 });
 
 export const UpdateExpenseResponse = zod.object({
@@ -3058,6 +3062,7 @@ export const UpdateExpenseResponse = zod.object({
   businessLine: zod.string().nullish(),
   countsTowardJobProfit: zod.boolean().nullish(),
   excludeFromNetProfit: zod.boolean().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
   legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });
@@ -3095,6 +3100,7 @@ export const UploadExpenseReceiptResponse = zod.object({
   businessLine: zod.string().nullish(),
   countsTowardJobProfit: zod.boolean().nullish(),
   excludeFromNetProfit: zod.boolean().nullish(),
+  isSharedOverhead: zod.boolean().nullish(),
   legacyPayrollDuplicate: zod.boolean().nullish(),
   createdAt: zod.string(),
 });

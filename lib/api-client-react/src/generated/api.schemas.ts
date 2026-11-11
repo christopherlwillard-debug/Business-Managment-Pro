@@ -1106,6 +1106,7 @@ export interface Expense {
   businessLine?: string | null;
   countsTowardJobProfit?: boolean | null;
   excludeFromNetProfit?: boolean | null;
+  isSharedOverhead?: boolean | null;
   legacyPayrollDuplicate?: boolean | null;
   createdAt: string;
   [key: string]: unknown;
@@ -1121,6 +1122,7 @@ export interface CreateExpenseRequest {
   subcontractorId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  isSharedOverhead?: boolean | null;
   [key: string]: unknown;
 }
 

@@ -123,6 +123,17 @@ afterEach(() => {
 });
 
 describe("estimate canonical business ownership", () => {
+  it("rejects a Kinora owner instead of storing it as a Willard estimate", async () => {
+    const response = await request(app).post("/estimates").send({
+      title: "Unrelated business quote",
+      businessLine: "kinora",
+      lineItems: [],
+    });
+
+    expect(response.status).toBe(400);
+    expect(h.inserts).toHaveLength(0);
+  });
+
   it("creates estimates with a canonical owner resolved from the selected business line", async () => {
     const response = await request(app).post("/estimates").send({
       title: "Asphalt quote",

@@ -363,8 +363,9 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       // No business-line filter at DB level so the result powers both KPI (filtered in JS) and byBusinessLine.
       // Hourly subs already have auto-expense records (jobSubHoursId IS NOT NULL) — exclude them
       // to avoid double-counting with the expensesTable rows.
-      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessId: subPaymentRecordsTable.businessId, businessLine: subPaymentRecordsTable.businessLine })
+      db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`, paymentDate: subPaymentRecordsTable.paymentDate, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(subPaymentRecordsTable)
+        .innerJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
           eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
@@ -751,7 +752,7 @@ router.get("/revenue-by-month", sectionGuard("invoices"), async (req, res) => {
     const year = Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= currentYear + 1
       ? requestedYear
       : currentYear;
-    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, req.query.businessId, res);
     if (reportBusiness === undefined) return;
     const businessLine = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
@@ -883,7 +884,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
     if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
     const year = rawYear;
-    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, req.query.businessId, res);
     if (reportBusiness === undefined) return;
     const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
@@ -914,7 +915,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       businessLine: invoicesTable.businessLine,
       lineItems: invoicesTable.lineItems,
     };
-    const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows, accFixedAllocSubPayments] = await Promise.all([
+    const [accPaidInvoices, accNonPaidInvoices, expenses, mileageLogs, subs, settings, otherIncomeRows, accFixedAllocSubPayments, legalSharedOverheadRows] = await Promise.all([
       // Paid invoices: no issueDate filter — effective payment date governs year attribution in JS.
       // An invoice issued in Dec but paid in Jan will appear in January's revenue, not December's.
       db.select(accInvoiceCols)
@@ -940,11 +941,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       // paymentDate and jobId are fetched to power monthlyIncome and directJobCosts breakdowns.
       db.select({
         amount:      sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)`,
-        businessLine: subPaymentRecordsTable.businessLine,
+        businessLine: jobsTable.businessLine,
         paymentDate: subPaymentRecordsTable.paymentDate,
         jobId:       subPaymentRecordsTable.jobId,
       })
         .from(subPaymentRecordsTable)
+        .innerJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
           eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
@@ -954,8 +956,17 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
           lte(subPaymentRecordsTable.paymentDate, endDate),
           sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
           inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
-          blWhere(subPaymentRecordsTable.businessLine),
+          blWhere(jobsTable.businessLine, jobsTable.businessId),
         )),
+      reportBusiness?.divisionSlug
+        ? db.select().from(expensesTable).where(and(
+            gte(expensesTable.date, startDate),
+            lte(expensesTable.date, endDate),
+            isNull(expensesTable.voidedAt),
+            eq(expensesTable.isSharedOverhead, true),
+            inArray(expensesTable.businessId, reportBusiness.businessIds),
+          ))
+        : Promise.resolve([]),
     ]);
     // Merge paid + non-paid. Paid invoices are pre-filtered to effective payment date within
     // the selected year so cityMap, owensboroGross, and all other aggregates only see
@@ -988,9 +999,12 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const nonMileageExpenses = expenses.filter(e =>
       e.category !== "mileage" && !accIsOutstanding(e) && !e.isWageAdvance,
     );
+    const divisionProfitExpenses = reportBusiness?.divisionSlug
+      ? nonMileageExpenses.filter(e => e.isSharedOverhead !== true)
+      : nonMileageExpenses;
     const accFixedAllocSubPaymentTotal = accFixedAllocSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
-    const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
-    const legacyOwnerDrawTotal = nonMileageExpenses
+    const totalExpenses = divisionProfitExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
+    const legacyOwnerDrawTotal = divisionProfitExpenses
       .filter(e => isOwnerWithdrawalExpenseCategory(e.category))
       .reduce((sum, e) => sum + parseFloat(e.amount ?? "0"), 0);
     // subcontractorId == null guard: belt-and-suspenders in case the DB query misses any
@@ -1160,12 +1174,15 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
       return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
     };
     const OWNER_CATS_ACC = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
-    const directJobExpenses = nonMileageExpenses.filter(e => e.jobId != null && !isOwnerWithdrawalExpenseCategory(e.category));
-    const overheadExpenses  = nonMileageExpenses.filter(e => e.jobId == null  && !isOwnerWithdrawalExpenseCategory(e.category));
+    const sharedOverheadExpenses = (reportBusiness?.divisionSlug ? legalSharedOverheadRows : nonMileageExpenses)
+      .filter(e => e.isSharedOverhead === true && !isOwnerWithdrawalExpenseCategory(e.category));
+    const directJobExpenses = divisionProfitExpenses.filter(e => e.jobId != null && !isOwnerWithdrawalExpenseCategory(e.category));
+    const overheadExpenses  = divisionProfitExpenses.filter(e => e.jobId == null && !isOwnerWithdrawalExpenseCategory(e.category));
     // Sub payments go to directJobCosts (they're always tied to a job).
     // Include them in the Subcontractor slice of directJobCostsByCategory.
     const directJobCosts = directJobExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + accFixedAllocSubPaymentTotal;
     const overheadCosts  = overheadExpenses.reduce((s, e)  => s + parseFloat(e.amount ?? "0"), 0);
+    const sharedOverheadCosts = sharedOverheadExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
     const grossMargin = paidRevenue - directJobCosts;
     // Build the per-category breakdown for direct costs, adding sub payments to "Subcontractor".
     const directJobCostsByCategory = (() => {
@@ -1389,12 +1406,13 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
 
     res.json({
       year,
-      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: mileageSummary.ratePerMile, ratePeriods: mileageSummary.ratePeriods, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, grossMargin },
+      summary: { grossRevenue, paidRevenue, pendingRevenue, totalExpenses, businessExpenses, totalMiles, mileageDeduction, mileageRate: mileageSummary.ratePerMile, ratePeriods: mileageSummary.ratePeriods, totalSubPayments, netProfit, otherIncomeTotal: otherIncomeSum, ownerDrawTotal, undrawnBalance, directJobCosts, overheadCosts, sharedOverheadCosts, grossMargin },
       incomeByCity,
       estimatedTaxes,
       expensesByCategory,
       directJobCostsByCategory,
       overheadByCategory,
+      sharedOverheadByCategory: buildCatBreakdown(sharedOverheadExpenses),
       monthlyIncome,
       subcontractor1099,
       invoiceRecords: allRecords,
@@ -1652,7 +1670,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const rawYear = req.query.year == null ? new Date().getFullYear() : Number(req.query.year);
     if (!Number.isInteger(rawYear) || rawYear < 2000 || rawYear > 2200) return res.status(400).json({ error: "A valid tax year is required" });
     const year = rawYear;
-    const reportBusiness = await resolveReportBusiness(req.query.businessLine, undefined, res);
+    const reportBusiness = await resolveReportBusiness(req.query.businessLine, req.query.businessId, res);
     if (reportBusiness === undefined) return;
     const blFilter = reportBusiness?.slug ?? null;
     const startDate = `${year}-01-01`;
@@ -1686,6 +1704,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       // to avoid double-counting.
       db.select({ amount: sql<string>`${subPaymentRecordsTable.amount} + COALESCE(${subPaymentRecordsTable.advanceAmount}, 0)` })
         .from(subPaymentRecordsTable)
+        .innerJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
         .innerJoin(jobSubcontractorsTable, and(
           eq(jobSubcontractorsTable.jobId, subPaymentRecordsTable.jobId),
           eq(jobSubcontractorsTable.subcontractorId, subPaymentRecordsTable.subcontractorId),
@@ -1695,7 +1714,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
           lte(subPaymentRecordsTable.paymentDate, endDate),
           sql`${subPaymentRecordsTable.isReversal} IS NOT TRUE`,
           inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
-          blWhere(subPaymentRecordsTable.businessLine),
+          blWhere(jobsTable.businessLine, jobsTable.businessId),
         )),
     ]);
 

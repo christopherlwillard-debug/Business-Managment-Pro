@@ -48,12 +48,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: "Cash", check: "Check", bank_transfer: "Bank Transfer", other: "Other",
 };
 
-function useOtherIncome(year: number, businessLine?: string) {
+function useOtherIncome(year: number, businessLine?: string, businessId?: number) {
   return useQuery<any[]>({
     queryKey: ["other-income", year, businessLine ?? "all"],
     queryFn: async () => {
       const params = new URLSearchParams({ startDate: `${year}-01-01`, endDate: `${year}-12-31` });
       if (businessLine) params.set("businessLine", businessLine);
+      if (businessId != null) params.set("businessId", String(businessId));
       const res = await fetch(`${OTHER_INCOME_API}?${params}`);
       if (!res.ok) throw new Error("Failed to load other income");
       return res.json();
@@ -1193,7 +1194,17 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
   const netProfit = s.netProfit ?? 0;
   const otherIncomeTotal: number = s.otherIncomeTotal ?? 0;
 
-  const { data: otherIncomeRows = [], isLoading: oiLoading } = useOtherIncome(year, activeBusiness?.slug);
+  const isLegalBusinessSelection = !!activeBusiness
+    && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+  const selectedLegalBusinessId = activeBusiness?.legalBusinessId ?? activeBusiness?.id;
+  const otherIncomeBusinessOptions = activeBusiness
+    ? businesses.filter(b => (b.legalBusinessId ?? b.id) === selectedLegalBusinessId)
+    : businesses;
+  const { data: otherIncomeRows = [], isLoading: oiLoading } = useOtherIncome(
+    year,
+    activeBusiness && !isLegalBusinessSelection ? activeBusiness.slug : undefined,
+    activeBusiness && isLegalBusinessSelection ? activeBusiness.id : undefined,
+  );
   const createOI = useCreateOtherIncome(year);
   const updateOI = useUpdateOtherIncome(year);
   const deleteOI = useDeleteOtherIncome(year);
@@ -1327,6 +1338,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
         const revenue = s.paidRevenue ?? 0;
         const directJobCosts: number = s.directJobCosts ?? 0;
         const overheadCosts: number = s.overheadCosts ?? 0;
+        const sharedOverheadCosts: number = s.sharedOverheadCosts ?? 0;
         const grossMargin: number = s.grossMargin ?? (revenue - directJobCosts);
         const directCats: { category: string; amount: number; count: number }[] = Array.isArray(data.directJobCostsByCategory) ? data.directJobCostsByCategory : [];
         const overheadCats: { category: string; amount: number; count: number }[] = Array.isArray(data.overheadByCategory) ? data.overheadByCategory : [];
@@ -1384,6 +1396,14 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               </div>
 
               {/* Overhead */}
+              <div className="flex items-center justify-between rounded-xl border border-violet-200 bg-violet-50/60 px-4 py-3">
+                <div>
+                  <p className="text-xs font-bold text-violet-800 uppercase tracking-wide">Shared / Company Overhead</p>
+                  <p className="text-[10px] text-violet-600 mt-0.5">Shown separately; not allocated to either division</p>
+                </div>
+                <span className="text-sm font-bold text-violet-800">−{formatCurrency(sharedOverheadCosts)}</span>
+              </div>
+
               <div className="rounded-xl border border-amber-200 bg-amber-50/60 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <div>
@@ -1801,7 +1821,7 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
               <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border flex-wrap">
                 <button type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: "" } : f)}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${!oiForm.businessLine ? "bg-white text-gray-800 shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>Untagged</button>
-                {businesses.map(b => (
+                  {otherIncomeBusinessOptions.map(b => (
                   <button key={b.id} type="button" onClick={() => setOiForm(f => f ? { ...f, businessLine: b.slug } : f)}
                     className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${oiForm.businessLine === b.slug ? "bg-blue-600 text-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                     {b.name}

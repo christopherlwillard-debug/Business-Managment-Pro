@@ -2601,6 +2601,11 @@ function RecurringSection({
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness, businesses } = useBusiness();
+  const isLegalOwnerSelection = !!activeBusiness
+    && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+  const businessLineOptions = activeBusiness && isLegalOwnerSelection
+    ? businesses.filter(b => (b.legalBusinessId ?? b.id) === activeBusiness.id)
+    : businesses;
   const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
@@ -2685,6 +2690,7 @@ export default function Expenses() {
   const [excludeFromNetProfit, setExcludeFromNetProfit] = useState(false);
   const [countsTowardJobProfit, setCountsTowardJobProfit] = useState(true);
   const [formJobId, setFormJobId] = useState("");
+  const [isSharedOverhead, setIsSharedOverhead] = useState(false);
   const [formExpenseDate, setFormExpenseDate] = useState(localDateString());
   const [businessLine, setBusinessLine]               = useState<string | undefined>(
     activeBusiness?.slug ?? undefined
@@ -2701,7 +2707,7 @@ export default function Expenses() {
   const [tipAmount,     setTipAmount]                 = useState("");
   const [taxAmount,     setTaxAmount]                 = useState("");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; businessLine: string; businessId: number | null} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; isSharedOverhead: boolean; businessLine: string; businessId: number | null} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -2800,8 +2806,21 @@ export default function Expenses() {
   const yearExpenses = useMemo(
     () => (expenses ?? [])
       .filter(e => selectedYear === "all" || (e.date ?? "").startsWith(selectedYear))
-      .filter(e => !activeBusiness || (e as any).businessId === activeBusiness.id || (!(e as any).businessId && (e as any).businessLine === activeBusiness.slug)),
-    [expenses, selectedYear, activeBusiness]
+      .filter(e => {
+        if (!activeBusiness) return true;
+        const isLegalOwner = (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+        const members = isLegalOwner
+          ? businesses.filter(b => (b.legalBusinessId ?? b.id) === activeBusiness.id)
+          : [activeBusiness];
+        const memberIds = new Set(members.map(b => b.id));
+        const memberSlugs = new Set(members.map(b => b.slug));
+        if (memberSlugs.has("general_contracting")) memberSlugs.add("contracting");
+        if (memberSlugs.has("asphalt_sealing")) memberSlugs.add("asphalt");
+        return (e as any).businessId != null
+          ? memberIds.has(Number((e as any).businessId))
+          : memberSlugs.has((e as any).businessLine ?? "");
+      }),
+    [expenses, selectedYear, activeBusiness, businesses]
   );
 
   const filteredYearExpenses = useMemo(() => {
@@ -2877,6 +2896,7 @@ export default function Expenses() {
     setExcludeFromNetProfit(false);
     setCountsTowardJobProfit(true);
     setFormJobId("");
+    setIsSharedOverhead(false);
     setBusinessLine(activeBusiness?.slug ?? undefined);
     setPrefillTripId(null);
     setPaidBy("");
@@ -2906,6 +2926,7 @@ export default function Expenses() {
       setExcludeFromNetProfit(false);
       setCountsTowardJobProfit(true);
       setFormJobId("");
+    setIsSharedOverhead(false);
       setBusinessLine(activeBusiness?.slug ?? undefined);
       setPrefillTripId(null);
       setPaidBy("");
@@ -3054,8 +3075,11 @@ export default function Expenses() {
           subcontractorId: subcontractorId ? parseInt(subcontractorId) : undefined,
           excludeFromNetProfit,
           countsTowardJobProfit,
+          isSharedOverhead,
           businessLine: businessLine || null,
-          businessId: activeBusiness?.id ?? (businessLine ? businesses.find(b => b.slug === businessLine)?.id ?? null : null),
+          businessId: businessLine
+            ? businesses.find(b => b.slug === businessLine)?.id ?? activeBusiness?.id ?? null
+            : activeBusiness?.id ?? null,
           tripId: prefillTripId ?? undefined,
           paidBy: paidBy || undefined,
           receiptStatus,
@@ -3556,6 +3580,7 @@ export default function Expenses() {
                                               receiptUrl: exp.receiptUrl,
                                               excludeFromNetProfit: editingRow!.excludeFromNetProfit,
                                               countsTowardJobProfit: editingRow!.countsTowardJobProfit,
+                                              isSharedOverhead: editingRow!.isSharedOverhead,
                                               businessLine: editingRow!.businessLine || null,
                                               businessId: editingRow!.businessId,
                                             },
@@ -3730,6 +3755,7 @@ export default function Expenses() {
                                             notes: exp.notes ?? "",
                                             excludeFromNetProfit: exp.excludeFromNetProfit ?? false,
                                             countsTowardJobProfit: exp.countsTowardJobProfit ?? true,
+                                            isSharedOverhead: (exp as any).isSharedOverhead === true,
                                             businessId: (exp as any).businessId ?? null,
                                             businessLine: exp.businessLine ?? "",
                                           }); }}
@@ -3980,6 +4006,7 @@ export default function Expenses() {
               <select name="jobId" value={formJobId} onChange={e => {
                 const newJobId = e.target.value;
                 setFormJobId(newJobId);
+                if (newJobId) setIsSharedOverhead(false);
                 if (newJobId && isTravelCategory(category)) setCountsTowardJobProfit(false);
                 else if (!newJobId) setCountsTowardJobProfit(true);
               }} className="w-full px-3 py-2 rounded-xl border border-border bg-background outline-none">
@@ -4160,7 +4187,7 @@ export default function Expenses() {
             )}
 
             {/* Business line toggle — hidden when a specific business is active (auto-assigned) */}
-            {!activeBusiness && (
+            {(!activeBusiness || isLegalOwnerSelection) && (
             <div>
               <label className="block text-sm font-medium mb-1.5">Business Line <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
               <div className="flex flex-wrap items-center gap-1 p-0.5 bg-muted/50 rounded-lg border border-border w-fit">
@@ -4175,7 +4202,7 @@ export default function Expenses() {
                 >
                   Untagged
                 </button>
-                {businesses.map(b => (
+                {businessLineOptions.map(b => (
                   <button
                     key={b.slug}
                     type="button"
@@ -4192,6 +4219,15 @@ export default function Expenses() {
               </div>
             </div>
             )}
+            <label className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isSharedOverhead}
+                disabled={!!formJobId}
+                onChange={e => setIsSharedOverhead(e.target.checked)}
+              />
+              <span>Shared / Company Overhead</span>
+            </label>
 
             {category === "Owner Draw" ? (
               <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50/60">
@@ -4412,6 +4448,17 @@ export default function Expenses() {
                   ))}
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editingRow!.isSharedOverhead}
+                  onChange={e => {
+                    if (e.target.checked && editingRow!.jobId) return;
+                    setEditingRow(r => r && ({ ...r, isSharedOverhead: e.target.checked }));
+                  }}
+                />
+                Shared / Company Overhead
+              </label>
               <label className={`flex items-center gap-3 py-1 ${["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={editingRow!.excludeFromNetProfit}
                   onChange={e => {
@@ -4492,6 +4539,7 @@ export default function Expenses() {
                       receiptUrl: undefined,
                       excludeFromNetProfit: editingRow!.excludeFromNetProfit,
                       countsTowardJobProfit: editingRow!.countsTowardJobProfit,
+                      isSharedOverhead: editingRow!.isSharedOverhead,
                       businessLine: editingRow!.businessLine || null,
                       businessId: editingRow!.businessId,
                     },

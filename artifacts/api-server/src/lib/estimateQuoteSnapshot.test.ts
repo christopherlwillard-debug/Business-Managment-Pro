@@ -13,6 +13,10 @@ const estimate: any = {
   total: "132.00",
   jobType: "Maintenance",
   notes: "INTERNAL COSTS: do not expose",
+  internalCost: "90.00",
+  marginPercent: "25",
+  privateNotes: "Never send this note",
+  internalApiField: "internal-only-value",
   workAddress: "12 Main St",
   customerNotes: "Payment due on completion",
   quoteExpiresAt: null,
@@ -61,7 +65,12 @@ describe("buildEstimateQuoteSnapshot", () => {
     expect(first.contentHash).toBe(second.contentHash);
     expect(first.customerSnapshot).not.toHaveProperty("notes");
     expect(first.customerSnapshot).not.toHaveProperty("businessId");
+    expect(first.customerSnapshot).not.toHaveProperty("internalCost");
+    expect(first.customerSnapshot).not.toHaveProperty("marginPercent");
+    expect(first.customerSnapshot).not.toHaveProperty("privateNotes");
+    expect(first.customerSnapshot).not.toHaveProperty("internalApiField");
     expect(JSON.stringify(first.customerSnapshot)).not.toContain("INTERNAL COSTS");
+    expect(JSON.stringify(first.customerSnapshot)).not.toContain("internal-only-value");
     expect(first.customerSnapshot.items[0]?.amount).toBe(132);
   });
 

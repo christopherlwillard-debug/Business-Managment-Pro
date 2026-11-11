@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
-import { eq, and, gte, lte, desc, isNull, or } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull, or, inArray } from "drizzle-orm";
 import { jobsTable } from "@workspace/db/schema";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, sameLegalBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -82,17 +82,20 @@ export function parseOtherIncomeBody(body: unknown): {
 router.get("/", async (req, res) => {
   try {
     const { startDate, endDate, businessLine } = req.query as { startDate?: string; endDate?: string; businessLine?: string };
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const scope = await requestedBusinessReadScope(req);
+    if (hasRequestedBusiness(req) && !scope) {
+      res.status(400).json({ error: "Unknown business" });
+      return;
+    }
     const conditions: any[] = [isNull(otherIncomeTable.voidedAt)];
     if (startDate && endDate) {
       conditions.push(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate));
     }
     if (scope) {
+      const memberIds = scope.memberIds.map(String);
       conditions.push(or(
-        eq(otherIncomeTable.businessId, String(scope.id)),
-        eq(otherIncomeTable.businessId, scope.slug),
-        and(isNull(otherIncomeTable.businessId), eq(otherIncomeTable.businessLine, scope.slug)),
+        inArray(otherIncomeTable.businessId, [...memberIds, ...scope.memberSlugs]),
+        and(isNull(otherIncomeTable.businessId), inArray(otherIncomeTable.businessLine, scope.memberSlugs)),
       ));
     } else if (businessLine) {
       conditions.push(eq(otherIncomeTable.businessLine, businessLine));
@@ -117,12 +120,15 @@ router.post("/", async (req, res) => {
     if (data.jobId != null) {
       const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, data.jobId));
-      if (!job || !belongsToBusiness(job, owner)) {
+      const sameOwner = job?.businessId != null
+        ? await sameLegalBusiness(job.businessId, owner.id)
+        : job?.businessLine === owner.slug;
+      if (!job || !sameOwner) {
         res.status(404).json({ error: "Job not found" });
         return;
       }
       data.businessId = job.businessId != null ? String(job.businessId) : String(owner.id);
-      data.businessLine = owner.slug;
+      data.businessLine = job.businessLine ?? owner.slug;
     }
     data.businessId = data.businessId ?? String(owner.id);
     data.businessLine = owner.slug;
@@ -150,12 +156,15 @@ router.put("/:id", async (req, res) => {
     if (data.jobId != null) {
       const [job] = await db.select({ id: jobsTable.id, businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, data.jobId));
-      if (!job || !belongsToBusiness(job, owner)) {
+      const sameOwner = job?.businessId != null
+        ? await sameLegalBusiness(job.businessId, owner.id)
+        : job?.businessLine === owner.slug;
+      if (!job || !sameOwner) {
         res.status(404).json({ error: "Job not found" });
         return;
       }
       data.businessId = job.businessId != null ? String(job.businessId) : String(owner.id);
-      data.businessLine = owner.slug;
+      data.businessLine = job.businessLine ?? owner.slug;
     }
     // Re-save legacy slug-owned rows with the canonical numeric business ID.
     data.businessId = String(owner.id);

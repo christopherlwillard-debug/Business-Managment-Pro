@@ -16,5 +16,6 @@ export interface CreateExpenseRequest {
   subcontractorId?: number | null;
   receiptUrl?: string | null;
   notes?: string | null;
+  isSharedOverhead?: boolean | null;
   [key: string]: unknown;
 }

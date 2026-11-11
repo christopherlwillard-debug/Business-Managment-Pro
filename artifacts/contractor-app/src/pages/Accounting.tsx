@@ -20,9 +20,10 @@ const RevenueByMonthTab = lazy(() => import("./accounting/RevenueByMonthTab"));
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-async function fetchAccounting(year: number, businessLine?: string) {
+async function fetchAccounting(year: number, businessLine?: string, businessId?: number) {
   const params = new URLSearchParams({ year: String(year) });
   if (businessLine) params.set("businessLine", businessLine);
+  if (businessId != null) params.set("businessId", String(businessId));
   const res = await fetch(`${BASE}/api/reports/accounting?${params}`);
   if (!res.ok) throw new Error("Failed to load accounting data");
   return res.json();
@@ -60,11 +61,14 @@ export default function Accounting() {
   const years = defaultYears.includes(year) ? defaultYears : [year, ...defaultYears].sort((a, b) => b - a);
   const { isOwner } = useUserPermissions();
   const { activeBusiness } = useBusiness();
-  const bizSlug = activeBusiness?.slug;
+  const isLegalBusinessSelection = !!activeBusiness
+    && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+  const bizSlug = activeBusiness && !isLegalBusinessSelection ? activeBusiness.slug : undefined;
+  const bizId = activeBusiness && isLegalBusinessSelection ? activeBusiness.id : undefined;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["accounting", year, bizSlug ?? "all"],
-    queryFn: () => fetchAccounting(year, bizSlug),
+    queryKey: ["accounting", year, bizId ?? bizSlug ?? "all"],
+    queryFn: () => fetchAccounting(year, bizSlug, bizId),
     staleTime: 1000 * 60 * 2,
   });
 

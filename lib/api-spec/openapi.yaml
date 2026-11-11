@@ -3645,6 +3645,7 @@ components:
         businessLine: { type: string, nullable: true }
         countsTowardJobProfit: { type: boolean, nullable: true }
         excludeFromNetProfit: { type: boolean, nullable: true }
+        isSharedOverhead: { type: boolean, nullable: true }
         legacyPayrollDuplicate: { type: boolean, nullable: true }
         createdAt:
           type: string
@@ -3674,6 +3675,9 @@ components:
           nullable: true
         notes:
           type: string
+          nullable: true
+        isSharedOverhead:
+          type: boolean
           nullable: true
       required: [description, amount, category, date]
 
