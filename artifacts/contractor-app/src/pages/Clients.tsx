@@ -28,10 +28,18 @@ function isDueSoon(dateStr: string | null | undefined): boolean {
 
 export default function Clients() {
   const { canEdit } = useUserPermissions();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const [, navigate] = useLocation();
+  const [divisionFilter, setDivisionFilter] = useState("");
+  const hasWillardsDivisions = activeBusiness != null
+    && activeBusiness.legalBusinessId === activeBusiness.id
+    && businesses.some(business => business.id !== activeBusiness.id && business.legalBusinessId === activeBusiness.id);
   const { data: clients, isLoading, refetch } = useListClients(
-    activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
+    activeBusiness?.id != null
+      ? hasWillardsDivisions
+        ? (divisionFilter ? { businessLine: divisionFilter } : { businessId: activeBusiness.id })
+        : { businessId: activeBusiness.id }
+      : undefined,
   );
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
@@ -41,6 +49,7 @@ export default function Clients() {
   const [deleteLinkCounts, setDeleteLinkCounts] = useState<{ jobCount: number; invoiceCount: number; estimateCount: number; billingProfileCount: number; mfhPricingCount: number; productionPricingCount: number } | null>(null);
   const [isCheckingDelete, setIsCheckingDelete] = useState(false);
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
+  const [profileBusinessId, setProfileBusinessId] = useState<number | undefined>(undefined);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -127,6 +136,31 @@ export default function Clients() {
         )}
       </div>
 
+      {hasWillardsDivisions && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter clients by division">
+          {[
+            { value: "", label: "All Willard's" },
+            { value: "general_contracting", label: "General Contracting" },
+            { value: "asphalt_sealing", label: "Asphalt Sealing" },
+          ].map(option => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={divisionFilter === option.value}
+              onClick={() => setDivisionFilter(option.value)}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors",
+                divisionFilter === option.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground hover:border-primary/40",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {isLoading ? (
           [1, 2, 3].map(i => <div key={i} className="h-40 bg-card rounded-2xl border border-border/50 animate-pulse" />)
@@ -143,7 +177,14 @@ export default function Clients() {
             return (
               <Card
                 key={client.id}
-                onClick={() => setProfileClientId(client.id)}
+                onClick={() => {
+                  setProfileClientId(client.id);
+                  setProfileBusinessId(
+                    hasWillardsDivisions && divisionFilter
+                      ? businesses.find(business => business.slug === divisionFilter)?.id
+                      : activeBusiness?.id,
+                  );
+                }}
                 className="border-border/50 shadow-sm hover:shadow-md transition-shadow bg-card overflow-hidden group cursor-pointer"
               >
                 <div className={cn("h-2 transition-colors", dueSoon ? "bg-amber-400 group-hover:bg-amber-500" : "bg-primary/20 group-hover:bg-primary")} />
@@ -225,6 +266,7 @@ export default function Clients() {
       {profileClientId !== null && (
         <ClientProfileDrawer
           clientId={profileClientId}
+          businessId={profileBusinessId}
           onClose={() => setProfileClientId(null)}
           onAddToRoute={(id) => {
             setProfileClientId(null);

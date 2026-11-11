@@ -35,17 +35,26 @@ vi.mock("@workspace/db", () => {
   return { db: { select: () => selectChain() } };
 });
 
-vi.mock("../lib/business-scope.js", () => ({
-  hasRequestedBusiness: () => false,
-  requestedBusiness: async () => ({ id: 1, slug: "asphalt_sealing" }),
-  resolveMutationBusiness: async () => ({
-    ok: true,
-    explicit: true,
-    business: { id: 1, slug: "asphalt_sealing" },
-  }),
-  invalidBusinessScope: () => false,
-  belongsToBusiness: () => true,
-}));
+vi.mock("../lib/business-scope.js", async () => {
+  const { sql } = await vi.importActual<typeof import("drizzle-orm")>("drizzle-orm");
+  return {
+    hasRequestedBusiness: () => false,
+    requestedBusiness: async () => ({ id: 1, slug: "asphalt_sealing" }),
+    requestedBusinessReadScope: async () => ({
+      id: 1, slug: "general_contracting", legalBusinessId: 1,
+      memberIds: [1, 2], memberSlugs: ["general_contracting", "asphalt_sealing"],
+    }),
+    businessReadPredicate: () => sql.raw("business_id IN (...) OR (business_id IS NULL AND business_line IN (...))"),
+    belongsToBusinessReadScope: () => true,
+    resolveMutationBusiness: async () => ({
+      ok: true,
+      explicit: true,
+      business: { id: 1, slug: "asphalt_sealing" },
+    }),
+    invalidBusinessScope: () => false,
+    belongsToBusiness: () => true,
+  };
+});
 
 vi.mock("./guards", () => ({ getRequestUser: () => null }));
 

@@ -1,4 +1,5 @@
-import { Printer, X } from "lucide-react";
+import { Download, Printer, X } from "lucide-react";
+import { useState } from "react";
 import type { Estimate } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -35,6 +36,25 @@ export function buildCustomerQuoteView(estimate: Estimate): CustomerQuoteView {
 
 export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate; onClose: () => void }) {
   const quote = buildCustomerQuoteView(estimate);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const downloadPdf = async () => {
+    setDownloadError(null);
+    try {
+      const response = await fetch(`/api/estimates/${estimate.id}/pdf`, { credentials: "include" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Could not generate the quote PDF.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `quote-${estimate.id}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "Could not generate the quote PDF.");
+    }
+  };
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <style>{`
@@ -52,14 +72,24 @@ export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate
             <p className="text-xs text-gray-500">Internal pricing details are hidden.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => window.print()} className="flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">
-              <Printer className="h-4 w-4" /> Print / PDF
+            <button type="button" onClick={downloadPdf} className="flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">
+              <Download className="h-4 w-4" /> Download branded PDF
             </button>
             <button type="button" aria-label="Close preview" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
+        {downloadError && <p role="alert" className="px-5 py-2 text-sm text-red-700">{downloadError}</p>}
+        <iframe
+          title={`Branded quote PDF preview: ${quote.title}`}
+          src={`/api/estimates/${estimate.id}/pdf?inline=1`}
+          className="h-[78vh] w-full border-0"
+        />
+        {/*
+          The server-generated PDF is the source of truth for customer-visible pricing;
+          the legacy HTML preview below is retained as an accessible text fallback.
+        */}
         <article id="customer-quote-document" className="space-y-6 p-8">
           <header className="border-b border-gray-200 pb-5">
             <p className="text-xs font-bold uppercase tracking-widest text-amber-600">Quote</p>

@@ -9,4 +9,12 @@
 export type ListJobsParams = {
   status?: string;
   clientId?: number;
+  /**
+   * Business or legal owner to scope the job list
+   */
+  businessId?: number;
+  /**
+   * Explicit operating division filter
+   */
+  businessLine?: string;
 };

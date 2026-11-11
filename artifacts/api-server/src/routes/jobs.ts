@@ -11,7 +11,7 @@ import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAlloca
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
-import { hasRequestedBusiness, requestedBusiness, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { hasRequestedBusiness, requestedBusiness, requestedBusinessReadScope, businessReadPredicate, belongsToBusinessReadScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import {
   buildJobProfitResponse,
@@ -23,6 +23,37 @@ import type {
   JobProfitMileageReimbursement,
   JobProfitSummaryResponse,
 } from "@workspace/api-zod";
+
+async function clientSharesLegalBusiness(clientId: number, jobBusinessId: number): Promise<boolean> {
+  const [client] = await db.select({
+    businessId: clientsTable.businessId,
+    businessLine: clientsTable.businessLine,
+  }).from(clientsTable).where(eq(clientsTable.id, clientId)).limit(1);
+  if (!client) return false;
+
+  let clientBusiness: { id: number; legalBusinessId: number | null } | undefined;
+  if (client.businessId != null) {
+    [clientBusiness] = await db.select({
+      id: businessesTable.id,
+      legalBusinessId: businessesTable.legalBusinessId,
+    }).from(businessesTable).where(eq(businessesTable.id, Number(client.businessId))).limit(1);
+  } else {
+    const legacySlug = client.businessLine === "contracting" ? "general_contracting"
+      : client.businessLine === "asphalt" ? "asphalt_sealing"
+      : client.businessLine;
+    if (!legacySlug) return false;
+    [clientBusiness] = await db.select({
+      id: businessesTable.id,
+      legalBusinessId: businessesTable.legalBusinessId,
+    }).from(businessesTable).where(eq(businessesTable.slug, legacySlug)).limit(1);
+  }
+  const [jobBusiness] = await db.select({
+    id: businessesTable.id,
+    legalBusinessId: businessesTable.legalBusinessId,
+  }).from(businessesTable).where(eq(businessesTable.id, jobBusinessId)).limit(1);
+  return Boolean(clientBusiness && jobBusiness
+    && (clientBusiness.legalBusinessId ?? clientBusiness.id) === (jobBusiness.legalBusinessId ?? jobBusiness.id));
+}
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
 import { getRequestUser } from "./guards";
@@ -743,13 +774,10 @@ router.get("/", async (req, res) => {
   try {
     const { status, clientId } = req.query;
     const conditions = [];
-    const scope = await requestedBusiness(req);
+    const scope = await requestedBusinessReadScope(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (scope) {
-      conditions.push(or(
-        eq(jobsTable.businessId, scope.id),
-        and(isNull(jobsTable.businessId), eq(jobsTable.businessLine, scope.slug)),
-      ));
+      conditions.push(businessReadPredicate(jobsTable, scope)!);
     }
     if (status) conditions.push(eq(jobsTable.status, status as string));
     if (clientId) conditions.push(eq(jobsTable.clientId, parseInt(clientId as string)));
@@ -837,6 +865,13 @@ router.post("/", async (req, res) => {
     const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    if (clientId != null) {
+      const parsedClientId = Number(clientId);
+      if (!Number.isSafeInteger(parsedClientId) || parsedClientId <= 0
+        || !(await clientSharesLegalBusiness(parsedClientId, ownership.business.id))) {
+        return res.status(400).json({ error: "Client must belong to the same legal business as the job" });
+      }
+    }
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
@@ -2758,10 +2793,10 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const scope = await requestedBusiness(req);
+    const scope = await requestedBusinessReadScope(req);
     if (scope) {
       const [ownership] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine }).from(jobsTable).where(eq(jobsTable.id, id));
-      if (!ownership || !belongsToBusiness(ownership, scope)) return res.status(404).json({ error: "Job not found" });
+      if (!ownership || !belongsToBusinessReadScope(ownership, scope)) return res.status(404).json({ error: "Job not found" });
     }
     const job = await getJobWithSubs(id);
     if (!job) return res.status(404).json({ error: "Job not found" });
@@ -2783,6 +2818,7 @@ router.put("/:id", async (req, res) => {
     const [currentOwnership] = await db.select({
       businessId: jobsTable.businessId,
       businessLine: jobsTable.businessLine,
+      clientId: jobsTable.clientId,
     }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!currentOwnership) return res.status(404).json({ error: "Job not found" });
     const requestedOwner = await resolveMutationBusiness(req);
@@ -2811,6 +2847,13 @@ router.put("/:id", async (req, res) => {
       : existingOwnership.state === "resolved"
         ? existingOwnership.business
         : requestedOwner.business;
+    if (clientId !== undefined && clientId != null && Number(clientId) !== Number(currentOwnership.clientId)) {
+      const parsedClientId = Number(clientId);
+      if (!Number.isSafeInteger(parsedClientId) || parsedClientId <= 0
+        || !(await clientSharesLegalBusiness(parsedClientId, owner.id))) {
+        return res.status(400).json({ error: "Client must belong to the same legal business as the job" });
+      }
+    }
     if (sqFt != null && (isNaN(parseInt(sqFt)) || parseInt(sqFt) < 0)) return res.status(400).json({ error: "sqFt must be a non-negative integer" });
     if (coats != null && ![1, 2].includes(parseInt(coats))) return res.status(400).json({ error: "coats must be 1 or 2" });
     if ("includeMileageInJobCosts" in req.body && typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });

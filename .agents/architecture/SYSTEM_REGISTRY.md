@@ -299,13 +299,14 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Compatibility:** `businessLine` is retained as a read-only compatibility/fallback value for legacy rows. It never overrides a non-null `businessId`, and new writes populate both values.
 - **Scope:** All Businesses is a read-only reporting scope. It is never an owner value for a mutation; update, void, rollback, receipt, reversal, and delete boundaries use the resolved owner predicate.
 - **Covered ledgers:** expenses, mileage, other income, recurring expenses, subcontractor payments/advances/hours, owner capital, estimated tax payments, assets, growth fund deployments, bank-filed rows, portal rows, Square mirrors, and legacy payments.
-- **Source of truth:** `businesses`. Supports parent/child structure (`parentBusinessId`) for shell companies and DBAs.
+- **Source of truth:** `businesses`. `legalBusinessId` identifies legal-entity ownership independently of the existing parent/child structure; `businessLine` continues to identify operating division.
 
 ### Business ownership policy
 
-- **Canonical ownership:** `business_id` on core records; `business_line` is a compatibility fallback for legacy rows.
+- **Canonical ownership:** `business_id` on core records; `business_line` is a compatibility fallback for legacy rows and the operating-division key for legal-entity rollups.
 - **Enforcement:** `artifacts/api-server/src/lib/business-scope.ts` resolves requested read scope and canonical mutation ownership. Mutation writes use a valid explicit selector or the stable `general_contracting` default; job-linked invoices inherit the job owner and reject conflicting explicit ownership. DBA ownership is preserved.
 - **Migration:** `lib/db/migrations/0047_business_ownership_backfill.sql` backfills known slugs and emits an inventory of intentionally unassigned rows.
+- **Legal roll-up:** Willard's General Contracting, LLC owns the General Contracting and Asphalt Sealing business contexts. The dashboard defaults to the combined legal owner when the LLC is selected and offers division-only filters; Kinora is not a member. Division totals do not infer a division for owner-level rows without a reliable division key.
 
 ---
 
@@ -367,13 +368,14 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## CRM / Prospects / Contacts
 
-- **Tables:** `prospects`, `contacts`, `prospect_events`, `prospect_service_visits`, `inquiries`, `featured_clients`, `client_errors`
-- **Schemas:** `lib/db/src/schema/prospects.ts`, `contacts.ts`, `prospect-events.ts`, `prospect-service-visits.ts`, `inquiries.ts`, `featured-clients.ts`, `client-errors.ts`
+- **Tables:** `prospects`, `contacts`, `contact_business_links`, `prospect_events`, `prospect_service_visits`, `inquiries`, `featured_clients`, `client_errors`
+- **Schemas:** `lib/db/src/schema/prospects.ts`, `contacts.ts`, `contact-business-links.ts`, `prospect-events.ts`, `prospect-service-visits.ts`, `inquiries.ts`, `featured-clients.ts`, `client-errors.ts`
 - **API:** `artifacts/api-server/src/routes/prospects.ts`, `contacts.ts`, `clients.ts`, `website.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Prospects.tsx`, `AddressBook.tsx`, `Clients.tsx`, `ProspectDrawer.tsx`
 - **Reports:** Not a financial ledger; prospect pipeline and service-visit activity may feed dashboard views.
 - **Source of truth:** `prospects` owns leads and pipeline state; `contacts` owns reusable people/contact methods; `clients` owns converted customers; event and visit tables own CRM history.
 - **Rule:** Do not use `clients` as a prospect staging table or duplicate prospect activity in jobs. Conversion must preserve the prospect-to-client relationship.
+- **Contact/business association:** Contacts remain one global identity; `contact_business_links` associates a contact with a legal business and optionally an existing client. Do not create duplicate contacts or clients to represent the same person in multiple businesses.
 
 ## Communications
 

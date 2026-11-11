@@ -117,13 +117,18 @@ vi.mock("drizzle-orm", () => ({
   and: (...conditions: unknown[]) => ({ op: "and", conditions }),
   or: (...conditions: unknown[]) => ({ op: "or", conditions }),
   isNull: (column: unknown) => ({ op: "isNull", column }),
+  isNotNull: (column: unknown) => ({ op: "isNotNull", column }),
+  inArray: (column: unknown, values: unknown[]) => ({ op: "inArray", column, values }),
   desc: (column: unknown) => ({ op: "desc", column }),
 }));
 
 vi.mock("../lib/business-scope.js", () => ({
   requestedBusiness: vi.fn(async () => null),
+  requestedBusinessReadScope: vi.fn(async () => null),
   hasRequestedBusiness: vi.fn(() => false),
   invalidBusinessScope: vi.fn(() => false),
+  businessReadPredicate: vi.fn(() => undefined),
+  belongsToBusinessReadScope: (record: any, scope: any) => !scope || record.businessId === scope.id || record.businessLine === scope.slug,
   resolveMutationBusiness: h.resolveMutationBusiness,
   belongsToBusiness: (record: any, scope: any) => record.businessId != null
     ? Number(record.businessId) === scope.id

@@ -7,6 +7,8 @@
  */
 
 export type GetInvoiceTaxReportParams = {
+  businessId?: number;
+  businessLine?: string;
   startDate?: string;
   endDate?: string;
 };

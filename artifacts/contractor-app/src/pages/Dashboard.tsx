@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useGetDashboardStats, useListClients, useGetSettings } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBusiness, type Business } from "@/contexts/BusinessContext";
@@ -618,7 +618,7 @@ function BusinessScoreGauge({ score, label }: { score: number; label: string }) 
   );
 }
 
-function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, businesses, activeBusiness, localBLFilter, onLocalBLFilterChange, complianceItems, onNavigate }: {
+function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, businesses, activeBusiness, localBLFilter, showWillardsDivisionFilter, onLocalBLFilterChange, complianceItems, onNavigate }: {
   stats: any;
   period: "week" | "month" | "quarter" | "year";
   onPeriodChange: (p: "week" | "month" | "quarter" | "year") => void;
@@ -626,6 +626,7 @@ function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, busin
   businesses: Business[];
   activeBusiness: Business | null;
   localBLFilter: string;
+  showWillardsDivisionFilter: boolean;
   onLocalBLFilterChange: (v: string) => void;
   complianceItems: any[];
   onNavigate: (p: string) => void;
@@ -752,9 +753,15 @@ function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, busin
           )}
 
           {/* Business line filter (All mode) */}
-          {activeBusiness === null && businesses.length > 1 && (
+          {(activeBusiness === null && businesses.length > 1 || showWillardsDivisionFilter) && (
             <div className="pt-2 border-t border-border/50 flex gap-2 flex-wrap">
-              {[{ value: "", label: "All" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map(opt => (
+              {(showWillardsDivisionFilter
+                ? [
+                    { value: "", label: "All Willard's" },
+                    { value: "general_contracting", label: "General Contracting" },
+                    { value: "asphalt_sealing", label: "Asphalt Sealing" },
+                  ]
+                : [{ value: "", label: "All" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))]).map(opt => (
                 <button key={opt.value} onClick={() => onLocalBLFilterChange(opt.value)}
                   className={cn("px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors",
                     businessLine === opt.value ? "bg-primary border-primary text-primary-foreground" : "bg-background border-border text-muted-foreground hover:border-primary/40")}>
@@ -860,12 +867,30 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<"week" | "month" | "quarter" | "year">("month");
   const { activeBusiness, hasSelection, businesses } = useBusiness();
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
-  const selectedBusiness = activeBusiness ?? businesses.find(business => business.slug === localBLFilter) ?? null;
-  const businessId = selectedBusiness?.id ?? null;
-  const businessLine = selectedBusiness?.slug ?? "";
+  useEffect(() => {
+    setLocalBLFilter("");
+  }, [activeBusiness?.id]);
+  const selectedBusiness = activeBusiness;
+  const businessId = selectedBusiness ? (selectedBusiness.legalBusinessId ?? selectedBusiness.id) : null;
+  const isLegalBusinessSelection = !!selectedBusiness
+    && (selectedBusiness.legalBusinessId ?? selectedBusiness.id) === selectedBusiness.id;
+  const businessLine = selectedBusiness
+    ? (isLegalBusinessSelection ? localBLFilter : selectedBusiness.slug)
+    : localBLFilter;
+  const willardsDivisions = selectedBusiness && isLegalBusinessSelection
+    ? businesses.filter((business) =>
+        (business.legalBusinessId ?? business.id) === selectedBusiness.id,
+      )
+    : [];
+  const showWillardsDivisionFilter = willardsDivisions.some((business) => business.id !== selectedBusiness?.id)
+    && willardsDivisions.some((business) => business.slug === "asphalt_sealing");
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { data: stats, isLoading } = useGetDashboardStats({ period, businessLine: (businessLine || undefined) as any });
+  const { data: stats, isLoading } = useGetDashboardStats({
+    period,
+    businessId: businessId ?? undefined,
+    businessLine: (businessLine || undefined) as any,
+  });
   const { data: todayData } = useDashboardToday(businessId);
   const complianceItems = todayData?.complianceItems ?? [];
   const todayStops = todayData?.routeStops ?? [];
@@ -1032,6 +1057,7 @@ export default function Dashboard() {
         businesses={businesses}
         activeBusiness={activeBusiness}
         localBLFilter={localBLFilter}
+        showWillardsDivisionFilter={showWillardsDivisionFilter}
         onLocalBLFilterChange={setLocalBLFilter}
         complianceItems={complianceItems}
         onNavigate={navigate}

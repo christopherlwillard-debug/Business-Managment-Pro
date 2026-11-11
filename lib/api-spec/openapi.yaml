@@ -181,6 +181,11 @@ paths:
           description: Canonical business owner; legacy business_line rows matching the business remain visible
           schema:
             type: integer
+        - name: businessLine
+          in: query
+          description: Explicit operating division; takes precedence over legal-owner rollup
+          schema:
+            type: string
       responses:
         "200":
           description: List of clients
@@ -278,6 +283,16 @@ paths:
           in: query
           schema:
             type: integer
+        - name: businessId
+          in: query
+          description: Business or legal owner to scope the job list
+          schema:
+            type: integer
+        - name: businessLine
+          in: query
+          description: Explicit operating division filter
+          schema:
+            type: string
       responses:
         "200":
           description: List of jobs
@@ -817,6 +832,14 @@ paths:
       tags: [invoices]
       summary: List all invoices
       parameters:
+        - name: businessId
+          in: query
+          schema:
+            type: integer
+        - name: businessLine
+          in: query
+          schema:
+            type: string
         - name: status
           in: query
           schema:
@@ -1044,6 +1067,14 @@ paths:
       tags: [invoices]
       summary: Get invoice tax report (jobs, dates, amounts, locations)
       parameters:
+        - name: businessId
+          in: query
+          schema:
+            type: integer
+        - name: businessLine
+          in: query
+          schema:
+            type: string
         - name: startDate
           in: query
           schema:
@@ -1705,6 +1736,15 @@ paths:
       operationId: listEstimates
       tags: [estimates]
       summary: List all estimates
+      parameters:
+        - name: businessId
+          in: query
+          schema:
+            type: integer
+        - name: businessLine
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: List of estimates
@@ -1950,6 +1990,11 @@ paths:
           schema:
             type: string
             enum: [week, month, quarter, year]
+        - name: businessId
+          in: query
+          schema:
+            type: integer
+          description: Legal business ID; legal-business selections include all operating divisions
         - name: businessLine
           in: query
           schema:

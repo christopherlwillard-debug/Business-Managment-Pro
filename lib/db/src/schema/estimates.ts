@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
@@ -19,6 +19,7 @@ export const estimatesTable = pgTable("estimates", {
   notes: text("notes"),
   workAddress: text("work_address"),
   customerNotes: text("customer_notes"),
+  quoteExpiresAt: date("quote_expires_at"),
   lineItems: jsonb("line_items").default("[]"),
   jobId: integer("job_id").references(() => jobsTable.id),
   businessLine: text("business_line"),

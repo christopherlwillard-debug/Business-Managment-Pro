@@ -595,3 +595,21 @@ without overloading invoice-delivery communication history.
 
 **Status:** Accepted
 **Date:** 2026-11-04
+
+## ADR-032
+
+**Title:** Legal business ownership is separate from operating divisions
+
+**Decision:** Use `businesses.legal_business_id` as the legal-entity grouping key while retaining core-record `business_id` and existing `business_line` values. Willard's General Contracting, LLC is the legal owner for General Contracting and Asphalt Sealing; Kinora remains a separate legal business. Selecting the LLC in the dashboard returns both divisions by default, with explicit General Contracting and Asphalt Sealing filters. Global contacts remain one identity and are associated through `contact_business_links`, optionally to an existing client.
+
+**Reason:** The approved production mapping shows separate business rows for two operating divisions but one legal LLC, plus unrelated businesses that must never enter combined totals. Rewriting historical financial rows or duplicating contacts would create unnecessary accounting and identity risk.
+
+**Rejected Alternatives:**
+
+- Treating Asphalt Sealing as an independent legal company
+- Inferring a division for ambiguous owner-level or unowned legacy records
+- Duplicating contacts or customer records per business
+- Treating `parent_business_id` alone as the legal-ownership source
+
+**Status:** Accepted
+**Date:** 2026-11-10

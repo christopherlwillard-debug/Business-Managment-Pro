@@ -13,11 +13,15 @@ export interface Business {
   zip: string | null;
   phone: string | null;
   email: string | null;
+  website: string | null;
+  defaultQuoteTerms: string | null;
+  defaultQuoteValidityDays: number;
   licenseNumber: string | null;
   taxId: string | null;
   sortOrder: number;
   enabledFeatures: string[] | null;
   parentBusinessId: number | null;
+  legalBusinessId: number | null;
   createdAt: string;
 }
 

@@ -1,14 +1,22 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { estimatesTable, clientsTable, jobsTable } from "@workspace/db/schema";
-import { eq, asc, getTableColumns } from "drizzle-orm";
+import { estimatesTable, clientsTable, jobsTable, businessesTable, settingsTable } from "@workspace/db/schema";
+import { eq, asc, getTableColumns, and } from "drizzle-orm";
 import {
   canonicalRecordBusiness,
+  requestedBusinessReadScope,
+  businessReadPredicate,
+  belongsToBusinessReadScope,
+  invalidBusinessScope,
+  hasRequestedBusiness,
+  sameLegalBusiness,
   generalContractingBusiness,
   resolveMutationBusiness,
   type BusinessScope,
 } from "../lib/business-scope.js";
-import { calculateEstimateTotals, estimateLineAmount } from "../lib/estimate-totals.js";
+import { calculateEstimateTotals, estimateLineAmount, expandEstimateLinesForInvoice } from "../lib/estimate-totals.js";
+import { loadInvoiceBrand } from "../lib/invoiceBranding.js";
+import { generateEstimateQuotePdf } from "../lib/generateEstimateQuotePdf.js";
 
 const router = Router();
 
@@ -46,6 +54,7 @@ function format(e: any, clientName?: string | null, jobTitle?: string | null) {
     markupPercent: e.markupPercent ? parseFloat(e.markupPercent) : null,
     contingencyPercent: e.contingencyPercent ? parseFloat(e.contingencyPercent) : null,
     total: parseFloat(e.total ?? "0"),
+    quoteExpiresAt: e.quoteExpiresAt ?? null,
     lineItems: lineItems.map((li: any, i: number) => ({
       id: li.id ?? i + 1,
       category: li.category,
@@ -93,11 +102,14 @@ async function resolveWorkAddress(
 
 router.get("/", async (req, res) => {
   try {
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const estimates = await db
       .select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name, jobTitle: jobsTable.title })
       .from(estimatesTable)
       .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
       .leftJoin(jobsTable, eq(estimatesTable.jobId, jobsTable.id))
+      .where(businessReadPredicate(estimatesTable, scope))
       .orderBy(estimatesTable.createdAt);
     res.json(estimates.map(e => format(e as any, (e as any).clientName, (e as any).jobTitle)));
   } catch (err) {
@@ -110,11 +122,18 @@ router.get("/by-job/:jobId", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, jobId));
+      if (!job || !belongsToBusinessReadScope(job, scope)) return res.status(404).json({ error: "Job not found" });
+    }
     const estimates = await db
       .select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name })
       .from(estimatesTable)
       .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
-      .where(eq(estimatesTable.jobId, jobId))
+      .where(and(eq(estimatesTable.jobId, jobId), businessReadPredicate(estimatesTable, scope)))
       .orderBy(asc(estimatesTable.createdAt));
     res.json(estimates.map(e => format(e, e.clientName)));
   } catch (err) {
@@ -125,7 +144,7 @@ router.get("/by-job/:jobId", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, customerNotes, lineItems = [], jobId, workAddress } = req.body;
+    const { title, clientId, template, status, markupPercent, contingencyPercent, jobType, notes, customerNotes, lineItems = [], jobId, workAddress, quoteExpiresAt } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     const requestedOwner = await resolveMutationBusiness(req);
     if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
@@ -142,6 +161,11 @@ router.post("/", async (req, res) => {
 
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
     const savedWorkAddress = await resolveWorkAddress(workAddress, clientId, jobId);
+    const [brandBusiness] = await db.select().from(businessesTable).where(eq(businessesTable.id, owner.id));
+    const validityDays = Math.min(365, Math.max(1, brandBusiness?.defaultQuoteValidityDays ?? 30));
+    const defaultExpiry = new Date();
+    defaultExpiry.setDate(defaultExpiry.getDate() + validityDays);
+    const savedTerms = customerNotes ?? brandBusiness?.defaultQuoteTerms ?? null;
 
     const [estimate] = await db.insert(estimatesTable).values({
       title, clientId: clientId || null, template,
@@ -150,7 +174,8 @@ router.post("/", async (req, res) => {
       markupPercent: markupPercent?.toString() ?? null,
       contingencyPercent: contingencyPercent?.toString() ?? null,
       total: total.toString(),
-      jobType, notes, workAddress: savedWorkAddress, customerNotes: customerNotes ?? null,
+      jobType, notes, workAddress: savedWorkAddress, customerNotes: savedTerms,
+      quoteExpiresAt: quoteExpiresAt || defaultExpiry.toISOString().slice(0, 10),
       lineItems: lineItems.map((li: any, i: number) => ({ ...li, id: i + 1 })),
       jobId: jobId || null,
       businessId: owner.id,
@@ -171,17 +196,127 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) {
+      const [owner] = await db.select({ businessId: estimatesTable.businessId, businessLine: estimatesTable.businessLine })
+        .from(estimatesTable).where(eq(estimatesTable.id, id));
+      if (!owner || !belongsToBusinessReadScope(owner, scope)) return res.status(404).json({ error: "Estimate not found" });
+    }
     const [e] = await db
       .select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name, jobTitle: jobsTable.title })
       .from(estimatesTable)
       .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
       .leftJoin(jobsTable, eq(estimatesTable.jobId, jobsTable.id))
-      .where(eq(estimatesTable.id, parseInt(req.params.id)));
+      .where(eq(estimatesTable.id, id));
     if (!e) return res.status(404).json({ error: "Estimate not found" });
     res.json(format(e, e.clientName, e.jobTitle));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch estimate" });
+  }
+});
+
+router.get("/:id/pdf", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) {
+      const [owner] = await db.select({ businessId: estimatesTable.businessId, businessLine: estimatesTable.businessLine })
+        .from(estimatesTable).where(eq(estimatesTable.id, id));
+      if (!owner || !belongsToBusinessReadScope(owner, scope)) return res.status(404).json({ error: "Estimate not found" });
+    }
+    const [estimate] = await db.select({
+      ...getTableColumns(estimatesTable),
+      clientName: clientsTable.name,
+      clientEmail: clientsTable.email,
+      clientPhone: clientsTable.phone,
+      clientAddress: clientsTable.address,
+      clientCity: clientsTable.city,
+      clientState: clientsTable.state,
+      clientZip: clientsTable.zip,
+    }).from(estimatesTable)
+      .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+      .where(eq(estimatesTable.id, id));
+    if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+
+    const business = estimate.businessId
+      ? (await db.select().from(businessesTable).where(eq(businessesTable.id, estimate.businessId)))[0]
+      : (await db.select().from(businessesTable).where(eq(businessesTable.slug, estimate.businessLine ?? "")))[0];
+    const settings = (await db.select().from(settingsTable).limit(1))[0] ?? null;
+    const brand = await loadInvoiceBrand(estimate.businessLine, settings, business);
+    const rawItems = Array.isArray(estimate.lineItems) ? estimate.lineItems as any[] : [];
+    const expanded = expandEstimateLinesForInvoice(
+      rawItems,
+      estimate.markupPercent == null ? null : Number(estimate.markupPercent),
+      estimate.contingencyPercent == null ? null : Number(estimate.contingencyPercent),
+    );
+    let expandedIndex = 0;
+    const pricedLines = rawItems.map(source => {
+      if (!String(source.description ?? "").trim()) return null;
+      return expanded[expandedIndex++] ?? null;
+    });
+    const amountAt = (index: number) => {
+      const line = pricedLines[index];
+      return line ? Math.round(line.quantity * line.unitPrice * 100) / 100 : 0;
+    };
+    const tax = rawItems.reduce((sum, item, index) =>
+      sum + (String(item.category ?? "").trim().toLowerCase() === "tax" ? amountAt(index) : 0), 0);
+    const adjustment = rawItems.reduce((sum, item, index) =>
+      sum + (String(item.category ?? "").trim().toLowerCase() === "adjustment" ? amountAt(index) : 0), 0);
+    const nonTax = rawItems.reduce((sum, item, index) =>
+      sum + (String(item.category ?? "").trim().toLowerCase() !== "tax" ? amountAt(index) : 0), 0);
+    const subtotal = Math.round((nonTax - adjustment) * 100) / 100;
+    const storedTotal = Number(estimate.total ?? 0);
+    if (Math.round((subtotal + adjustment + tax) * 100) / 100 !== Math.round(storedTotal * 100) / 100) {
+      return res.status(409).json({ error: "Customer pricing does not reconcile with the saved estimate. Review the draft before generating a quote." });
+    }
+    const items = rawItems.flatMap((source, index) => {
+      const category = String(source.category ?? "").trim().toLowerCase();
+      if (category === "tax" || category === "adjustment") return [];
+      if (!pricedLines[index]) return [];
+      return [{ description: String(source.description ?? ""), quantity: Number(source.quantity ?? 1), unit: source.unit ?? null, amount: amountAt(index) }];
+    });
+    const expiresAt = estimate.quoteExpiresAt ?? null;
+    const issueDate = estimate.createdAt instanceof Date ? estimate.createdAt.toISOString() : String(estimate.createdAt);
+    const quoteNo = `Q-${issueDate.slice(0, 4)}-${String(estimate.id).padStart(6, "0")}`;
+    const pdf = await generateEstimateQuotePdf({
+      quoteNumber: quoteNo,
+      title: estimate.title,
+      issuedAt: issueDate,
+      expiresAt,
+      customerName: estimate.clientName ?? null,
+      customerEmail: estimate.clientEmail ?? null,
+      customerPhone: estimate.clientPhone ?? null,
+      billingAddress: joinAddress([estimate.clientAddress, estimate.clientCity, estimate.clientState, estimate.clientZip]),
+      workAddress: estimate.workAddress ?? null,
+      jobType: estimate.jobType ?? null,
+      terms: estimate.customerNotes ?? business?.defaultQuoteTerms ?? settings?.defaultPaymentTerms ?? null,
+      items,
+      subtotal,
+      adjustment,
+      tax,
+      total: storedTotal,
+      brand: {
+        name: brand.displayName,
+        address: brand.address,
+        city: brand.city,
+        state: brand.state,
+        zip: brand.zip,
+        phone: brand.phone,
+        email: brand.email,
+        website: business?.website ?? null,
+        logo: brand.logo?.buffer ?? null,
+      },
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `${req.query.inline === "1" ? "inline" : "attachment"}; filename="${quoteNo}.pdf"`);
+    res.send(pdf);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to generate quote PDF" });
   }
 });
 
@@ -205,18 +340,25 @@ router.put("/:id", async (req, res) => {
     if (currentOwnership.state === "invalid") {
       return res.status(409).json({ error: "Estimate has an unknown business owner" });
     }
+    if (requestedOwner.explicit && currentOwnership.state === "resolved"
+      && !(await sameLegalBusiness(currentOwnership.business.id, requestedOwner.business.id))) {
+      return res.status(409).json({ error: "Estimate belongs to a different legal business" });
+    }
 
     const effectiveJobId = jobId !== undefined ? (jobId || null) : currentEstimate.jobId;
-    let owner: BusinessScope | null = requestedOwner.explicit
-      ? requestedOwner.business
-      : currentOwnership.state === "resolved"
-        ? currentOwnership.business
-        : null;
+    let owner: BusinessScope | null = currentOwnership.state === "resolved"
+      ? currentOwnership.business
+      : requestedOwner.explicit ? requestedOwner.business : null;
     if (effectiveJobId) {
       const linkedOwner = await resolveLinkedJobOwner(Number(effectiveJobId));
       if (!linkedOwner.ok) return res.status(linkedOwner.status).json({ error: linkedOwner.error });
       if (requestedOwner.explicit && requestedOwner.business.id !== linkedOwner.business.id) {
-        return res.status(409).json({ error: "Estimate business conflicts with the linked job" });
+        if (!(await sameLegalBusiness(requestedOwner.business.id, linkedOwner.business.id))) {
+          return res.status(409).json({ error: "Estimate business conflicts with the linked job" });
+        }
+      }
+      if (currentOwnership.state === "resolved" && currentOwnership.business.id !== linkedOwner.business.id) {
+        return res.status(409).json({ error: "Changing an estimate's operating division requires a new estimate" });
       }
       owner = linkedOwner.business;
     }

@@ -84,16 +84,24 @@ router.patch("/reorder", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
+    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, website, defaultQuoteTerms, defaultQuoteValidityDays, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
     const resolvedType = (typeof type === "string" && type.trim()) ? type.trim() : "other";
-    const [business] = await db.insert(businessesTable).values({
-      name, slug, type: resolvedType, logoUrl,
-      invoiceLogoLayout: invoiceLogoLayout == null ? null : normalizeInvoiceLogoLayout(invoiceLogoLayout),
-      address, city, state, zip, phone, email, licenseNumber, taxId,
-      enabledFeatures: Array.isArray(enabledFeatures) ? enabledFeatures : null,
-      parentBusinessId: parentBusinessId ? parseInt(parentBusinessId) : null,
-    }).returning();
+    const parentId = parentBusinessId ? parseInt(parentBusinessId) : null;
+    const business = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(businessesTable).values({
+        name, slug, type: resolvedType, logoUrl,
+        invoiceLogoLayout: invoiceLogoLayout == null ? null : normalizeInvoiceLogoLayout(invoiceLogoLayout),
+        address, city, state, zip, phone, email, licenseNumber, taxId,
+        enabledFeatures: Array.isArray(enabledFeatures) ? enabledFeatures : null,
+        parentBusinessId: parentId,
+      }).returning();
+      const [updated] = await tx.update(businessesTable)
+        .set({ legalBusinessId: parentId ?? created.id })
+        .where(eq(businessesTable.id, created.id))
+        .returning();
+      return updated;
+    });
     res.status(201).json({ ...business, logoUrl: toServingUrl(business.logoUrl) });
   } catch (err) {
     console.error(err);
@@ -104,7 +112,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
+    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, website, defaultQuoteTerms, defaultQuoteValidityDays, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
@@ -121,6 +129,15 @@ router.put("/:id", async (req, res) => {
     if (zip !== undefined) updates.zip = zip;
     if (phone !== undefined) updates.phone = phone;
     if (email !== undefined) updates.email = email;
+    if (website !== undefined) updates.website = website;
+    if (defaultQuoteTerms !== undefined) updates.defaultQuoteTerms = defaultQuoteTerms;
+    if (defaultQuoteValidityDays !== undefined) {
+      const days = Number(defaultQuoteValidityDays);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        return res.status(400).json({ error: "Quote validity must be between 1 and 365 days" });
+      }
+      updates.defaultQuoteValidityDays = days;
+    }
     if (licenseNumber !== undefined) updates.licenseNumber = licenseNumber;
     if (taxId !== undefined) updates.taxId = taxId;
     if ("enabledFeatures" in req.body) {

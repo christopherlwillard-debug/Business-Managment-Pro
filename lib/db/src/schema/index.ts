@@ -44,6 +44,7 @@ export * from "./bid-sources";
 export * from "./businesses";
 export * from "./equipment";
 export * from "./contacts";
+export * from "./contact-business-links";
 export * from "./job-sub-hours";
 export * from "./job-type-benchmarks";
 export * from "./job-type-benchmark-revisions";

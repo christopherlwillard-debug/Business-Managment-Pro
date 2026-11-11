@@ -133,9 +133,18 @@ export default function Invoices() {
   const [open, setOpen] = useState(false);
 
   const { toast } = useToast();
+  const [divisionFilter, setDivisionFilter] = useState("");
+  const hasWillardsDivisions = activeBusiness != null
+    && activeBusiness.legalBusinessId === activeBusiness.id
+    && businesses.some(business => business.id !== activeBusiness.id && business.legalBusinessId === activeBusiness.id);
+  const invoiceScopeParams = activeBusiness
+    ? (hasWillardsDivisions && divisionFilter
+      ? { businessLine: divisionFilter }
+      : { businessId: hasWillardsDivisions ? activeBusiness.id : activeBusiness.id })
+    : undefined;
   const prevInvoiceStatuses = useRef<Record<number, string>>({});
   const { data: invoices, isLoading: loadingInvoices } = useListInvoices(
-    { includeDrafts: true } as any,
+    { includeDrafts: true, ...invoiceScopeParams } as any,
     { query: { refetchInterval: 15_000 } as any },
   );
 
@@ -157,7 +166,7 @@ export default function Invoices() {
     invoices.forEach((inv) => { next[inv.id] = inv.status; });
     prevInvoiceStatuses.current = next;
   }, [invoices, toast]);
-  const { data: taxReport, isLoading: loadingTax } = useGetInvoiceTaxReport();
+  const { data: taxReport, isLoading: loadingTax } = useGetInvoiceTaxReport(invoiceScopeParams);
   const invoiceSendDateAudit = useQuery<{
     estimatedSendDateInvoices: Array<{
       id: number;
@@ -346,7 +355,7 @@ export default function Invoices() {
 
   const filteredInvoices = useMemo(() => {
     let list = showVoided ? allInvoices : nonVoidedInvoices;
-    if (activeBusiness) {
+    if (activeBusiness && !hasWillardsDivisions) {
       list = list.filter((inv: any) => belongsToSelectedBusiness(inv, activeBusiness));
     }
     if (filterStatus === "active") {
@@ -362,7 +371,7 @@ export default function Invoices() {
       );
     }
     return list;
-  }, [allInvoices, nonVoidedInvoices, filterStatus, searchQuery, activeBusiness, showVoided]);
+  }, [allInvoices, nonVoidedInvoices, filterStatus, searchQuery, activeBusiness, hasWillardsDivisions, showVoided]);
 
   const repairRequiredInvoices = useMemo(
     () => filteredInvoices.filter((invoice: any) => invoice.gmailDeliveryNeedsRepair === true),
@@ -536,6 +545,26 @@ export default function Invoices() {
           </button>
         </div>
       </div>
+
+      {hasWillardsDivisions && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter invoices by division">
+          {[
+            { value: "", label: "All Willard's" },
+            { value: "general_contracting", label: "General Contracting" },
+            { value: "asphalt_sealing", label: "Asphalt Sealing" },
+          ].map(option => (
+            <button key={option.value} type="button" aria-pressed={divisionFilter === option.value}
+              onClick={() => setDivisionFilter(option.value)}
+              className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                divisionFilter === option.value
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-muted-foreground hover:border-primary/40"
+              }`}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex p-1 bg-muted/50 rounded-xl w-fit border border-border/50">

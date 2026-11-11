@@ -14,6 +14,13 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ## 2026-11-10
 
+### LLC dashboard roll-up groundwork
+
+- Added a separate legal-owner relationship for business records and a contact-to-business association table; existing contacts and financial records were not rewritten.
+- Applied the additive schema change to the development database only, mapping Asphalt Sealing under the General Contracting legal owner while keeping Kinora separate.
+- Updated dashboard reporting to combine legal-owner member business IDs and known legacy division labels, with explicit division-only filters and a business breakdown limited to the selected LLC.
+- Added focused isolation tests and verified API, database-library, and app typechecks. Production was not changed or published.
+
 ### Consolidate estimates into the Quote Center
 
 - Renamed the existing Estimates surface to Quote Center and kept it as the sole estimate list and builder; Job Card and Aerial Quote entry points still write to the same `estimates` records.

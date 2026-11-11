@@ -108,6 +108,12 @@ export const ListClientsQueryParams = zod.object({
     .describe(
       "Canonical business owner; legacy business_line rows matching the business remain visible",
     ),
+  businessLine: zod.coerce
+    .string()
+    .optional()
+    .describe(
+      "Explicit operating division; takes precedence over legal-owner rollup",
+    ),
 });
 
 export const ListClientsResponseItem = zod.object({
@@ -243,6 +249,14 @@ export const DeleteClientParams = zod.object({
 export const ListJobsQueryParams = zod.object({
   status: zod.coerce.string().optional(),
   clientId: zod.coerce.number().optional(),
+  businessId: zod.coerce
+    .number()
+    .optional()
+    .describe("Business or legal owner to scope the job list"),
+  businessLine: zod.coerce
+    .string()
+    .optional()
+    .describe("Explicit operating division filter"),
 });
 
 export const ListJobsResponseItem = zod.object({
@@ -2283,6 +2297,8 @@ export const GetMaterialListInvoiceAssignmentHistoryResponse = zod.array(
  * @summary List all invoices
  */
 export const ListInvoicesQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
   status: zod.coerce.string().optional(),
   clientId: zod.coerce.number().optional(),
   startDate: zod.coerce.string().optional(),
@@ -2914,6 +2930,8 @@ export const FinalizeInvoiceCommunicationResponse = zod.object({
  * @summary Get invoice tax report (jobs, dates, amounts, locations)
  */
 export const GetInvoiceTaxReportQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
   startDate: zod.coerce.string().optional(),
   endDate: zod.coerce.string().optional(),
 });
@@ -3596,6 +3614,11 @@ export const ResetPortalPinResponse = zod.object({
 /**
  * @summary List all estimates
  */
+export const ListEstimatesQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
+});
+
 export const ListEstimatesResponseItem = zod.object({
   id: zod.number(),
   title: zod.string(),
@@ -4000,6 +4023,12 @@ export const UpdateSettingsResponse = zod.object({
  */
 export const GetDashboardStatsQueryParams = zod.object({
   period: zod.enum(["week", "month", "quarter", "year"]).optional(),
+  businessId: zod.coerce
+    .number()
+    .optional()
+    .describe(
+      "Legal business ID; legal-business selections include all operating divisions",
+    ),
   businessLine: zod
     .enum(["asphalt_sealing", "general_contracting"])
     .optional()

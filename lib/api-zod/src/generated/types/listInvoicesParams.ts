@@ -7,6 +7,8 @@
  */
 
 export type ListInvoicesParams = {
+  businessId?: number;
+  businessLine?: string;
   status?: string;
   clientId?: number;
   startDate?: string;

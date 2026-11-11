@@ -11,4 +11,8 @@ export type ListClientsParams = {
    * Canonical business owner; legacy business_line rows matching the business remain visible
    */
   businessId?: number;
+  /**
+   * Explicit operating division; takes precedence over legal-owner rollup
+   */
+  businessLine?: string;
 };

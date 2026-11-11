@@ -11,6 +11,10 @@ import type { GetDashboardStatsPeriod } from "./getDashboardStatsPeriod";
 export type GetDashboardStatsParams = {
   period?: GetDashboardStatsPeriod;
   /**
+   * Legal business ID; legal-business selections include all operating divisions
+   */
+  businessId?: number;
+  /**
    * Filter all KPI metrics to a single business line
    */
   businessLine?: GetDashboardStatsBusinessLine;

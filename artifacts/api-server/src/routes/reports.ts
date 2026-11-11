@@ -34,7 +34,15 @@ import {
 
 const router = Router();
 
-type ReportBusiness = { id: number; slug: string };
+export type ReportBusiness = {
+  id: number;
+  slug: string;
+  businessIds: number[];
+  businessSlugs: string[];
+  divisionSlugs: string[];
+  divisionBusinessIds: Record<string, number[]>;
+  divisionSlug: string | null;
+};
 
 /** Resolve optional report selectors once and fail closed for unknown businesses. */
 async function resolveReportBusiness(
@@ -61,15 +69,59 @@ async function resolveReportBusiness(
     }
   }
   if (!slug && id == null) return null;
-  const [business] = await db.select({ id: businessesTable.id, slug: businessesTable.slug })
+  const [selected] = await db.select({
+    id: businessesTable.id,
+    slug: businessesTable.slug,
+    legalBusinessId: businessesTable.legalBusinessId,
+  })
     .from(businessesTable)
     .where(id != null ? eq(businessesTable.id, id) : eq(businessesTable.slug, slug))
     .limit(1);
-  if (!business || (slug && business.slug !== slug)) {
+  if (!selected || (slug && selected.slug !== slug && id == null)) {
     res.status(400).json({ error: "Unknown business" });
     return undefined;
   }
-  return business;
+  const ownerId = selected.legalBusinessId ?? selected.id;
+  const members = await db.select({
+    id: businessesTable.id,
+    slug: businessesTable.slug,
+    legalBusinessId: businessesTable.legalBusinessId,
+  }).from(businessesTable);
+  const owner = members.find((business) => business.id === ownerId);
+  if (!owner) {
+    res.status(400).json({ error: "Unknown legal business" });
+    return undefined;
+  }
+  const legalMembers = members.filter((business) =>
+    (business.legalBusinessId ?? business.id) === ownerId,
+  );
+  if (
+    slug
+    && selected.id !== ownerId
+    && slug !== selected.slug
+  ) {
+    res.status(400).json({ error: "Conflicting business selectors" });
+    return undefined;
+  }
+  if (slug && !legalMembers.some((business) => business.slug === slug)) {
+    res.status(400).json({ error: "Unknown business division" });
+    return undefined;
+  }
+  const divisionBusinessIds = Object.fromEntries(
+    legalMembers.map((business) => [business.slug, [business.id]]),
+  );
+  const divisionSlug = selected.id !== ownerId
+    ? selected.slug
+    : (slug && legalMembers.some((business) => business.slug === slug) ? slug : null);
+  return {
+    id: owner.id,
+    slug: owner.slug,
+    businessIds: legalMembers.map((business) => business.id),
+    businessSlugs: legalMembers.map((business) => business.slug),
+    divisionSlugs: legalMembers.map((business) => business.slug),
+    divisionBusinessIds,
+    divisionSlug,
+  };
 }
 
 /** Prefer canonical ownership; only use businessLine for legacy null-owned rows. */
@@ -79,18 +131,70 @@ function reportBusinessWhere(
   businessIdColumn?: any,
 ): any {
   if (!business) return undefined;
-  if (!businessIdColumn) return eq(businessLineColumn, business.slug);
-  if (businessIdColumn === otherIncomeTable.businessId) {
-    return or(
-      eq(businessIdColumn, String(business.id)),
-      eq(businessIdColumn, business.slug),
-      and(isNull(businessIdColumn), eq(businessLineColumn, business.slug)),
-    );
+  const divisions = business.divisionSlug ? [business.divisionSlug] : business.divisionSlugs;
+  const memberIds = business.divisionSlug
+    ? (business.divisionBusinessIds[business.divisionSlug] ?? [])
+    : business.businessIds;
+  if (!businessIdColumn) {
+    return business.divisionSlug
+      ? eq(businessLineColumn, business.divisionSlug)
+      : inArray(businessLineColumn, divisions);
   }
-  return or(
-    eq(businessIdColumn, business.id),
-    and(isNull(businessIdColumn), eq(businessLineColumn, business.slug)),
-  );
+  const divisionPredicate = business.divisionSlug
+    ? or(
+        and(eq(businessIdColumn, business.id), eq(businessLineColumn, business.divisionSlug)),
+        ...memberIds.filter((id) => id !== business.id).map((id) => eq(businessIdColumn, id)),
+        and(isNull(businessIdColumn), eq(businessLineColumn, business.divisionSlug)),
+      )
+    : or(
+        inArray(businessIdColumn, memberIds),
+        and(isNull(businessIdColumn), inArray(businessLineColumn, divisions)),
+      );
+  if (businessIdColumn === otherIncomeTable.businessId) {
+    const stringIds = memberIds.map(String);
+    const legacyValues = business.divisionSlug ? [business.divisionSlug] : divisions;
+    return business.divisionSlug
+      ? or(
+          and(eq(businessIdColumn, String(business.id)), eq(businessLineColumn, business.divisionSlug)),
+          ...stringIds.filter((value) => value !== String(business.id)).map((value) => eq(businessIdColumn, value)),
+          eq(businessIdColumn, business.divisionSlug),
+          and(isNull(businessIdColumn), eq(businessLineColumn, business.divisionSlug)),
+        )
+      : or(
+          inArray(businessIdColumn, [...stringIds, ...business.businessSlugs]),
+          and(isNull(businessIdColumn), inArray(businessLineColumn, legacyValues)),
+        );
+  }
+  return divisionPredicate;
+}
+
+function reportBusinessIdsWhere(business: ReportBusiness | null, businessIdColumn: any) {
+  if (!business) return undefined;
+  const ids = business.divisionSlug
+    ? (business.divisionBusinessIds[business.divisionSlug] ?? [])
+    : business.businessIds;
+  return ids.length ? inArray(businessIdColumn, ids) : undefined;
+}
+
+export function reportBusinessContains(
+  record: { businessId?: number | string | null; businessLine?: string | null },
+  business: ReportBusiness | null,
+): boolean {
+  if (!business) return true;
+  const recordId = record.businessId == null ? null : Number(record.businessId);
+  if (business.divisionSlug) {
+    if (recordId != null) {
+      if (recordId === business.id) return record.businessLine === business.divisionSlug;
+      const isDivisionAlias = business.divisionBusinessIds[business.divisionSlug]?.includes(recordId) ?? false;
+      return isDivisionAlias && (
+        record.businessLine == null || record.businessLine === business.divisionSlug
+      );
+    }
+    return record.businessLine === business.divisionSlug;
+  }
+  return recordId != null
+    ? business.businessIds.includes(recordId)
+    : business.divisionSlugs.includes(record.businessLine ?? "");
 }
 
 const dashboardInvoiceSelection = {
@@ -219,8 +323,8 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     const reportBusiness = await resolveReportBusiness(blFilter, businessIdFilter, res);
     if (reportBusiness === undefined) return;
-    const validBl = reportBusiness?.slug ?? null;
-    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
+    const validBl = reportBusiness?.divisionSlug ?? null;
+    const mileageWhere = reportBusinessIdsWhere(reportBusiness ?? null, mileageLogsTable.businessId);
     const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
       reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
 
@@ -250,7 +354,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
         gte(ownerCapitalEntriesTable.date, startDate),
         lte(ownerCapitalEntriesTable.date, expenseEndDate),
         isNull(ownerCapitalEntriesTable.voidedAt),
-        reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+        reportBusinessIdsWhere(reportBusiness ?? null, ownerCapitalEntriesTable.businessId),
       )),
       // Fixed/allocation sub payments — cash-basis cash out.
       // Date range covers the full 6-month chart window (chartStartDate) so that
@@ -285,7 +389,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     // Fetch full (unfiltered) data for byBusinessLine breakdown.
     // When no filter is active, KPI data == full data — reuse it to avoid extra queries.
-    const [rawPaidInvoices, rawNonPaidInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = validBl
+    const [rawPaidInvoices, rawNonPaidInvoices, rawExpenses, rawOtherIncome, rawActiveJobs] = reportBusiness
       ? await Promise.all([
           // Same paid/non-paid split as kpiInvoices — see comment above
           db.select(dashboardInvoiceSelection).from(invoicesTable).where(eq(invoicesTable.status, "paid")),
@@ -334,7 +438,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     const kpiSubPayments = allSubPayments.filter(r =>
       r.paymentDate >= startDate &&
       r.paymentDate <= expenseEndDate &&
-      (!reportBusiness || belongsToBusiness(r, reportBusiness)),
+      reportBusinessContains(r, reportBusiness ?? null),
     );
     const fixedAllocSubPaymentTotal = kpiSubPayments.reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
     const totalExpenses = nonMileageExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + fixedAllocSubPaymentTotal;
@@ -361,7 +465,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // reduce netCapitalInvested in the frontend ledger and must NOT be added
     // to ownerDrawTotal, which would deduct them a second time from equity.
     const ownerDrawTotal = kpiOwnerCapital
-      .filter(e => !reportBusiness || e.businessId === reportBusiness.id)
+      .filter(e => reportBusinessContains(e, reportBusiness ?? null))
       .reduce((sum, e) => {
         const amount = parseFloat(e.amount ?? "0");
         return sum + (amount < 0 ? Math.abs(amount) : 0);
@@ -402,9 +506,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     let subContractorOwed = 0;
     let subContractorPaid = 0;
     for (const r of subPayRows) {
-      if (reportBusiness && !(r.businessId != null
-        ? r.businessId === reportBusiness.id
-        : r.businessLine === reportBusiness.slug)) continue;
+      if (!reportBusinessContains(r, reportBusiness ?? null)) continue;
       const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       subContractorPaid += paid;
       // Trust paymentStatus as authoritative — paid/overpaid rows have no outstanding liability.
@@ -428,15 +530,35 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const OWNER_DRAW_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
-    const allBusinesses = await db.select({ id: businessesTable.id, slug: businessesTable.slug, name: businessesTable.name }).from(businessesTable).orderBy(businessesTable.id);
+    const allBusinesses = await db.select({
+      id: businessesTable.id,
+      slug: businessesTable.slug,
+      name: businessesTable.name,
+      legalBusinessId: businessesTable.legalBusinessId,
+    }).from(businessesTable).orderBy(businessesTable.id);
     const knownBusinessIds = new Set(allBusinesses.map(b => b.id));
     const knownBusinessSlugs = new Set(allBusinesses.map(b => b.slug));
 
     // Canonical numeric businessId is authoritative. other_income historically
     // stores its businessId as text, so accept either the canonical ID string or
     // its slug in that column for compatibility; only null IDs use businessLine.
-    const belongsToOtherIncomeBusiness = (row: { businessId?: string | number | null; businessLine?: string | null }, biz: { id: number; slug: string }) => {
-      if (row.businessId != null) return String(row.businessId) === String(biz.id) || String(row.businessId) === biz.slug;
+    const belongsToBusinessLine = (
+      row: { businessId?: number | string | null; businessLine?: string | null },
+      biz: { id: number; slug: string; legalBusinessId: number | null },
+    ) => {
+      if (row.businessId == null) return row.businessLine === biz.slug;
+      const id = Number(row.businessId);
+      const legalId = biz.legalBusinessId ?? biz.id;
+      if (row.businessLine) {
+        return row.businessLine === biz.slug && (id === biz.id || id === legalId);
+      }
+      // A legacy division-owned record can inherit its division from that
+      // division's compatibility business ID. Owner-level rows without a
+      // division label remain unassigned in the division breakdown.
+      return id === biz.id && biz.id !== legalId;
+    };
+    const belongsToOtherIncomeBusiness = (row: { businessId?: string | number | null; businessLine?: string | null }, biz: { id: number; slug: string; legalBusinessId: number | null }) => {
+      if (row.businessId != null) return belongsToBusinessLine(row, biz);
       return row.businessLine === biz.slug;
     };
     const isKnownBusinessRecord = (row: { businessId?: string | number | null; businessLine?: string | null }) => {
@@ -454,18 +576,21 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       r.paymentDate >= startDate && r.paymentDate <= expenseEndDate
     );
 
-    const byBusinessLine = allBusinesses.map(biz => {
+    const breakdownBusinesses = reportBusiness
+      ? allBusinesses.filter(business => reportBusiness.businessIds.includes(business.id))
+      : allBusinesses;
+    const byBusinessLine = breakdownBusinesses.map(biz => {
       const bl = biz.slug;
-      const blInvoices = rawInvoices.filter(i => belongsToBusiness(i, biz));
+      const blInvoices = rawInvoices.filter(i => belongsToBusinessLine(i, biz));
       const blOther = rawOtherIncome.filter(o => belongsToOtherIncomeBusiness(o, biz));
       // Exclude outstanding cost-bookings (cash-basis: not yet paid) and wage-advance
       // pre-payments (already captured in jsh accruals) from the BL breakdown too.
-      const blExpenses = rawExpenses.filter(e => belongsToBusiness(e, biz) && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
-      const blActiveJobs = rawActiveJobs.filter(j => belongsToBusiness(j, biz));
+      const blExpenses = rawExpenses.filter(e => belongsToBusinessLine(e, biz) && e.category !== "mileage" && !isOutstandingCostBooking(e) && !e.isWageAdvance);
+      const blActiveJobs = rawActiveJobs.filter(j => belongsToBusinessLine(j, biz));
       const blRevenue = sumDashboardRevenue(blInvoices, startDate, endDate)
         + blOther.reduce((s, o) => s + parseFloat(o.amount ?? "0"), 0);
       const blSubPayTotal = kpiSubPayForBl
-        .filter(r => belongsToBusiness(r, biz))
+        .filter(r => belongsToBusinessLine(r, biz))
         .reduce((s, r) => s + parseFloat(r.amount ?? "0"), 0);
       const blExpenseTotal = blExpenses.reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0) + blSubPayTotal;
       const blOwnerDrawTotal = blExpenses.filter(e => isOwnerWithdrawalExpenseCategory(e.category)).reduce((s, e) => s + parseFloat(e.amount ?? "0"), 0);
@@ -523,7 +648,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // Uses the already-fetched allSubPayments so no extra DB round trip.
     const subPayByMonth = new Map<string, number>();
     for (const r of allSubPayments) {
-      if (reportBusiness && !belongsToBusiness(r, reportBusiness)) continue;
+      if (!reportBusinessContains(r, reportBusiness ?? null)) continue;
       const month = r.paymentDate.slice(0, 7); // YYYY-MM
       subPayByMonth.set(month, (subPayByMonth.get(month) ?? 0) + parseFloat(r.amount ?? "0"));
     }
@@ -765,7 +890,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
     const endDate = `${year}-12-31`;
     const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
       reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
-    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
+    const mileageWhere = reportBusinessIdsWhere(reportBusiness ?? null, mileageLogsTable.businessId);
 
     // Accounting invoice columns — shared between the paid and non-paid fetches below
     const accInvoiceCols = {
@@ -888,7 +1013,7 @@ router.get("/accounting", sectionGuard("invoices"), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+          reportBusinessIdsWhere(reportBusiness ?? null, ownerCapitalEntriesTable.businessId),
         )),
     ]);
     const canonicalOwnerDrawTotal = accOwnerContribRows.reduce((sum, row) => {
@@ -1449,7 +1574,7 @@ async function computeDepreciationForYear(
     db.select().from(assetBusinessUseTable),
   ]);
   const assets = reportBusiness
-    ? allAssets.filter(asset => asset.businessId === reportBusiness.id)
+    ? allAssets.filter(asset => reportBusinessContains(asset, reportBusiness))
     : allAssets;
   const assetIds = new Set(assets.map(asset => asset.id));
   const busUseRows = reportBusiness
@@ -1534,7 +1659,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     const endDate   = `${year}-12-31`;
     const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
       reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
-    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
+    const mileageWhere = reportBusinessIdsWhere(reportBusiness ?? null, mileageLogsTable.businessId);
 
     const [invRows, expRows, mileRows, otherRows, plSubPayRows] = await Promise.all([
        db.select({ status: invoicesTable.status, total: invoicesTable.total, issueDate: invoicesTable.issueDate, stripePaidAt: invoicesTable.stripePaidAt, squarePaidAt: invoicesTable.squarePaidAt })
@@ -1729,7 +1854,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+          reportBusinessIdsWhere(reportBusiness ?? null, ownerCapitalEntriesTable.businessId),
         )),
       db.select({ federalTaxElection: settingsTable.federalTaxElection })
         .from(settingsTable)
@@ -1839,7 +1964,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
     const endDate = `${year}-12-31`;
     const blWhere = (businessLineColumn: any, businessIdColumn?: any) =>
       reportBusinessWhere(reportBusiness ?? null, businessLineColumn, businessIdColumn);
-    const mileageWhere = reportBusiness ? eq(mileageLogsTable.businessId, reportBusiness.id) : undefined;
+    const mileageWhere = reportBusinessIdsWhere(reportBusiness ?? null, mileageLogsTable.businessId);
 
     const [
       invoices,
@@ -1879,11 +2004,11 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
       db.select().from(otherIncomeTable)
         .where(and(gte(otherIncomeTable.date, startDate), lte(otherIncomeTable.date, endDate), blWhere(otherIncomeTable.businessLine, otherIncomeTable.businessId), isNull(otherIncomeTable.voidedAt))),
       db.select().from(assetsTable)
-        .where(reportBusiness ? eq(assetsTable.businessId, reportBusiness.id) : undefined),
+        .where(reportBusinessIdsWhere(reportBusiness ?? null, assetsTable.businessId)),
       db.select().from(estimatedTaxPaymentsTable)
         .where(and(
           eq(estimatedTaxPaymentsTable.year, year),
-          reportBusiness ? eq(estimatedTaxPaymentsTable.businessId, reportBusiness.id) : undefined,
+          reportBusinessIdsWhere(reportBusiness ?? null, estimatedTaxPaymentsTable.businessId),
         )),
       db.select().from(subcontractorsTable),
       db.select().from(settingsTable).limit(1),
@@ -2224,7 +2349,7 @@ router.get("/year-end", ownerGuard(), async (req, res) => {
           gte(ownerCapitalEntriesTable.date, startDate),
           lte(ownerCapitalEntriesTable.date, endDate),
           isNull(ownerCapitalEntriesTable.voidedAt),
-          reportBusiness ? eq(ownerCapitalEntriesTable.businessId, reportBusiness.id) : undefined,
+          reportBusinessIdsWhere(reportBusiness ?? null, ownerCapitalEntriesTable.businessId),
         )),
       computeOwnerWaterfall(year, reportBusiness ?? null),
     ]);

@@ -1920,11 +1920,23 @@ export type ListClientsParams = {
    * Canonical business owner; legacy business_line rows matching the business remain visible
    */
   businessId?: number;
+  /**
+   * Explicit operating division; takes precedence over legal-owner rollup
+   */
+  businessLine?: string;
 };
 
 export type ListJobsParams = {
   status?: string;
   clientId?: number;
+  /**
+   * Business or legal owner to scope the job list
+   */
+  businessId?: number;
+  /**
+   * Explicit operating division filter
+   */
+  businessLine?: string;
 };
 
 export type GetReadyToStartJobsParams = {
@@ -1971,6 +1983,8 @@ export type GetTrimOutCatalogParams = {
 };
 
 export type ListInvoicesParams = {
+  businessId?: number;
+  businessLine?: string;
   status?: string;
   clientId?: number;
   startDate?: string;
@@ -1993,6 +2007,8 @@ export type UpdateInvoiceStatusBody = {
 };
 
 export type GetInvoiceTaxReportParams = {
+  businessId?: number;
+  businessLine?: string;
   startDate?: string;
   endDate?: string;
 };
@@ -2076,6 +2092,11 @@ export type ResetPortalPin200 = {
   success: boolean;
 };
 
+export type ListEstimatesParams = {
+  businessId?: number;
+  businessLine?: string;
+};
+
 export type ListDailyLogsParams = {
   jobId?: number;
   startDate?: string;
@@ -2084,6 +2105,10 @@ export type ListDailyLogsParams = {
 
 export type GetDashboardStatsParams = {
   period?: GetDashboardStatsPeriod;
+  /**
+   * Legal business ID; legal-business selections include all operating divisions
+   */
+  businessId?: number;
   /**
    * Filter all KPI metrics to a single business line
    */

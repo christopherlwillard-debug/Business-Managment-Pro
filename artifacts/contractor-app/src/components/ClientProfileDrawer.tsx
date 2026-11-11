@@ -46,9 +46,10 @@ interface Props {
   onClose: () => void;
   onAddToRoute?: (clientId: number) => void;
   initialTab?: Tab;
+  businessId?: number;
 }
 
-export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTab }: Props) {
+export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTab, businessId }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [editingServiceDate, setEditingServiceDate] = useState(false);
   const [serviceDateVal, setServiceDateVal] = useState("");
@@ -71,7 +72,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
   const { activeBusiness } = useBusiness();
   const updateServiceDate = useUpdateClientServiceDate();
 
-  const { data, isLoading, isError, error, refetch } = useClientProfile(clientId, activeBusiness?.id);
+  const { data, isLoading, isError, error, refetch } = useClientProfile(clientId, businessId ?? activeBusiness?.id);
   const { data: squareStatus } = useSquareStatus();
 
   const client = data?.client;

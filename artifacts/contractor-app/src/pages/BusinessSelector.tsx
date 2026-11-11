@@ -32,7 +32,12 @@ function slugify(name: string) {
 }
 
 function BusinessCardStats({ business }: { business: Business }) {
-  const { data: stats, isLoading } = useGetDashboardStats({ period: "month", businessLine: business.slug as any });
+  const isLegalOwner = (business.legalBusinessId ?? business.id) === business.id;
+  const { data: stats, isLoading } = useGetDashboardStats({
+    period: "month",
+    businessId: business.legalBusinessId ?? business.id,
+    businessLine: isLegalOwner ? undefined : business.slug as any,
+  });
   if (isLoading) return <div className="flex gap-3 mt-1.5"><div className="h-3.5 w-16 bg-current opacity-10 rounded animate-pulse" /><div className="h-3.5 w-20 bg-current opacity-10 rounded animate-pulse" /></div>;
   if (!stats) return null;
   return (
@@ -354,8 +359,16 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className={`font-bold text-base ${colors.text}`}>{b.name}</p>
-                      <p className="text-sm text-muted-foreground">{BUSINESS_TYPE_LABELS[b.type] ?? b.type}</p>
+                      <p className={`font-bold text-base ${colors.text}`}>
+                        {b.slug === "general_contracting" && (b.legalBusinessId ?? b.id) === b.id
+                          ? "Willard's General Contracting, LLC"
+                          : b.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {b.legalBusinessId != null && b.legalBusinessId !== b.id
+                          ? "Operating division"
+                          : BUSINESS_TYPE_LABELS[b.type] ?? b.type}
+                      </p>
                       <BusinessCardStats business={b} />
                     </div>
                   </button>

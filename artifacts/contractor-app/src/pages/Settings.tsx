@@ -1546,7 +1546,7 @@ function SquareAppIdCard() {
 
 function BusinessProfileCard() {
   const { activeBusiness, businesses, refresh } = useBusiness();
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", zip: "", licenseNumber: "", taxId: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", website: "", defaultQuoteTerms: "", defaultQuoteValidityDays: "30", address: "", city: "", state: "", zip: "", licenseNumber: "", taxId: "" });
   const [parentBusinessId, setParentBusinessId] = useState<number | null>(null);
   const [seededId, setSeededId] = useState<number | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -1561,6 +1561,9 @@ function BusinessProfileCard() {
         name: activeBusiness.name ?? "",
         phone: activeBusiness.phone ?? "",
         email: activeBusiness.email ?? "",
+        website: activeBusiness.website ?? "",
+        defaultQuoteTerms: activeBusiness.defaultQuoteTerms ?? "",
+        defaultQuoteValidityDays: String(activeBusiness.defaultQuoteValidityDays ?? 30),
         address: activeBusiness.address ?? "",
         city: activeBusiness.city ?? "",
         state: activeBusiness.state ?? "",
@@ -1584,7 +1587,7 @@ function BusinessProfileCard() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, parentBusinessId: parentBusinessId ?? null }),
+        body: JSON.stringify({ ...form, defaultQuoteValidityDays: Number(form.defaultQuoteValidityDays), parentBusinessId: parentBusinessId ?? null }),
       });
       if (!res.ok) throw new Error("Failed to save");
       await refresh();
@@ -1630,6 +1633,18 @@ function BusinessProfileCard() {
             <div>
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Email</label>
               <input className={inp} type="email" value={form.email} onChange={e => setF("email", e.target.value)} placeholder="contact@business.com" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Website</label>
+              <input className={inp} type="url" value={form.website} onChange={e => setF("website", e.target.value)} placeholder="https://example.com" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Quote validity (days)</label>
+              <input className={inp} type="number" min={1} max={365} value={form.defaultQuoteValidityDays} onChange={e => setF("defaultQuoteValidityDays", e.target.value)} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Default quote terms</label>
+              <textarea className={`${inp} min-h-20 h-auto`} value={form.defaultQuoteTerms} onChange={e => setF("defaultQuoteTerms", e.target.value)} placeholder="Payment terms, exclusions, and validity notes shown on new quotes" />
             </div>
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-muted-foreground mb-1">Address</label>

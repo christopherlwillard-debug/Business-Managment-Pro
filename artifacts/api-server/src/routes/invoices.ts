@@ -25,7 +25,7 @@ import {
   syncMaterialsToInvoice,
   syncMaterialsToJobInvoice,
 } from "./material-lists.js";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, belongsToBusinessReadScope, businessReadPredicate, sameLegalBusiness } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
@@ -58,11 +58,15 @@ router.param("id", (req, res, next, rawId) => {
   void (async () => {
     const id = Number(rawId);
     if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid invoice ID" });
-    const scope = await requestedBusiness(req);
+    const isRead = req.method.toUpperCase() === "GET";
+    const scope = isRead ? await requestedBusinessReadScope(req) : await requestedBusiness(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     if (!scope) return next();
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, id));
-    if (!invoice || !belongsToBusiness(invoice, scope)) return res.status(404).json({ error: "Invoice not found" });
+    const matches = isRead
+      ? belongsToBusinessReadScope(invoice ?? {}, scope as Awaited<ReturnType<typeof requestedBusinessReadScope>>)
+      : belongsToBusiness(invoice ?? {}, scope);
+    if (!invoice || !matches) return res.status(404).json({ error: "Invoice not found" });
     res.locals.businessScopedInvoice = invoice;
     next();
   })().catch(next);
@@ -197,6 +201,9 @@ router.get("/tax-report", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const conditions: any[] = [];
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) conditions.push(businessReadPredicate(invoicesTable, scope));
     if (startDate) conditions.push(gte(invoicesTable.issueDate, startDate as string));
     if (endDate) conditions.push(lte(invoicesTable.issueDate, endDate as string));
 
@@ -259,6 +266,9 @@ router.get("/", async (req, res) => {
   try {
     const { status, clientId, jobId, startDate, endDate, includeDrafts } = req.query;
     const conditions: any[] = [];
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) conditions.push(businessReadPredicate(invoicesTable, scope));
     if (status) {
       conditions.push(eq(invoicesTable.status, status as string));
     } else if (includeDrafts !== "true") {
@@ -293,8 +303,15 @@ router.get("/job/:jobId/draft", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
     if (isNaN(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (scope) {
+      const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
+        .from(jobsTable).where(eq(jobsTable.id, jobId));
+      if (!job || !belongsToBusinessReadScope(job, scope)) return res.status(404).json({ error: "Job not found" });
+    }
     const [inv] = await buildInvoiceQuery()
-      .where(and(eq(invoicesTable.jobId, jobId), eq(invoicesTable.status, "draft")));
+      .where(and(eq(invoicesTable.jobId, jobId), eq(invoicesTable.status, "draft"), businessReadPredicate(invoicesTable, scope)));
     if (!inv) return res.status(404).json({ error: "No draft found" });
     res.json(fmt(inv));
   } catch (err) {
@@ -345,7 +362,8 @@ router.post("/", async (req, res) => {
         ? jobOwnership.business
         : await generalContractingBusiness();
       if (!jobOwner) return res.status(409).json({ error: "General Contracting business was not found" });
-      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id) {
+      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id
+        && !(await sameLegalBusiness(jobOwner.id, requestedOwner.business.id))) {
         return res.status(409).json({ error: "Invoice business conflicts with the linked job" });
       }
       owner = jobOwner;
@@ -401,8 +419,10 @@ router.get("/summaries", async (req, res) => {
     if (jobIds.length === 0) return res.json({});
 
     const uniqueJobIds = [...new Set(jobIds)];
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const invoices = await buildInvoiceQuery()
-      .where(inArray(invoicesTable.jobId, uniqueJobIds))
+      .where(and(inArray(invoicesTable.jobId, uniqueJobIds), businessReadPredicate(invoicesTable, scope)))
       .orderBy(desc(invoicesTable.createdAt));
     const reconciledInvoices = await reconcileInvoiceRows(invoices);
     const formatted = reconciledInvoices.map(fmt);
@@ -498,12 +518,23 @@ router.put("/:id", async (req, res) => {
         ? jobOwnership.business
         : await generalContractingBusiness();
       if (!jobOwner) return res.status(409).json({ error: "General Contracting business was not found" });
-      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id) {
+      if (currentOwnership.state === "resolved" && currentOwnership.business.id !== jobOwner.id) {
+        return res.status(409).json({ error: "Changing an invoice's operating division requires a new invoice" });
+      }
+      if (requestedOwner.explicit && jobOwner.id !== requestedOwner.business.id
+        && !(await sameLegalBusiness(jobOwner.id, requestedOwner.business.id))) {
         return res.status(409).json({ error: "Invoice business conflicts with the linked job" });
       }
       owner = jobOwner;
     } else if (requestedOwner.explicit) {
-      owner = requestedOwner.business;
+      if (currentOwnership.state === "resolved") {
+        if (!(await sameLegalBusiness(currentOwnership.business.id, requestedOwner.business.id))) {
+          return res.status(409).json({ error: "Invoice belongs to a different legal business" });
+        }
+        owner = currentOwnership.business;
+      } else {
+        owner = requestedOwner.business;
+      }
     } else if (currentOwnership.state === "invalid") {
       return res.status(409).json({ error: "Invoice has invalid business ownership" });
     }

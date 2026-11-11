@@ -789,8 +789,8 @@ export default function Estimates() {
   const { canEdit } = useUserPermissions();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: estimates = [], isLoading } = useListEstimates();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { activeBusiness, businesses } = useBusiness();
 
   const createMut   = useCreateEstimate();
   const updateMut   = useUpdateEstimate();
@@ -807,21 +807,30 @@ export default function Estimates() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [depositLinkResult, setDepositLinkResult] = useState<{ url: string; title: string } | null>(null);
   const [generatingDepositId, setGeneratingDepositId] = useState<number | null>(null);
-  const { activeBusiness, businesses } = useBusiness();
-
-  const defaultTab = activeBusiness?.slug ?? businesses[0]?.slug ?? "";
+  const hasWillardsDivisions = activeBusiness != null
+    && activeBusiness.legalBusinessId === activeBusiness.id
+    && businesses.some(business => business.id !== activeBusiness.id && business.legalBusinessId === activeBusiness.id);
+  const defaultTab = hasWillardsDivisions ? "all" : activeBusiness?.slug ?? businesses[0]?.slug ?? "";
   const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
   useEffect(() => {
     if (activeBusiness) {
-      setActiveTab(activeBusiness.slug);
+      setActiveTab(hasWillardsDivisions ? "all" : activeBusiness.slug);
     } else if (businesses.length > 0 && !businesses.find(b => b.slug === activeTab)) {
       setActiveTab(businesses[0].slug);
     }
-  }, [activeBusiness, businesses]);
+  }, [activeBusiness, businesses, hasWillardsDivisions]);
 
-  const activeBusinessLine = activeTab;
+  const activeBusinessLine = activeTab === "all"
+    ? activeBusiness?.slug ?? businesses[0]?.slug ?? ""
+    : activeTab;
   const selectedBusiness = businesses.find(business => business.slug === activeBusinessLine);
+  const estimateParams = activeBusiness
+    ? (hasWillardsDivisions && activeTab === "all"
+      ? { businessId: activeBusiness.id }
+      : { businessLine: activeBusinessLine })
+    : (activeBusinessLine ? { businessLine: activeBusinessLine } : undefined);
+  const { data: estimates = [], isLoading } = useListEstimates(estimateParams);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: getListEstimatesQueryKey() });
 
@@ -917,10 +926,12 @@ export default function Estimates() {
   }, [modal, estimates]);
 
   const tabEstimates = useMemo(() =>
-    selectedBusiness
+    activeTab === "all"
+      ? estimates
+      : selectedBusiness
       ? estimates.filter(estimate => belongsToSelectedBusiness(estimate, selectedBusiness))
       : [],
-    [estimates, selectedBusiness]);
+    [estimates, selectedBusiness, activeTab]);
 
   const filtered = filterStatus === "all" ? tabEstimates : tabEstimates.filter(e => e.status === filterStatus);
 
@@ -953,9 +964,11 @@ export default function Estimates() {
       </div>
 
       {/* Business line tabs — only shown in All Businesses mode */}
-      {activeBusiness === null && (
+      {(activeBusiness === null || hasWillardsDivisions) && (
       <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-        {businesses.map(b => (
+        {(hasWillardsDivisions
+          ? [{ id: activeBusiness!.id, slug: "all", name: "All Willard's" }, ...businesses.filter(b => b.legalBusinessId === activeBusiness!.id && b.id !== activeBusiness!.id)]
+          : businesses).map(b => (
           <button
             key={b.slug}
             onClick={() => { setActiveTab(b.slug); setFilterStatus("all"); }}

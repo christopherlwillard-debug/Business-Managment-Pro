@@ -1,8 +1,8 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { clientsTable, clientBillingProfilesTable, estimatesTable, jobsTable, invoicesTable, squarePaymentsTable, prospectsTable, routeStopsTable, otherIncomeTable, businessesTable, mfhClientPricingTable, productionPriceOverridesTable } from "@workspace/db/schema";
-import { and, eq, desc, isNull, or } from "drizzle-orm";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { and, eq, desc, isNull, isNotNull, inArray, or } from "drizzle-orm";
+import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, belongsToBusinessReadScope, businessReadPredicate, mutationBusinessPredicate, type BusinessReadScope, type BusinessScope } from "../lib/business-scope.js";
 import {
   clientProfileRouteStopColumns,
   clientProfileSquarePaymentColumns,
@@ -28,9 +28,10 @@ async function resolveClientBusinessAssignment(value: unknown): Promise<{
 
 function scopedOwnerPredicate(
   columns: { businessId: any; businessLine: any },
-  scope: Awaited<ReturnType<typeof requestedBusiness>>,
+  scope: BusinessScope | BusinessReadScope | null,
 ) {
   if (!scope) return undefined;
+  if ("memberIds" in scope) return businessReadPredicate(columns, scope);
   return or(
     eq(columns.businessId, scope.id),
     and(isNull(columns.businessId), eq(columns.businessLine, scope.slug)),
@@ -55,18 +56,28 @@ router.param("id", (req, res, next, rawId) => {
         } as Request
       : req;
 
-    let scope: Awaited<ReturnType<typeof requestedBusiness>>;
+    let scope: BusinessScope | BusinessReadScope | null;
     if (isMutation) {
       const ownership = await resolveMutationBusiness(scopeRequest);
       if (!ownership.ok) return res.status(400).json({ error: ownership.error });
       scope = ownership.business;
     } else {
-      scope = await requestedBusiness(scopeRequest);
-      if (invalidBusinessScope(res, scope, hasRequestedBusiness(scopeRequest))) return;
+      scope = await requestedBusinessReadScope(scopeRequest);
+      if (invalidBusinessScope(res, scope as BusinessScope | null, hasRequestedBusiness(scopeRequest))) return;
     }
 
     const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, id));
-    if (!client || !belongsToBusiness(client, scope)) return res.status(404).json({ error: "Client not found" });
+    let clientInScope = isMutation
+      ? belongsToBusiness(client ?? {}, scope as BusinessScope | null)
+      : belongsToBusinessReadScope(client ?? {}, scope as BusinessReadScope | null);
+    if (client && !isMutation && scope && "memberIds" in scope && !clientInScope) {
+      const [linkedJob] = await db.select({ id: jobsTable.id }).from(jobsTable)
+        .where(and(eq(jobsTable.clientId, id), businessReadPredicate(jobsTable, scope))).limit(1);
+      const [linkedInvoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
+        .where(and(eq(invoicesTable.clientId, id), businessReadPredicate(invoicesTable, scope))).limit(1);
+      clientInScope = Boolean(linkedJob || linkedInvoice);
+    }
+    if (!client || !clientInScope) return res.status(404).json({ error: "Client not found" });
     res.locals.businessScopedClient = client;
     if (scope) res.locals.clientBusinessScope = scope;
     next();
@@ -79,12 +90,19 @@ function formatClient(c: typeof clientsTable.$inferSelect) {
 
 router.get("/", async (req, res) => {
   try {
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope as BusinessScope | null, hasRequestedBusiness(req))) return;
     const clientScope = scopedOwnerPredicate(clientsTable, scope);
     const invoiceScope = scopedOwnerPredicate(invoicesTable, scope);
-    const [clients, openInvoices] = await Promise.all([
-      db.select().from(clientsTable).where(clientScope).orderBy(clientsTable.createdAt),
+    const [jobClientRows, invoiceClientRows, openInvoices] = await Promise.all([
+      scope
+        ? db.select({ clientId: jobsTable.clientId }).from(jobsTable)
+            .where(and(businessReadPredicate(jobsTable, scope), isNotNull(jobsTable.clientId)))
+        : Promise.resolve([]),
+      scope
+        ? db.select({ clientId: invoicesTable.clientId }).from(invoicesTable)
+            .where(and(businessReadPredicate(invoicesTable, scope), isNotNull(invoicesTable.clientId)))
+        : Promise.resolve([]),
       db.select({
         clientId: invoicesTable.clientId,
         total: invoicesTable.total,
@@ -96,6 +114,12 @@ router.get("/", async (req, res) => {
         ),
       ),
     ]);
+    const relatedClientIds = [...new Set([...jobClientRows, ...invoiceClientRows]
+      .map(row => row.clientId).filter((id): id is number => id != null))];
+    const clientReadScope = scope && relatedClientIds.length
+      ? or(clientScope, inArray(clientsTable.id, relatedClientIds))
+      : clientScope;
+    const clients = await db.select().from(clientsTable).where(clientReadScope).orderBy(clientsTable.createdAt);
 
     const invoicesByClient = new Map<number, { balance: number; count: number; hasOverdue: boolean }>();
     for (const inv of openInvoices) {
@@ -149,8 +173,8 @@ router.get("/:id/profile", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid client ID" });
 
-    const scope = await requestedBusiness(req);
-    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    const scope = await requestedBusinessReadScope(req);
+    if (invalidBusinessScope(res, scope as BusinessScope | null, hasRequestedBusiness(req))) return;
     const client = res.locals.businessScopedClient ?? (await db.select().from(clientsTable).where(eq(clientsTable.id, id)))[0];
     if (!client) return res.status(404).json({ error: "Client not found" });
 

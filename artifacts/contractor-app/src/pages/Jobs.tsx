@@ -9862,9 +9862,20 @@ export default function Jobs() {
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const { activeBusiness, businesses } = useBusiness();
-  const { data: jobs = [],    isLoading } = useListJobs();
+  const [localBLFilter, setLocalBLFilter] = useState<string>("");
+  const hasWillardsDivisions = activeBusiness != null
+    && activeBusiness.legalBusinessId === activeBusiness.id
+    && businesses.some(business => business.id !== activeBusiness.id && business.legalBusinessId === activeBusiness.id);
+  const jobsParams = activeBusiness
+    ? hasWillardsDivisions
+      ? (localBLFilter ? { businessLine: localBLFilter } : { businessId: activeBusiness.id })
+      : { businessId: activeBusiness.id }
+    : (localBLFilter ? { businessLine: localBLFilter } : undefined);
+  const { data: jobs = [],    isLoading } = useListJobs(jobsParams);
   const { data: clients = [] }            = useListClients(
-    activeBusiness?.id != null ? { businessId: activeBusiness.id } : undefined,
+    activeBusiness?.id != null
+      ? { businessId: activeBusiness.legalBusinessId ?? activeBusiness.id }
+      : undefined,
   );
   const { data: subcontractors = [] }     = useListSubcontractors();
   const deleteJobMutation                 = useDeleteJob();
@@ -9931,13 +9942,15 @@ export default function Jobs() {
   }, {});
 
   const [profileClientId, setProfileClientId] = useState<number | null>(null);
+  const [profileBusinessId, setProfileBusinessId] = useState<number | undefined>(undefined);
   const [profileClientInitialTab, setProfileClientInitialTab] = useState<"overview" | "jobs" | "invoices" | "payments" | "route" | "billing" | undefined>(undefined);
 
   // Include inactive so archived service names still resolve on existing job cards
   const { data: allProductionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
   const [jobSearch, setJobSearch]       = useState("");
-  const [localBLFilter, setLocalBLFilter] = useState<string>("");
-  const jobBLFilter = activeBusiness ? activeBusiness.slug : localBLFilter;
+  const jobBLFilter = hasWillardsDivisions
+    ? localBLFilter
+    : activeBusiness ? activeBusiness.slug : localBLFilter;
   const [needsPayoutFilter, setNeedsPayoutFilter] = useState(false);
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [paidExpanded, setPaidExpanded] = useState(false);
@@ -10245,6 +10258,10 @@ export default function Jobs() {
   };
   const jobMatchesBL = (j: Job) => {
     if (!jobBLFilter) return true;
+    if (hasWillardsDivisions) {
+      const selectedDivision = businesses.find(business => business.slug === jobBLFilter);
+      return selectedDivision ? belongsToSelectedBusiness(j, selectedDivision) : false;
+    }
     // Prefer the FK when available, while retaining businessLine compatibility
     // for historical jobs that have not been backfilled yet. Completely
     // unassigned legacy jobs belong to the first/default business for display
@@ -10559,7 +10576,10 @@ export default function Jobs() {
         invoiceSummaryStatus={invoiceSummaryStatus}
         onRetryInvoiceSummary={retryInvoiceSummaryRequest}
         onCreateInvoice={() => handleReviewInvoice(job)}
-        onClientClick={job.clientId ? id => setProfileClientId(id) : undefined}
+        onClientClick={job.clientId ? id => {
+          setProfileClientId(id);
+          setProfileBusinessId(job.businessId ?? activeBusiness?.id);
+        } : undefined}
         hasSubExpenses={jobsWithOutstandingSubs.has(job.id) || !!job.subPaid}
         paymentSummary={jobFinancialSummaryMap.get(job.id)}
         paymentSummaryStatus={jobFinancialSummaryStatus}
@@ -11109,9 +11129,15 @@ export default function Jobs() {
       )}
 
       {/* Business-line filter tabs — only in All Businesses mode */}
-      {!isLoading && jobs.length > 0 && activeBusiness === null && (
+      {!isLoading && jobs.length > 0 && (activeBusiness === null || hasWillardsDivisions) && (
         <div className="flex gap-2 flex-wrap">
-          {[{ value: "", label: "All Jobs" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))].map((opt, idx) => {
+          {(hasWillardsDivisions
+            ? [
+                { value: "", label: "All Willard's" },
+                { value: "general_contracting", label: "General Contracting" },
+                { value: "asphalt_sealing", label: "Asphalt Sealing" },
+              ]
+            : [{ value: "", label: "All Jobs" }, ...businesses.map(b => ({ value: b.slug, label: b.name }))]).map((opt, idx) => {
             const count = opt.value === ""
               ? jobs.length
               : (() => {
@@ -11896,6 +11922,7 @@ export default function Jobs() {
       {profileClientId !== null && (
         <ClientProfileDrawer
           clientId={profileClientId}
+          businessId={profileBusinessId}
           initialTab={profileClientInitialTab}
           onClose={() => { setProfileClientId(null); setProfileClientInitialTab(undefined); }}
           onAddToRoute={(id) => {

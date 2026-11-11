@@ -1,11 +1,16 @@
 import type { Request, Response } from "express";
 import { db } from "@workspace/db";
 import { businessesTable } from "@workspace/db/schema";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 
 export type BusinessScope = {
   id: number;
   slug: string;
+};
+export type BusinessReadScope = BusinessScope & {
+  memberIds: number[];
+  memberSlugs: string[];
+  legalBusinessId: number;
 };
 
 export type MutationBusinessResolution =
@@ -132,6 +137,75 @@ export async function requestedBusiness(req: Request): Promise<BusinessScope | n
     return business ?? null;
   }
   return null;
+}
+
+/**
+ * Read-only scope for Jobs and Clients. Selecting a legal-owner row includes
+ * its operating divisions; an explicit businessLine remains division-only.
+ * This helper must not be used for mutations.
+ */
+export async function requestedBusinessReadScope(req: Request): Promise<BusinessReadScope | null> {
+  const rawId = req.query.businessId;
+  const rawSlug = req.query.businessLine;
+  if ((rawId == null || String(rawId).trim() === "") && (typeof rawSlug !== "string" || !rawSlug.trim())) return null;
+
+  const bySlug = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  let selected: typeof businessesTable.$inferSelect | undefined;
+  if (bySlug) {
+    [selected] = await db.select().from(businessesTable).where(eq(businessesTable.slug, bySlug)).limit(1);
+  } else {
+    const id = Number(rawId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    [selected] = await db.select().from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
+  }
+  if (!selected) return null;
+
+  const legalBusinessId = selected.legalBusinessId ?? selected.id;
+  const isLegalOwnerSelection = !bySlug && legalBusinessId === selected.id;
+  const divisions = isLegalOwnerSelection
+    ? await db.select({ id: businessesTable.id, slug: businessesTable.slug })
+        .from(businessesTable).where(eq(businessesTable.legalBusinessId, selected.id))
+    : [];
+  const memberRows = [{ id: selected.id, slug: selected.slug }, ...divisions];
+  const memberIds = [...new Set(memberRows.map(member => member.id))];
+  const memberSlugs = [...new Set([
+    ...memberRows.map(member => member.slug),
+    ...(memberRows.some(member => member.slug === "general_contracting") ? ["contracting"] : []),
+    ...(memberRows.some(member => member.slug === "asphalt_sealing") ? ["asphalt"] : []),
+  ])];
+  return { id: selected.id, slug: selected.slug, legalBusinessId, memberIds, memberSlugs };
+}
+
+export function businessReadPredicate(
+  columns: { businessId: any; businessLine: any },
+  scope: BusinessReadScope | null,
+) {
+  if (!scope) return undefined;
+  return or(
+    inArray(columns.businessId, scope.memberIds),
+    and(isNull(columns.businessId), inArray(columns.businessLine, scope.memberSlugs)),
+  );
+}
+
+export function belongsToBusinessReadScope(
+  record: { businessId?: number | string | null; businessLine?: string | null },
+  scope: BusinessReadScope | null,
+): boolean {
+  if (!scope) return true;
+  if (record.businessId != null) return scope.memberIds.includes(Number(record.businessId));
+  return record.businessLine != null && scope.memberSlugs.includes(record.businessLine);
+}
+
+export async function sameLegalBusiness(firstBusinessId: number, secondBusinessId: number): Promise<boolean> {
+  if (firstBusinessId === secondBusinessId) return true;
+  const rows = await db.select({
+    id: businessesTable.id,
+    legalBusinessId: businessesTable.legalBusinessId,
+  }).from(businessesTable).where(inArray(businessesTable.id, [firstBusinessId, secondBusinessId]));
+  const first = rows.find(row => row.id === firstBusinessId);
+  const second = rows.find(row => row.id === secondBusinessId);
+  return Boolean(first && second
+    && (first.legalBusinessId ?? first.id) === (second.legalBusinessId ?? second.id));
 }
 
 export function hasRequestedBusiness(req: Request): boolean {

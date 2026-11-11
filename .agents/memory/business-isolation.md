@@ -37,3 +37,11 @@ Willard's General Contracting, LLC is one legal business. General Contracting an
 **How to apply:** Model legal ownership separately from operating division. Keep Kinora and every unrelated business isolated. Do not assign ambiguous legacy records or rewrite history without a reviewed mapping. Mutations without an explicit division resolve to General Contracting; never hardcode numeric IDs. “All businesses” remains read-only scope.
 
 Financial mutation routes follow the same contract: canonical `businessId` is authoritative, legacy `businessLine` is fallback-only, and child rows inherit ownership from jobs/templates/providers rather than accepting a client-selected conflicting owner.
+
+## Willard's combined dashboard view
+
+The user approved Willard's General Contracting, LLC as the legal owner of General Contracting and Asphalt Sealing, with Asphalt Sealing operating as a DBA/division. Selecting the LLC should show combined totals by default; the dashboard offers All Willard's, General Contracting, and Asphalt Sealing views. Kinora remains outside the LLC scope. `legal_business_id` identifies the legal owner; the existing `business_line` remains the division label. Keep ambiguous legacy records out of division-only totals and do not rewrite production data without the separate reviewed release step.
+
+**Why:** One customer-facing dashboard needs to combine the LLC's two operating divisions while preserving division reporting and preventing unrelated-business leakage.
+
+**How to apply:** Resolve legal-owner membership from `businesses.legal_business_id`; scope combined reporting to member business IDs plus legacy null-owner rows with a known division slug. Keep Kinora's legal owner separate. Treat the dashboard default as combined only when the LLC itself is selected; a division selection remains restricted.
