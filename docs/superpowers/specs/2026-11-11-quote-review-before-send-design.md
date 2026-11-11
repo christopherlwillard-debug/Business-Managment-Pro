@@ -53,15 +53,18 @@ The current Q-37 preview also shows a pricing-reconciliation error. The PDF rout
 ## API and data flow
 
 - Add a prepare/reuse operation in the existing quote-delivery route. It creates a `revision` event with status `snapshot` when the current customer-safe content differs from the latest revision, stores the frozen customer snapshot and PDF path, and returns the revision identifier and summary. If the content hash matches the latest revision, reuse that revision.
+- The content hash uses the customer-safe snapshot with its revision number excluded, matching the existing snapshot builder. Internal estimate notes, markup, contingency, and unit rates are not included in the customer snapshot.
 - The preview PDF endpoint serves the stored revision PDF inline when requested, while retaining a download option. Preview revisions remain inactive to the public until an email send is accepted.
 - Change `POST /api/estimates/:id/send` to require the reviewed revision identifier in addition to recipient and idempotency key. It must not silently build a different revision at send time.
 - The send route uses the stored PDF for the reviewed revision as the email attachment and preserves existing public-link activation, token revocation, idempotency, and reconciliation behavior.
 - Both prepare and send validate the current estimate against the existing snapshot builder. Do not duplicate customer-price calculations in the client.
+- Generate and stage the PDF before making a new revision available. If PDF generation, storage, or database persistence fails, clean up any staged object and leave no send attempt or usable revision behind. If a prepare request succeeds in storage but its response is lost, a retry with the same content reuses the saved revision and PDF.
 
 ## Error and safety behavior
 
 - A total mismatch returns a clear 409 message in the review screen; do not render raw JSON inside the PDF viewer.
 - A failed PDF request, missing PDF, invalid recipient, or stale revision keeps the send action disabled or rejects the final request.
+- A failed preview preparation leaves no orphaned public link, send attempt, or unreferenced PDF object.
 - No email API call occurs during dialog open, preview preparation, PDF viewing, download, or checkbox selection.
 - Only the owner’s final Send quote click issues the send request.
 - Sending remains distinct from customer acceptance, authorization to begin work, and conversion to a job or invoice.
