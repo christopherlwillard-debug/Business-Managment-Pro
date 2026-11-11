@@ -1857,6 +1857,11 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EstimateQuoteBusinessScopeInput" }
       responses:
         "201":
           description: Created job from estimate
@@ -4426,10 +4431,25 @@ components:
       type: object
       properties:
         estimateId: { type: integer }
-        businessId: { type: integer }
+        businessId: { type: ["integer", "null"] }
         title: { type: string }
         clientName: { type: ["string", "null"] }
         total: { type: number }
+        workAddress: { type: ["string", "null"] }
+        terms: { type: ["string", "null"] }
+        decisionMethod: { type: ["string", "null"] }
+        decisionAt: { type: ["string", "null"], format: date-time }
+        decisionContact: { type: ["string", "null"] }
+        acceptedScope:
+          type: array
+          items:
+            type: object
+            properties:
+              description: { type: string }
+              quantity: { type: number }
+              unit: { type: ["string", "null"] }
+              amount: { type: number }
+            required: [description, quantity, amount]
         jobId: { type: ["integer", "null"] }
         revisionSnapshotId: { type: ["integer", "null"] }
         revision: { type: integer, minimum: 0 }
@@ -4458,7 +4478,7 @@ components:
         businessLine: { type: string }
         revisionSnapshotId: { type: integer }
         responseType: { type: string, enum: [approved, declined, changes_requested] }
-        method: { type: string, enum: [phone, text, email, in_person, other] }
+        method: { type: string, enum: [phone, text, email, in_person, purchase_order, other] }
         contactName: { type: ["string", "null"], maxLength: 200 }
         responseText: { type: ["string", "null"], maxLength: 4000 }
         reference: { type: ["string", "null"], maxLength: 500 }

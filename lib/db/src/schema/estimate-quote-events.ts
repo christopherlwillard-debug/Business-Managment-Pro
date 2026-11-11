@@ -90,6 +90,9 @@ export const estimateQuoteEventsTable = pgTable("estimate_quote_events", {
   uniqueIndex("estimate_quote_events_one_response_per_revision")
     .on(table.revisionSnapshotId)
     .where(sql`${table.eventType} = 'response'`),
+  uniqueIndex("estimate_quote_events_one_work_authorization_per_revision")
+    .on(table.revisionSnapshotId)
+    .where(sql`${table.eventType} = 'work_authorization'`),
 ]);
 
 export const insertEstimateQuoteEventSchema = createInsertSchema(estimateQuoteEventsTable)

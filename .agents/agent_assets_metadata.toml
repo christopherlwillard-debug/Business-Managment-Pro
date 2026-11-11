@@ -1,8 +1,49 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "s2Qeq-Go2k8YrgqdfMuHN"
 uri = "file://artifacts/contractor-mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "ox2NQAwA-cOo9pJ95-Pc-"
+uri = "file://generated-artifacts/phase3-review/quote-center-desktop.png"
+type = "image"
+title = "Quote Center — desktop authorization review"
+description = "Authenticated development UI with synthetic quote data; the authorization dialog shows the accepted scope, total, customer, work location, date, deposit, and terms."
+logical_id = "d234714f-7683-40b1-940e-315e8c6b26ea"
+content_hash = "sha256:bcdb0a6eaf755e45a1560f274c1d1a20d3233dc9764dfe2f0457310d9de03297"
+size = 109115
+mtime_ms = 1794436238025
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/d234714f-7683-40b1-940e-315e8c6b26ea/92c8881d-6b80-4532-94fb-e4d2fffe8570"
+storage_version_token = "1794436301378548"
+content_type = "image/png"
+
+[[outputs]]
+id = "5dujVDUFD3bacwsDHqHf9"
+uri = "file://generated-artifacts/phase3-review/quote-center-mobile.png"
+type = "image"
+title = "Quote Center — mobile view"
+description = "Authenticated mobile preview with synthetic quote data; no browser writes were allowed."
+logical_id = "a32099a3-033e-43f4-8ed6-bd82d85292be"
+content_hash = "sha256:05954f8e33e81d2883157bbe55f1a7cb09a7b4db2c4ffd067c991f468eb55efd"
+size = 88450
+mtime_ms = 1794436243905
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/a32099a3-033e-43f4-8ed6-bd82d85292be/dd18f895-2eb3-48d1-9045-27f84bc3e40e"
+storage_version_token = "1794436302029214"
+content_type = "image/png"
+
+[[outputs]]
+id = "Ng3DYN1G9XkQMUIIqF0uI"
+uri = "file://generated-artifacts/phase3-review/public-quote-approval.png"
+type = "image"
+title = "Public quote — approval review"
+description = "Synthetic customer-facing quote preview after choosing Approve; the page states that an online response does not authorize work. The response was not submitted."
+logical_id = "4df4327f-2d52-48e0-9096-7a342789ed9a"
+content_hash = "sha256:aad4a8e1536b348f15865a355717facb036e513a18860bb9051d29e063608d20"
+size = 70907
+mtime_ms = 1794436404017
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/4df4327f-2d52-48e0-9096-7a342789ed9a/6f7211a2-5719-4bb9-8c9d-a4582dc3e08e"
+storage_version_token = "1794436429937948"
+content_type = "image/png"

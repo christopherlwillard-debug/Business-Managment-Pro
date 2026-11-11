@@ -300,6 +300,86 @@ describe("scoped Quote Center actions", () => {
   });
 });
 
+describe("explicit work authorization", () => {
+  const acceptedDecision = {
+    id: 702,
+    estimateId: 12,
+    businessId: 1,
+    revisionSnapshotId: 701,
+    revision: 1,
+    eventType: "response",
+    status: "recorded",
+    responseType: "approved",
+    requestedAt: new Date("2026-11-10T13:00:00.000Z"),
+  };
+  const authorizationInput = {
+    businessId: 1,
+    revisionSnapshotId: 701,
+    confirmed: true,
+    note: "Customer confirmed the start date by phone",
+    idempotencyKey: "authorize-quote-revision-0001",
+  };
+
+  it("refuses authorization without an accepted decision", async () => {
+    h.selectQueue.push([{ ...estimate }], [revision()], [{ id: 701 }], []);
+    const response = await request(app).post("/estimates/12/quote-events/work-authorization")
+      .send(authorizationInput).expect(409);
+    expect(response.body.error).toContain("accepted revision");
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it("records one explicit authorization against the accepted frozen revision", async () => {
+    h.selectQueue.push(
+      [{ ...estimate }],
+      [revision()],
+      [{ id: 701 }],
+      [acceptedDecision],
+      [],
+    );
+    h.insertQueue.push([{
+      id: 703,
+      estimateId: 12,
+      businessId: 1,
+      revisionSnapshotId: 701,
+      revision: 1,
+      eventType: "work_authorization",
+      status: "authorized",
+      actorName: "Test Owner",
+      requestedAt: new Date("2026-11-11T12:00:00.000Z"),
+      metadata: { confirmed: true, note: authorizationInput.note },
+    }]);
+
+    const response = await request(app).post("/estimates/12/quote-events/work-authorization")
+      .send(authorizationInput).expect(201);
+    expect(h.inserts.at(-1)).toMatchObject({
+      eventType: "work_authorization",
+      status: "authorized",
+      revisionSnapshotId: 701,
+      actorUserId: 77,
+      metadata: { confirmed: true, note: authorizationInput.note },
+    });
+    expect(response.body).toMatchObject({
+      eventType: "work_authorization",
+      revision: 1,
+      actorName: "Test Owner",
+    });
+  });
+
+  it("rejects a duplicate authorization event for the same revision", async () => {
+    h.selectQueue.push(
+      [{ ...estimate }],
+      [revision()],
+      [{ id: 701 }],
+      [acceptedDecision],
+      [{ id: 703 }],
+    );
+    await request(app).post("/estimates/12/quote-events/work-authorization")
+      .send({ ...authorizationInput, idempotencyKey: "authorize-quote-revision-0002" })
+      .expect(409);
+    expect(h.inserts).toHaveLength(0);
+  });
+});
+
 afterEach(() => {
   expect(h.selectQueue).toHaveLength(0);
 });
@@ -444,6 +524,8 @@ describe("public quote token responses", () => {
       responseType: type,
       responseText: "Customer decision",
     });
+    expect(h.inserts).toHaveLength(1);
+    expect(h.inserts.some(event => event.eventType === "work_authorization")).toBe(false);
   });
 });
 

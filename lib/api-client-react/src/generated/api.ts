@@ -7679,11 +7679,14 @@ export const getConvertEstimateToJobUrl = (id: number) => {
 
 export const convertEstimateToJob = async (
   id: number,
+  estimateQuoteBusinessScopeInput: EstimateQuoteBusinessScopeInput,
   options?: RequestInit,
 ): Promise<Job> => {
   return customFetch<Job>(getConvertEstimateToJobUrl(id), {
     ...options,
     method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(estimateQuoteBusinessScopeInput),
   });
 };
 
@@ -7694,14 +7697,14 @@ export const getConvertEstimateToJobMutationOptions = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof convertEstimateToJob>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
   Awaited<ReturnType<typeof convertEstimateToJob>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
   TContext
 > => {
   const mutationKey = ["convertEstimateToJob"];
@@ -7715,11 +7718,11 @@ export const getConvertEstimateToJobMutationOptions = <
 
   const mutationFn: MutationFunction<
     Awaited<ReturnType<typeof convertEstimateToJob>>,
-    { id: number }
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> }
   > = (props) => {
-    const { id } = props ?? {};
+    const { id, data } = props ?? {};
 
-    return convertEstimateToJob(id, requestOptions);
+    return convertEstimateToJob(id, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -7728,7 +7731,8 @@ export const getConvertEstimateToJobMutationOptions = <
 export type ConvertEstimateToJobMutationResult = NonNullable<
   Awaited<ReturnType<typeof convertEstimateToJob>>
 >;
-
+export type ConvertEstimateToJobMutationBody =
+  BodyType<EstimateQuoteBusinessScopeInput>;
 export type ConvertEstimateToJobMutationError = ErrorType<unknown>;
 
 /**
@@ -7741,14 +7745,14 @@ export const useConvertEstimateToJob = <
   mutation?: UseMutationOptions<
     Awaited<ReturnType<typeof convertEstimateToJob>>,
     TError,
-    { id: number },
+    { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
   Awaited<ReturnType<typeof convertEstimateToJob>>,
   TError,
-  { id: number },
+  { id: number; data: BodyType<EstimateQuoteBusinessScopeInput> },
   TContext
 > => {
   return useMutation(getConvertEstimateToJobMutationOptions(options));

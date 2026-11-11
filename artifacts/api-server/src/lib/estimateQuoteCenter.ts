@@ -15,6 +15,12 @@ type QuoteCenterItem = {
   revision: number;
   documentStatus: "draft" | "sent" | "viewed" | "expired" | "archived";
   decision: "approved" | "declined" | "changes_requested" | null;
+  decisionMethod: string | null;
+  decisionAt: string | null;
+  decisionContact: string | null;
+  workAddress: string | null;
+  terms: string | null;
+  acceptedScope: Array<{ description: string; quantity: number; unit: string | null; amount: number }>;
   authorizationStatus: "not_authorized" | "authorized";
   nextFollowUpAt: string | null;
   nextFollowUpEventId: number | null;
@@ -67,6 +73,21 @@ export function buildEstimateQuoteCenter(
       .filter((event) => event.eventType === "response" || event.eventType === "manual_response")
       .sort((a, b) => eventTime(b) - eventTime(a));
     const decision = decisions[0]?.responseType as QuoteCenterItem["decision"] | undefined;
+    const decisionMetadata = decisions[0]?.metadata as Record<string, unknown> | null;
+    const customerSnapshot = revision?.customerSnapshot && typeof revision.customerSnapshot === "object"
+      ? revision.customerSnapshot as Record<string, unknown>
+      : {};
+    const snapshotItems = Array.isArray(customerSnapshot.items) ? customerSnapshot.items : [];
+    const acceptedScope = decision === "approved" ? snapshotItems.flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const row = value as Record<string, unknown>;
+      const description = String(row.description ?? "").trim();
+      if (!description) return [];
+      const quantity = Number(row.quantity ?? 0);
+      const amount = Number(row.amount ?? 0);
+      if (!Number.isFinite(quantity) || !Number.isFinite(amount)) return [];
+      return [{ description, quantity, unit: row.unit == null ? null : String(row.unit), amount: asMoney(amount) }];
+    }) : [];
     const archiveEvents = related
       .filter((event) => event.eventType === "archive" || event.eventType === "restore")
       .sort((a, b) => eventTime(b) - eventTime(a));
@@ -128,6 +149,16 @@ export function buildEstimateQuoteCenter(
       revision: revision?.revision ?? 0,
       documentStatus,
       decision: decision ?? null,
+      decisionMethod: decisions[0]
+        ? decisions[0].eventType === "response" ? "online" : String(decisionMetadata?.method ?? "other")
+        : null,
+      decisionAt: asDate(decisions[0]?.requestedAt)?.toISOString() ?? null,
+      decisionContact: decisions[0]
+        ? String(decisionMetadata?.contactName ?? customerSnapshot.customerName ?? "") || null
+        : null,
+      workAddress: typeof customerSnapshot.workAddress === "string" ? customerSnapshot.workAddress : null,
+      terms: typeof customerSnapshot.terms === "string" ? customerSnapshot.terms : null,
+      acceptedScope,
       authorizationStatus: authorized ? "authorized" : "not_authorized",
       nextFollowUpAt: nextFollowUp?.dueAt.toISOString() ?? null,
       nextFollowUpEventId: nextFollowUp?.eventId ?? null,

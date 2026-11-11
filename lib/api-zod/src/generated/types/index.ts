@@ -70,6 +70,7 @@ export * from "./estimate";
 export * from "./estimateLineItem";
 export * from "./estimateQuoteBusinessScopeInput";
 export * from "./estimateQuoteCenterItem";
+export * from "./estimateQuoteCenterItemAcceptedScopeItem";
 export * from "./estimateQuoteCenterItemAuthorizationStatus";
 export * from "./estimateQuoteCenterItemDecision";
 export * from "./estimateQuoteCenterItemDocumentStatus";

@@ -42,10 +42,19 @@ const fieldClass = "mt-1 w-full rounded-lg border border-[#d6dfe1] bg-white px-3
 const buttonClass = "inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d6dfe1] bg-white px-2.5 py-2 text-xs font-semibold text-[#526675] transition-colors hover:bg-[#f1f4f2] disabled:cursor-not-allowed disabled:opacity-50";
 const makeKey = () => crypto.randomUUID();
 const decisionLabel = (decision?: string | null) => ({
-  approved: "Accepted",
+  approved: "Accepted online",
   declined: "Declined",
   changes_requested: "Changes requested",
 }[decision ?? ""] ?? "Awaiting response");
+const acceptanceMethodLabel = (method?: string | null) => ({
+  online: "online",
+  phone: "by phone",
+  text: "by text",
+  email: "by email",
+  in_person: "in person",
+  purchase_order: "by purchase order",
+  other: "by documented communication",
+}[method ?? ""] ?? "manually recorded");
 const documentLabel = (status: string) => ({
   draft: "Draft",
   sent: "Sent",
@@ -268,7 +277,9 @@ export function QuoteCenterBoard({
           const followUpItem = item as QuoteItemFollowUp;
           const estimate = estimatesById.get(item.estimateId);
           const accepted = item.decision === "approved";
-          const decision = decisionLabel(item.decision);
+          const decision = item.decision === "approved"
+            ? `Accepted ${acceptanceMethodLabel(item.decisionMethod)} — ${item.authorizationStatus === "authorized" ? "Authorized" : "Awaiting Work Authorization"}`
+            : decisionLabel(item.decision);
           const followDate = item.nextFollowUpAt ? formatDate(item.nextFollowUpAt) : item.followUpDue ? "Due now" : "—";
           const isDraft = item.documentStatus === "draft";
           const pendingSchedule = followUpItem.nextFollowUpEventId != null && followUpItem.nextFollowUpSource != null && (item.followUpDue || item.nextFollowUpAt);
@@ -290,7 +301,7 @@ export function QuoteCenterBoard({
                   {canEdit && estimate && <button onClick={() => onEdit(estimate)} className={buttonClass}>Edit</button>}
                   {canEdit && estimate && !isDraft && item.documentStatus !== "archived" && <button onClick={() => onSend(estimate)} className={buttonClass}>Send</button>}
                   {canEdit && estimate && accepted && item.documentStatus !== "archived" && item.authorizationStatus !== "authorized" && item.revisionSnapshotId != null && <button onClick={() => open("authorize", item)} className={`${buttonClass} border-[#d5e1d7] text-[#55745f]`}>Authorize</button>}
-                  {canEdit && estimate && item.jobId == null && ["sent", "won"].includes(estimate.status) && <button onClick={() => onConvert(estimate)} className={`${buttonClass} border-[#d5e1d7] text-[#55745f]`}>Convert</button>}
+                  {canEdit && estimate && item.jobId == null && item.authorizationStatus === "authorized" && <button onClick={() => onConvert(estimate)} className={`${buttonClass} border-[#d5e1d7] text-[#55745f]`}>Convert to Job</button>}
                   {estimate && (estimate.businessLine === "asphalt_sealing" || estimate.jobType === "Asphalt Sealing") && ["sent", "won"].includes(estimate.status) && Number(estimate.total) > 0 && (estimate.depositPaidAt
                     ? <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-[10px] font-bold text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />Deposit received</span>
                     : canEdit && item.documentStatus !== "archived" && <button onClick={() => onDeposit(estimate)} className={buttonClass}>{estimate.squarePaymentLinkUrl || estimate.stripePaymentLinkUrl ? "Deposit link" : "Request deposit"}</button>)}
@@ -324,7 +335,7 @@ export function QuoteCenterBoard({
             <div className="space-y-4 px-5 py-4">
               {dialog === "response" && <>
                 <div className="grid grid-cols-2 gap-3">
-                  <label className="text-[11px] font-semibold text-[#667680]">Method<select value={method} onChange={event => setMethod(event.target.value)} className={fieldClass}><option value="phone">Phone</option><option value="text">Text</option><option value="email">Email</option><option value="in_person">In person</option><option value="other">Other</option></select></label>
+                  <label className="text-[11px] font-semibold text-[#667680]">Method<select value={method} onChange={event => setMethod(event.target.value)} className={fieldClass}><option value="phone">Phone</option><option value="text">Text</option><option value="email">Email</option><option value="in_person">In person</option><option value="purchase_order">Purchase order</option><option value="other">Other</option></select></label>
                   <label className="text-[11px] font-semibold text-[#667680]">Decision<select value={outcome} onChange={event => setOutcome(event.target.value)} className={fieldClass}><option value="approved">Approved</option><option value="declined">Declined</option><option value="changes_requested">Changes requested</option></select></label>
                 </div>
                 <label className="block text-[11px] font-semibold text-[#667680]">Customer contact<input value={contactName} onChange={event => setContactName(event.target.value)} maxLength={200} placeholder="Name or role" className={fieldClass} /></label>
@@ -333,7 +344,32 @@ export function QuoteCenterBoard({
                 <p className="rounded-md bg-[#f5f6f3] p-2.5 text-[10px] leading-relaxed text-[#73818a]">This records a response received outside the quote page. Online responses are preserved and are not rewritten.</p>
               </>}
               {dialog === "authorize" && <>
-                <div className="rounded-lg border border-[#e1eadf] bg-[#f3f7f2] p-3 text-xs leading-relaxed text-[#4c6652]"><strong>Separate confirmation required.</strong> An accepted quote does not itself authorize work.</div>
+                <div className="rounded-lg border border-[#e1eadf] bg-[#f3f7f2] p-3 text-xs leading-relaxed text-[#4c6652]">
+                  <strong>Review the accepted revision before authorizing work.</strong> Customer acceptance does not authorize work or create a job.
+                </div>
+                {selected && (() => {
+                  const estimate = estimatesById.get(selected.estimateId);
+                  return (
+                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-[#dce2e4] bg-[#fafbf9] p-3 text-xs text-[#425666]">
+                      <p><strong>Customer:</strong> {selected.clientName ?? "Not linked"}</p>
+                      <p><strong>Work location:</strong> {selected.workAddress ?? "Not recorded"}</p>
+                      <p><strong>Accepted revision:</strong> {selected.revision} · <strong>Total:</strong> {formatCurrency(selected.total)}</p>
+                      <p><strong>Acceptance:</strong> {acceptanceMethodLabel(selected.decisionMethod)}{selected.decisionAt ? ` · ${formatDate(selected.decisionAt)}` : ""}{selected.decisionContact ? ` · ${selected.decisionContact}` : ""}</p>
+                      <div>
+                        <strong>Accepted scope:</strong>
+                        {selected.acceptedScope?.length ? (
+                          <ul className="mt-1 list-disc space-y-1 pl-5">
+                            {selected.acceptedScope.map((line, index) => (
+                              <li key={`${line.description}-${index}`}>{line.quantity} {line.unit ?? ""} {line.description} — {formatCurrency(line.amount)}</li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-1 text-[#7b8790]">No frozen line items were recorded.</p>}
+                      </div>
+                      <p><strong>Deposit:</strong> {estimate?.depositPaidAt ? `Paid${estimate.depositPaidAmount != null ? ` · ${formatCurrency(Number(estimate.depositPaidAmount))}` : ""}` : "Not recorded as paid"}</p>
+                      <p><strong>Terms / conditions:</strong> {selected.terms ?? "None recorded"}</p>
+                    </div>
+                  );
+                })()}
                 <label className="block text-[11px] font-semibold text-[#667680]">Authorization details<textarea value={note} onChange={event => setNote(event.target.value)} rows={3} maxLength={4000} placeholder="How was permission explicitly given?" className={fieldClass} /></label>
                 <label className="flex items-start gap-2 rounded-lg border border-[#dce2e4] p-3 text-xs leading-relaxed text-[#425666]"><input type="checkbox" checked={authorizedConfirmed} onChange={event => setAuthorizedConfirmed(event.target.checked)} className="mt-0.5 accent-[#55745f]" /><span>I confirm the customer explicitly authorized work for this quote revision.</span></label>
               </>}

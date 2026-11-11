@@ -3705,10 +3705,25 @@ export const GetEstimateQuoteCenterResponse = zod.object({
   items: zod.array(
     zod.object({
       estimateId: zod.number(),
-      businessId: zod.number(),
+      businessId: zod.number().nullable(),
       title: zod.string(),
       clientName: zod.string().nullish(),
       total: zod.number(),
+      workAddress: zod.string().nullish(),
+      terms: zod.string().nullish(),
+      decisionMethod: zod.string().nullish(),
+      decisionAt: zod.date().nullish(),
+      decisionContact: zod.string().nullish(),
+      acceptedScope: zod
+        .array(
+          zod.object({
+            description: zod.string(),
+            quantity: zod.number(),
+            unit: zod.string().nullish(),
+            amount: zod.number(),
+          }),
+        )
+        .optional(),
       jobId: zod.number().nullish(),
       revisionSnapshotId: zod.number().nullish(),
       revision: zod
@@ -3888,6 +3903,11 @@ export const ConvertEstimateToJobParams = zod.object({
   id: zod.coerce.number(),
 });
 
+export const ConvertEstimateToJobBody = zod.object({
+  businessId: zod.number().optional(),
+  businessLine: zod.string().optional(),
+});
+
 /**
  * @summary Send a customer quote
  */
@@ -3964,7 +3984,14 @@ export const RecordManualEstimateQuoteResponseBody = zod.object({
   businessLine: zod.string().optional(),
   revisionSnapshotId: zod.number(),
   responseType: zod.enum(["approved", "declined", "changes_requested"]),
-  method: zod.enum(["phone", "text", "email", "in_person", "other"]),
+  method: zod.enum([
+    "phone",
+    "text",
+    "email",
+    "in_person",
+    "purchase_order",
+    "other",
+  ]),
   contactName: zod
     .string()
     .max(recordManualEstimateQuoteResponseBodyContactNameMax)

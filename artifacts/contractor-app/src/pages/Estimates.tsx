@@ -921,7 +921,7 @@ export default function Estimates() {
   async function handleConvert(id: number) {
     setConverting(id);
     try {
-      await convertMut.mutateAsync({ id });
+      await convertMut.mutateAsync({ id, data: estimateParams ?? {} });
       invalidate();
       qc.invalidateQueries({ queryKey: ["/api/jobs"] });
     } finally {

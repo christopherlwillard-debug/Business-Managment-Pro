@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { EstimateQuoteCenterItemAcceptedScopeItem } from "./estimateQuoteCenterItemAcceptedScopeItem";
 import type { EstimateQuoteCenterItemAuthorizationStatus } from "./estimateQuoteCenterItemAuthorizationStatus";
 import type { EstimateQuoteCenterItemDecision } from "./estimateQuoteCenterItemDecision";
 import type { EstimateQuoteCenterItemDocumentStatus } from "./estimateQuoteCenterItemDocumentStatus";
@@ -12,11 +13,23 @@ import type { EstimateQuoteCenterItemNextFollowUpSource } from "./estimateQuoteC
 
 export interface EstimateQuoteCenterItem {
   estimateId: number;
-  businessId: number;
+  /** @nullable */
+  businessId: number | null;
   title: string;
   /** @nullable */
   clientName?: string | null;
   total: number;
+  /** @nullable */
+  workAddress?: string | null;
+  /** @nullable */
+  terms?: string | null;
+  /** @nullable */
+  decisionMethod?: string | null;
+  /** @nullable */
+  decisionAt?: Date | null;
+  /** @nullable */
+  decisionContact?: string | null;
+  acceptedScope?: EstimateQuoteCenterItemAcceptedScopeItem[];
   /** @nullable */
   jobId?: number | null;
   /** @nullable */

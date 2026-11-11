@@ -1487,6 +1487,14 @@ export interface EstimateQuoteCenterSummary {
   convertedValue: number;
 }
 
+export type EstimateQuoteCenterItemAcceptedScopeItem = {
+  description: string;
+  quantity: number;
+  /** @nullable */
+  unit?: string | null;
+  amount: number;
+};
+
 export type EstimateQuoteCenterItemDocumentStatus =
   (typeof EstimateQuoteCenterItemDocumentStatus)[keyof typeof EstimateQuoteCenterItemDocumentStatus];
 
@@ -1534,11 +1542,23 @@ export const EstimateQuoteCenterItemNextFollowUpSource = {
 
 export interface EstimateQuoteCenterItem {
   estimateId: number;
-  businessId: number;
+  /** @nullable */
+  businessId: number | null;
   title: string;
   /** @nullable */
   clientName?: string | null;
   total: number;
+  /** @nullable */
+  workAddress?: string | null;
+  /** @nullable */
+  terms?: string | null;
+  /** @nullable */
+  decisionMethod?: string | null;
+  /** @nullable */
+  decisionAt?: string | null;
+  /** @nullable */
+  decisionContact?: string | null;
+  acceptedScope?: EstimateQuoteCenterItemAcceptedScopeItem[];
   /** @nullable */
   jobId?: number | null;
   /** @nullable */
@@ -1580,6 +1600,7 @@ export const ManualEstimateQuoteResponseInputMethod = {
   text: "text",
   email: "email",
   in_person: "in_person",
+  purchase_order: "purchase_order",
   other: "other",
 } as const;
 

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import {
   estimateQuoteEventsTable,
@@ -22,6 +22,7 @@ import {
   type BusinessScope,
 } from "../lib/business-scope.js";
 import { calculateEstimateTotals, estimateLineAmount, expandEstimateLinesForInvoice } from "../lib/estimate-totals.js";
+import { buildEstimateQuoteSnapshot } from "../lib/estimateQuoteSnapshot.js";
 import { loadInvoiceBrand } from "../lib/invoiceBranding.js";
 import { generateEstimateQuotePdf } from "../lib/generateEstimateQuotePdf.js";
 
@@ -461,8 +462,55 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/convert-to-job", async (req, res) => {
   try {
-    const [estimate] = await db.select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name }).from(estimatesTable).leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id)).where(eq(estimatesTable.id, parseInt(req.params.id)));
-    if (!estimate) return res.status(404).json({ error: "Estimate not found" });
+    const scopeRequest = {
+      ...req,
+      query: {
+        ...req.query,
+        businessId: req.query.businessId ?? req.body?.businessId,
+        businessLine: req.query.businessLine ?? req.body?.businessLine,
+      },
+    } as unknown as Request;
+    const scope = await requestedBusinessReadScope(scopeRequest);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "A business scope is required" });
+    const [estimate] = await db.select({
+      ...getTableColumns(estimatesTable),
+      clientName: clientsTable.name,
+      clientEmail: clientsTable.email,
+      clientPhone: clientsTable.phone,
+      clientAddress: clientsTable.address,
+      clientCity: clientsTable.city,
+      clientState: clientsTable.state,
+      clientZip: clientsTable.zip,
+    })
+      .from(estimatesTable)
+      .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+      .where(eq(estimatesTable.id, parseInt(req.params.id)));
+    if (!estimate || !belongsToBusinessReadScope(estimate, scope)) {
+      return res.status(404).json({ error: "Estimate not found" });
+    }
+    const quoteEvents = await db.select().from(estimateQuoteEventsTable)
+      .where(eq(estimateQuoteEventsTable.estimateId, estimate.id));
+    const currentRevision = quoteEvents
+      .filter(event => event.eventType === "revision")
+      .sort((a, b) => b.revision - a.revision || b.id - a.id)[0];
+    const currentDecision = currentRevision
+      ? quoteEvents
+        .filter(event =>
+          (event.eventType === "response" || event.eventType === "manual_response")
+          && event.revisionSnapshotId === currentRevision.id,
+        )
+        .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())[0]
+      : null;
+    const hasCurrentAuthorization = currentRevision && quoteEvents.some(event =>
+      event.eventType === "work_authorization"
+      && event.revisionSnapshotId === currentRevision.id,
+    );
+    if (!currentRevision || currentDecision?.responseType !== "approved" || !hasCurrentAuthorization) {
+      return res.status(409).json({
+        error: "A current accepted quote revision with explicit work authorization is required before job conversion.",
+      });
+    }
     const recordedOwnership = await canonicalRecordBusiness(estimate);
     if (recordedOwnership.state === "invalid") {
       return res.status(409).json({ error: "Estimate has an unknown business owner" });
@@ -471,6 +519,20 @@ router.post("/:id/convert-to-job", async (req, res) => {
       ? recordedOwnership.business
       : await generalContractingBusiness();
     if (!owner) return res.status(409).json({ error: "General Contracting business was not found" });
+    const [business] = await db.select().from(businessesTable).where(eq(businessesTable.id, owner.id));
+    const settings = (await db.select().from(settingsTable).limit(1))[0] ?? null;
+    const currentSnapshot = await buildEstimateQuoteSnapshot({
+      estimate,
+      business: business ?? null,
+      settings,
+      revision: currentRevision.revision,
+      expiresAt: estimate.quoteExpiresAt ?? null,
+    });
+    if (!currentRevision.contentHash || currentSnapshot.contentHash !== currentRevision.contentHash) {
+      return res.status(409).json({
+        error: "The estimate changed after this revision was accepted. Send a new revision and record its acceptance and work authorization before conversion.",
+      });
+    }
 
     const [job] = await db.insert(jobsTable).values({
       title: estimate.title,

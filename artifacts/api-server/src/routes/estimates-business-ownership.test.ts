@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   inserts: [] as any[],
   updates: [] as any[],
   whereClauses: [] as unknown[],
+  snapshotHash: "test-hash",
 }));
 
 const generalContracting = { id: 7, slug: "general_contracting" };
@@ -19,6 +20,7 @@ vi.mock("@workspace/db", () => ({
         from: () => chain,
         leftJoin: () => chain,
         orderBy: () => chain,
+        limit: () => Promise.resolve(h.selectQueue.shift() ?? []),
         where: (condition: unknown) => {
           h.whereClauses.push(condition);
           return Promise.resolve(h.selectQueue.shift() ?? []);
@@ -47,7 +49,27 @@ vi.mock("@workspace/db", () => ({
   },
 }));
 
+vi.mock("../lib/estimateQuoteSnapshot.js", () => ({
+  buildEstimateQuoteSnapshot: async () => ({ contentHash: h.snapshotHash }),
+}));
+
 vi.mock("../lib/business-scope.js", () => ({
+  requestedBusinessReadScope: async (req: any) => {
+    const businessId = Number(req.query?.businessId ?? req.body?.businessId ?? 0);
+    const businessLine = String(req.query?.businessLine ?? req.body?.businessLine ?? "");
+    if (businessId === 9 || businessLine === asphalt.slug) {
+      return { id: 9, slug: asphalt.slug, memberIds: [9], memberSlugs: [asphalt.slug] };
+    }
+    if (businessId === 7 || businessLine === generalContracting.slug) {
+      return { id: 7, slug: generalContracting.slug, memberIds: [7], memberSlugs: [generalContracting.slug] };
+    }
+    return null;
+  },
+  invalidBusinessScope: () => false,
+  hasRequestedBusiness: (req: any) => Boolean(req.query?.businessId || req.query?.businessLine || req.body?.businessId || req.body?.businessLine),
+  belongsToBusinessReadScope: (record: any, scope: any) => !scope
+    || scope.memberIds.includes(Number(record.businessId))
+    || scope.memberSlugs.includes(record.businessLine),
   resolveMutationBusiness: async (req: any) => {
     const businessId = req.body?.businessId;
     const businessLine = typeof req.body?.businessLine === "string"
@@ -116,6 +138,7 @@ beforeEach(() => {
   h.inserts.length = 0;
   h.updates.length = 0;
   h.whereClauses.length = 0;
+  h.snapshotHash = "test-hash";
 });
 
 afterEach(() => {
@@ -226,9 +249,18 @@ describe("estimate canonical business ownership", () => {
   });
 
   it("converts a legacy estimate using its saved business line without backfilling historical estimates", async () => {
-    h.selectQueue.push([estimateRow({ workAddress: "Saved job location" })]);
+    h.selectQueue.push(
+      [estimateRow({ workAddress: "Saved job location" })],
+      [
+        { id: 501, estimateId: 31, revision: 1, eventType: "revision", contentHash: "test-hash", requestedAt: new Date("2026-11-10T12:00:00.000Z") },
+        { id: 502, estimateId: 31, revisionSnapshotId: 501, revision: 1, eventType: "response", responseType: "approved", requestedAt: new Date("2026-11-10T13:00:00.000Z") },
+        { id: 503, estimateId: 31, revisionSnapshotId: 501, revision: 1, eventType: "work_authorization", requestedAt: new Date("2026-11-10T14:00:00.000Z") },
+      ],
+      [{ id: asphalt.id, name: "Asphalt" }],
+      [{ id: 1 }],
+    );
 
-    const response = await request(app).post("/estimates/31/convert-to-job");
+    const response = await request(app).post("/estimates/31/convert-to-job").send({ businessLine: asphalt.slug });
 
     expect(response.status).toBe(201);
     expect(h.inserts[0]).toMatchObject({
@@ -237,5 +269,38 @@ describe("estimate canonical business ownership", () => {
       address: "Saved job location",
     });
     expect(h.updates).toEqual([{ status: "won" }]);
+  });
+
+  it("does not create a job until the current accepted revision is explicitly authorized", async () => {
+    h.selectQueue.push(
+      [estimateRow()],
+      [{ id: 501, estimateId: 31, revision: 1, eventType: "revision", requestedAt: new Date("2026-11-10T12:00:00.000Z") }],
+    );
+
+    const response = await request(app).post("/estimates/31/convert-to-job").send({ businessLine: asphalt.slug });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("work authorization");
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it("blocks conversion when the estimate no longer matches its authorized revision", async () => {
+    h.snapshotHash = "changed-after-acceptance";
+    h.selectQueue.push(
+      [estimateRow()],
+      [
+        { id: 501, estimateId: 31, revision: 1, eventType: "revision", contentHash: "test-hash", requestedAt: new Date("2026-11-10T12:00:00.000Z") },
+        { id: 502, estimateId: 31, revisionSnapshotId: 501, revision: 1, eventType: "response", responseType: "approved", requestedAt: new Date("2026-11-10T13:00:00.000Z") },
+        { id: 503, estimateId: 31, revisionSnapshotId: 501, revision: 1, eventType: "work_authorization", requestedAt: new Date("2026-11-10T14:00:00.000Z") },
+      ],
+      [{ id: asphalt.id, name: "Asphalt" }],
+      [{ id: 1 }],
+    );
+
+    const response = await request(app).post("/estimates/31/convert-to-job").send({ businessLine: asphalt.slug });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("estimate changed");
+    expect(h.inserts).toHaveLength(0);
   });
 });

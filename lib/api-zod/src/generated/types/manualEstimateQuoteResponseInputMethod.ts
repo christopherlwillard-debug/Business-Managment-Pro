@@ -14,5 +14,6 @@ export const ManualEstimateQuoteResponseInputMethod = {
   text: "text",
   email: "email",
   in_person: "in_person",
+  purchase_order: "purchase_order",
   other: "other",
 } as const;
