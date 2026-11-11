@@ -59,10 +59,20 @@ export async function generateEstimateQuotePdf(quote: CustomerQuoteDocument): Pr
     doc.y = Math.max(doc.y, y + 17);
   };
 
+  let logoRendered = false;
   if (quote.brand.logo) {
-    try { doc.image(quote.brand.logo, left, 40, { fit: [150, 64] }); } catch { /* Text branding remains available. */ }
+    try {
+      doc.image(quote.brand.logo, left, 40, { fit: [150, 64] });
+      logoRendered = true;
+    } catch { /* Text branding remains available. */ }
   }
-  doc.font("Helvetica-Bold").fontSize(20).fillColor("#111827").text(quote.brand.name, left, 44, { width: width * 0.66, align: quote.brand.logo ? "right" : "left" });
+  const brandNameLeft = logoRendered ? left + 160 : left;
+  doc.font("Helvetica-Bold").fontSize(20).fillColor("#111827").text(
+    quote.brand.name,
+    brandNameLeft,
+    44,
+    { width: right - brandNameLeft, align: logoRendered ? "right" : "left" },
+  );
   const contact = [quote.brand.address, [quote.brand.city, quote.brand.state, quote.brand.zip].filter(Boolean).join(" "), quote.brand.phone, quote.brand.email, quote.brand.website].filter(Boolean);
   doc.font("Helvetica").fontSize(8.5).fillColor("#4b5563").text(contact.join("  •  "), left, 76, { width, align: "right" });
   doc.y = 104;
