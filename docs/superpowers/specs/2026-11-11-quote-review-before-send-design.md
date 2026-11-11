@@ -1,6 +1,6 @@
 # Quote Review Before Send — Design
 
-**Status:** Design approved by the user; written spec pending review
+**Status:** Approved by the user
 
 **Owner:** Estimates / Quote Center
 **Scope:** Require an owner to review the exact customer PDF before an email can be sent.
