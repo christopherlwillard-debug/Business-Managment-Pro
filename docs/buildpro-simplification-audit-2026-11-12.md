@@ -186,7 +186,7 @@ Scores are **source-review estimates**, not user-testing measurements. Higher is
 
 ## 10. Prioritized remediation roadmap
 
-All items below are recommendations for later approval. **No implementation is authorized by this audit.** Risk describes the proposal if later implemented with the stated boundaries.
+All items below are recommendations for later approval. **No implementation is authorized by this audit.** Risk describes the proposal if later implemented with the stated boundaries. The current owner-first priority decision in §13 supersedes any staff-specific sequencing or dependency listed below.
 
 | Priority / recommendation | Current problem and evidence | Proposed solution and user benefit | Business impact / risk | Dependencies | Existing data or rules affected |
 |---|---|---|---|---|---|
@@ -217,3 +217,21 @@ All items below are recommendations for later approval. **No implementation is a
 - **Prior findings:** `ACCOUNTING_AUDIT_2026_08_05.md` and `DEAD_CODE_AUDIT_2026_08_05.md` are retained as historical leads. The Registry, ADRs through 2026-11-11, Changelog and current code take precedence over their older claims.
 
 The audit covers the broader application surface, not only Dashboard, Jobs and Accounting. The remaining limitations above are explicit; they should be addressed with role-specific walkthroughs and targeted source tracing before approving any roadmap item.
+
+## 13. Updated priority decision — 2026-11-12
+
+BuildPro is primarily being developed as the owner's personal business-management platform. There is no current plan to onboard employees or subcontractors, and staff access may never be needed. The staff route review is **partially reviewed — deferred pending future staff requirements**; the detailed findings remain in `staff-route-permission-audit-2026-11-12.md`. The source review is a checkpoint, not a completed role-by-role audit.
+
+The current owner-first roadmap is:
+
+1. Owner Dashboard / Business Command Center.
+2. Multi-business separation and business switching.
+3. Jobs and everyday operational workflows.
+4. Accounting clarity while preserving all existing ledgers and calculations.
+5. Estimates, invoices, expenses, and payment workflows.
+6. Website Studio supporting multiple businesses and websites.
+7. Simplified settings and navigation.
+
+Defer full staff role/permission auditing, staff-specific navigation and workflow improvements, permission-grant-to-entry-point completeness, and comprehensive owner/admin/employee/subcontractor walkthroughs until a concrete staff requirement exists. This deferral does not authorize removing or weakening authentication, owner protection, server-side authorization, business isolation, or protections for financial records, payroll, customer information, and settings.
+
+The potential SMTP password disclosure in the staff route report remains security work and is not deferred as staff UX. See `staff-permissions-priority-decision-2026-11-12.md` for the task disposition and scope boundaries. No application behavior was changed by this priority update.
