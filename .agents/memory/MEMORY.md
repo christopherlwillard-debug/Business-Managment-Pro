@@ -62,6 +62,7 @@
 - [Rich-text test runtime](rich-text-test-runtime.md) — sanitizer tests need a DOM-backed Vitest environment because Node does not provide DOMParser
 - [Puppeteer evaluate functions](puppeteer-evaluate-functions.md) — tsx can emit missing __name helpers inside serialized page.evaluate callbacks; use anonymous browser-context functions
 - [Dashboard WTD semantics](dashboard-wtd-semantics.md) — WTD is the current Monday-start calendar week, not a trailing seven-day range
+- [Owner dashboard hierarchy](owner-dashboard-hierarchy.md) — owner accepted urgent items → Today/Next → business snapshot, with explicit loading, empty, and unavailable states
 - [Business trip archive semantics](business-trip-archive-semantics.md) — archived trips remain in historical totals but not active audit-readiness checks
 - [Shared job profit calculation](job-profit-calculation.md) — individual and batch job-profit views must use one source-derived engine with traceable included/excluded buckets
 - [Reimbursement opt-out parity](reimbursement-opt-out-parity.md) — reimbursement source rows stay visible, while applied-status metadata and all profit arithmetic honor the persisted opt-out in every view
