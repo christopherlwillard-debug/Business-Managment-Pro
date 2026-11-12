@@ -866,3 +866,13 @@ Created the four-document architecture governance system:
 - Job create/edit validates that the property matches the client and legal business and is available through active property access.
 - Added property selection to the Jobs dialog and a Client Profile action to start a job at a selected property. Accounting, profitability, and production calculations remain unchanged.
 - No production database migration was run.
+
+### Financially safe job ownership reassignment
+
+- Job ownership can no longer be reassigned when financial or cost-source rows
+  are linked, including voided or reversed history.
+- The guard covers the existing invoice, revenue, expense, allocation, labor,
+  subcontractor payment/advance, mileage, owner-capital, reimbursement, and
+  recurring-expense sources without moving or rewriting child records.
+- Added route coverage for every protected record type and safe reassignment
+  cases; no schema or production change was made.

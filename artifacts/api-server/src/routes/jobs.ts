@@ -2909,6 +2909,24 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+async function hasJobLinkedFinancialRecords(jobId: number): Promise<boolean> {
+  const linkedRows = await Promise.all([
+    db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.jobId, jobId)).limit(1),
+    db.select({ id: otherIncomeTable.id }).from(otherIncomeTable).where(eq(otherIncomeTable.jobId, jobId)).limit(1),
+    db.select({ id: expensesTable.id }).from(expensesTable).where(eq(expensesTable.jobId, jobId)).limit(1),
+    db.select({ id: jobExpenseAllocationsTable.id }).from(jobExpenseAllocationsTable).where(eq(jobExpenseAllocationsTable.jobId, jobId)).limit(1),
+    db.select({ jobId: jobSubcontractorsTable.jobId }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, jobId)).limit(1),
+    db.select({ id: jobSubHoursTable.id }).from(jobSubHoursTable).where(eq(jobSubHoursTable.jobId, jobId)).limit(1),
+    db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, jobId)).limit(1),
+    db.select({ id: subAdvancesTable.id }).from(subAdvancesTable).where(eq(subAdvancesTable.jobId, jobId)).limit(1),
+    db.select({ id: mileageLogsTable.id }).from(mileageLogsTable).where(eq(mileageLogsTable.jobId, jobId)).limit(1),
+    db.select({ id: jobMileageReimbursementsTable.id }).from(jobMileageReimbursementsTable).where(eq(jobMileageReimbursementsTable.jobId, jobId)).limit(1),
+    db.select({ id: ownerCapitalEntriesTable.id }).from(ownerCapitalEntriesTable).where(eq(ownerCapitalEntriesTable.jobId, jobId)).limit(1),
+    db.select({ id: recurringExpensesTable.id }).from(recurringExpensesTable).where(eq(recurringExpensesTable.jobId, jobId)).limit(1),
+  ]);
+  return linkedRows.some(rows => rows.length > 0);
+}
+
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -2938,13 +2956,9 @@ router.put("/:id", async (req, res) => {
       existingOwnership.business.id !== requestedOwner.business.id
     );
     if (ownershipWouldChange) {
-      const [linkedInvoice] = await db.select({ id: invoicesTable.id })
-        .from(invoicesTable)
-        .where(eq(invoicesTable.jobId, id))
-        .limit(1);
-      if (linkedInvoice) {
+      if (await hasJobLinkedFinancialRecords(id)) {
         return res.status(409).json({
-          error: "Job business cannot be changed while invoices are linked",
+          error: "Job business cannot be changed while financial or cost records are linked",
         });
       }
     }

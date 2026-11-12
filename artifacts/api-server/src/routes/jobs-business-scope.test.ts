@@ -163,6 +163,7 @@ describe("GET /jobs business ownership scope", () => {
   });
 });
 
+
 describe("job business assignment", () => {
   it("returns account-wide business choices for job assignment", async () => {
     fixture.selectQueue.push([
@@ -342,5 +343,111 @@ describe("job routes preserve authorized property links", () => {
 
     expect(response.status, JSON.stringify(response.body)).toBe(200);
     expect(fixture.updatedValues[0]).toMatchObject({ propertyId: null });
+  });
+});
+
+describe("job business reassignment protects linked financial records", () => {
+  const currentOwnership = {
+    businessId: 2,
+    businessLine: "general_contracting",
+    clientId: null,
+    propertyId: null,
+    status: "scheduled",
+    closedAt: null,
+  };
+
+  const reassignedJob = {
+    id: 101,
+    title: "Reassigned job",
+    clientId: null,
+    propertyId: null,
+    businessId: 1,
+    businessLine: "asphalt_sealing",
+    status: "scheduled",
+    planningState: "ready",
+    priority: "normal",
+    resourceDemand: "standard",
+    subcontractorId: null,
+    subcontractorName: null,
+  };
+
+  const protectedRecordCases = [
+    ["draft invoice", 0, { id: 501, status: "draft" }],
+    ["voided invoice", 0, { id: 501, status: "voided", voidedAt: new Date() }],
+    ["active other income", 1, { id: 502, voidedAt: null }],
+    ["voided other income", 1, { id: 502, voidedAt: new Date() }],
+    ["active expense", 2, { id: 503, voidedAt: null }],
+    ["voided expense", 2, { id: 503, voidedAt: new Date() }],
+    ["expense allocation", 3, { id: 504 }],
+    ["subcontractor assignment", 4, { id: 505 }],
+    ["subcontractor hours", 5, { id: 506 }],
+    ["subcontractor payment", 6, { id: 507, isReversal: false }],
+    ["reversed subcontractor payment", 6, { id: 507, isReversal: true }],
+    ["unapplied subcontractor advance", 7, { id: 508, appliedAt: null }],
+    ["applied subcontractor advance", 7, { id: 508, appliedAt: new Date() }],
+    ["active mileage log", 8, { id: 509, voidedAt: null }],
+    ["voided mileage log", 8, { id: 509, voidedAt: new Date() }],
+    ["owed mileage reimbursement", 9, { id: 510, status: "owed" }],
+    ["paid mileage reimbursement", 9, { id: 510, status: "paid" }],
+    ["active owner capital entry", 10, { id: 511, voidedAt: null }],
+    ["voided owner capital entry", 10, { id: 511, voidedAt: new Date() }],
+    ["active recurring expense", 11, { id: 512, active: true }],
+    ["inactive recurring expense", 11, { id: 512, active: false }],
+  ] as const;
+
+  const queueReassignmentChecks = (recordIndex?: number, record?: Record<string, unknown>) => {
+    fixture.selectQueue.push(
+      [{ id: -1 }],
+      [currentOwnership],
+      ...Array.from({ length: 12 }, (_, index) => index === recordIndex ? [record] : []),
+    );
+  };
+
+  it.each(protectedRecordCases)("rejects reassignment when a %s is linked", async (_label, recordIndex, record) => {
+    queueReassignmentChecks(recordIndex, record);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ businessId: 1 });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("financial or cost records are linked");
+    expect(fixture.updatedValues).toHaveLength(0);
+  });
+
+  it("allows reassignment when no protected financial or cost-source rows exist", async () => {
+    queueReassignmentChecks();
+    fixture.updateQueue.push([reassignedJob]);
+    fixture.selectQueue.push([reassignedJob], [reassignedJob]);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ businessId: 1 });
+
+    expect(response.status).toBe(200);
+    expect(fixture.updatedValues[0]).toMatchObject({ businessId: 1, businessLine: "asphalt_sealing" });
+  });
+
+  it("allows an ordinary edit when the requested owner is unchanged", async () => {
+    const sameOwner = { ...currentOwnership, businessId: 1, businessLine: "asphalt_sealing" };
+    fixture.selectQueue.push(
+      [{ id: -1 }],
+      [sameOwner],
+    );
+    fixture.updateQueue.push([{
+      ...reassignedJob,
+      title: "Updated title",
+    }]);
+    fixture.selectQueue.push(
+      [{ ...reassignedJob, title: "Updated title" }],
+      [{ ...reassignedJob, title: "Updated title" }],
+    );
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ businessId: 1, title: "Updated title" });
+
+    expect(response.status).toBe(200);
+    expect(fixture.updatedValues[0]).toMatchObject({ businessId: 1, title: "Updated title" });
   });
 });
