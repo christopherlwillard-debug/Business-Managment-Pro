@@ -131,3 +131,17 @@ mtime_ms = 1794459330437
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/8d7c914c-4396-41c4-955d-674e806b89ae/0c555daf-fb44-405f-a507-135e8b9630e0"
 storage_version_token = "1794459382843553"
 content_type = "image/png"
+
+[[outputs]]
+id = "Y4mEQ0GSbdLpdDK2hu77S"
+uri = "file://docs/buildpro-simplification-audit-2026-11-12.md"
+type = "text"
+title = "BuildPro Simplification Audit"
+description = "Read-only application inventory, navigation proposal, scorecard, and prioritized roadmap."
+logical_id = "b3b0b124-de5a-4764-b858-5a8d80e78ca1"
+content_hash = "sha256:18f02e0f612de3a96992417f30686f9b76a9fb3d4c41c526cda53cf0994ec38d"
+size = 33388
+mtime_ms = 1794482920244
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/b3b0b124-de5a-4764-b858-5a8d80e78ca1/ac2aa1f8-35bb-4d70-ad69-8e44fcdb32eb"
+storage_version_token = "1794482993968007"
+content_type = "text/markdown"
