@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useSearchParams, useLocation, Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
+import { getJobOwningBusinessDisplay } from "@/lib/jobBusinessDisplay";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -6093,6 +6094,7 @@ function JobInvoiceStatusAction({
 
 function CompactJobRow({
   job,
+  businessLabel,
   invoiceSummary,
   invoiceSummaryStatus,
   paymentSummary,
@@ -6103,6 +6105,7 @@ function CompactJobRow({
   onDelete,
 }: {
   job: Job;
+  businessLabel: string;
   invoiceSummary?: (Invoice & { squarePaidAt?: string | null }) | null;
   invoiceSummaryStatus: JobInvoiceSummaryLoadStatus;
   paymentSummary?: JobFinancialSummary;
@@ -6145,11 +6148,12 @@ function CompactJobRow({
             }`}>
               {statusLabel}
             </span>
-            {job.businessLine && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold capitalize text-muted-foreground">
-                {job.businessLine.replace(/_/g, " ")}
-              </span>
-            )}
+            <span
+              className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+              data-testid={`job-business-${job.id}`}
+            >
+              {businessLabel}
+            </span>
           </div>
           <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3 sm:gap-3">
             <span className="truncate">{job.clientName ?? "No customer assigned"}</span>
@@ -6208,7 +6212,7 @@ function CompactJobRow({
 type ChecklistSummary = { completedItems: number; totalItems: number; overallPercent: number };
 
 function JobCard({
-  job, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
+  job, businessLabel, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, invoiceSummaryStatus, onRetryInvoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled, subsSettlementCheckFailed,
   checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
@@ -6216,6 +6220,7 @@ function JobCard({
   onViewSchedule,
 }: {
   job: Job;
+  businessLabel: string;
   onEdit: (job: Job, focus?: JobPaymentFocus) => void;
   onDelete: (job: Job) => void;
   onReviewInvoice: (job: Job) => void;
@@ -6846,11 +6851,12 @@ function JobCard({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass}`}>{statusLabel}</span>
-                    {job.businessLine && (
-                      <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold capitalize text-muted-foreground">
-                        {job.businessLine.replace(/_/g, " ")}
-                      </span>
-                    )}
+                    <span
+                      className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-semibold text-muted-foreground"
+                      data-testid={`job-business-${job.id}`}
+                    >
+                      {businessLabel}
+                    </span>
                   </div>
                   <h2 className="mt-2 text-xl font-bold tracking-tight text-foreground sm:text-2xl">At a glance</h2>
                 </div>
@@ -10020,6 +10026,16 @@ export default function Jobs() {
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const { activeBusiness, businesses } = useBusiness();
+  const jobBusinessOptionsQuery = useQuery<JobBusinessOption[]>({
+    queryKey: ["job-business-options"],
+    queryFn: async () => {
+      const response = await fetch(`${BASE}/api/jobs/business-options`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load businesses");
+      return response.json();
+    },
+  });
+  const jobBusinessOptions = jobBusinessOptionsQuery.data ?? businesses;
+  const businessLabelForJob = (job: Job) => getJobOwningBusinessDisplay(job, jobBusinessOptions);
   const [localBLFilter, setLocalBLFilter] = useState<string>("");
   const hasWillardsDivisions = activeBusiness != null
     && activeBusiness.legalBusinessId === activeBusiness.id
@@ -10674,6 +10690,7 @@ export default function Jobs() {
       <JobCard
         key={`${job.id}-${workspaceTab}`}
         job={job}
+        businessLabel={businessLabelForJob(job)}
         workspaceTab={workspaceTab}
         onEdit={openEditJob}
         onDelete={openDeleteTarget}
@@ -11328,6 +11345,7 @@ export default function Jobs() {
                   <CompactJobRow
                     key={job.id}
                     job={job}
+                    businessLabel={businessLabelForJob(job)}
                     invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                     invoiceSummaryStatus={invoiceSummaryStatus}
                     paymentSummary={jobFinancialSummaryMap.get(job.id)}
@@ -11363,6 +11381,7 @@ export default function Jobs() {
                       <CompactJobRow
                         key={job.id}
                         job={job}
+                        businessLabel={businessLabelForJob(job)}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         invoiceSummaryStatus={invoiceSummaryStatus}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
@@ -11404,6 +11423,7 @@ export default function Jobs() {
                       <CompactJobRow
                         key={job.id}
                         job={job}
+                        businessLabel={businessLabelForJob(job)}
                         invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                         invoiceSummaryStatus={invoiceSummaryStatus}
                         paymentSummary={jobFinancialSummaryMap.get(job.id)}
@@ -11658,6 +11678,7 @@ export default function Jobs() {
                         <div key={job.id} className="space-y-2">
                           <CompactJobRow
                             job={job}
+                            businessLabel={businessLabelForJob(job)}
                             invoiceSummary={invoiceSummaryMap.get(job.id) ?? null}
                             invoiceSummaryStatus={invoiceSummaryStatus}
                             paymentSummary={jobFinancialSummaryMap.get(job.id)}
