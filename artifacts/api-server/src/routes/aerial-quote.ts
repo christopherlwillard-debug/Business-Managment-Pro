@@ -17,6 +17,7 @@ import {
   CreateAerialQuotePropertyBody,
   CreatePropertyMeasurementRevisionBody,
   GrantPropertyBusinessAccessBody,
+  UpdateAerialQuotePropertyBody,
 } from "@workspace/api-zod";
 import {
   canonicalRecordBusiness,
@@ -79,11 +80,15 @@ router.get("/properties", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid clientId" });
     return;
   }
-  const grants = await db.select({ propertyId: propertyBusinessAccessTable.propertyId })
+  const grants = await db.select({
+    propertyId: propertyBusinessAccessTable.propertyId,
+    permission: propertyBusinessAccessTable.permission,
+  })
     .from(propertyBusinessAccessTable).where(and(
       eq(propertyBusinessAccessTable.businessId, business.id),
       isNull(propertyBusinessAccessTable.revokedAt),
     ));
+  const permissionsByProperty = new Map(grants.map(grant => [grant.propertyId, grant.permission]));
   const filters = [or(
     eq(propertiesTable.businessId, business.id),
     grants.length ? inArray(propertiesTable.id, grants.map(row => row.propertyId)) : undefined,
@@ -92,7 +97,12 @@ router.get("/properties", async (req, res): Promise<void> => {
   const rows = await db.select().from(propertiesTable)
     .where(filters.length ? and(...filters) : undefined)
     .orderBy(desc(propertiesTable.updatedAt));
-  res.json(rows);
+  res.json(rows.map(property => ({
+    ...property,
+    accessPermission: property.businessId === business.id
+      ? "manage"
+      : permissionsByProperty.get(property.id) ?? "view",
+  })));
 });
 
 router.post("/properties", async (req, res): Promise<void> => {
@@ -120,7 +130,49 @@ router.post("/properties", async (req, res): Promise<void> => {
     permission: "manage",
     grantedBy: getRequestUserId(req) ?? null,
   });
-  res.status(201).json(property);
+  res.status(201).json({ ...property, accessPermission: "manage" });
+});
+
+router.put("/properties/:propertyId", async (req, res): Promise<void> => {
+  const propertyId = Number(req.params.propertyId);
+  const parsed = UpdateAerialQuotePropertyBody.safeParse(req.body);
+  const owner = await resolveMutationBusiness(req);
+  if (!Number.isInteger(propertyId) || propertyId < 1 || !parsed.success || !owner.ok) {
+    res.status(400).json({
+      error: !parsed.success ? parsed.error.message
+        : owner.ok ? "Invalid propertyId"
+          : owner.error,
+    });
+    return;
+  }
+  if (!parsed.data.label.trim()) {
+    res.status(400).json({ error: "Property label cannot be empty" });
+    return;
+  }
+  const result = await loadPropertyInScope(propertyId, owner.business.id, "manage");
+  if ("error" in result) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  if (!await validateClient(parsed.data.clientId, result.property.businessId)) {
+    res.status(409).json({ error: "Client is not owned by this legal business" });
+    return;
+  }
+  const [updated] = await db.update(propertiesTable).set({
+    clientId: parsed.data.clientId ?? null,
+    label: parsed.data.label.trim(),
+    street: parsed.data.street?.trim() || null,
+    city: parsed.data.city?.trim() || null,
+    state: parsed.data.state?.trim() || null,
+    zip: parsed.data.zip?.trim() || null,
+    notes: parsed.data.notes?.trim() || null,
+    updatedAt: new Date(),
+  }).where(eq(propertiesTable.id, propertyId)).returning();
+  if (!updated) {
+    res.status(404).json({ error: "Property not found" });
+    return;
+  }
+  res.json({ ...updated, accessPermission: "manage" });
 });
 
 router.get("/properties/:propertyId/access", async (req, res): Promise<void> => {

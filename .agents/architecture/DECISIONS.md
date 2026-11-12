@@ -642,6 +642,30 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
+## ADR-036
+
+**Title:** Property detail edits require manage permission
+
+**Decision:** The owning business may update a property's label, address,
+notes, and client association. A same-legal-business division may do so only
+with an active `manage` grant. `view`, `measure`, and `estimate` grants do not
+authorize property-detail edits. A newly linked client must belong to the
+property's legal business. Measurement revisions remain append-only and
+unchanged.
+
+**Reason:** Correcting saved property details should not require creating
+duplicate properties, while sharing permissions must remain least-privilege
+and client associations must not cross legal-business boundaries.
+
+**Rejected Alternatives:**
+
+- Allowing every shared division to edit property details
+- Treating measurement or estimate access as detail-edit permission
+- Creating a second property record for address or customer corrections
+
+**Status:** Accepted
+**Date:** 2026-11-12
+
 ## ADR-035: Manual-first Aerial Quote estimates
 
 **Decision:** Add business-scoped properties, append-only numeric measurement revisions, and versioned service pricing profiles. Route all calculations through one API-side engine and create standard draft estimates with an internal calculation snapshot. Keep tax in the existing estimate flow. Do not integrate map imagery or geometry until Google access restrictions and written measurement/storage rights are verified.

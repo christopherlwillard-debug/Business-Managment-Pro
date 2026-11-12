@@ -14,6 +14,7 @@ import {
   grantPropertyBusinessAccess,
   revokePropertyBusinessAccess,
   listPropertyMeasurementRevisions,
+  updateAerialQuoteProperty,
 } from "@workspace/api-client-react";
 
 const services = [
@@ -81,6 +82,7 @@ export default function AerialQuoteManual() {
     clientId: "",
     notes: "",
   });
+  const [isEditingProperty, setIsEditingProperty] = useState(false);
   const [measurementSource, setMeasurementSource] = useState<"manual" | "on_site">("manual");
   const [entries, setEntries] = useState<Entry[]>([emptyEntry()]);
   const [measurementNotes, setMeasurementNotes] = useState("");
@@ -162,12 +164,45 @@ export default function AerialQuoteManual() {
     if (!businessId || !propertyForm.label.trim()) return;
     setBusy(true); setError("");
     try {
-      const created = await createAerialQuoteProperty({ ...propertyForm, businessId, clientId: propertyForm.clientId ? Number(propertyForm.clientId) : null });
-      await refreshBase();
-      setPropertyId(created.id);
-      setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" });
-      toast({ title: "Property saved" });
+      const payload = {
+        ...propertyForm,
+        businessId,
+        clientId: propertyForm.clientId ? Number(propertyForm.clientId) : null,
+      };
+      if (isEditingProperty && propertyId) {
+        await updateAerialQuoteProperty(propertyId, payload);
+        await refreshBase();
+        setIsEditingProperty(false);
+        setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" });
+        toast({ title: "Property updated" });
+      } else {
+        const created = await createAerialQuoteProperty(payload);
+        await refreshBase();
+        setPropertyId(created.id);
+        setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" });
+        toast({ title: "Property saved" });
+      }
     } catch (err) { notifyError(err); } finally { setBusy(false); }
+  }
+
+  function beginEditProperty() {
+    if (!selectedProperty) return;
+    setPropertyForm({
+      label: selectedProperty.label ?? "",
+      street: selectedProperty.street ?? "",
+      city: selectedProperty.city ?? "",
+      state: selectedProperty.state ?? "",
+      zip: selectedProperty.zip ?? "",
+      clientId: selectedProperty.clientId == null ? "" : String(selectedProperty.clientId),
+      notes: selectedProperty.notes ?? "",
+    });
+    setIsEditingProperty(true);
+    setError("");
+  }
+
+  function cancelEditProperty() {
+    setIsEditingProperty(false);
+    setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" });
   }
 
   async function saveMeasurements() {
@@ -309,9 +344,14 @@ export default function AerialQuoteManual() {
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
           <h2 className="text-lg font-semibold">1. Property</h2>
           <label className="mt-4 block text-sm font-medium">Saved property</label>
-          <select className="mt-1 h-11 w-full rounded-md border bg-background px-3" value={propertyId ?? ""} onChange={e => { setPropertyId(e.target.value ? Number(e.target.value) : null); setRevisionId(null); setCalculation(null); }}>
+          <select className="mt-1 h-11 w-full rounded-md border bg-background px-3" value={propertyId ?? ""} onChange={e => { setPropertyId(e.target.value ? Number(e.target.value) : null); setRevisionId(null); setCalculation(null); if (isEditingProperty) cancelEditProperty(); }}>
             <option value="">Choose a property</option>{properties.map(property => <option key={property.id} value={property.id}>{property.label} — {[property.city, property.state].filter(Boolean).join(", ")}</option>)}
           </select>
+          {selectedProperty && selectedProperty.accessPermission === "manage" && !isEditingProperty && (
+            <button type="button" onClick={beginEditProperty} className="mt-3 min-h-10 rounded-md border px-3 text-sm font-medium">
+              Edit selected property
+            </button>
+          )}
           {selectedProperty?.businessId === businessId && <div className="mt-3 rounded-lg border p-3">
             <p className="text-sm font-semibold">Share with another division</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -331,7 +371,12 @@ export default function AerialQuoteManual() {
             <label className="text-sm font-medium">Customer (optional)<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={propertyForm.clientId} onChange={e => setPropertyForm({...propertyForm,clientId:e.target.value})}><option value="">No customer linked</option>{clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
             <label className="text-sm font-medium sm:col-span-2">Property notes<textarea className="mt-1 min-h-20 w-full rounded-md border bg-background p-3" value={propertyForm.notes} onChange={e => setPropertyForm({...propertyForm,notes:e.target.value})}/></label>
           </div>
-          <button type="button" disabled={busy || !propertyForm.label.trim()} onClick={() => void saveProperty()} className="mt-4 min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">Save property</button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" disabled={busy || !propertyForm.label.trim()} onClick={() => void saveProperty()} className="min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">
+              {busy ? "Saving…" : isEditingProperty ? "Save property changes" : "Save property"}
+            </button>
+            {isEditingProperty && <button type="button" disabled={busy} onClick={cancelEditProperty} className="min-h-11 rounded-md border px-4 font-medium disabled:opacity-50">Cancel edit</button>}
+          </div>
         </div>
 
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">

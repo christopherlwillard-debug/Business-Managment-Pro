@@ -112,6 +112,7 @@ import type {
   PropertyBusinessAccessInput,
   PropertyInput,
   PropertyMeasurementRevision,
+  PropertyUpdateInput,
   PublicEstimateQuote,
   PublicEstimateQuoteResponseInput,
   ReadyToStartResponse,
@@ -7516,6 +7517,94 @@ export const useCreateAerialQuoteProperty = <
   TContext
 > => {
   return useMutation(getCreateAerialQuotePropertyMutationOptions(options));
+};
+
+/**
+ * @summary Update saved property details
+ */
+export const getUpdateAerialQuotePropertyUrl = (propertyId: number) => {
+  return `/api/aerial-quote/properties/${propertyId}`;
+};
+
+export const updateAerialQuoteProperty = async (
+  propertyId: number,
+  propertyUpdateInput: PropertyUpdateInput,
+  options?: RequestInit,
+): Promise<Property> => {
+  return customFetch<Property>(getUpdateAerialQuotePropertyUrl(propertyId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(propertyUpdateInput),
+  });
+};
+
+export const getUpdateAerialQuotePropertyMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAerialQuoteProperty>>,
+    TError,
+    { propertyId: number; data: BodyType<PropertyUpdateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAerialQuoteProperty>>,
+  TError,
+  { propertyId: number; data: BodyType<PropertyUpdateInput> },
+  TContext
+> => {
+  const mutationKey = ["updateAerialQuoteProperty"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAerialQuoteProperty>>,
+    { propertyId: number; data: BodyType<PropertyUpdateInput> }
+  > = (props) => {
+    const { propertyId, data } = props ?? {};
+
+    return updateAerialQuoteProperty(propertyId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAerialQuotePropertyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAerialQuoteProperty>>
+>;
+export type UpdateAerialQuotePropertyMutationBody =
+  BodyType<PropertyUpdateInput>;
+export type UpdateAerialQuotePropertyMutationError = ErrorType<void>;
+
+/**
+ * @summary Update saved property details
+ */
+export const useUpdateAerialQuoteProperty = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAerialQuoteProperty>>,
+    TError,
+    { propertyId: number; data: BodyType<PropertyUpdateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAerialQuoteProperty>>,
+  TError,
+  { propertyId: number; data: BodyType<PropertyUpdateInput> },
+  TContext
+> => {
+  return useMutation(getUpdateAerialQuotePropertyMutationOptions(options));
 };
 
 /**

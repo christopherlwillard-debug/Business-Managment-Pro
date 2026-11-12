@@ -3711,6 +3711,10 @@ export const ListAerialQuotePropertiesResponseItem = zod.object({
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
   createdAt: zod.string(),
+  updatedAt: zod.string().optional(),
+  accessPermission: zod
+    .enum(["view", "measure", "estimate", "manage"])
+    .optional(),
 });
 export const ListAerialQuotePropertiesResponse = zod.array(
   ListAerialQuotePropertiesResponseItem,
@@ -3730,6 +3734,43 @@ export const CreateAerialQuotePropertyBody = zod.object({
   state: zod.string().nullish(),
   zip: zod.string().nullish(),
   notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Update saved property details
+ */
+export const UpdateAerialQuotePropertyParams = zod.object({
+  propertyId: zod.coerce.number(),
+});
+
+export const updateAerialQuotePropertyBodyLabelMax = 160;
+
+export const UpdateAerialQuotePropertyBody = zod.object({
+  businessId: zod.number().optional(),
+  clientId: zod.number().nullish(),
+  label: zod.string().min(1).max(updateAerialQuotePropertyBodyLabelMax),
+  street: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  zip: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+export const UpdateAerialQuotePropertyResponse = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  clientId: zod.number().nullish(),
+  label: zod.string(),
+  street: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  zip: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string().optional(),
+  accessPermission: zod
+    .enum(["view", "measure", "estimate", "manage"])
+    .optional(),
 });
 
 /**

@@ -5,6 +5,7 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { PropertyAccessPermission } from "./propertyAccessPermission";
 
 export interface Property {
   id: number;
@@ -17,4 +18,6 @@ export interface Property {
   zip?: string | null;
   notes?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  accessPermission?: PropertyAccessPermission;
 }

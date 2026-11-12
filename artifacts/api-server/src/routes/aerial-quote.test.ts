@@ -6,6 +6,8 @@ const h = vi.hoisted(() => ({
   tables: {} as Record<string, unknown>,
   businessId: 0,
   sameLegalBusiness: true,
+  clientOwnerBusinessId: 11,
+  client: { id: 501, name: "Client Fixture", businessId: 11 },
   property: {
     id: 101,
     businessId: 11,
@@ -59,6 +61,7 @@ const h = vi.hoisted(() => ({
 vi.mock("@workspace/db", () => {
   const rowsFor = (table: unknown) => {
     if (table === h.tables.properties) return [h.property];
+    if (table === h.tables.clients) return [h.client];
     if (table === h.tables.access) {
       return h.grants.filter(grant => grant.businessId === h.businessId && grant.revokedAt === null);
     }
@@ -97,18 +100,26 @@ vi.mock("@workspace/db", () => {
       },
     }),
     update: (table: unknown) => ({
-      set: (values: Record<string, unknown>) => ({
-        where: async () => {
-          h.updates.push({ table, values });
-          if (table === h.tables.access) {
-            for (const grant of h.grants) {
-              if (grant.businessId === 22 && grant.revokedAt === null) {
-                grant.revokedAt = values.revokedAt as Date;
+      set: (values: Record<string, unknown>) => {
+        const query: any = {
+          where: () => {
+            h.updates.push({ table, values });
+            if (table === h.tables.access) {
+              for (const grant of h.grants) {
+                if (grant.businessId === 22 && grant.revokedAt === null) {
+                  grant.revokedAt = values.revokedAt as Date;
+                }
               }
             }
-          }
-        },
-      }),
+            if (table === h.tables.properties) Object.assign(h.property, values);
+            return query;
+          },
+          returning: async () => [h.property],
+          then: (resolve: (value: unknown) => unknown, reject: (error: unknown) => unknown) =>
+            Promise.resolve(undefined).then(resolve, reject),
+        };
+        return query;
+      },
     }),
     transaction: async (callback: (tx: any) => unknown) => callback(db),
   };
@@ -128,9 +139,11 @@ vi.mock("../lib/business-scope.js", () => ({
       ? { ok: true, business: { id: value, slug: `business-${value}` } }
       : { ok: false, error: "A valid businessId is required" };
   },
-  sameLegalBusiness: async (_ownerBusinessId: number, targetBusinessId: number) =>
-    h.sameLegalBusiness && targetBusinessId === 22,
-  canonicalRecordBusiness: async () => ({ state: "blank" }),
+  sameLegalBusiness: async () => h.sameLegalBusiness,
+  canonicalRecordBusiness: async () => ({
+    state: "resolved",
+    business: { id: h.clientOwnerBusinessId },
+  }),
   invalidBusinessScope: () => false,
   hasRequestedBusiness: () => true,
   requestedBusinessReadScope: async () => null,
@@ -141,6 +154,7 @@ vi.mock("./guards.js", () => ({
 }));
 
 import {
+  clientsTable,
   estimatesTable,
   propertiesTable,
   propertyBusinessAccessTable,
@@ -161,12 +175,26 @@ function expectSelects(...tables: unknown[]) {
 beforeEach(() => {
   h.tables = {
     properties: propertiesTable,
+    clients: clientsTable,
     access: propertyBusinessAccessTable,
     revisions: propertyMeasurementRevisionsTable,
     pricingProfiles: servicePricingProfileVersionsTable,
   };
   h.businessId = 0;
   h.sameLegalBusiness = true;
+  h.clientOwnerBusinessId = 11;
+  h.client = { id: 501, name: "Client Fixture", businessId: 11 };
+  Object.assign(h.property, {
+    id: 101,
+    businessId: 11,
+    clientId: null,
+    label: "Permission Fixture",
+    street: "100 Test Road",
+    city: "Testville",
+    state: "KY",
+    zip: "40000",
+    notes: null,
+  });
   h.grants = [];
   h.selectedTables.length = 0;
   h.inserts.length = 0;
@@ -178,6 +206,100 @@ afterEach(() => {
 });
 
 describe("Aerial Quote property permission routes", () => {
+  it("lets the owning business update property details and same-business client association", async () => {
+    const response = await request(app)
+      .put("/aerial-quote/properties/101")
+      .send({
+        businessId: 11,
+        clientId: 501,
+        label: "Updated Property",
+        street: "200 Updated Road",
+        city: "Owensboro",
+        state: "KY",
+        zip: "42301",
+        notes: "Updated notes",
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      id: 101,
+      businessId: 11,
+      clientId: 501,
+      label: "Updated Property",
+      street: "200 Updated Road",
+      city: "Owensboro",
+      state: "KY",
+      zip: "42301",
+      notes: "Updated notes",
+      accessPermission: "manage",
+    });
+    expect(h.updates).toHaveLength(1);
+    expect(h.updates[0]).toMatchObject({
+      table: propertiesTable,
+      values: { clientId: 501, label: "Updated Property", street: "200 Updated Road" },
+    });
+    expectSelects(propertiesTable, clientsTable);
+  });
+
+  it("allows a shared division to edit only with an active manage grant", async () => {
+    h.grants.push({ businessId: 22, permission: "manage", revokedAt: null });
+
+    const response = await request(app)
+      .put("/aerial-quote/properties/101")
+      .send({
+        businessId: 22,
+        clientId: null,
+        label: "Managed Property",
+        street: null,
+        city: null,
+        state: null,
+        zip: null,
+        notes: null,
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ id: 101, label: "Managed Property", accessPermission: "manage" });
+    expect(h.updates).toHaveLength(1);
+    expectSelects(propertiesTable, propertyBusinessAccessTable);
+  });
+
+  it("denies shared edits without manage and after a manage grant is revoked", async () => {
+    h.grants.push({ businessId: 22, permission: "estimate", revokedAt: null });
+
+    const denied = await request(app)
+      .put("/aerial-quote/properties/101")
+      .send({ businessId: 22, label: "Must Not Save" });
+    expect(denied.status).toBe(404);
+    expect(h.updates).toHaveLength(0);
+    expectSelects(propertiesTable, propertyBusinessAccessTable);
+
+    h.grants[0]!.permission = "manage";
+    h.grants[0]!.revokedAt = new Date("2026-11-12T12:00:00.000Z");
+    const revoked = await request(app)
+      .put("/aerial-quote/properties/101")
+      .send({ businessId: 22, label: "Must Still Not Save" });
+    expect(revoked.status).toBe(404);
+    expect(h.updates).toHaveLength(0);
+    expectSelects(propertiesTable, propertyBusinessAccessTable);
+  });
+
+  it("rejects linking a client from an unrelated legal business", async () => {
+    h.clientOwnerBusinessId = 99;
+    h.sameLegalBusiness = false;
+
+    const response = await request(app)
+      .put("/aerial-quote/properties/101")
+      .send({
+        businessId: 11,
+        clientId: 501,
+        label: "Updated Property",
+      });
+
+    expect(response.status).toBe(409);
+    expect(h.updates).toHaveLength(0);
+    expectSelects(propertiesTable, clientsTable);
+  });
+
   it("denies a cross-business measurement write without the measure grant", async () => {
     h.grants.push({ businessId: 22, permission: "view", revokedAt: null });
 

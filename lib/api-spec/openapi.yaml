@@ -1813,6 +1813,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Property" }
+  /aerial-quote/properties/{propertyId}:
+    put:
+      operationId: updateAerialQuoteProperty
+      tags: [estimates]
+      summary: Update saved property details
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyUpdateInput" }
+      responses:
+        "200":
+          description: Updated property
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Property" }
+        "400": { description: Invalid property or update data }
+        "404": { description: Property not found or caller cannot manage it }
+        "409": { description: Client belongs to another legal business }
   /aerial-quote/properties/{propertyId}/access:
     get:
       operationId: listPropertyBusinessAccess
@@ -4584,9 +4608,24 @@ components:
         zip: { type: string, nullable: true }
         notes: { type: string, nullable: true }
         createdAt: { type: string }
+        updatedAt: { type: string }
+        accessPermission: { type: string, enum: [view, measure, estimate, manage] }
       required: [id, businessId, label, createdAt]
 
     PropertyInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        clientId: { type: integer, nullable: true }
+        label: { type: string, minLength: 1, maxLength: 160 }
+        street: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        zip: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [label]
+
+    PropertyUpdateInput:
       type: object
       properties:
         businessId: { type: integer }

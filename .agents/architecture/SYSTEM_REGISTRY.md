@@ -501,9 +501,10 @@ Before implementing any financial, schema, or business logic feature — consult
 ## Aerial Quote / Property Measurements
 
 - **Tables:** `properties`, `property_business_access`, `property_measurement_revisions`, `service_pricing_profile_versions`, and the property/calculation snapshot fields on `estimates`
-- **API:** `artifacts/api-server/src/routes/aerial-quote.ts`
-- **UI:** Contractor App Aerial Quote page
+- **API:** `artifacts/api-server/src/routes/aerial-quote.ts` (property updates require ownership or an active `manage` grant; client links must resolve to the property's legal business)
+- **UI:** Contractor App Aerial Quote page (property editing is shown only when the current business has `manage`)
 - **Source of truth:** immutable measurement revisions and versioned, business-scoped service pricing profiles; saved estimates retain a private calculation snapshot and use the existing estimate/quote lifecycle.
+- **Property detail rule:** `properties` remains authoritative for label, address, notes, and client association. `view`, `measure`, and `estimate` grants do not authorize detail edits.
 - **Rule:** manual or on-site numeric measurements only. Do not load imagery, trace map geometry, or persist map-derived measurements until provider access and written licensing authorize the exact workflow.
 
 *Aerial Quote registry entry reviewed: 2026-11-12*

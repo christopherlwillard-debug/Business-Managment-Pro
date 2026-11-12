@@ -1418,6 +1418,16 @@ export interface Estimate {
   [key: string]: unknown;
 }
 
+export type PropertyAccessPermission =
+  (typeof PropertyAccessPermission)[keyof typeof PropertyAccessPermission];
+
+export const PropertyAccessPermission = {
+  view: "view",
+  measure: "measure",
+  estimate: "estimate",
+  manage: "manage",
+} as const;
+
 export interface Property {
   id: number;
   businessId: number;
@@ -1429,9 +1439,26 @@ export interface Property {
   zip?: string | null;
   notes?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  accessPermission?: PropertyAccessPermission;
 }
 
 export interface PropertyInput {
+  businessId?: number;
+  clientId?: number | null;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  label: string;
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  notes?: string | null;
+}
+
+export interface PropertyUpdateInput {
   businessId?: number;
   clientId?: number | null;
   /**

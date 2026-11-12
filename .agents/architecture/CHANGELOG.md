@@ -12,6 +12,15 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-11-12
+
+### Add permission-scoped property detail editing
+
+- Added property updates through the existing Aerial Quote property API; the owning business and active same-legal-business `manage` grants can edit, while other grant levels remain read-only for property details.
+- Client reassignment is validated against the property's legal business, and the property list returns the current business's effective permission for UI gating.
+- Added an edit form in Aerial Quote without changing or rewriting measurement revisions, estimates, or accounting records.
+- Verified owner, manage-grant, missing/revoked-grant, and unrelated-business cases; API and app typechecks; and the authenticated synthetic property-edit flow.
+
 ## 2026-11-11
 
 ### Separate Website Studio drafts from live content
