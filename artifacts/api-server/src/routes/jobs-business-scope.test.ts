@@ -4,9 +4,14 @@ import request from "supertest";
 
 const fixture = vi.hoisted(() => ({
   selectQueue: [] as unknown[][],
+  insertQueue: [] as unknown[][],
+  updateQueue: [] as unknown[][],
+  insertedValues: [] as Record<string, unknown>[],
+  updatedValues: [] as Record<string, unknown>[],
   consumed: 0,
   missing: [] as number[],
   whereClauses: [] as unknown[],
+  sameLegalBusiness: true,
 }));
 
 vi.mock("@workspace/db", () => {
@@ -32,7 +37,30 @@ vi.mock("@workspace/db", () => {
     };
     return chain;
   }
-  return { db: { select: () => selectChain() } };
+  return {
+    db: {
+      select: () => selectChain(),
+      insert: () => ({
+        values: (values: Record<string, unknown>) => {
+          fixture.insertedValues.push(values);
+          return { returning: async () => fixture.insertQueue.shift() ?? [] };
+        },
+      }),
+      update: () => {
+        let values: Record<string, unknown> = {};
+        const chain: any = {
+          set: (nextValues: Record<string, unknown>) => {
+            values = nextValues;
+            fixture.updatedValues.push(nextValues);
+            return chain;
+          },
+          where: () => chain,
+          returning: async () => fixture.updateQueue.shift() ?? [],
+        };
+        return chain;
+      },
+    },
+  };
 });
 
 vi.mock("../lib/business-scope.js", async () => {
@@ -46,18 +74,29 @@ vi.mock("../lib/business-scope.js", async () => {
     }),
     businessReadPredicate: () => sql.raw("business_id IN (...) OR (business_id IS NULL AND business_line IN (...))"),
     belongsToBusinessReadScope: () => true,
-    resolveMutationBusiness: async () => ({
+    resolveMutationBusiness: async (req: { body?: { businessId?: number } }) => ({
       ok: true,
-      explicit: true,
+      explicit: req.body?.businessId != null,
       business: { id: 1, slug: "asphalt_sealing" },
     }),
     invalidBusinessScope: () => false,
     belongsToBusiness: () => true,
-    sameLegalBusiness: async () => true,
+    canonicalRecordBusiness: async (record: { businessId: number; businessLine: string }) => ({
+      state: "resolved",
+      business: { id: record.businessId, slug: record.businessLine },
+    }),
+    sameLegalBusiness: async () => fixture.sameLegalBusiness,
   };
 });
 
 vi.mock("./guards", () => ({ getRequestUser: () => null }));
+vi.mock("../lib/job-production-components.js", () => ({
+  getJobProductionComponents: async () => [],
+  getJobProductionComponentHistory: async () => [],
+  isProductionComponentStatus: () => true,
+  setJobProductionComponentStatus: async () => ({}),
+  syncJobProductionComponents: async () => [],
+}));
 
 const { default: jobsRouter, canLinkPropertyToJob } = await import("./jobs");
 const app = express();
@@ -66,14 +105,21 @@ app.use("/jobs", jobsRouter);
 
 beforeEach(() => {
   fixture.selectQueue.length = 0;
+  fixture.insertQueue.length = 0;
+  fixture.updateQueue.length = 0;
+  fixture.insertedValues.length = 0;
+  fixture.updatedValues.length = 0;
   fixture.consumed = 0;
   fixture.missing.length = 0;
   fixture.whereClauses.length = 0;
+  fixture.sameLegalBusiness = true;
 });
 
 afterEach(() => {
   expect(fixture.missing).toHaveLength(0);
   expect(fixture.selectQueue).toHaveLength(0);
+  expect(fixture.insertQueue).toHaveLength(0);
+  expect(fixture.updateQueue).toHaveLength(0);
 });
 
 describe("GET /jobs business ownership scope", () => {
@@ -136,7 +182,7 @@ describe("job business assignment", () => {
       .post("/jobs")
       .send({ title: "No business selected", businessLine: "asphalt_sealing" });
 
-    expect(response.status).toBe(400);
+    expect(response.status, JSON.stringify(response.body)).toBe(400);
     expect(response.body.error).toContain("businessId is required");
   });
 
@@ -173,5 +219,128 @@ describe("job property link eligibility", () => {
     );
 
     await expect(canLinkPropertyToJob(5, 21, 1)).resolves.toBe(false);
+  });
+});
+
+describe("job routes preserve authorized property links", () => {
+  const queueClientAndJobBusiness = () => {
+    fixture.selectQueue.push(
+      [{ businessId: 1, businessLine: "general_contracting" }],
+      [{ id: 1, legalBusinessId: 1 }],
+      [{ id: 1, legalBusinessId: 1 }],
+    );
+  };
+
+  const createdJob = (propertyId: number | null, clientId = 21) => ({
+    id: 101,
+    title: "Property-linked job",
+    clientId,
+    propertyId,
+    businessId: 1,
+    businessLine: "asphalt_sealing",
+    status: "scheduled",
+    planningState: "ready",
+    priority: "normal",
+    resourceDemand: "standard",
+    subcontractorId: null,
+    subcontractorName: null,
+  });
+
+  const queueJobResponse = (job: ReturnType<typeof createdJob>) => {
+    fixture.selectQueue.push([job], [job]);
+  };
+
+  it("creates a job and persists a valid same-client property link", async () => {
+    queueClientAndJobBusiness();
+    fixture.selectQueue.push(
+      [{ businessId: 1, clientId: 21 }],
+      [{ maxNum: 100 }],
+    );
+    const job = createdJob(5);
+    fixture.insertQueue.push([job]);
+    queueJobResponse(job);
+
+    const response = await request(app)
+      .post("/jobs")
+      .send({ title: "Property-linked job", businessId: 1, clientId: 21, propertyId: 5 });
+
+    expect(response.status).toBe(201);
+    expect(fixture.insertedValues[0]).toMatchObject({ clientId: 21, propertyId: 5, businessId: 1 });
+  });
+
+  it.each([
+    ["missing", [], true],
+    ["cross-legal-business", [{ businessId: 99, clientId: 21 }], false],
+    ["inaccessible", [{ businessId: 2, clientId: 21 }], true],
+  ] as const)("rejects a %s property during job creation", async (_label, propertyRows, sameLegalBusiness) => {
+    fixture.sameLegalBusiness = sameLegalBusiness;
+    queueClientAndJobBusiness();
+    fixture.selectQueue.push([...propertyRows]);
+    if (propertyRows[0]?.businessId === 2) fixture.selectQueue.push([]);
+
+    const response = await request(app)
+      .post("/jobs")
+      .send({ title: "Invalid property link", businessId: 1, clientId: 21, propertyId: 5 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Property must belong");
+    expect(fixture.insertedValues).toHaveLength(0);
+  });
+
+  it("rejects a client change that would retain the previous client's property", async () => {
+    fixture.selectQueue.push(
+      [{ id: -1 }],
+      [{ businessId: 1, businessLine: "general_contracting", clientId: 21, propertyId: 5, status: "scheduled", closedAt: null }],
+      [{ businessId: 1, clientId: 21 }],
+    );
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ clientId: 22 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("Property must belong");
+    expect(fixture.updatedValues).toHaveLength(0);
+  });
+
+  it("persists a valid same-client property link when updating a job", async () => {
+    fixture.selectQueue.push(
+      [{ id: -1 }],
+      [{ businessId: 1, businessLine: "general_contracting", clientId: 21, propertyId: null, status: "scheduled", closedAt: null }],
+      [{ businessId: 1, businessLine: "general_contracting", clientId: 21 }],
+      [{ id: 1, legalBusinessId: 1 }],
+      [{ id: 1, legalBusinessId: 1 }],
+      [{ businessId: 1, clientId: 21 }],
+    );
+    const job = createdJob(5);
+    fixture.updateQueue.push([job]);
+    queueJobResponse(job);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ propertyId: 5 });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(fixture.updatedValues[0]).toMatchObject({ propertyId: 5 });
+  });
+
+  it("explicitly unlinks a property when propertyId is null", async () => {
+    fixture.selectQueue.push(
+      [{ id: -1 }],
+      [{ businessId: 1, businessLine: "general_contracting", clientId: 21, propertyId: 5, status: "scheduled", closedAt: null }],
+      [{ businessId: 1, businessLine: "general_contracting", clientId: 21 }],
+      [{ id: 1, legalBusinessId: 1 }],
+      [{ id: 1, legalBusinessId: 1 }],
+    );
+    const job = createdJob(null);
+    fixture.updateQueue.push([job]);
+    queueJobResponse(job);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ propertyId: null });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(fixture.updatedValues[0]).toMatchObject({ propertyId: null });
   });
 });
