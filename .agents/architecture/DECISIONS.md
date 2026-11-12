@@ -666,5 +666,13 @@ image route.
 - Relying only on current API handlers to keep drafts private
 - Replacing or deleting the currently published asset during draft editing
 
+**Operational limitation:** If object storage deletion fails after a failed
+publish, promoted copies can remain orphaned. Do not remove objects based only
+on age or namespace scans. A future cleanup job must first check references in
+published config, draft config, and media records (including generated
+variants), under the same website-content lock used by writes. Delete only
+confirmed-unreferenced keys, make deletion idempotent, and retry failed
+deletions; retain candidates when the reference check is uncertain.
+
 **Status:** Accepted
 **Date:** 2026-11-11

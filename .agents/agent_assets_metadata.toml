@@ -47,3 +47,87 @@ mtime_ms = 1794436404017
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/4df4327f-2d52-48e0-9096-7a342789ed9a/6f7211a2-5719-4bb9-8c9d-a4582dc3e08e"
 storage_version_token = "1794436429937948"
 content_type = "image/png"
+
+[[outputs]]
+id = "C2xh4-03lM_wvnofxQsfw"
+uri = "file://generated-artifacts/website-studio-visual/01-editor-initial.png"
+type = "image"
+title = "Authenticated Website Studio editor"
+description = "Signed-in development editor showing the existing published-site content, canvas, and navigation."
+logical_id = "641d5394-cfcc-42aa-ad5d-45ffe9ed90c0"
+content_hash = "sha256:c6dda218362c18442887b5f5dd70a933043caef020c03711f768d4fd19da8eef"
+size = 121879
+mtime_ms = 1794459312692
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/641d5394-cfcc-42aa-ad5d-45ffe9ed90c0/44ff894e-d10d-4b23-b0a2-58bb6c42f602"
+storage_version_token = "1794459379436954"
+content_type = "image/png"
+
+[[outputs]]
+id = "gVFtQTGqjyjoJclZ-jz-g"
+uri = "file://generated-artifacts/website-studio-visual/03-editor-properties.png"
+type = "image"
+title = "Website Studio section controls"
+description = "Selected Hero section with its inline content controls and canvas navigation."
+logical_id = "80d572e6-3361-4986-80b5-fc3bd07b7fda"
+content_hash = "sha256:0360a3de4148e1a0a076cda504282ab4875a2f976e8aebe9241e3bd1972a3d03"
+size = 140982
+mtime_ms = 1794459315193
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/80d572e6-3361-4986-80b5-fc3bd07b7fda/ce16f6ee-400a-45a6-badf-92f2f03c79c2"
+storage_version_token = "1794459380031722"
+content_type = "image/png"
+
+[[outputs]]
+id = "TG_nm0pjl33WMyD4hcoly"
+uri = "file://generated-artifacts/website-studio-visual/02-media-library.png"
+type = "image"
+title = "Website Studio media library"
+description = "Development media library loaded and usable; this business currently has no library images."
+logical_id = "f49d51c3-2720-4fd4-99bb-9060cd0d1ed0"
+content_hash = "sha256:04ab5f036b22a36a76f041367cc4b42925fdeaeafd642f6e4bfa6f72baae5e12"
+size = 75843
+mtime_ms = 1794459313851
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/f49d51c3-2720-4fd4-99bb-9060cd0d1ed0/118f4b9a-c315-4512-87b8-7feb4f754540"
+storage_version_token = "1794459380662090"
+content_type = "image/png"
+
+[[outputs]]
+id = "ioP5cQ9tHdQjvSxCbKQlh"
+uri = "file://generated-artifacts/website-studio-visual/04-draft-preview.png"
+type = "image"
+title = "Private draft preview test"
+description = "Temporary test headline appears in the editor preview only; it was not published and has since been removed."
+logical_id = "e8a9bd6b-f3e7-486c-bf2d-35ae59f6fbd4"
+content_hash = "sha256:1b3e4090369bd4e78e9c2e6eaa2de743ce5c14576c905320ac3bced3c62b3e57"
+size = 122870
+mtime_ms = 1794459320793
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/e8a9bd6b-f3e7-486c-bf2d-35ae59f6fbd4/055b90be-a683-4b71-86ff-bd59a09917b5"
+storage_version_token = "1794459381418269"
+content_type = "image/png"
+
+[[outputs]]
+id = "A_3nMh1zFb9XOxHcuAYh3"
+uri = "file://generated-artifacts/website-studio-visual/05-editor-restored.png"
+type = "image"
+title = "Editor after test restoration"
+description = "The original site content is restored in the signed-in editor with no test headline remaining."
+logical_id = "19ee2eab-3084-4f0b-bd14-9a12d3917ccd"
+content_hash = "sha256:0705c440dea981bfa4e69d9b24d1f81c5115e0f9102d496b143c99df0833ed5b"
+size = 127897
+mtime_ms = 1794459325993
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/19ee2eab-3084-4f0b-bd14-9a12d3917ccd/335c91f8-ec60-4bb2-bf99-d5d469a22481"
+storage_version_token = "1794459382278437"
+content_type = "image/png"
+
+[[outputs]]
+id = "gtcTji6lnNnPWBebn0ECS"
+uri = "file://generated-artifacts/website-studio-visual/06-public-published.png"
+type = "image"
+title = "Public published website"
+description = "Unauthenticated development public page still displays the original published site."
+logical_id = "8d7c914c-4396-41c4-955d-674e806b89ae"
+content_hash = "sha256:062fe599c197a23a5475104688f8a26dd9a858ddff5e140244362ea834a00d5b"
+size = 65418
+mtime_ms = 1794459330437
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/8d7c914c-4396-41c4-955d-674e806b89ae/0c555daf-fb44-405f-a507-135e8b9630e0"
+storage_version_token = "1794459382843553"
+content_type = "image/png"
