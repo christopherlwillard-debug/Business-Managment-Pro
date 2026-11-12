@@ -159,3 +159,17 @@ mtime_ms = 1794483631192
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/fffbcdda-4910-4a69-97db-4e24276d2567/6a068716-a007-4ee7-a8b9-0ab082496da6"
 storage_version_token = "1794483677365999"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "WivV0COIuX__x8RtFAItN"
+uri = "file://docs/staff-route-permission-audit-2026-11-12.md"
+type = "text"
+title = "Staff Route and Permission Audit"
+description = "Read-only owner/staff route matrix, direct authorization checks, and separately listed permission mismatches."
+logical_id = "49e53c1f-609b-4493-887f-30e18546743f"
+content_hash = "sha256:864a282bd12f19137b32a4aad97752ace1080decba59d6e8b24ec629b14263d4"
+size = 11643
+mtime_ms = 1794484525944
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/49e53c1f-609b-4493-887f-30e18546743f/595df671-f598-4399-8a49-e0e5a629717e"
+storage_version_token = "1794484581057563"
+content_type = "text/markdown"
