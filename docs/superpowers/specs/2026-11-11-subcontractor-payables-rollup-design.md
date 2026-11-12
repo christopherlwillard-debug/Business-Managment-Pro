@@ -49,7 +49,7 @@ The Jobs page must not close a job while subcontractor pay remains outstanding. 
 
 - Include rows whose amount cannot currently be calculated; do not omit them or treat them as $0.
 - If any row in a person’s group is unknown, label the group total as incomplete (for example, known amount plus the count of unavailable job amounts).
-- Explain that the amount must be resolved in the job’s payroll/profit inputs before payment or closure.
+- Return one canonical, owner-readable unavailable reason for each unknown row. Show that same reason in the Accounting row and in the job-close rejection, with a link to the job’s payroll details when available.
 - If the shared evaluator cannot verify settlement, keep the job open and show an explanatory reason rather than silently presenting a complete total.
 
 ## Settlement and close behavior
@@ -66,7 +66,7 @@ The Jobs page must not close a job while subcontractor pay remains outstanding. 
 The API should return per-job remaining balances and grouped person totals derived on the server. Each row should carry a stable `subcontractorId`, `jobId`, compensation type, and one of:
 
 - A known nonnegative remaining amount.
-- An explicit unavailable/unknown amount with a reason suitable for the owner.
+- An explicit unavailable/unknown amount with a canonical, owner-readable reason used by both Accounting and the close rejection.
 
 If all amounts in a group are known, the group total is their sum. If any amount is unknown, the UI must not present the known subtotal as the complete amount owed.
 
@@ -104,8 +104,9 @@ Out of scope:
 3. Unknown balances are visible, make the total explicitly incomplete, and block job closure.
 4. A paid customer invoice does not hide unpaid subcontractor balances or make a job closeable.
 5. The server rejects a close request while a balance is positive, unknown, or unverifiable.
-6. After an existing per-job payment is recorded, the Accounting rollup refreshes from the authoritative ledger.
-7. No new table, duplicate payment record, or second payroll calculation is introduced.
+6. The same clear unavailable reason appears in Accounting and when closure is rejected.
+7. After an existing per-job payment is recorded, the Accounting rollup refreshes from the authoritative ledger.
+8. No new table, duplicate payment record, or second payroll calculation is introduced.
 
 ## Validation plan
 
