@@ -1,10 +1,11 @@
-import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb, date, numeric, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, smallint, boolean, jsonb, date, numeric, check, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { subcontractorsTable } from "./subcontractors";
 import { businessesTable } from "./businesses";
+import { propertiesTable } from "./properties";
 
 export const phaseItemSchema = z.object({
   name: z.string(),
@@ -54,6 +55,7 @@ export const jobsTable = pgTable(
     title: text("title").notNull(),
     description: text("description"),
     clientId: integer("client_id").references(() => clientsTable.id),
+    propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
     subcontractorId: integer("subcontractor_id").references(() => subcontractorsTable.id),
     status: text("status").notNull().default("scheduled"),
     jobType: text("job_type"),
@@ -98,6 +100,7 @@ export const jobsTable = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
+    index("jobs_property_id_idx").on(table.propertyId),
     check("jobs_planning_state_check", sql`${table.planningState} IN ('ready', 'scheduled', 'waiting', 'queue')`),
     check("jobs_priority_check", sql`${table.priority} IN ('urgent', 'high', 'normal', 'low')`),
     check("jobs_resource_demand_check", sql`${table.resourceDemand} IN ('standard', 'large_crew', 'all_hands')`),

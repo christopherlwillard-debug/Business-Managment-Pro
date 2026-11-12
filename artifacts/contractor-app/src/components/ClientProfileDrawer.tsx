@@ -48,11 +48,12 @@ interface Props {
   clientId: number | null;
   onClose: () => void;
   onAddToRoute?: (clientId: number) => void;
+  onCreateJob?: (clientId: number, propertyId: number) => void;
   initialTab?: Tab;
   businessId?: number;
 }
 
-export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTab, businessId }: Props) {
+export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, onCreateJob, initialTab, businessId }: Props) {
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
   const [editingServiceDate, setEditingServiceDate] = useState(false);
   const [serviceDateVal, setServiceDateVal] = useState("");
@@ -576,7 +577,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
 
               {tab === "properties" && isOwner && (
                 activeBusinessId > 0
-                  ? <ClientPropertiesTab businessId={activeBusinessId} clientId={client.id} />
+                  ? <ClientPropertiesTab businessId={activeBusinessId} clientId={client.id} onCreateJob={onCreateJob} />
                   : <div className="p-6 text-sm text-muted-foreground">Choose a business to view its properties and measurements.</div>
               )}
 

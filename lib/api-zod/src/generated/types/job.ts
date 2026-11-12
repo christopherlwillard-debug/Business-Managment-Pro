@@ -19,6 +19,7 @@ export interface Job {
   title: string;
   description?: string | null;
   clientId?: number | null;
+  propertyId?: number | null;
   clientName?: string | null;
   subcontractorIds?: number[];
   subcontractorNames?: string[];

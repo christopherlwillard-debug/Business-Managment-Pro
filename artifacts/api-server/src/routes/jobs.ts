@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, propertiesTable, propertyBusinessAccessTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
@@ -12,7 +12,8 @@ import { resolveSubcontractorBalance } from "../lib/subcontractorPayables.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
-import { hasRequestedBusiness, requestedBusiness, requestedBusinessReadScope, businessReadPredicate, belongsToBusinessReadScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope } from "../lib/business-scope.js";
+import { hasRequestedBusiness, requestedBusiness, requestedBusinessReadScope, businessReadPredicate, belongsToBusinessReadScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, invalidBusinessScope, sameLegalBusiness } from "../lib/business-scope.js";
+import { hasPropertyPermission } from "../lib/property-access.js";
 import { isOwnerWithdrawalExpenseCategory } from "../lib/owner-withdrawals.js";
 import {
   buildJobProfitResponse,
@@ -54,6 +55,26 @@ async function clientSharesLegalBusiness(clientId: number, jobBusinessId: number
   }).from(businessesTable).where(eq(businessesTable.id, jobBusinessId)).limit(1);
   return Boolean(clientBusiness && jobBusiness
     && (clientBusiness.legalBusinessId ?? clientBusiness.id) === (jobBusiness.legalBusinessId ?? jobBusiness.id));
+}
+
+export async function canLinkPropertyToJob(propertyId: number, clientId: number | null, jobBusinessId: number): Promise<boolean> {
+  if (clientId == null) return false;
+  const [property] = await db.select({
+    businessId: propertiesTable.businessId,
+    clientId: propertiesTable.clientId,
+  }).from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property || property.clientId !== clientId) return false;
+  if (!await sameLegalBusiness(property.businessId, jobBusinessId)) return false;
+  if (property.businessId === jobBusinessId) return true;
+
+  const [grant] = await db.select({ permission: propertyBusinessAccessTable.permission })
+    .from(propertyBusinessAccessTable)
+    .where(and(
+      eq(propertyBusinessAccessTable.propertyId, propertyId),
+      eq(propertyBusinessAccessTable.businessId, jobBusinessId),
+      isNull(propertyBusinessAccessTable.revokedAt),
+    )).limit(1);
+  return hasPropertyPermission(grant?.permission, "view");
 }
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { buildClosedJobExportRow } from "../lib/job-profit-reports.js";
@@ -455,6 +476,7 @@ type JobRow = {
   title: string;
   description: string | null;
   clientId: number | null;
+  propertyId: number | null;
   clientName: string | null;
   clientEmail: string | null;
   status: string;
@@ -518,6 +540,7 @@ async function getJobWithSubs(jobId: number) {
       title: jobsTable.title,
       description: jobsTable.description,
       clientId: jobsTable.clientId,
+      propertyId: jobsTable.propertyId,
       clientName: clientsTable.name,
       clientEmail: clientsTable.email,
       status: jobsTable.status,
@@ -789,6 +812,7 @@ router.get("/", async (req, res) => {
         title: jobsTable.title,
         description: jobsTable.description,
         clientId: jobsTable.clientId,
+        propertyId: jobsTable.propertyId,
         clientName: clientsTable.name,
         clientEmail: clientsTable.email,
         status: jobsTable.status,
@@ -863,7 +887,7 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
+    const { title, description, clientId, propertyId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     if (clientId != null) {
@@ -872,6 +896,13 @@ router.post("/", async (req, res) => {
         || !(await clientSharesLegalBusiness(parsedClientId, ownership.business.id))) {
         return res.status(400).json({ error: "Client must belong to the same legal business as the job" });
       }
+    }
+    const parsedPropertyId = propertyId == null ? null : Number(propertyId);
+    if (parsedPropertyId !== null && (!Number.isSafeInteger(parsedPropertyId) || parsedPropertyId <= 0)) {
+      return res.status(400).json({ error: "propertyId must be a positive integer or null" });
+    }
+    if (parsedPropertyId != null && !await canLinkPropertyToJob(parsedPropertyId, clientId == null ? null : Number(clientId), ownership.business.id)) {
+      return res.status(400).json({ error: "Property must belong to the selected client and be available to this legal business" });
     }
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (typeof includeMileageInJobCosts !== "boolean") return res.status(400).json({ error: "includeMileageInJobCosts must be a boolean" });
@@ -898,6 +929,7 @@ router.post("/", async (req, res) => {
     const [job] = await db.insert(jobsTable).values({
       title, description,
       clientId: clientId || null,
+      propertyId: parsedPropertyId,
       status: status || "scheduled",
       jobType, homeModel: homeModel || null, address, city, state, locationName,
       startDate, endDate,
@@ -2815,11 +2847,12 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const { title, description, clientId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
+    const { title, description, clientId, propertyId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
     const [currentOwnership] = await db.select({
       businessId: jobsTable.businessId,
       businessLine: jobsTable.businessLine,
       clientId: jobsTable.clientId,
+      propertyId: jobsTable.propertyId,
       status: jobsTable.status,
       closedAt: jobsTable.closedAt,
     }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
@@ -2850,6 +2883,25 @@ router.put("/:id", async (req, res) => {
       : existingOwnership.state === "resolved"
         ? existingOwnership.business
         : requestedOwner.business;
+    const parsedPropertyId = propertyId == null ? null : Number(propertyId);
+    if ("propertyId" in req.body && parsedPropertyId !== null
+      && (!Number.isSafeInteger(parsedPropertyId) || parsedPropertyId <= 0)) {
+      return res.status(400).json({ error: "propertyId must be a positive integer or null" });
+    }
+    const effectiveClientId = "clientId" in req.body
+      ? (clientId == null ? null : Number(clientId))
+      : currentOwnership.clientId;
+    const effectivePropertyId = "propertyId" in req.body
+      ? parsedPropertyId
+      : currentOwnership.propertyId;
+    if ("propertyId" in req.body && effectiveClientId != null
+      && !await clientSharesLegalBusiness(Number(effectiveClientId), owner.id)) {
+      return res.status(400).json({ error: "Client must belong to the same legal business as the job" });
+    }
+    if (effectivePropertyId != null
+      && !await canLinkPropertyToJob(effectivePropertyId, effectiveClientId, owner.id)) {
+      return res.status(400).json({ error: "Property must belong to the selected client and be available to this legal business" });
+    }
     if (clientId !== undefined && clientId != null && Number(clientId) !== Number(currentOwnership.clientId)) {
       const parsedClientId = Number(clientId);
       if (!Number.isSafeInteger(parsedClientId) || parsedClientId <= 0
@@ -2906,6 +2958,7 @@ router.put("/:id", async (req, res) => {
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if ("clientId" in req.body) updates.clientId = clientId || null;
+    if ("propertyId" in req.body) updates.propertyId = parsedPropertyId;
     if (status !== undefined) updates.status = status;
     // Auto-manage closed_at: set when archiving, clear when reopening
     if (status === "closed") {

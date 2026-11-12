@@ -642,6 +642,31 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
+## ADR-037
+
+**Title:** Jobs may link to an accessible client property
+
+**Decision:** Add an optional nullable `jobs.property_id` reference to
+`properties`, with `ON DELETE SET NULL`. A linked property must belong to the
+job's client, share the job's legal business, and be owned by the job business
+or available to it with an active `view` grant. Existing jobs remain unlinked.
+The relationship is descriptive only and must not affect accounting, profit,
+payroll, or production calculations. No production migration or data backfill
+is included.
+
+**Reason:** Job records need a direct connection to the property served, while
+property details remain authoritative in Aerial Quote and existing financial
+and production behavior stays unchanged.
+
+**Rejected Alternatives:**
+
+- Duplicating property address/details into job fields
+- Inferring a property from a client's address
+- Requiring all existing jobs to be linked
+
+**Status:** Accepted
+**Date:** 2026-11-12
+
 ## ADR-036
 
 **Title:** Property detail edits require manage permission

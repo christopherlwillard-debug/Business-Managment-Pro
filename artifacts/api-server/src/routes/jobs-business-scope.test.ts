@@ -53,12 +53,13 @@ vi.mock("../lib/business-scope.js", async () => {
     }),
     invalidBusinessScope: () => false,
     belongsToBusiness: () => true,
+    sameLegalBusiness: async () => true,
   };
 });
 
 vi.mock("./guards", () => ({ getRequestUser: () => null }));
 
-const { default: jobsRouter } = await import("./jobs");
+const { default: jobsRouter, canLinkPropertyToJob } = await import("./jobs");
 const app = express();
 app.use(express.json());
 app.use("/jobs", jobsRouter);
@@ -113,5 +114,31 @@ describe("GET /jobs business ownership scope", () => {
     expect(conditionText).toContain("business_id");
     expect(conditionText).toContain("business_line");
     expect(conditionText).toContain("is null");
+  });
+});
+
+describe("job property link eligibility", () => {
+  it("rejects properties assigned to another client", async () => {
+    fixture.selectQueue.push([{ businessId: 1, clientId: 22 }]);
+
+    await expect(canLinkPropertyToJob(5, 21, 1)).resolves.toBe(false);
+  });
+
+  it("allows a same-client property shared with view access inside the legal business", async () => {
+    fixture.selectQueue.push(
+      [{ businessId: 2, clientId: 21 }],
+      [{ permission: "view" }],
+    );
+
+    await expect(canLinkPropertyToJob(5, 21, 1)).resolves.toBe(true);
+  });
+
+  it("rejects a same-legal-business property when the access grant is missing", async () => {
+    fixture.selectQueue.push(
+      [{ businessId: 2, clientId: 21 }],
+      [],
+    );
+
+    await expect(canLinkPropertyToJob(5, 21, 1)).resolves.toBe(false);
   });
 });

@@ -33,7 +33,15 @@ function revisionDate(revision: PropertyMeasurementRevision): string {
     : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function ClientPropertiesTab({ businessId, clientId }: { businessId: number; clientId: number }) {
+export function ClientPropertiesTab({
+  businessId,
+  clientId,
+  onCreateJob,
+}: {
+  businessId: number;
+  clientId: number;
+  onCreateJob?: (clientId: number, propertyId: number) => void;
+}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
@@ -202,6 +210,18 @@ export function ClientPropertiesTab({ businessId, clientId }: { businessId: numb
                   </span>
                   {isSelected ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                 </button>
+
+                {onCreateJob && (
+                  <div className="flex justify-end border-t px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => onCreateJob(clientId, property.id)}
+                      className="min-h-10 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary hover:bg-primary/5"
+                    >
+                      Create job at this property
+                    </button>
+                  </div>
+                )}
 
                 {isSelected && (
                   <div className="border-t p-4 space-y-4">

@@ -13,6 +13,7 @@ import {
   useUpdateMaterialList, useDeleteMaterialList,
   useListEstimates, useCreateEstimate, useUpdateEstimate, useDeleteEstimate,
   useCreateInvoicePaymentLink,
+  listAerialQuoteProperties,
   Job, Invoice, Client, Subcontractor, InvoiceDraft, CreateJobRequest, DailyLog,
   MaterialList, MaterialListItemInput,
   Estimate, CreateEstimateRequest, getListEstimatesQueryKey,
@@ -8504,7 +8505,7 @@ function HomeModelInput({ value, onChange }: { value: string; onChange: (v: stri
 
 // ─── Job Form Dialog ───────────────────────────────────────────────────────────
 function JobFormDialog({
-  open, onOpenChange, editJob, clients, subcontractors, onSaved, paymentFocus,
+  open, onOpenChange, editJob, clients, subcontractors, onSaved, paymentFocus, prelinkedClientId, prelinkedPropertyId, propertyBusinessId: initialBusinessId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -8513,6 +8514,9 @@ function JobFormDialog({
   subcontractors: Subcontractor[];
   onSaved: () => void;
   paymentFocus?: JobPaymentFocus | null;
+  prelinkedClientId?: number;
+  prelinkedPropertyId?: number;
+  propertyBusinessId?: number;
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
@@ -8524,6 +8528,7 @@ function JobFormDialog({
       return {
         title: editJob.title,
         clientId: String(editJob.clientId ?? ""),
+        propertyId: String(editJob.propertyId ?? ""),
         status: displayStatus(editJob.status),
         jobType: editJob.jobType ?? "",
         homeModel: editJob.homeModel ?? "",
@@ -8541,7 +8546,7 @@ function JobFormDialog({
       };
     }
     return {
-      title: "", clientId: "", status: "scheduled",
+      title: "", clientId: prelinkedClientId ? String(prelinkedClientId) : "", propertyId: prelinkedPropertyId ? String(prelinkedPropertyId) : "", status: "scheduled",
       jobType: "", homeModel: "", address: "",
       locationName: "", city: "", state: "KY",
       startDate: "", endDate: "", notes: "",
@@ -8553,6 +8558,16 @@ function JobFormDialog({
   }
 
   const [form, setFormState] = useState(makeForm);
+  const propertyBusinessId = editJob?.businessId ?? initialBusinessId ?? activeBusiness?.id;
+  const propertyOptionsQuery = useQuery({
+    queryKey: ["job-property-options", propertyBusinessId, form.clientId],
+    queryFn: () => listAerialQuoteProperties({
+      businessId: propertyBusinessId!,
+      clientId: Number(form.clientId),
+    }),
+    enabled: open && propertyBusinessId != null && form.clientId !== "",
+  });
+  const propertyOptions = propertyOptionsQuery.data ?? [];
   const [subIds, setSubIds]   = useState<number[]>(editJob?.subcontractorIds ?? []);
   const [subCompDefaults, setSubCompDefaults] = useState<Record<number, { compensationType: string; rate: string }>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -8876,6 +8891,7 @@ function JobFormDialog({
       const payload: CreateJobRequest = {
         title: form.title.trim(),
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
+        propertyId: form.propertyId ? parseInt(form.propertyId) : null,
         subcontractorIds: subIds,
         status: form.status as CreateJobRequest["status"],
         jobType: selectedWorkflow === "mh_production" ? undefined : (form.jobType || undefined),
@@ -9049,12 +9065,37 @@ function JobFormDialog({
               value={form.clientId}
               onChange={e => {
                 const clientId = e.target.value;
-                setField("clientId", clientId);
+                setFormState(current => ({ ...current, clientId, propertyId: "" }));
                 fillLotAddressFromClient(clientId);
               }}>
               <option value="">No client</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Customer property <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
+            <select
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
+              value={form.propertyId}
+              disabled={!form.clientId || propertyOptionsQuery.isLoading || propertyOptionsQuery.isError}
+              onChange={e => setField("propertyId", e.target.value)}
+            >
+              <option value="">No property linked</option>
+              {propertyOptions.map(property => (
+                <option key={property.id} value={property.id}>
+                  {property.label}{[property.street, property.city, property.state].filter(Boolean).join(", ") ? ` — ${[property.street, property.city, property.state].filter(Boolean).join(", ")}` : ""}
+                </option>
+              ))}
+            </select>
+            {propertyOptionsQuery.isError && (
+              <p role="alert" className="mt-1 text-xs text-destructive">
+                Customer properties could not be loaded.{" "}
+                <button type="button" className="underline" onClick={() => void propertyOptionsQuery.refetch()}>Try again</button>
+                {" "}before choosing a property.
+              </p>
+            )}
+            {!form.clientId && <p className="mt-1 text-xs text-muted-foreground">Choose a client to see their available properties.</p>}
           </div>
 
           <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3 cursor-pointer">
@@ -9983,6 +10024,7 @@ export default function Jobs() {
   const [csvCustomTo, setCsvCustomTo] = useState("");
   const [csvBL, setCsvBL] = useState<string>(() => activeBusiness?.slug ?? "all");
   const [jobFormOpen, setJobFormOpen]   = useState(false);
+  const [jobFormPrefill, setJobFormPrefill] = useState<{ clientId: number; propertyId: number; businessId?: number } | null>(null);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [jobFormPaymentFocus, setJobFormPaymentFocus] = useState<JobPaymentFocus | null>(null);
   const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
@@ -10596,6 +10638,7 @@ export default function Jobs() {
 
   function openNewJob() {
     setEditJob(null);
+    setJobFormPrefill(null);
     setJobFormPaymentFocus(null);
     setJobFormOpen(true);
   }
@@ -10628,6 +10671,7 @@ export default function Jobs() {
   }
 
   async function openEditJob(job: Job, focus?: JobPaymentFocus) {
+    setJobFormPrefill(null);
     setJobFormPaymentFocus(focus ?? null);
     // The list can be briefly stale after an edit. Load the authoritative row
     // before opening the form so structured MFH fields repopulate reliably.
@@ -11578,9 +11622,15 @@ export default function Jobs() {
       {jobFormOpen && (
         <JobFormDialog
           open={jobFormOpen}
-          onOpenChange={setJobFormOpen}
+          onOpenChange={open => {
+            setJobFormOpen(open);
+            if (!open) setJobFormPrefill(null);
+          }}
           editJob={editJob}
           paymentFocus={jobFormPaymentFocus}
+          prelinkedClientId={jobFormPrefill?.clientId}
+          prelinkedPropertyId={jobFormPrefill?.propertyId}
+          propertyBusinessId={jobFormPrefill?.businessId}
           clients={clients}
           subcontractors={subcontractors}
           onSaved={() => {
@@ -11882,6 +11932,14 @@ export default function Jobs() {
             setProfileClientId(null);
             setProfileClientInitialTab(undefined);
             navigate(`${BASE}/route-planner?clientId=${id}`);
+          }}
+          onCreateJob={(clientId, propertyId) => {
+            setEditJob(null);
+            setJobFormPaymentFocus(null);
+            setJobFormPrefill({ clientId, propertyId, businessId: profileBusinessId ?? activeBusiness?.id });
+            setProfileClientId(null);
+            setProfileClientInitialTab(undefined);
+            setJobFormOpen(true);
           }}
         />
       )}

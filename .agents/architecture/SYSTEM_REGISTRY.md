@@ -171,7 +171,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **API:** `artifacts/api-server/src/routes/jobs.ts`
 - **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx`
 - **Reports:** Yes — central to all P&L, job profit, and labor calculations
-- **Source of truth:** `jobs`. The central entity linking invoices, expenses, mileage, payroll, materials, and owner pay.
+- **Source of truth:** `jobs`. The central entity linking invoices, expenses, mileage, payroll, materials, owner pay, and an optional customer property. `jobs.property_id` references `properties`; it does not replace job address fields or change calculations.
 - **Active financial visibility:** unavailable worker, subcontractor, and Owner Pay balances remain `null` and include server-derived missing-input reasons; clients must not invent fallback amounts or explanations.
 - **Planning:** `jobs.planning_state`, `priority`, `resource_demand`, and `queue_position` hold raw planning inputs. `job_readiness_conditions` owns immutable internal blocker history; active conditions are returned with job list/detail responses. Checklist section completion uses the existing applied checklist tables and status log.
 

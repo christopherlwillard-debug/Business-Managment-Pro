@@ -859,3 +859,10 @@ Created the four-document architecture governance system:
 - Added explicit same-legal-business property grants with separate view, measure, estimate, and manage permissions, plus revocation and owner-access backfill.
 - Added a shared API-side pricing calculator and draft estimate creation with a private, frozen calculation snapshot; the existing estimate tax and quote lifecycle remain authoritative.
 - Kept map imagery and map-derived geometry out of this release pending verified Google key restrictions and written measurement/storage rights.
+
+### Optional job-to-property links
+
+- Added a nullable `jobs.property_id` relationship to the existing customer property source, without backfilling old jobs.
+- Job create/edit validates that the property matches the client and legal business and is available through active property access.
+- Added property selection to the Jobs dialog and a Client Profile action to start a job at a selected property. Accounting, profitability, and production calculations remain unchanged.
+- No production database migration was run.

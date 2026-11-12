@@ -2904,6 +2904,9 @@ components:
         clientId:
           type: integer
           nullable: true
+        propertyId:
+          type: integer
+          nullable: true
         clientName:
           type: string
           nullable: true
@@ -3572,6 +3575,9 @@ components:
           type: string
           nullable: true
         clientId:
+          type: integer
+          nullable: true
+        propertyId:
           type: integer
           nullable: true
         subcontractorIds:
