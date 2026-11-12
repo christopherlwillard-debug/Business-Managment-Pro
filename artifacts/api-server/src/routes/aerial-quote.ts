@@ -1,11 +1,12 @@
 import { Router, type Request, type Response } from "express";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   businessesTable,
   clientsTable,
   estimatesTable,
   propertiesTable,
+  propertyBusinessAccessTable,
   propertyMeasurementRevisionsTable,
   servicePricingProfileVersionsTable,
 } from "@workspace/db/schema";
@@ -15,14 +16,14 @@ import {
   CreateAerialQuotePricingProfileVersionBody,
   CreateAerialQuotePropertyBody,
   CreatePropertyMeasurementRevisionBody,
+  GrantPropertyBusinessAccessBody,
 } from "@workspace/api-zod";
 import {
-  type BusinessReadScope,
-  belongsToBusinessReadScope,
   canonicalRecordBusiness,
   invalidBusinessScope,
   hasRequestedBusiness,
   requestedBusinessReadScope,
+  requestedBusiness,
   resolveMutationBusiness,
   sameLegalBusiness,
 } from "../lib/business-scope.js";
@@ -30,6 +31,7 @@ import { getRequestUserId } from "./guards.js";
 import { calculateEstimateTotals } from "../lib/estimate-totals.js";
 import { roundCurrency } from "@workspace/api-zod";
 import { calculateServiceEstimate, servicePricingRulesSchema } from "../lib/aerial-quote-engine.js";
+import { hasPropertyPermission } from "../lib/property-access.js";
 
 const router = Router();
 const serviceKeys = new Set([
@@ -41,10 +43,22 @@ const serviceKeys = new Set([
   "property_maintenance",
 ]);
 
-async function loadPropertyInScope(propertyId: number, scope: BusinessReadScope | null) {
+async function loadPropertyInScope(
+  propertyId: number,
+  businessId: number,
+  permission: "view" | "measure" | "estimate" | "manage" = "view",
+) {
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
-  if (!property || (scope && !belongsToBusinessReadScope({ businessId: property.businessId }, scope))) {
-    return { error: "Property not found" as const };
+  if (!property) return { error: "Property not found" as const };
+  if (property.businessId !== businessId) {
+    const [grant] = await db.select({ permission: propertyBusinessAccessTable.permission })
+      .from(propertyBusinessAccessTable)
+      .where(and(
+        eq(propertyBusinessAccessTable.propertyId, propertyId),
+        eq(propertyBusinessAccessTable.businessId, businessId),
+        isNull(propertyBusinessAccessTable.revokedAt),
+      )).limit(1);
+    if (!hasPropertyPermission(grant?.permission, permission)) return { error: "Property not found" as const };
   }
   return { property };
 }
@@ -58,15 +72,22 @@ async function validateClient(clientId: number | null | undefined, businessId: n
 }
 
 router.get("/properties", async (req, res): Promise<void> => {
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+  const business = await requestedBusiness(req);
+  if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
   const clientId = req.query.clientId == null ? null : Number(req.query.clientId);
   if (clientId != null && (!Number.isInteger(clientId) || clientId < 1)) {
     res.status(400).json({ error: "Invalid clientId" });
     return;
   }
-  const filters = [];
-  if (scope) filters.push(inArray(propertiesTable.businessId, scope.memberIds));
+  const grants = await db.select({ propertyId: propertyBusinessAccessTable.propertyId })
+    .from(propertyBusinessAccessTable).where(and(
+      eq(propertyBusinessAccessTable.businessId, business.id),
+      isNull(propertyBusinessAccessTable.revokedAt),
+    ));
+  const filters = [or(
+    eq(propertiesTable.businessId, business.id),
+    grants.length ? inArray(propertiesTable.id, grants.map(row => row.propertyId)) : undefined,
+  )];
   if (clientId != null) filters.push(eq(propertiesTable.clientId, clientId));
   const rows = await db.select().from(propertiesTable)
     .where(filters.length ? and(...filters) : undefined)
@@ -93,15 +114,106 @@ router.post("/properties", async (req, res): Promise<void> => {
     zip: parsed.data.zip?.trim() || null,
     notes: parsed.data.notes?.trim() || null,
   }).returning();
+  await db.insert(propertyBusinessAccessTable).values({
+    propertyId: property.id,
+    businessId: owner.business.id,
+    permission: "manage",
+    grantedBy: getRequestUserId(req) ?? null,
+  });
   res.status(201).json(property);
+});
+
+router.get("/properties/:propertyId/access", async (req, res): Promise<void> => {
+  const propertyId = Number(req.params.propertyId);
+  const business = await requestedBusiness(req);
+  if (!business || !Number.isInteger(propertyId) || propertyId < 1) {
+    res.status(400).json({ error: "Valid businessId and propertyId are required" }); return;
+  }
+  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property || property.businessId !== business.id) { res.status(404).json({ error: "Property not found" }); return; }
+  const grants = await db.select({
+    id: propertyBusinessAccessTable.id,
+    propertyId: propertyBusinessAccessTable.propertyId,
+    businessId: propertyBusinessAccessTable.businessId,
+    businessSlug: businessesTable.slug,
+    permission: propertyBusinessAccessTable.permission,
+    createdAt: propertyBusinessAccessTable.createdAt,
+    grantedBy: propertyBusinessAccessTable.grantedBy,
+  }).from(propertyBusinessAccessTable)
+    .innerJoin(businessesTable, eq(propertyBusinessAccessTable.businessId, businessesTable.id))
+    .where(and(eq(propertyBusinessAccessTable.propertyId, propertyId), isNull(propertyBusinessAccessTable.revokedAt)));
+  res.json(grants);
+});
+
+router.post("/properties/:propertyId/access", async (req, res): Promise<void> => {
+  const propertyId = Number(req.params.propertyId);
+  const parsed = GrantPropertyBusinessAccessBody.safeParse(req.body);
+  const owner = await resolveMutationBusiness(req);
+  if (!Number.isInteger(propertyId) || propertyId < 1 || !parsed.success || !owner.ok) {
+    res.status(400).json({ error: parsed.success ? "Invalid propertyId or business" : parsed.error.message }); return;
+  }
+  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property || property.businessId !== owner.business.id) { res.status(404).json({ error: "Property not found" }); return; }
+  if (!await sameLegalBusiness(property.businessId, parsed.data.targetBusinessId)) {
+    res.status(403).json({ error: "Property sharing is limited to the same legal business" }); return;
+  }
+  const [target] = await db.select({ id: businessesTable.id, slug: businessesTable.slug }).from(businessesTable)
+    .where(eq(businessesTable.id, parsed.data.targetBusinessId)).limit(1);
+  if (!target) { res.status(400).json({ error: "Unknown target business" }); return; }
+  const created = await db.transaction(async tx => {
+    await tx.update(propertyBusinessAccessTable).set({
+      revokedAt: new Date(),
+      revokedBy: getRequestUserId(req) ?? null,
+    }).where(and(
+      eq(propertyBusinessAccessTable.propertyId, propertyId),
+      eq(propertyBusinessAccessTable.businessId, target.id),
+      isNull(propertyBusinessAccessTable.revokedAt),
+    ));
+    const [grant] = await tx.insert(propertyBusinessAccessTable).values({
+      propertyId,
+      businessId: target.id,
+      permission: parsed.data.permission,
+      grantedBy: getRequestUserId(req) ?? null,
+    }).returning();
+    return grant;
+  });
+  res.status(201).json({
+    id: created.id,
+    propertyId,
+    businessId: target.id,
+    businessSlug: target.slug,
+    permission: created.permission,
+    createdAt: created.createdAt.toISOString(),
+    grantedBy: created.grantedBy,
+  });
+});
+
+router.delete("/properties/:propertyId/access/:businessId", async (req, res): Promise<void> => {
+  const propertyId = Number(req.params.propertyId);
+  const targetBusinessId = Number(req.params.businessId);
+  const owner = await resolveMutationBusiness(req);
+  if (!Number.isInteger(propertyId) || propertyId < 1 || !Number.isInteger(targetBusinessId) || !owner.ok) {
+    res.status(400).json({ error: "Invalid property or business" }); return;
+  }
+  const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property || property.businessId !== owner.business.id) { res.status(404).json({ error: "Property not found" }); return; }
+  await db.update(propertyBusinessAccessTable).set({
+    revokedAt: new Date(),
+    revokedBy: getRequestUserId(req) ?? null,
+  }).where(and(
+    eq(propertyBusinessAccessTable.propertyId, propertyId),
+    eq(propertyBusinessAccessTable.businessId, targetBusinessId),
+    isNull(propertyBusinessAccessTable.revokedAt),
+  ));
+  res.status(204).end();
 });
 
 router.get("/properties/:propertyId/measurement-revisions", async (req, res): Promise<void> => {
   const propertyId = Number(req.params.propertyId);
   if (!Number.isInteger(propertyId) || propertyId < 1) { res.status(400).json({ error: "Invalid propertyId" }); return; }
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
-  const result = await loadPropertyInScope(propertyId, scope);
+  const business = await requestedBusiness(req);
+  if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
+  const result = await loadPropertyInScope(propertyId, business.id, "view");
   if ("error" in result) { res.status(404).json({ error: result.error }); return; }
   const revisions = await db.select().from(propertyMeasurementRevisionsTable)
     .where(eq(propertyMeasurementRevisionsTable.propertyId, propertyId))
@@ -114,9 +226,9 @@ router.post("/properties/:propertyId/measurement-revisions", async (req, res): P
   if (!Number.isInteger(propertyId) || propertyId < 1) { res.status(400).json({ error: "Invalid propertyId" }); return; }
   const parsed = CreatePropertyMeasurementRevisionBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
-  const result = await loadPropertyInScope(propertyId, scope);
+  const business = await requestedBusiness(req);
+  if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
+  const result = await loadPropertyInScope(propertyId, business.id, "measure");
   if ("error" in result) { res.status(404).json({ error: result.error }); return; }
 
   const entries = parsed.data.entries;
@@ -149,10 +261,10 @@ router.post("/properties/:propertyId/measurement-revisions", async (req, res): P
 });
 
 router.get("/pricing-profiles", async (req, res): Promise<void> => {
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+  const business = await requestedBusiness(req);
+  if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
   const rows = await db.select().from(servicePricingProfileVersionsTable)
-    .where(scope ? inArray(servicePricingProfileVersionsTable.businessId, scope.memberIds) : undefined)
+    .where(eq(servicePricingProfileVersionsTable.businessId, business.id))
     .orderBy(desc(servicePricingProfileVersionsTable.version));
   const latest = new Map<string, typeof rows[number]>();
   for (const row of rows) {
@@ -194,12 +306,13 @@ router.post("/pricing-profiles", async (req, res): Promise<void> => {
 });
 
 async function calculateForRequest(input: {
+  businessId: number;
   propertyId: number;
   measurementRevisionId: number;
   serviceKey: string;
   profileVersion: number;
-}, scope: BusinessReadScope | null) {
-  const propertyResult = await loadPropertyInScope(input.propertyId, scope);
+}, businessId: number) {
+  const propertyResult = await loadPropertyInScope(input.propertyId, businessId, "estimate");
   if ("error" in propertyResult) throw new Error(propertyResult.error);
   const [revision] = await db.select().from(propertyMeasurementRevisionsTable).where(and(
     eq(propertyMeasurementRevisionsTable.id, input.measurementRevisionId),
@@ -207,7 +320,7 @@ async function calculateForRequest(input: {
   )).limit(1);
   if (!revision) throw new Error("Measurement revision not found");
   const [profile] = await db.select().from(servicePricingProfileVersionsTable).where(and(
-    eq(servicePricingProfileVersionsTable.businessId, propertyResult.property.businessId),
+    eq(servicePricingProfileVersionsTable.businessId, businessId),
     eq(servicePricingProfileVersionsTable.serviceKey, input.serviceKey),
     eq(servicePricingProfileVersionsTable.version, input.profileVersion),
   )).limit(1);
@@ -228,10 +341,10 @@ async function calculateForRequest(input: {
 router.post("/calculate", async (req, res): Promise<void> => {
   const parsed = CalculateAerialQuoteServiceBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+  const business = await requestedBusiness(req);
+  if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
   try {
-    const { result } = await calculateForRequest(parsed.data, scope);
+    const { result } = await calculateForRequest(parsed.data, business.id);
     res.json({
       ...result,
       lineItems: result.lineItems.map((line, index) => ({
@@ -251,14 +364,8 @@ router.post("/estimates", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const owner = await resolveMutationBusiness(req);
   if (!owner.ok) { res.status(400).json({ error: owner.error }); return; }
-  const scope = await requestedBusinessReadScope(req);
-  if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
   try {
-    const { property, result } = await calculateForRequest(parsed.data, scope);
-    if (property.businessId !== owner.business.id) {
-      res.status(409).json({ error: "Estimate business conflicts with the property" });
-      return;
-    }
+    const { property, result } = await calculateForRequest(parsed.data, owner.business.id);
     const clientId = parsed.data.clientId ?? property.clientId;
     if (!await validateClient(clientId, owner.business.id)) {
       res.status(409).json({ error: "Client is not owned by this legal business" });

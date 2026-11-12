@@ -847,5 +847,6 @@ Created the four-document architecture governance system:
 ### Manual-first Aerial Quote foundation
 
 - Added business-scoped properties, append-only manual/on-site measurement revisions, and versioned service pricing profiles.
+- Added explicit same-legal-business property grants with separate view, measure, estimate, and manage permissions, plus revocation and owner-access backfill.
 - Added a shared API-side pricing calculator and draft estimate creation with a private, frozen calculation snapshot; the existing estimate tax and quote lifecycle remain authoritative.
 - Kept map imagery and map-derived geometry out of this release pending verified Google key restrictions and written measurement/storage rights.

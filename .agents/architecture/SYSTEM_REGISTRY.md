@@ -500,7 +500,7 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Aerial Quote / Property Measurements
 
-- **Tables:** `properties`, `property_measurement_revisions`, `service_pricing_profile_versions`, and the property/calculation snapshot fields on `estimates`
+- **Tables:** `properties`, `property_business_access`, `property_measurement_revisions`, `service_pricing_profile_versions`, and the property/calculation snapshot fields on `estimates`
 - **API:** `artifacts/api-server/src/routes/aerial-quote.ts`
 - **UI:** Contractor App Aerial Quote page
 - **Source of truth:** immutable measurement revisions and versioned, business-scoped service pricing profiles; saved estimates retain a private calculation snapshot and use the existing estimate/quote lifecycle.

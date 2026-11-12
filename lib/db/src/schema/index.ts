@@ -69,5 +69,6 @@ export * from "./vehicles";
 export * from "./crew";
 export * from "./grants";
 export * from "./properties";
+export * from "./property-business-access";
 export * from "./property-measurement-revisions";
 export * from "./service-pricing-profile-versions";

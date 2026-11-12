@@ -3733,10 +3733,67 @@ export const CreateAerialQuotePropertyBody = zod.object({
 });
 
 /**
+ * @summary List business access grants for a property
+ */
+export const ListPropertyBusinessAccessParams = zod.object({
+  propertyId: zod.coerce.number(),
+});
+
+export const ListPropertyBusinessAccessQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const ListPropertyBusinessAccessResponseItem = zod.object({
+  id: zod.number(),
+  propertyId: zod.number(),
+  businessId: zod.number(),
+  businessSlug: zod.string(),
+  permission: zod.enum(["view", "measure", "estimate", "manage"]),
+  createdAt: zod.string(),
+  grantedBy: zod.string().nullish(),
+});
+export const ListPropertyBusinessAccessResponse = zod.array(
+  ListPropertyBusinessAccessResponseItem,
+);
+
+/**
+ * @summary Grant property access to a same-legal-business division
+ */
+export const GrantPropertyBusinessAccessParams = zod.object({
+  propertyId: zod.coerce.number(),
+});
+
+export const GrantPropertyBusinessAccessQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const GrantPropertyBusinessAccessBody = zod.object({
+  businessId: zod.number().optional(),
+  targetBusinessId: zod.number(),
+  permission: zod.enum(["view", "measure", "estimate", "manage"]),
+});
+
+/**
+ * @summary Revoke a property access grant
+ */
+export const RevokePropertyBusinessAccessParams = zod.object({
+  propertyId: zod.coerce.number(),
+  businessId: zod.coerce.number(),
+});
+
+export const RevokePropertyBusinessAccessQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+/**
  * @summary List immutable measurement revisions for a property
  */
 export const ListPropertyMeasurementRevisionsParams = zod.object({
   propertyId: zod.coerce.number(),
+});
+
+export const ListPropertyMeasurementRevisionsQueryParams = zod.object({
+  businessId: zod.coerce.number(),
 });
 
 export const listPropertyMeasurementRevisionsResponseEntriesItemLabelMax = 120;
@@ -3798,6 +3855,7 @@ export const createPropertyMeasurementRevisionBodyEntriesItemCategoryMax = 80;
 export const createPropertyMeasurementRevisionBodyEntriesItemQuantityMin = 0;
 
 export const CreatePropertyMeasurementRevisionBody = zod.object({
+  businessId: zod.number(),
   source: zod.enum(["manual", "on_site"]),
   entries: zod
     .array(
@@ -3877,7 +3935,7 @@ export const CreateAerialQuotePricingProfileVersionBody = zod.object({
  * @summary Calculate a service estimate from saved measurements and a profile
  */
 export const CalculateAerialQuoteServiceBody = zod.object({
-  businessId: zod.number().optional(),
+  businessId: zod.number(),
   propertyId: zod.number(),
   measurementRevisionId: zod.number(),
   serviceKey: zod.string(),
@@ -3909,7 +3967,7 @@ export const createAerialQuoteEstimateBodyTwoTitleMax = 180;
 
 export const CreateAerialQuoteEstimateBody = zod
   .object({
-    businessId: zod.number().optional(),
+    businessId: zod.number(),
     propertyId: zod.number(),
     measurementRevisionId: zod.number(),
     serviceKey: zod.string(),

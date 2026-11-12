@@ -1446,6 +1446,42 @@ export interface PropertyInput {
   notes?: string | null;
 }
 
+export type PropertyBusinessAccessInputPermission =
+  (typeof PropertyBusinessAccessInputPermission)[keyof typeof PropertyBusinessAccessInputPermission];
+
+export const PropertyBusinessAccessInputPermission = {
+  view: "view",
+  measure: "measure",
+  estimate: "estimate",
+  manage: "manage",
+} as const;
+
+export interface PropertyBusinessAccessInput {
+  businessId?: number;
+  targetBusinessId: number;
+  permission: PropertyBusinessAccessInputPermission;
+}
+
+export type PropertyBusinessAccessPermission =
+  (typeof PropertyBusinessAccessPermission)[keyof typeof PropertyBusinessAccessPermission];
+
+export const PropertyBusinessAccessPermission = {
+  view: "view",
+  measure: "measure",
+  estimate: "estimate",
+  manage: "manage",
+} as const;
+
+export interface PropertyBusinessAccess {
+  id: number;
+  propertyId: number;
+  businessId: number;
+  businessSlug: string;
+  permission: PropertyBusinessAccessPermission;
+  createdAt: string;
+  grantedBy?: string | null;
+}
+
 export type MeasurementEntryKind =
   (typeof MeasurementEntryKind)[keyof typeof MeasurementEntryKind];
 
@@ -1496,6 +1532,7 @@ export const MeasurementRevisionInputSource = {
 } as const;
 
 export interface MeasurementRevisionInput {
+  businessId: number;
   source: MeasurementRevisionInputSource;
   /** @minItems 1 */
   entries: MeasurementEntry[];
@@ -1558,7 +1595,7 @@ export interface ServicePricingProfile {
 }
 
 export interface AerialQuoteCalculationInput {
-  businessId?: number;
+  businessId: number;
   propertyId: number;
   measurementRevisionId: number;
   serviceKey: string;
@@ -2754,6 +2791,22 @@ export type ListEstimatesParams = {
 export type ListAerialQuotePropertiesParams = {
   businessId?: number;
   clientId?: number;
+};
+
+export type ListPropertyBusinessAccessParams = {
+  businessId: number;
+};
+
+export type GrantPropertyBusinessAccessParams = {
+  businessId: number;
+};
+
+export type RevokePropertyBusinessAccessParams = {
+  businessId: number;
+};
+
+export type ListPropertyMeasurementRevisionsParams = {
+  businessId: number;
 };
 
 export type ListAerialQuotePricingProfilesParams = {

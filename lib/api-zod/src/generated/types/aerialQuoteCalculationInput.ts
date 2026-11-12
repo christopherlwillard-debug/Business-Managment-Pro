@@ -7,7 +7,7 @@
  */
 
 export interface AerialQuoteCalculationInput {
-  businessId?: number;
+  businessId: number;
   propertyId: number;
   measurementRevisionId: number;
   serviceKey: string;

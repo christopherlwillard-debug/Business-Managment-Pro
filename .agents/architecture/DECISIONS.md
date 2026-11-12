@@ -642,7 +642,7 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
-## ADR-006: Manual-first Aerial Quote estimates
+## ADR-035: Manual-first Aerial Quote estimates
 
 **Decision:** Add business-scoped properties, append-only numeric measurement revisions, and versioned service pricing profiles. Route all calculations through one API-side engine and create standard draft estimates with an internal calculation snapshot. Keep tax in the existing estimate flow. Do not integrate map imagery or geometry until Google access restrictions and written measurement/storage rights are verified.
 

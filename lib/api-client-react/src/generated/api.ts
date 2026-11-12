@@ -63,6 +63,7 @@ import type {
   GetMileageSummaryParams,
   GetReadyToStartJobsParams,
   GetTrimOutCatalogParams,
+  GrantPropertyBusinessAccessParams,
   HandleBrowserLoginCallbackParams,
   HealthStatus,
   Invoice,
@@ -83,6 +84,8 @@ import type {
   ListJobComponentWorkSessionsParams,
   ListJobsParams,
   ListMileageLogsParams,
+  ListPropertyBusinessAccessParams,
+  ListPropertyMeasurementRevisionsParams,
   LogoutSuccess,
   ManualEstimateQuoteResponseInput,
   MaterialListInvoiceAssignmentHistoryEvent,
@@ -105,6 +108,8 @@ import type {
   ProductionComponent,
   ProductionScopeSectionInput,
   Property,
+  PropertyBusinessAccess,
+  PropertyBusinessAccessInput,
   PropertyInput,
   PropertyMeasurementRevision,
   PublicEstimateQuote,
@@ -113,6 +118,7 @@ import type {
   ReconcileEstimateQuoteInput,
   RecurringExpense,
   ResetPortalPin200,
+  RevokePropertyBusinessAccessParams,
   ScheduleEstimateQuoteFollowUpInput,
   SendEstimateQuoteInput,
   ServicePricingProfile,
@@ -7513,18 +7519,420 @@ export const useCreateAerialQuoteProperty = <
 };
 
 /**
+ * @summary List business access grants for a property
+ */
+export const getListPropertyBusinessAccessUrl = (
+  propertyId: number,
+  params: ListPropertyBusinessAccessParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/properties/${propertyId}/access?${stringifiedParams}`
+    : `/api/aerial-quote/properties/${propertyId}/access`;
+};
+
+export const listPropertyBusinessAccess = async (
+  propertyId: number,
+  params: ListPropertyBusinessAccessParams,
+  options?: RequestInit,
+): Promise<PropertyBusinessAccess[]> => {
+  return customFetch<PropertyBusinessAccess[]>(
+    getListPropertyBusinessAccessUrl(propertyId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPropertyBusinessAccessQueryKey = (
+  propertyId: number,
+  params?: ListPropertyBusinessAccessParams,
+) => {
+  return [
+    `/api/aerial-quote/properties/${propertyId}/access`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListPropertyBusinessAccessQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPropertyBusinessAccess>>,
+  TError = ErrorType<unknown>,
+>(
+  propertyId: number,
+  params: ListPropertyBusinessAccessParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPropertyBusinessAccess>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListPropertyBusinessAccessQueryKey(propertyId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPropertyBusinessAccess>>
+  > = ({ signal }) =>
+    listPropertyBusinessAccess(propertyId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!propertyId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPropertyBusinessAccess>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPropertyBusinessAccessQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPropertyBusinessAccess>>
+>;
+export type ListPropertyBusinessAccessQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List business access grants for a property
+ */
+
+export function useListPropertyBusinessAccess<
+  TData = Awaited<ReturnType<typeof listPropertyBusinessAccess>>,
+  TError = ErrorType<unknown>,
+>(
+  propertyId: number,
+  params: ListPropertyBusinessAccessParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPropertyBusinessAccess>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPropertyBusinessAccessQueryOptions(
+    propertyId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Grant property access to a same-legal-business division
+ */
+export const getGrantPropertyBusinessAccessUrl = (
+  propertyId: number,
+  params: GrantPropertyBusinessAccessParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/properties/${propertyId}/access?${stringifiedParams}`
+    : `/api/aerial-quote/properties/${propertyId}/access`;
+};
+
+export const grantPropertyBusinessAccess = async (
+  propertyId: number,
+  propertyBusinessAccessInput: PropertyBusinessAccessInput,
+  params: GrantPropertyBusinessAccessParams,
+  options?: RequestInit,
+): Promise<PropertyBusinessAccess> => {
+  return customFetch<PropertyBusinessAccess>(
+    getGrantPropertyBusinessAccessUrl(propertyId, params),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(propertyBusinessAccessInput),
+    },
+  );
+};
+
+export const getGrantPropertyBusinessAccessMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof grantPropertyBusinessAccess>>,
+    TError,
+    {
+      propertyId: number;
+      data: BodyType<PropertyBusinessAccessInput>;
+      params: GrantPropertyBusinessAccessParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof grantPropertyBusinessAccess>>,
+  TError,
+  {
+    propertyId: number;
+    data: BodyType<PropertyBusinessAccessInput>;
+    params: GrantPropertyBusinessAccessParams;
+  },
+  TContext
+> => {
+  const mutationKey = ["grantPropertyBusinessAccess"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof grantPropertyBusinessAccess>>,
+    {
+      propertyId: number;
+      data: BodyType<PropertyBusinessAccessInput>;
+      params: GrantPropertyBusinessAccessParams;
+    }
+  > = (props) => {
+    const { propertyId, data, params } = props ?? {};
+
+    return grantPropertyBusinessAccess(
+      propertyId,
+      data,
+      params,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GrantPropertyBusinessAccessMutationResult = NonNullable<
+  Awaited<ReturnType<typeof grantPropertyBusinessAccess>>
+>;
+export type GrantPropertyBusinessAccessMutationBody =
+  BodyType<PropertyBusinessAccessInput>;
+export type GrantPropertyBusinessAccessMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Grant property access to a same-legal-business division
+ */
+export const useGrantPropertyBusinessAccess = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof grantPropertyBusinessAccess>>,
+    TError,
+    {
+      propertyId: number;
+      data: BodyType<PropertyBusinessAccessInput>;
+      params: GrantPropertyBusinessAccessParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof grantPropertyBusinessAccess>>,
+  TError,
+  {
+    propertyId: number;
+    data: BodyType<PropertyBusinessAccessInput>;
+    params: GrantPropertyBusinessAccessParams;
+  },
+  TContext
+> => {
+  return useMutation(getGrantPropertyBusinessAccessMutationOptions(options));
+};
+
+/**
+ * @summary Revoke a property access grant
+ */
+export const getRevokePropertyBusinessAccessUrl = (
+  propertyId: number,
+  businessId: number,
+  params: RevokePropertyBusinessAccessParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/properties/${propertyId}/access/${businessId}?${stringifiedParams}`
+    : `/api/aerial-quote/properties/${propertyId}/access/${businessId}`;
+};
+
+export const revokePropertyBusinessAccess = async (
+  propertyId: number,
+  businessId: number,
+  params: RevokePropertyBusinessAccessParams,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(
+    getRevokePropertyBusinessAccessUrl(propertyId, businessId, params),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getRevokePropertyBusinessAccessMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokePropertyBusinessAccess>>,
+    TError,
+    {
+      propertyId: number;
+      businessId: number;
+      params: RevokePropertyBusinessAccessParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof revokePropertyBusinessAccess>>,
+  TError,
+  {
+    propertyId: number;
+    businessId: number;
+    params: RevokePropertyBusinessAccessParams;
+  },
+  TContext
+> => {
+  const mutationKey = ["revokePropertyBusinessAccess"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof revokePropertyBusinessAccess>>,
+    {
+      propertyId: number;
+      businessId: number;
+      params: RevokePropertyBusinessAccessParams;
+    }
+  > = (props) => {
+    const { propertyId, businessId, params } = props ?? {};
+
+    return revokePropertyBusinessAccess(
+      propertyId,
+      businessId,
+      params,
+      requestOptions,
+    );
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RevokePropertyBusinessAccessMutationResult = NonNullable<
+  Awaited<ReturnType<typeof revokePropertyBusinessAccess>>
+>;
+
+export type RevokePropertyBusinessAccessMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Revoke a property access grant
+ */
+export const useRevokePropertyBusinessAccess = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokePropertyBusinessAccess>>,
+    TError,
+    {
+      propertyId: number;
+      businessId: number;
+      params: RevokePropertyBusinessAccessParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof revokePropertyBusinessAccess>>,
+  TError,
+  {
+    propertyId: number;
+    businessId: number;
+    params: RevokePropertyBusinessAccessParams;
+  },
+  TContext
+> => {
+  return useMutation(getRevokePropertyBusinessAccessMutationOptions(options));
+};
+
+/**
  * @summary List immutable measurement revisions for a property
  */
-export const getListPropertyMeasurementRevisionsUrl = (propertyId: number) => {
-  return `/api/aerial-quote/properties/${propertyId}/measurement-revisions`;
+export const getListPropertyMeasurementRevisionsUrl = (
+  propertyId: number,
+  params: ListPropertyMeasurementRevisionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/properties/${propertyId}/measurement-revisions?${stringifiedParams}`
+    : `/api/aerial-quote/properties/${propertyId}/measurement-revisions`;
 };
 
 export const listPropertyMeasurementRevisions = async (
   propertyId: number,
+  params: ListPropertyMeasurementRevisionsParams,
   options?: RequestInit,
 ): Promise<PropertyMeasurementRevision[]> => {
   return customFetch<PropertyMeasurementRevision[]>(
-    getListPropertyMeasurementRevisionsUrl(propertyId),
+    getListPropertyMeasurementRevisionsUrl(propertyId, params),
     {
       ...options,
       method: "GET",
@@ -7534,9 +7942,11 @@ export const listPropertyMeasurementRevisions = async (
 
 export const getListPropertyMeasurementRevisionsQueryKey = (
   propertyId: number,
+  params?: ListPropertyMeasurementRevisionsParams,
 ) => {
   return [
     `/api/aerial-quote/properties/${propertyId}/measurement-revisions`,
+    ...(params ? [params] : []),
   ] as const;
 };
 
@@ -7545,6 +7955,7 @@ export const getListPropertyMeasurementRevisionsQueryOptions = <
   TError = ErrorType<unknown>,
 >(
   propertyId: number,
+  params: ListPropertyMeasurementRevisionsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
@@ -7558,12 +7969,15 @@ export const getListPropertyMeasurementRevisionsQueryOptions = <
 
   const queryKey =
     queryOptions?.queryKey ??
-    getListPropertyMeasurementRevisionsQueryKey(propertyId);
+    getListPropertyMeasurementRevisionsQueryKey(propertyId, params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>
   > = ({ signal }) =>
-    listPropertyMeasurementRevisions(propertyId, { signal, ...requestOptions });
+    listPropertyMeasurementRevisions(propertyId, params, {
+      signal,
+      ...requestOptions,
+    });
 
   return {
     queryKey,
@@ -7591,6 +8005,7 @@ export function useListPropertyMeasurementRevisions<
   TError = ErrorType<unknown>,
 >(
   propertyId: number,
+  params: ListPropertyMeasurementRevisionsParams,
   options?: {
     query?: UseQueryOptions<
       Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
@@ -7602,6 +8017,7 @@ export function useListPropertyMeasurementRevisions<
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListPropertyMeasurementRevisionsQueryOptions(
     propertyId,
+    params,
     options,
   );
 

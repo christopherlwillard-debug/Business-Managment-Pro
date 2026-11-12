@@ -1813,6 +1813,72 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Property" }
+  /aerial-quote/properties/{propertyId}/access:
+    get:
+      operationId: listPropertyBusinessAccess
+      tags: [estimates]
+      summary: List business access grants for a property
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Active property access grants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PropertyBusinessAccess" }
+    post:
+      operationId: grantPropertyBusinessAccess
+      tags: [estimates]
+      summary: Grant property access to a same-legal-business division
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: query
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyBusinessAccessInput" }
+      responses:
+        "201":
+          description: Property access grant created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyBusinessAccess" }
+  /aerial-quote/properties/{propertyId}/access/{businessId}:
+    delete:
+      operationId: revokePropertyBusinessAccess
+      tags: [estimates]
+      summary: Revoke a property access grant
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Property access revoked }
   /aerial-quote/properties/{propertyId}/measurement-revisions:
     get:
       operationId: listPropertyMeasurementRevisions
@@ -1821,6 +1887,10 @@ paths:
       parameters:
         - name: propertyId
           in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: query
           required: true
           schema: { type: integer }
       responses:
@@ -4529,6 +4599,26 @@ components:
         notes: { type: string, nullable: true }
       required: [label]
 
+    PropertyBusinessAccessInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        targetBusinessId: { type: integer }
+        permission: { type: string, enum: [view, measure, estimate, manage] }
+      required: [targetBusinessId, permission]
+
+    PropertyBusinessAccess:
+      type: object
+      properties:
+        id: { type: integer }
+        propertyId: { type: integer }
+        businessId: { type: integer }
+        businessSlug: { type: string }
+        permission: { type: string, enum: [view, measure, estimate, manage] }
+        createdAt: { type: string }
+        grantedBy: { type: string, nullable: true }
+      required: [id, propertyId, businessId, businessSlug, permission, createdAt]
+
     MeasurementEntry:
       type: object
       properties:
@@ -4543,13 +4633,14 @@ components:
     MeasurementRevisionInput:
       type: object
       properties:
+        businessId: { type: integer }
         source: { type: string, enum: [manual, on_site] }
         entries:
           type: array
           minItems: 1
           items: { $ref: "#/components/schemas/MeasurementEntry" }
         notes: { type: string, nullable: true }
-      required: [source, entries]
+      required: [businessId, source, entries]
 
     PropertyMeasurementRevision:
       type: object
@@ -4597,7 +4688,7 @@ components:
         measurementRevisionId: { type: integer }
         serviceKey: { type: string }
         profileVersion: { type: integer }
-      required: [propertyId, measurementRevisionId, serviceKey, profileVersion]
+      required: [businessId, propertyId, measurementRevisionId, serviceKey, profileVersion]
 
     AerialQuoteCalculation:
       type: object

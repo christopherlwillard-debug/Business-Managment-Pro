@@ -80,3 +80,5 @@
 - [Banking auth recovery](banking-auth-recovery.md) — never auto-replay a financial POST after re-auth; preserve its draft and serialize expense filing on the bank row
 - [Usage-cost constraint](usage-cost-constraint.md) — keep edits and ongoing usage free; avoid introducing paid services or per-use charges
 - [Quote decision and authorization boundary](quote-decision-authorization.md) — customer decisions and work authorization are separate append-only events tied to frozen revisions; online acceptance never authorizes work
+- [Aerial Quote nationwide coverage](aerial-quote-nationwide-coverage.md) — territory may expand anywhere in the U.S.; never restrict property search or measurement to fixed ZIP, county, or state lists
+- [Client profile-centered workflow](client-profile-centered-workflow.md) — keep customer work in the existing Client Profile, composing existing systems instead of adding a standalone Property Library or estimator

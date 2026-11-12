@@ -7,6 +7,10 @@ export type {
   CreateJobComponentWorkSessionParams,
   ListJobComponentWorkSessionsParams,
   UpdateJobComponentWorkSessionParams,
+  GrantPropertyBusinessAccessParams,
+  ListPropertyBusinessAccessParams,
+  ListPropertyMeasurementRevisionsParams,
+  RevokePropertyBusinessAccessParams,
 } from "./generated/types";
 export {
   PortalCheckSessionBody,

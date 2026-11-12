@@ -9,6 +9,7 @@ import type { MeasurementEntry } from "./measurementEntry";
 import type { MeasurementRevisionInputSource } from "./measurementRevisionInputSource";
 
 export interface MeasurementRevisionInput {
+  businessId: number;
   source: MeasurementRevisionInputSource;
   /** @minItems 1 */
   entries: MeasurementEntry[];

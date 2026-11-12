@@ -10,6 +10,9 @@ import {
   listAerialQuotePricingProfiles,
   listAerialQuoteProperties,
   listClients,
+  listPropertyBusinessAccess,
+  grantPropertyBusinessAccess,
+  revokePropertyBusinessAccess,
   listPropertyMeasurementRevisions,
 } from "@workspace/api-client-react";
 
@@ -58,6 +61,9 @@ export default function AerialQuoteManual() {
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [revisions, setRevisions] = useState<any[]>([]);
+  const [accessGrants, setAccessGrants] = useState<any[]>([]);
+  const [shareBusinessId, setShareBusinessId] = useState("");
+  const [sharePermission, setSharePermission] = useState<"view" | "measure" | "estimate" | "manage">("estimate");
   const [propertyId, setPropertyId] = useState<number | null>(null);
   const [revisionId, setRevisionId] = useState<number | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);
@@ -116,8 +122,13 @@ export default function AerialQuoteManual() {
   }
 
   async function refreshRevisions(id: number) {
-    const rows = await listPropertyMeasurementRevisions(id);
+    const rows = await listPropertyMeasurementRevisions(id, { businessId: businessId! });
     setRevisions(rows);
+  }
+
+  async function refreshAccess(id: number) {
+    if (!businessId) return;
+    setAccessGrants(await listPropertyBusinessAccess(id, { businessId }));
   }
 
   useEffect(() => {
@@ -127,10 +138,12 @@ export default function AerialQuoteManual() {
   useEffect(() => {
     if (!propertyId) {
       setRevisions([]);
+      setAccessGrants([]);
       setRevisionId(null);
       return;
     }
     void refreshRevisions(propertyId).catch(err => setError(err instanceof Error ? err.message : "Could not load measurements."));
+    void refreshAccess(propertyId).catch(() => setAccessGrants([]));
   }, [propertyId]);
 
   useEffect(() => {
@@ -166,6 +179,7 @@ export default function AerialQuoteManual() {
     setBusy(true); setError("");
     try {
       const created = await createPropertyMeasurementRevision(propertyId, {
+        businessId: businessId!,
         source: measurementSource,
         entries,
         notes: measurementNotes || null,
@@ -174,6 +188,30 @@ export default function AerialQuoteManual() {
       setRevisionId(created.id);
       setCalculation(null);
       toast({ title: `Measurement revision ${created.revision} saved` });
+    } catch (err) { notifyError(err); } finally { setBusy(false); }
+  }
+
+  async function shareProperty() {
+    if (!propertyId || !businessId || !shareBusinessId) return;
+    setBusy(true); setError("");
+    try {
+      await grantPropertyBusinessAccess(propertyId, {
+        businessId,
+        targetBusinessId: Number(shareBusinessId),
+        permission: sharePermission,
+      }, { businessId });
+      await refreshAccess(propertyId);
+      toast({ title: "Property access updated" });
+    } catch (err) { notifyError(err); } finally { setBusy(false); }
+  }
+
+  async function revokePropertyShare(targetBusinessId: number) {
+    if (!propertyId || !businessId) return;
+    setBusy(true); setError("");
+    try {
+      await revokePropertyBusinessAccess(propertyId, targetBusinessId, { businessId });
+      await refreshAccess(propertyId);
+      toast({ title: "Property access revoked" });
     } catch (err) { notifyError(err); } finally { setBusy(false); }
   }
 
@@ -274,6 +312,16 @@ export default function AerialQuoteManual() {
           <select className="mt-1 h-11 w-full rounded-md border bg-background px-3" value={propertyId ?? ""} onChange={e => { setPropertyId(e.target.value ? Number(e.target.value) : null); setRevisionId(null); setCalculation(null); }}>
             <option value="">Choose a property</option>{properties.map(property => <option key={property.id} value={property.id}>{property.label} — {[property.city, property.state].filter(Boolean).join(", ")}</option>)}
           </select>
+          {selectedProperty?.businessId === businessId && <div className="mt-3 rounded-lg border p-3">
+            <p className="text-sm font-semibold">Share with another division</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <select aria-label="Division to share with" className="h-10 rounded-md border bg-background px-3" value={shareBusinessId} onChange={e=>setShareBusinessId(e.target.value)}><option value="">Choose division</option>{businesses.filter(item=>item.id!==businessId).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
+              <select aria-label="Access permission" className="h-10 rounded-md border bg-background px-3" value={sharePermission} onChange={e=>setSharePermission(e.target.value as typeof sharePermission)}><option value="view">View</option><option value="measure">Measure</option><option value="estimate">Estimate</option><option value="manage">Manage</option></select>
+              <button type="button" disabled={busy||!shareBusinessId} onClick={()=>void shareProperty()} className="min-h-10 rounded-md border px-3 disabled:opacity-50">Share property</button>
+            </div>
+            {accessGrants.filter(grant=>grant.businessId!==businessId).map(grant=><div key={grant.id} className="mt-2 flex items-center justify-between gap-2 text-sm"><span>{grant.businessSlug} · {grant.permission}</span><button type="button" onClick={()=>void revokePropertyShare(grant.businessId)} className="text-destructive underline">Revoke</button></div>)}
+            <p className="mt-2 text-xs text-muted-foreground">Sharing is limited to divisions under the same legal business.</p>
+          </div>}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium sm:col-span-2">Property name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={propertyForm.label} onChange={e => setPropertyForm({...propertyForm,label:e.target.value})} /></label>
             <label className="text-sm font-medium sm:col-span-2">Street address<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={propertyForm.street} onChange={e => setPropertyForm({...propertyForm,street:e.target.value})} /></label>
