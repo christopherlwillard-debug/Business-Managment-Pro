@@ -43,7 +43,11 @@ The Dashboard must not recalculate financial values in React. The existing invoi
 Make this the first substantive section. Show only actionable items supported by authoritative existing records, prioritizing urgent items before upcoming ones:
 
 - Overdue invoices.
-- Unpaid subcontractor balances where the current data is available.
+- Unpaid subcontractor balances only when an existing server response provides
+  a complete, authoritative amount. Never derive a balance in the UI, coerce a
+  missing or unknown value to zero, or imply the subcontractor is paid when the
+  amount is unavailable. If the existing source cannot certify the amount,
+  omit the number; show an unavailable state only when the source provides one.
 - Job readiness or checklist blockers only when an existing source supplies an active blocker.
 - Compliance and tax reminders.
 - Prospect follow-ups.
@@ -110,13 +114,14 @@ Reuse the existing application typography, colors, cards, and controls; this is 
 3. All business-specific cards follow the existing approved business-scope contract; explicitly company-level information remains labeled or positioned as such.
 4. All Businesses views preserve legal-business distinctions and do not double-count parent/child or duplicate source rows.
 5. Financial values come from the existing server-side report/calculation paths; no new ledger or duplicate calculation is introduced.
-6. Loading failures, valid empty states, and valid zero balances are distinguishable.
-7. Alerts link to existing workflows and are based on real source records.
-8. The layout works on desktop and mobile with keyboard-accessible controls.
+6. Unknown subcontractor balances are not shown as zero or paid.
+7. Loading failures, valid empty states, and valid zero balances are distinguishable.
+8. Alerts link to existing workflows and are based on real source records.
+9. The layout works on desktop and mobile with keyboard-accessible controls.
 
 ## Brief boundary
 
-The attached dashboard brief ends mid-sentence at “Preserve separate legal-business financial”. This design covers the requirements visible in the attachment and the approved proposal only. No additional requirements are inferred. If further brief text exists, it must be reviewed before implementation planning.
+The attached dashboard brief ended mid-sentence at “Preserve separate legal-business financial”. The user approved the proposal after that truncation was disclosed. This spec is therefore the complete, bounded scope authorized for this design step; it covers the visible brief and approved proposal only, and infers no additional requirements. If the user later supplies more brief text, review it as a requested scope change before implementation planning.
 
 ## Data and environment safety
 
