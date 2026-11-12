@@ -841,3 +841,11 @@ Created the four-document architecture governance system:
   existing estimate status and estimate-to-job conversion semantics remain
   unchanged.
 - Online approval remains decision-only and never authorizes work.
+
+## 2026-11-12
+
+### Manual-first Aerial Quote foundation
+
+- Added business-scoped properties, append-only manual/on-site measurement revisions, and versioned service pricing profiles.
+- Added a shared API-side pricing calculator and draft estimate creation with a private, frozen calculation snapshot; the existing estimate tax and quote lifecycle remain authoritative.
+- Kept map imagery and map-derived geometry out of this release pending verified Google key restrictions and written measurement/storage rights.

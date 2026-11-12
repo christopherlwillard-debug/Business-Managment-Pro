@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { businessesTable } from "./businesses";
 import { jobsTable } from "./jobs";
+import { propertiesTable } from "./properties";
 
 export const estimatesTable = pgTable("estimates", {
   id: serial("id").primaryKey(),
@@ -24,6 +25,8 @@ export const estimatesTable = pgTable("estimates", {
   jobId: integer("job_id").references(() => jobsTable.id),
   businessLine: text("business_line"),
   businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
+  propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
+  calculationSnapshot: jsonb("calculation_snapshot"),
   stripePaymentLinkId: text("stripe_payment_link_id"),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),
   squarePaymentLinkId: text("square_payment_link_id"),

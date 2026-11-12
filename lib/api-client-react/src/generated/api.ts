@@ -18,6 +18,9 @@ import type {
 
 import type {
   AccountingReport,
+  AerialQuoteCalculation,
+  AerialQuoteCalculationInput,
+  AerialQuoteEstimateInput,
   AppSettings,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -69,6 +72,8 @@ import type {
   JobProfitResponse,
   JobReadinessCondition,
   JobReadinessConditionInput,
+  ListAerialQuotePricingProfilesParams,
+  ListAerialQuotePropertiesParams,
   ListClientBillingProfilesParams,
   ListClientsParams,
   ListDailyLogsParams,
@@ -83,6 +88,7 @@ import type {
   MaterialListInvoiceAssignmentHistoryEvent,
   MaterialListInvoiceAssignmentInput,
   MaterialListInvoiceAssignmentResult,
+  MeasurementRevisionInput,
   MileageLog,
   MileageSummary,
   MobileTokenExchangeRequest,
@@ -98,6 +104,9 @@ import type {
   PrepareInvoiceCommunicationRequest,
   ProductionComponent,
   ProductionScopeSectionInput,
+  Property,
+  PropertyInput,
+  PropertyMeasurementRevision,
   PublicEstimateQuote,
   PublicEstimateQuoteResponseInput,
   ReadyToStartResponse,
@@ -106,6 +115,8 @@ import type {
   ResetPortalPin200,
   ScheduleEstimateQuoteFollowUpInput,
   SendEstimateQuoteInput,
+  ServicePricingProfile,
+  ServicePricingProfileInput,
   StartJobRequest,
   Subcontractor,
   SubcontractorCloseConflict,
@@ -7310,6 +7321,767 @@ export const useCreateEstimate = <
   TContext
 > => {
   return useMutation(getCreateEstimateMutationOptions(options));
+};
+
+/**
+ * @summary List saved properties for aerial estimating
+ */
+export const getListAerialQuotePropertiesUrl = (
+  params?: ListAerialQuotePropertiesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/properties?${stringifiedParams}`
+    : `/api/aerial-quote/properties`;
+};
+
+export const listAerialQuoteProperties = async (
+  params?: ListAerialQuotePropertiesParams,
+  options?: RequestInit,
+): Promise<Property[]> => {
+  return customFetch<Property[]>(getListAerialQuotePropertiesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAerialQuotePropertiesQueryKey = (
+  params?: ListAerialQuotePropertiesParams,
+) => {
+  return [`/api/aerial-quote/properties`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAerialQuotePropertiesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAerialQuoteProperties>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAerialQuotePropertiesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAerialQuoteProperties>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAerialQuotePropertiesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAerialQuoteProperties>>
+  > = ({ signal }) =>
+    listAerialQuoteProperties(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAerialQuoteProperties>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAerialQuotePropertiesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAerialQuoteProperties>>
+>;
+export type ListAerialQuotePropertiesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List saved properties for aerial estimating
+ */
+
+export function useListAerialQuoteProperties<
+  TData = Awaited<ReturnType<typeof listAerialQuoteProperties>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAerialQuotePropertiesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAerialQuoteProperties>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAerialQuotePropertiesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a property for manual measurements
+ */
+export const getCreateAerialQuotePropertyUrl = () => {
+  return `/api/aerial-quote/properties`;
+};
+
+export const createAerialQuoteProperty = async (
+  propertyInput: PropertyInput,
+  options?: RequestInit,
+): Promise<Property> => {
+  return customFetch<Property>(getCreateAerialQuotePropertyUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(propertyInput),
+  });
+};
+
+export const getCreateAerialQuotePropertyMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuoteProperty>>,
+    TError,
+    { data: BodyType<PropertyInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAerialQuoteProperty>>,
+  TError,
+  { data: BodyType<PropertyInput> },
+  TContext
+> => {
+  const mutationKey = ["createAerialQuoteProperty"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAerialQuoteProperty>>,
+    { data: BodyType<PropertyInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAerialQuoteProperty(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAerialQuotePropertyMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAerialQuoteProperty>>
+>;
+export type CreateAerialQuotePropertyMutationBody = BodyType<PropertyInput>;
+export type CreateAerialQuotePropertyMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a property for manual measurements
+ */
+export const useCreateAerialQuoteProperty = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuoteProperty>>,
+    TError,
+    { data: BodyType<PropertyInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAerialQuoteProperty>>,
+  TError,
+  { data: BodyType<PropertyInput> },
+  TContext
+> => {
+  return useMutation(getCreateAerialQuotePropertyMutationOptions(options));
+};
+
+/**
+ * @summary List immutable measurement revisions for a property
+ */
+export const getListPropertyMeasurementRevisionsUrl = (propertyId: number) => {
+  return `/api/aerial-quote/properties/${propertyId}/measurement-revisions`;
+};
+
+export const listPropertyMeasurementRevisions = async (
+  propertyId: number,
+  options?: RequestInit,
+): Promise<PropertyMeasurementRevision[]> => {
+  return customFetch<PropertyMeasurementRevision[]>(
+    getListPropertyMeasurementRevisionsUrl(propertyId),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListPropertyMeasurementRevisionsQueryKey = (
+  propertyId: number,
+) => {
+  return [
+    `/api/aerial-quote/properties/${propertyId}/measurement-revisions`,
+  ] as const;
+};
+
+export const getListPropertyMeasurementRevisionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
+  TError = ErrorType<unknown>,
+>(
+  propertyId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListPropertyMeasurementRevisionsQueryKey(propertyId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>
+  > = ({ signal }) =>
+    listPropertyMeasurementRevisions(propertyId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!propertyId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPropertyMeasurementRevisionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>
+>;
+export type ListPropertyMeasurementRevisionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List immutable measurement revisions for a property
+ */
+
+export function useListPropertyMeasurementRevisions<
+  TData = Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
+  TError = ErrorType<unknown>,
+>(
+  propertyId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listPropertyMeasurementRevisions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPropertyMeasurementRevisionsQueryOptions(
+    propertyId,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save a new manual measurement revision
+ */
+export const getCreatePropertyMeasurementRevisionUrl = (propertyId: number) => {
+  return `/api/aerial-quote/properties/${propertyId}/measurement-revisions`;
+};
+
+export const createPropertyMeasurementRevision = async (
+  propertyId: number,
+  measurementRevisionInput: MeasurementRevisionInput,
+  options?: RequestInit,
+): Promise<PropertyMeasurementRevision> => {
+  return customFetch<PropertyMeasurementRevision>(
+    getCreatePropertyMeasurementRevisionUrl(propertyId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(measurementRevisionInput),
+    },
+  );
+};
+
+export const getCreatePropertyMeasurementRevisionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPropertyMeasurementRevision>>,
+    TError,
+    { propertyId: number; data: BodyType<MeasurementRevisionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPropertyMeasurementRevision>>,
+  TError,
+  { propertyId: number; data: BodyType<MeasurementRevisionInput> },
+  TContext
+> => {
+  const mutationKey = ["createPropertyMeasurementRevision"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPropertyMeasurementRevision>>,
+    { propertyId: number; data: BodyType<MeasurementRevisionInput> }
+  > = (props) => {
+    const { propertyId, data } = props ?? {};
+
+    return createPropertyMeasurementRevision(propertyId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePropertyMeasurementRevisionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPropertyMeasurementRevision>>
+>;
+export type CreatePropertyMeasurementRevisionMutationBody =
+  BodyType<MeasurementRevisionInput>;
+export type CreatePropertyMeasurementRevisionMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Save a new manual measurement revision
+ */
+export const useCreatePropertyMeasurementRevision = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPropertyMeasurementRevision>>,
+    TError,
+    { propertyId: number; data: BodyType<MeasurementRevisionInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPropertyMeasurementRevision>>,
+  TError,
+  { propertyId: number; data: BodyType<MeasurementRevisionInput> },
+  TContext
+> => {
+  return useMutation(
+    getCreatePropertyMeasurementRevisionMutationOptions(options),
+  );
+};
+
+/**
+ * @summary List versioned service pricing profiles
+ */
+export const getListAerialQuotePricingProfilesUrl = (
+  params?: ListAerialQuotePricingProfilesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/aerial-quote/pricing-profiles?${stringifiedParams}`
+    : `/api/aerial-quote/pricing-profiles`;
+};
+
+export const listAerialQuotePricingProfiles = async (
+  params?: ListAerialQuotePricingProfilesParams,
+  options?: RequestInit,
+): Promise<ServicePricingProfile[]> => {
+  return customFetch<ServicePricingProfile[]>(
+    getListAerialQuotePricingProfilesUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAerialQuotePricingProfilesQueryKey = (
+  params?: ListAerialQuotePricingProfilesParams,
+) => {
+  return [
+    `/api/aerial-quote/pricing-profiles`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListAerialQuotePricingProfilesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAerialQuotePricingProfilesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAerialQuotePricingProfilesQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>
+  > = ({ signal }) =>
+    listAerialQuotePricingProfiles(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAerialQuotePricingProfilesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>
+>;
+export type ListAerialQuotePricingProfilesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List versioned service pricing profiles
+ */
+
+export function useListAerialQuotePricingProfiles<
+  TData = Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListAerialQuotePricingProfilesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAerialQuotePricingProfiles>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAerialQuotePricingProfilesQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Save a new service pricing profile version
+ */
+export const getCreateAerialQuotePricingProfileVersionUrl = () => {
+  return `/api/aerial-quote/pricing-profiles`;
+};
+
+export const createAerialQuotePricingProfileVersion = async (
+  servicePricingProfileInput: ServicePricingProfileInput,
+  options?: RequestInit,
+): Promise<ServicePricingProfile> => {
+  return customFetch<ServicePricingProfile>(
+    getCreateAerialQuotePricingProfileVersionUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(servicePricingProfileInput),
+    },
+  );
+};
+
+export const getCreateAerialQuotePricingProfileVersionMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>,
+    TError,
+    { data: BodyType<ServicePricingProfileInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>,
+  TError,
+  { data: BodyType<ServicePricingProfileInput> },
+  TContext
+> => {
+  const mutationKey = ["createAerialQuotePricingProfileVersion"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>,
+    { data: BodyType<ServicePricingProfileInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAerialQuotePricingProfileVersion(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAerialQuotePricingProfileVersionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>
+>;
+export type CreateAerialQuotePricingProfileVersionMutationBody =
+  BodyType<ServicePricingProfileInput>;
+export type CreateAerialQuotePricingProfileVersionMutationError =
+  ErrorType<unknown>;
+
+/**
+ * @summary Save a new service pricing profile version
+ */
+export const useCreateAerialQuotePricingProfileVersion = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>,
+    TError,
+    { data: BodyType<ServicePricingProfileInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAerialQuotePricingProfileVersion>>,
+  TError,
+  { data: BodyType<ServicePricingProfileInput> },
+  TContext
+> => {
+  return useMutation(
+    getCreateAerialQuotePricingProfileVersionMutationOptions(options),
+  );
+};
+
+/**
+ * @summary Calculate a service estimate from saved measurements and a profile
+ */
+export const getCalculateAerialQuoteServiceUrl = () => {
+  return `/api/aerial-quote/calculate`;
+};
+
+export const calculateAerialQuoteService = async (
+  aerialQuoteCalculationInput: AerialQuoteCalculationInput,
+  options?: RequestInit,
+): Promise<AerialQuoteCalculation> => {
+  return customFetch<AerialQuoteCalculation>(
+    getCalculateAerialQuoteServiceUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(aerialQuoteCalculationInput),
+    },
+  );
+};
+
+export const getCalculateAerialQuoteServiceMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof calculateAerialQuoteService>>,
+    TError,
+    { data: BodyType<AerialQuoteCalculationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof calculateAerialQuoteService>>,
+  TError,
+  { data: BodyType<AerialQuoteCalculationInput> },
+  TContext
+> => {
+  const mutationKey = ["calculateAerialQuoteService"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof calculateAerialQuoteService>>,
+    { data: BodyType<AerialQuoteCalculationInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return calculateAerialQuoteService(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CalculateAerialQuoteServiceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof calculateAerialQuoteService>>
+>;
+export type CalculateAerialQuoteServiceMutationBody =
+  BodyType<AerialQuoteCalculationInput>;
+export type CalculateAerialQuoteServiceMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Calculate a service estimate from saved measurements and a profile
+ */
+export const useCalculateAerialQuoteService = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof calculateAerialQuoteService>>,
+    TError,
+    { data: BodyType<AerialQuoteCalculationInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof calculateAerialQuoteService>>,
+  TError,
+  { data: BodyType<AerialQuoteCalculationInput> },
+  TContext
+> => {
+  return useMutation(getCalculateAerialQuoteServiceMutationOptions(options));
+};
+
+/**
+ * @summary Create an estimate from a saved property measurement and profile
+ */
+export const getCreateAerialQuoteEstimateUrl = () => {
+  return `/api/aerial-quote/estimates`;
+};
+
+export const createAerialQuoteEstimate = async (
+  aerialQuoteEstimateInput: AerialQuoteEstimateInput,
+  options?: RequestInit,
+): Promise<Estimate> => {
+  return customFetch<Estimate>(getCreateAerialQuoteEstimateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aerialQuoteEstimateInput),
+  });
+};
+
+export const getCreateAerialQuoteEstimateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuoteEstimate>>,
+    TError,
+    { data: BodyType<AerialQuoteEstimateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createAerialQuoteEstimate>>,
+  TError,
+  { data: BodyType<AerialQuoteEstimateInput> },
+  TContext
+> => {
+  const mutationKey = ["createAerialQuoteEstimate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createAerialQuoteEstimate>>,
+    { data: BodyType<AerialQuoteEstimateInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createAerialQuoteEstimate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateAerialQuoteEstimateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createAerialQuoteEstimate>>
+>;
+export type CreateAerialQuoteEstimateMutationBody =
+  BodyType<AerialQuoteEstimateInput>;
+export type CreateAerialQuoteEstimateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create an estimate from a saved property measurement and profile
+ */
+export const useCreateAerialQuoteEstimate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createAerialQuoteEstimate>>,
+    TError,
+    { data: BodyType<AerialQuoteEstimateInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createAerialQuoteEstimate>>,
+  TError,
+  { data: BodyType<AerialQuoteEstimateInput> },
+  TContext
+> => {
+  return useMutation(getCreateAerialQuoteEstimateMutationOptions(options));
 };
 
 /**

@@ -3629,6 +3629,7 @@ export const ListEstimatesResponseItem = zod.object({
   id: zod.number(),
   title: zod.string(),
   clientId: zod.number().nullish(),
+  propertyId: zod.number().nullish(),
   clientName: zod.string().nullish(),
   template: zod.string().nullish(),
   status: zod.enum(["draft", "sent", "won", "lost"]),
@@ -3690,6 +3691,237 @@ export const CreateEstimateBody = zod.object({
     )
     .optional(),
 });
+
+/**
+ * @summary List saved properties for aerial estimating
+ */
+export const ListAerialQuotePropertiesQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+  clientId: zod.coerce.number().optional(),
+});
+
+export const ListAerialQuotePropertiesResponseItem = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  clientId: zod.number().nullish(),
+  label: zod.string(),
+  street: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  zip: zod.string().nullish(),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListAerialQuotePropertiesResponse = zod.array(
+  ListAerialQuotePropertiesResponseItem,
+);
+
+/**
+ * @summary Create a property for manual measurements
+ */
+export const createAerialQuotePropertyBodyLabelMax = 160;
+
+export const CreateAerialQuotePropertyBody = zod.object({
+  businessId: zod.number().optional(),
+  clientId: zod.number().nullish(),
+  label: zod.string().min(1).max(createAerialQuotePropertyBodyLabelMax),
+  street: zod.string().nullish(),
+  city: zod.string().nullish(),
+  state: zod.string().nullish(),
+  zip: zod.string().nullish(),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List immutable measurement revisions for a property
+ */
+export const ListPropertyMeasurementRevisionsParams = zod.object({
+  propertyId: zod.coerce.number(),
+});
+
+export const listPropertyMeasurementRevisionsResponseEntriesItemLabelMax = 120;
+
+export const listPropertyMeasurementRevisionsResponseEntriesItemCategoryMax = 80;
+
+export const listPropertyMeasurementRevisionsResponseEntriesItemQuantityMin = 0;
+
+export const ListPropertyMeasurementRevisionsResponseItem = zod.object({
+  id: zod.number(),
+  propertyId: zod.number(),
+  revision: zod.number(),
+  source: zod.enum(["manual", "on_site"]),
+  entries: zod.array(
+    zod.object({
+      label: zod
+        .string()
+        .min(1)
+        .max(listPropertyMeasurementRevisionsResponseEntriesItemLabelMax),
+      category: zod
+        .string()
+        .min(1)
+        .max(listPropertyMeasurementRevisionsResponseEntriesItemCategoryMax),
+      kind: zod.enum(["area", "length", "count"]),
+      quantity: zod
+        .number()
+        .min(listPropertyMeasurementRevisionsResponseEntriesItemQuantityMin),
+      unit: zod.enum([
+        "sq_ft",
+        "acre",
+        "sq_yd",
+        "ft",
+        "yd",
+        "mile",
+        "item",
+        "hour",
+      ]),
+      notes: zod.string().nullish(),
+    }),
+  ),
+  notes: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListPropertyMeasurementRevisionsResponse = zod.array(
+  ListPropertyMeasurementRevisionsResponseItem,
+);
+
+/**
+ * @summary Save a new manual measurement revision
+ */
+export const CreatePropertyMeasurementRevisionParams = zod.object({
+  propertyId: zod.coerce.number(),
+});
+
+export const createPropertyMeasurementRevisionBodyEntriesItemLabelMax = 120;
+
+export const createPropertyMeasurementRevisionBodyEntriesItemCategoryMax = 80;
+
+export const createPropertyMeasurementRevisionBodyEntriesItemQuantityMin = 0;
+
+export const CreatePropertyMeasurementRevisionBody = zod.object({
+  source: zod.enum(["manual", "on_site"]),
+  entries: zod
+    .array(
+      zod.object({
+        label: zod
+          .string()
+          .min(1)
+          .max(createPropertyMeasurementRevisionBodyEntriesItemLabelMax),
+        category: zod
+          .string()
+          .min(1)
+          .max(createPropertyMeasurementRevisionBodyEntriesItemCategoryMax),
+        kind: zod.enum(["area", "length", "count"]),
+        quantity: zod
+          .number()
+          .min(createPropertyMeasurementRevisionBodyEntriesItemQuantityMin),
+        unit: zod.enum([
+          "sq_ft",
+          "acre",
+          "sq_yd",
+          "ft",
+          "yd",
+          "mile",
+          "item",
+          "hour",
+        ]),
+        notes: zod.string().nullish(),
+      }),
+    )
+    .min(1),
+  notes: zod.string().nullish(),
+});
+
+/**
+ * @summary List versioned service pricing profiles
+ */
+export const ListAerialQuotePricingProfilesQueryParams = zod.object({
+  businessId: zod.coerce.number().optional(),
+});
+
+export const ListAerialQuotePricingProfilesResponseItem = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  serviceKey: zod.string(),
+  version: zod.number(),
+  displayName: zod.string(),
+  rules: zod.record(zod.string(), zod.unknown()),
+  createdAt: zod.string(),
+});
+export const ListAerialQuotePricingProfilesResponse = zod.array(
+  ListAerialQuotePricingProfilesResponseItem,
+);
+
+/**
+ * @summary Save a new service pricing profile version
+ */
+export const createAerialQuotePricingProfileVersionBodyDisplayNameMax = 120;
+
+export const CreateAerialQuotePricingProfileVersionBody = zod.object({
+  businessId: zod.number().optional(),
+  serviceKey: zod.enum([
+    "lawn_mowing",
+    "landscaping",
+    "parking_lot_cleaning",
+    "snow_removal",
+    "asphalt_sealing",
+    "property_maintenance",
+  ]),
+  displayName: zod
+    .string()
+    .min(1)
+    .max(createAerialQuotePricingProfileVersionBodyDisplayNameMax),
+  rules: zod.record(zod.string(), zod.unknown()),
+});
+
+/**
+ * @summary Calculate a service estimate from saved measurements and a profile
+ */
+export const CalculateAerialQuoteServiceBody = zod.object({
+  businessId: zod.number().optional(),
+  propertyId: zod.number(),
+  measurementRevisionId: zod.number(),
+  serviceKey: zod.string(),
+  profileVersion: zod.number(),
+});
+
+export const CalculateAerialQuoteServiceResponse = zod.object({
+  serviceKey: zod.string(),
+  profileVersion: zod.number(),
+  lineItems: zod.array(
+    zod.object({
+      id: zod.number(),
+      category: zod.string(),
+      description: zod.string(),
+      quantity: zod.number(),
+      unit: zod.string().nullish(),
+      unitCost: zod.number(),
+      total: zod.number(),
+    }),
+  ),
+  subtotal: zod.number(),
+  calculationSnapshot: zod.record(zod.string(), zod.unknown()),
+});
+
+/**
+ * @summary Create an estimate from a saved property measurement and profile
+ */
+export const createAerialQuoteEstimateBodyTwoTitleMax = 180;
+
+export const CreateAerialQuoteEstimateBody = zod
+  .object({
+    businessId: zod.number().optional(),
+    propertyId: zod.number(),
+    measurementRevisionId: zod.number(),
+    serviceKey: zod.string(),
+    profileVersion: zod.number(),
+  })
+  .and(
+    zod.object({
+      title: zod.string().min(1).max(createAerialQuoteEstimateBodyTwoTitleMax),
+      clientId: zod.number().nullish(),
+      notes: zod.string().nullish(),
+    }),
+  );
 
 /**
  * @summary List estimates with quote workflow state
@@ -3787,6 +4019,7 @@ export const GetEstimateResponse = zod.object({
   id: zod.number(),
   title: zod.string(),
   clientId: zod.number().nullish(),
+  propertyId: zod.number().nullish(),
   clientName: zod.string().nullish(),
   template: zod.string().nullish(),
   status: zod.enum(["draft", "sent", "won", "lost"]),
@@ -3856,6 +4089,7 @@ export const UpdateEstimateResponse = zod.object({
   id: zod.number(),
   title: zod.string(),
   clientId: zod.number().nullish(),
+  propertyId: zod.number().nullish(),
   clientName: zod.string().nullish(),
   template: zod.string().nullish(),
   status: zod.enum(["draft", "sent", "won", "lost"]),

@@ -487,6 +487,15 @@ router.post("/:id/quote-preview", async (req, res): Promise<void> => {
         eq(estimateQuoteEventsTable.estimateId, id),
         eq(estimateQuoteEventsTable.eventType, "revision"),
       )).orderBy(desc(estimateQuoteEventsTable.revision)).limit(1);
+      const calculationSnapshot = row.calculationSnapshot ?? null;
+      const calculationSnapshotHash = calculationSnapshot == null
+        ? null
+        : createHash("sha256").update(JSON.stringify(calculationSnapshot)).digest("hex");
+      const latestCalculationSnapshotHash = latest?.metadata
+        && typeof latest.metadata === "object"
+        && !Array.isArray(latest.metadata)
+        ? (latest.metadata as Record<string, unknown>).calculationSnapshotHash ?? null
+        : null;
       const expiresAt = row.quoteExpiresAt == null
         ? new Date(Date.now() + Math.min(365, Math.max(1, business.defaultQuoteValidityDays ?? 30)) * 86400000).toISOString().slice(0, 10)
         : String(row.quoteExpiresAt).slice(0, 10);
@@ -500,7 +509,8 @@ router.post("/:id/quote-preview", async (req, res): Promise<void> => {
       });
       let revisionRow = latest;
 
-      if (!latest || latest.contentHash !== built.contentHash) {
+      if (!latest || latest.contentHash !== built.contentHash
+        || latestCalculationSnapshotHash !== calculationSnapshotHash) {
         revisionNumber = latest ? latest.revision + 1 : 1;
         built = await buildEstimateQuoteSnapshot({
           estimate: row as never,
@@ -531,7 +541,9 @@ router.post("/:id/quote-preview", async (req, res): Promise<void> => {
           pdfObjectPath: stagedArchive.pdfObjectPath,
           logoObjectPath: stagedArchive.logoObjectPath,
           logoContentType: built.logo?.mimeType ?? null,
-          metadata: {},
+          metadata: calculationSnapshot == null
+            ? {}
+            : { calculationSnapshot, calculationSnapshotHash },
         }).returning();
       } else if (!latest.pdfObjectPath) {
         const pdf = await generateEstimateQuotePdf(built.pdfDocument);

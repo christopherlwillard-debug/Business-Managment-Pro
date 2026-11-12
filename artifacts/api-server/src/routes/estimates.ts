@@ -54,8 +54,9 @@ async function resolveLinkedJobOwner(jobId: number): Promise<
 
 function format(e: any, clientName?: string | null, jobTitle?: string | null) {
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
+  const { calculationSnapshot: _calculationSnapshot, ...safeEstimate } = e;
   return {
-    ...e,
+    ...safeEstimate,
     clientName: clientName ?? null,
     jobTitle: jobTitle ?? null,
     subtotal: parseFloat(e.subtotal ?? "0"),

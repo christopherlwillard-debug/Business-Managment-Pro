@@ -1395,6 +1395,7 @@ export interface Estimate {
   id: number;
   title: string;
   clientId?: number | null;
+  propertyId?: number | null;
   clientName?: string | null;
   template?: string | null;
   status: EstimateStatus;
@@ -1416,6 +1417,171 @@ export interface Estimate {
   createdAt: string;
   [key: string]: unknown;
 }
+
+export interface Property {
+  id: number;
+  businessId: number;
+  clientId?: number | null;
+  label: string;
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface PropertyInput {
+  businessId?: number;
+  clientId?: number | null;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  label: string;
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  notes?: string | null;
+}
+
+export type MeasurementEntryKind =
+  (typeof MeasurementEntryKind)[keyof typeof MeasurementEntryKind];
+
+export const MeasurementEntryKind = {
+  area: "area",
+  length: "length",
+  count: "count",
+} as const;
+
+export type MeasurementEntryUnit =
+  (typeof MeasurementEntryUnit)[keyof typeof MeasurementEntryUnit];
+
+export const MeasurementEntryUnit = {
+  sq_ft: "sq_ft",
+  acre: "acre",
+  sq_yd: "sq_yd",
+  ft: "ft",
+  yd: "yd",
+  mile: "mile",
+  item: "item",
+  hour: "hour",
+} as const;
+
+export interface MeasurementEntry {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  label: string;
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  category: string;
+  kind: MeasurementEntryKind;
+  /** @minimum 0 */
+  quantity: number;
+  unit: MeasurementEntryUnit;
+  notes?: string | null;
+}
+
+export type MeasurementRevisionInputSource =
+  (typeof MeasurementRevisionInputSource)[keyof typeof MeasurementRevisionInputSource];
+
+export const MeasurementRevisionInputSource = {
+  manual: "manual",
+  on_site: "on_site",
+} as const;
+
+export interface MeasurementRevisionInput {
+  source: MeasurementRevisionInputSource;
+  /** @minItems 1 */
+  entries: MeasurementEntry[];
+  notes?: string | null;
+}
+
+export type PropertyMeasurementRevisionSource =
+  (typeof PropertyMeasurementRevisionSource)[keyof typeof PropertyMeasurementRevisionSource];
+
+export const PropertyMeasurementRevisionSource = {
+  manual: "manual",
+  on_site: "on_site",
+} as const;
+
+export interface PropertyMeasurementRevision {
+  id: number;
+  propertyId: number;
+  revision: number;
+  source: PropertyMeasurementRevisionSource;
+  entries: MeasurementEntry[];
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface PricingRule {
+  [key: string]: unknown;
+}
+
+export type ServicePricingProfileInputServiceKey =
+  (typeof ServicePricingProfileInputServiceKey)[keyof typeof ServicePricingProfileInputServiceKey];
+
+export const ServicePricingProfileInputServiceKey = {
+  lawn_mowing: "lawn_mowing",
+  landscaping: "landscaping",
+  parking_lot_cleaning: "parking_lot_cleaning",
+  snow_removal: "snow_removal",
+  asphalt_sealing: "asphalt_sealing",
+  property_maintenance: "property_maintenance",
+} as const;
+
+export interface ServicePricingProfileInput {
+  businessId?: number;
+  serviceKey: ServicePricingProfileInputServiceKey;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  displayName: string;
+  rules: PricingRule;
+}
+
+export interface ServicePricingProfile {
+  id: number;
+  businessId: number;
+  serviceKey: string;
+  version: number;
+  displayName: string;
+  rules: PricingRule;
+  createdAt: string;
+}
+
+export interface AerialQuoteCalculationInput {
+  businessId?: number;
+  propertyId: number;
+  measurementRevisionId: number;
+  serviceKey: string;
+  profileVersion: number;
+}
+
+export interface AerialQuoteCalculation {
+  serviceKey: string;
+  profileVersion: number;
+  lineItems: EstimateLineItem[];
+  subtotal: number;
+  calculationSnapshot: PricingRule;
+}
+
+export type AerialQuoteEstimateInput = AerialQuoteCalculationInput & {
+  /**
+   * @minLength 1
+   * @maxLength 180
+   */
+  title: string;
+  clientId?: number | null;
+  notes?: string | null;
+};
 
 export type CreateEstimateRequestStatus =
   (typeof CreateEstimateRequestStatus)[keyof typeof CreateEstimateRequestStatus];
@@ -2583,6 +2749,15 @@ export type ResetPortalPin200 = {
 export type ListEstimatesParams = {
   businessId?: number;
   businessLine?: string;
+};
+
+export type ListAerialQuotePropertiesParams = {
+  businessId?: number;
+  clientId?: number;
+};
+
+export type ListAerialQuotePricingProfilesParams = {
+  businessId?: number;
 };
 
 export type GetEstimateQuoteCenterParams = {

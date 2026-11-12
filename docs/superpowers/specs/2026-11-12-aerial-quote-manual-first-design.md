@@ -61,7 +61,7 @@ Each priced component must declare whether its configured amount is already a cu
 
 Travel and additional charges follow the same explicit component-basis rule. The evaluator returns pre-tax lines only. Tax remains owned by the existing estimate/quote workflow; the new evaluator does not add tax or tax lines.
 
-The initial unit allowlist is square feet, acres, and square yards for area; feet, yards, and miles for length; and items for counts. Use exact conversion factors internally. Each profile must explicitly define billable-quantity rounding (`none`, `up`, `nearest`, or `down`) and its increment; the default is no quantity rounding. Show both measured and billed quantities when they differ. Display precision is separate from billable precision. Use the existing estimate money-rounding helper so this evaluator does not create a second currency convention.
+The initial unit allowlist is square feet, acres, and square yards for area; feet, yards, and miles for length; and items or hours for count/time quantities. Use exact conversion factors internally. Each profile must explicitly define billable-quantity rounding (`none`, `up`, `nearest`, or `down`) and its increment; the default is no quantity rounding. Show both measured and billed quantities when they differ. Display precision is separate from billable precision. Use the existing estimate money-rounding helper so this evaluator does not create a second currency convention.
 
 One API-side calculation service accepts a selected profile version and a measurement revision, validates inputs, and returns:
 

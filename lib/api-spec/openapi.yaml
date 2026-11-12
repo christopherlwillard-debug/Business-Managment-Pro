@@ -1778,6 +1778,144 @@ paths:
               schema:
                 $ref: "#/components/schemas/Estimate"
 
+  /aerial-quote/properties:
+    get:
+      operationId: listAerialQuoteProperties
+      tags: [estimates]
+      summary: List saved properties for aerial estimating
+      parameters:
+        - name: businessId
+          in: query
+          schema: { type: integer }
+        - name: clientId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Saved properties
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Property" }
+    post:
+      operationId: createAerialQuoteProperty
+      tags: [estimates]
+      summary: Create a property for manual measurements
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PropertyInput" }
+      responses:
+        "201":
+          description: Created property
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Property" }
+  /aerial-quote/properties/{propertyId}/measurement-revisions:
+    get:
+      operationId: listPropertyMeasurementRevisions
+      tags: [estimates]
+      summary: List immutable measurement revisions for a property
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Measurement revisions, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PropertyMeasurementRevision" }
+    post:
+      operationId: createPropertyMeasurementRevision
+      tags: [estimates]
+      summary: Save a new manual measurement revision
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MeasurementRevisionInput" }
+      responses:
+        "201":
+          description: Created immutable measurement revision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PropertyMeasurementRevision" }
+  /aerial-quote/pricing-profiles:
+    get:
+      operationId: listAerialQuotePricingProfiles
+      tags: [estimates]
+      summary: List versioned service pricing profiles
+      parameters:
+        - name: businessId
+          in: query
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Latest profile versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ServicePricingProfile" }
+    post:
+      operationId: createAerialQuotePricingProfileVersion
+      tags: [estimates]
+      summary: Save a new service pricing profile version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServicePricingProfileInput" }
+      responses:
+        "201":
+          description: Created profile version
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServicePricingProfile" }
+  /aerial-quote/calculate:
+    post:
+      operationId: calculateAerialQuoteService
+      tags: [estimates]
+      summary: Calculate a service estimate from saved measurements and a profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AerialQuoteCalculationInput" }
+      responses:
+        "200":
+          description: Pre-tax estimate calculation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AerialQuoteCalculation" }
+  /aerial-quote/estimates:
+    post:
+      operationId: createAerialQuoteEstimate
+      tags: [estimates]
+      summary: Create an estimate from a saved property measurement and profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AerialQuoteEstimateInput" }
+      responses:
+        "201":
+          description: Created estimate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Estimate" }
+
   /estimates/quote-center:
     get:
       operationId: getEstimateQuoteCenter
@@ -4295,6 +4433,9 @@ components:
         clientId:
           type: integer
           nullable: true
+        propertyId:
+          type: integer
+          nullable: true
         clientName:
           type: string
           nullable: true
@@ -4359,6 +4500,126 @@ components:
         total:
           type: number
       required: [id, category, description, quantity, unitCost, total]
+
+    Property:
+      type: object
+      properties:
+        id: { type: integer }
+        businessId: { type: integer }
+        clientId: { type: integer, nullable: true }
+        label: { type: string }
+        street: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        zip: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, businessId, label, createdAt]
+
+    PropertyInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        clientId: { type: integer, nullable: true }
+        label: { type: string, minLength: 1, maxLength: 160 }
+        street: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        state: { type: string, nullable: true }
+        zip: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+      required: [label]
+
+    MeasurementEntry:
+      type: object
+      properties:
+        label: { type: string, minLength: 1, maxLength: 120 }
+        category: { type: string, minLength: 1, maxLength: 80 }
+        kind: { type: string, enum: [area, length, count] }
+        quantity: { type: number, minimum: 0 }
+        unit: { type: string, enum: [sq_ft, acre, sq_yd, ft, yd, mile, item, hour] }
+        notes: { type: string, nullable: true }
+      required: [label, category, kind, quantity, unit]
+
+    MeasurementRevisionInput:
+      type: object
+      properties:
+        source: { type: string, enum: [manual, on_site] }
+        entries:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/MeasurementEntry" }
+        notes: { type: string, nullable: true }
+      required: [source, entries]
+
+    PropertyMeasurementRevision:
+      type: object
+      properties:
+        id: { type: integer }
+        propertyId: { type: integer }
+        revision: { type: integer }
+        source: { type: string, enum: [manual, on_site] }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/MeasurementEntry" }
+        notes: { type: string, nullable: true }
+        createdAt: { type: string }
+      required: [id, propertyId, revision, source, entries, createdAt]
+
+    PricingRule:
+      type: object
+      additionalProperties: true
+    ServicePricingProfileInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        serviceKey: { type: string, enum: [lawn_mowing, landscaping, parking_lot_cleaning, snow_removal, asphalt_sealing, property_maintenance] }
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        rules: { $ref: "#/components/schemas/PricingRule" }
+      required: [serviceKey, displayName, rules]
+
+    ServicePricingProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        businessId: { type: integer }
+        serviceKey: { type: string }
+        version: { type: integer }
+        displayName: { type: string }
+        rules: { $ref: "#/components/schemas/PricingRule" }
+        createdAt: { type: string }
+      required: [id, businessId, serviceKey, version, displayName, rules, createdAt]
+
+    AerialQuoteCalculationInput:
+      type: object
+      properties:
+        businessId: { type: integer }
+        propertyId: { type: integer }
+        measurementRevisionId: { type: integer }
+        serviceKey: { type: string }
+        profileVersion: { type: integer }
+      required: [propertyId, measurementRevisionId, serviceKey, profileVersion]
+
+    AerialQuoteCalculation:
+      type: object
+      properties:
+        serviceKey: { type: string }
+        profileVersion: { type: integer }
+        lineItems:
+          type: array
+          items: { $ref: "#/components/schemas/EstimateLineItem" }
+        subtotal: { type: number }
+        calculationSnapshot: { $ref: "#/components/schemas/PricingRule" }
+      required: [serviceKey, profileVersion, lineItems, subtotal, calculationSnapshot]
+
+    AerialQuoteEstimateInput:
+      allOf:
+        - $ref: "#/components/schemas/AerialQuoteCalculationInput"
+        - type: object
+          properties:
+            title: { type: string, minLength: 1, maxLength: 180 }
+            clientId: { type: integer, nullable: true }
+            notes: { type: string, nullable: true }
+          required: [title]
 
     CreateEstimateRequest:
       type: object

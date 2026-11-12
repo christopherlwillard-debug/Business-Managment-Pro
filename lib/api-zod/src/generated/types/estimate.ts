@@ -12,6 +12,7 @@ export interface Estimate {
   id: number;
   title: string;
   clientId?: number | null;
+  propertyId?: number | null;
   clientName?: string | null;
   template?: string | null;
   status: EstimateStatus;

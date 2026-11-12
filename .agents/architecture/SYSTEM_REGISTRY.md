@@ -495,5 +495,15 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
-*Last updated: 2026-09-10*
+*Last updated: 2026-11-12*
 *To update this file, an architecture review must explicitly approve the change.*
+
+## Aerial Quote / Property Measurements
+
+- **Tables:** `properties`, `property_measurement_revisions`, `service_pricing_profile_versions`, and the property/calculation snapshot fields on `estimates`
+- **API:** `artifacts/api-server/src/routes/aerial-quote.ts`
+- **UI:** Contractor App Aerial Quote page
+- **Source of truth:** immutable measurement revisions and versioned, business-scoped service pricing profiles; saved estimates retain a private calculation snapshot and use the existing estimate/quote lifecycle.
+- **Rule:** manual or on-site numeric measurements only. Do not load imagery, trace map geometry, or persist map-derived measurements until provider access and written licensing authorize the exact workflow.
+
+*Aerial Quote registry entry reviewed: 2026-11-12*
