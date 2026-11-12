@@ -2922,6 +2922,21 @@ components:
         propertyId:
           type: integer
           nullable: true
+        propertyLabel:
+          type: string
+          nullable: true
+        propertyStreet:
+          type: string
+          nullable: true
+        propertyCity:
+          type: string
+          nullable: true
+        propertyState:
+          type: string
+          nullable: true
+        propertyZip:
+          type: string
+          nullable: true
         clientName:
           type: string
           nullable: true

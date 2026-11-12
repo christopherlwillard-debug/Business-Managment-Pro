@@ -4,6 +4,7 @@ import { useSearchParams, useLocation, Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { getJobOwningBusinessDisplay } from "@/lib/jobBusinessDisplay";
+import { getJobPropertyDisplay } from "@/lib/jobPropertyDisplay";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -6325,6 +6326,7 @@ function JobCard({
   const currentDisplayProfitJobIdRef = useRef(job.id);
   currentDisplayProfitJobIdRef.current = job.id;
   const jobWorkflow = getJobWorkflow(job);
+  const propertyDisplay = getJobPropertyDisplay(job);
   const isCompleted = displayStatus(job.status) === "completed";
   const today = localDateString();
   const hasJobBusinessContext = job.businessId != null;
@@ -6875,6 +6877,15 @@ function JobCard({
                 <div className="rounded-xl bg-muted/35 p-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Client / builder</p>
                   <p className="mt-1 text-sm font-bold text-foreground">{job.clientName ?? "Not assigned"}</p>
+                </div>
+                <div className="rounded-xl bg-muted/35 p-3" data-testid={`job-property-${job.id}`}>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Customer property</p>
+                  <p className="mt-1 text-sm font-bold text-foreground">{propertyDisplay.label}</p>
+                  {job.propertyLabel && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {propertyDisplay.address ?? "Address not recorded"}
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-xl bg-muted/35 p-3">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job address</p>

@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { db } from "@workspace/db";
 import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, propertiesTable, propertyBusinessAccessTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { RoutingEngine } from "../lib/routing-engine.js";
 import { VehicleEngine } from "../lib/vehicle-engine.js";
 import { countConfirmedHereWorkdays } from "../lib/job-workdays.js";
@@ -471,12 +472,25 @@ async function validateMfhSelection(manufacturerValue: unknown, modelValue: unkn
   return { manufacturerId, modelId } as const;
 }
 
+const visibleJobPropertyField = (column: AnyPgColumn) =>
+  sql<string | null>`CASE
+    WHEN ${propertiesTable.id} IS NOT NULL
+      AND (${propertiesTable.businessId} = ${jobsTable.businessId} OR ${propertyBusinessAccessTable.id} IS NOT NULL)
+    THEN ${column}
+    ELSE NULL
+  END`;
+
 type JobRow = {
   id: number;
   title: string;
   description: string | null;
   clientId: number | null;
   propertyId: number | null;
+  propertyLabel: string | null;
+  propertyStreet: string | null;
+  propertyCity: string | null;
+  propertyState: string | null;
+  propertyZip: string | null;
   clientName: string | null;
   clientEmail: string | null;
   status: string;
@@ -541,6 +555,11 @@ async function getJobWithSubs(jobId: number) {
       description: jobsTable.description,
       clientId: jobsTable.clientId,
       propertyId: jobsTable.propertyId,
+      propertyLabel: visibleJobPropertyField(propertiesTable.label),
+      propertyStreet: visibleJobPropertyField(propertiesTable.street),
+      propertyCity: visibleJobPropertyField(propertiesTable.city),
+      propertyState: visibleJobPropertyField(propertiesTable.state),
+      propertyZip: visibleJobPropertyField(propertiesTable.zip),
       clientName: clientsTable.name,
       clientEmail: clientsTable.email,
       status: jobsTable.status,
@@ -581,6 +600,17 @@ async function getJobWithSubs(jobId: number) {
     })
     .from(jobsTable)
     .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+    // Aerial Quote's properties table is the source of truth. Join only
+    // active sharing grants and project property fields only when visible.
+    .leftJoin(propertiesTable, and(
+      eq(jobsTable.propertyId, propertiesTable.id),
+      eq(jobsTable.clientId, propertiesTable.clientId),
+    ))
+    .leftJoin(propertyBusinessAccessTable, and(
+      eq(propertyBusinessAccessTable.propertyId, propertiesTable.id),
+      eq(propertyBusinessAccessTable.businessId, jobsTable.businessId),
+      isNull(propertyBusinessAccessTable.revokedAt),
+    ))
     .leftJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
     .leftJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
     .leftJoin(jobSubcontractorsTable, eq(jobsTable.id, jobSubcontractorsTable.jobId))
@@ -813,6 +843,11 @@ router.get("/", async (req, res) => {
         description: jobsTable.description,
         clientId: jobsTable.clientId,
         propertyId: jobsTable.propertyId,
+        propertyLabel: visibleJobPropertyField(propertiesTable.label),
+        propertyStreet: visibleJobPropertyField(propertiesTable.street),
+        propertyCity: visibleJobPropertyField(propertiesTable.city),
+        propertyState: visibleJobPropertyField(propertiesTable.state),
+        propertyZip: visibleJobPropertyField(propertiesTable.zip),
         clientName: clientsTable.name,
         clientEmail: clientsTable.email,
         status: jobsTable.status,
@@ -853,6 +888,15 @@ router.get("/", async (req, res) => {
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .leftJoin(propertiesTable, and(
+        eq(jobsTable.propertyId, propertiesTable.id),
+        eq(jobsTable.clientId, propertiesTable.clientId),
+      ))
+      .leftJoin(propertyBusinessAccessTable, and(
+        eq(propertyBusinessAccessTable.propertyId, propertiesTable.id),
+        eq(propertyBusinessAccessTable.businessId, jobsTable.businessId),
+        isNull(propertyBusinessAccessTable.revokedAt),
+      ))
       .leftJoin(mfhManufacturersTable, eq(jobsTable.mfhManufacturerId, mfhManufacturersTable.id))
       .leftJoin(mfhModelsTable, eq(jobsTable.mfhModelId, mfhModelsTable.id))
       .leftJoin(jobSubcontractorsTable, eq(jobsTable.id, jobSubcontractorsTable.jobId))

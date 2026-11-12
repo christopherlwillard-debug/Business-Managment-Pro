@@ -20,6 +20,11 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   propertyId?: number | null;
+  propertyLabel?: string | null;
+  propertyStreet?: string | null;
+  propertyCity?: string | null;
+  propertyState?: string | null;
+  propertyZip?: string | null;
   clientName?: string | null;
   subcontractorIds?: number[];
   subcontractorNames?: string[];
