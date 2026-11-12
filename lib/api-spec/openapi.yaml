@@ -320,6 +320,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/Job"
 
+  /jobs/business-options:
+    get:
+      operationId: listJobBusinessOptions
+      tags: [jobs]
+      summary: List businesses available for job assignment
+      responses:
+        "200":
+          description: Businesses selectable for jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/JobBusinessOption"
+
   /jobs/ready-to-start:
     get:
       operationId: getReadyToStartJobs
@@ -3569,6 +3584,9 @@ components:
       type: object
       additionalProperties: true
       properties:
+        businessId:
+          type: integer
+          description: Owning business ID; required when creating a job
         title:
           type: string
         description:
@@ -3652,6 +3670,15 @@ components:
         manHours: { type: number, nullable: true }
         permitChecklist: { type: object, nullable: true, additionalProperties: true }
         includeMileageInJobCosts: { type: boolean }
+
+    JobBusinessOption:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        slug: { type: string }
+        legalBusinessId: { type: integer, nullable: true }
 
     JobReadinessCondition:
       type: object

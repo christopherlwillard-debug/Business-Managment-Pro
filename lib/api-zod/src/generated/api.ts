@@ -404,6 +404,10 @@ export const ListJobsResponse = zod.array(ListJobsResponseItem);
  * @summary Create a job
  */
 export const CreateJobBody = zod.object({
+  businessId: zod
+    .number()
+    .optional()
+    .describe("Owning business ID; required when creating a job"),
   title: zod.string().optional(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),
@@ -487,6 +491,19 @@ export const CreateJobBody = zod.object({
   permitChecklist: zod.record(zod.string(), zod.unknown()).nullish(),
   includeMileageInJobCosts: zod.boolean().optional(),
 });
+
+/**
+ * @summary List businesses available for job assignment
+ */
+export const ListJobBusinessOptionsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  slug: zod.string(),
+  legalBusinessId: zod.number().nullish(),
+});
+export const ListJobBusinessOptionsResponse = zod.array(
+  ListJobBusinessOptionsResponseItem,
+);
 
 /**
  * @summary Get open jobs without a definite start date and their production readiness details
@@ -2022,6 +2039,10 @@ export const UpdateJobParams = zod.object({
 });
 
 export const UpdateJobBody = zod.object({
+  businessId: zod
+    .number()
+    .optional()
+    .describe("Owning business ID; required when creating a job"),
   title: zod.string().optional(),
   description: zod.string().nullish(),
   clientId: zod.number().nullish(),

@@ -14,6 +14,8 @@ import type { PhaseItem } from "./phaseItem";
 import type { ServiceBilling } from "./serviceBilling";
 
 export interface CreateJobRequest {
+  /** Owning business ID; required when creating a job */
+  businessId?: number;
   title?: string;
   description?: string | null;
   clientId?: number | null;

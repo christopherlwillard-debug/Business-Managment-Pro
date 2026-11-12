@@ -885,11 +885,33 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/business-options", async (_req, res) => {
+  try {
+    const businesses = await db.select({
+      id: businessesTable.id,
+      name: businessesTable.name,
+      slug: businessesTable.slug,
+      legalBusinessId: businessesTable.legalBusinessId,
+    }).from(businessesTable).orderBy(businessesTable.id);
+    res.json(businesses);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch businesses available for jobs" });
+  }
+});
+
 router.post("/", async (req, res) => {
   try {
-    const { title, description, clientId, propertyId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
+    const { title, description, clientId, propertyId, businessId, subcontractorIds = [], status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, sqFt, coats, phases, permitChecklist, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, includeMileageInJobCosts = true, planningState = "ready", priority = "normal", resourceDemand = "standard", queuePosition = null } = req.body;
+    const requestedBusinessId = Number(businessId);
+    if (!Number.isSafeInteger(requestedBusinessId) || requestedBusinessId <= 0) {
+      return res.status(400).json({ error: "businessId is required and must be a positive integer" });
+    }
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
+    if (ownership.business.id !== requestedBusinessId) {
+      return res.status(400).json({ error: "businessId must identify the selected owning business" });
+    }
     if (clientId != null) {
       const parsedClientId = Number(clientId);
       if (!Number.isSafeInteger(parsedClientId) || parsedClientId <= 0
@@ -2847,7 +2869,7 @@ router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
-    const { title, description, clientId, propertyId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
+    const { title, description, clientId, propertyId, businessId, subcontractorIds, status, jobType, homeModel, address, city, state, locationName, startDate, endDate, notes, businessLine, workflow, subPaid, sqFt, coats, phases, permitChecklist, serviceBilling, mfhManufacturerId, mfhModelId, mfhModelYear, mfhConstructionType, mhProductionServices, manHours, daysOnJob, includeMileageInJobCosts, planningState, priority, resourceDemand, queuePosition } = req.body;
     const [currentOwnership] = await db.select({
       businessId: jobsTable.businessId,
       businessLine: jobsTable.businessLine,
@@ -2857,8 +2879,15 @@ router.put("/:id", async (req, res) => {
       closedAt: jobsTable.closedAt,
     }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!currentOwnership) return res.status(404).json({ error: "Job not found" });
+    if ("businessId" in req.body
+      && (!Number.isSafeInteger(Number(businessId)) || Number(businessId) <= 0)) {
+      return res.status(400).json({ error: "businessId must be a positive integer" });
+    }
     const requestedOwner = await resolveMutationBusiness(req);
     if (!requestedOwner.ok) return res.status(400).json({ error: requestedOwner.error });
+    if ("businessId" in req.body && requestedOwner.business.id !== Number(businessId)) {
+      return res.status(400).json({ error: "businessId must identify the selected owning business" });
+    }
     const existingOwnership = await canonicalRecordBusiness(currentOwnership);
     const ownershipWouldChange = requestedOwner.explicit && (
       existingOwnership.state !== "resolved" ||
@@ -2976,8 +3005,10 @@ router.put("/:id", async (req, res) => {
     if (startDate !== undefined) updates.startDate = startDate;
     if (endDate !== undefined) updates.endDate = endDate;
     if (notes !== undefined) updates.notes = notes;
-    updates.businessLine = owner.slug;
-    updates.businessId = owner.id;
+    if (requestedOwner.explicit || existingOwnership.state === "resolved") {
+      updates.businessLine = owner.slug;
+      updates.businessId = owner.id;
+    }
     if ("workflow" in req.body) updates.workflow = workflow || null;
     if ("planningState" in req.body) updates.planningState = planningState;
     if ("priority" in req.body) updates.priority = priority;

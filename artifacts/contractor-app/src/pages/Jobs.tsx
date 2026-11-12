@@ -8504,6 +8504,13 @@ function HomeModelInput({ value, onChange }: { value: string; onChange: (v: stri
 }
 
 // ─── Job Form Dialog ───────────────────────────────────────────────────────────
+type JobBusinessOption = {
+  id: number;
+  name: string;
+  slug: string;
+  legalBusinessId: number | null;
+};
+
 function JobFormDialog({
   open, onOpenChange, editJob, clients, subcontractors, onSaved, paymentFocus, prelinkedClientId, prelinkedPropertyId, propertyBusinessId: initialBusinessId,
 }: {
@@ -8520,12 +8527,23 @@ function JobFormDialog({
 }) {
   const createJob = useCreateJob();
   const updateJob = useUpdateJob();
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const { toast } = useToast();
+  const businessOptionsQuery = useQuery<JobBusinessOption[]>({
+    queryKey: ["job-business-options"],
+    queryFn: async () => {
+      const response = await fetch(`${BASE}/api/jobs/business-options`, { credentials: "include" });
+      if (!response.ok) throw new Error("Could not load businesses");
+      return response.json();
+    },
+    enabled: open,
+  });
+  const businessOptions = businessOptionsQuery.data ?? businesses;
 
   function makeForm() {
     if (editJob) {
       return {
+        businessId: editJob.businessId != null ? String(editJob.businessId) : "",
         title: editJob.title,
         clientId: String(editJob.clientId ?? ""),
         propertyId: String(editJob.propertyId ?? ""),
@@ -8546,6 +8564,9 @@ function JobFormDialog({
       };
     }
     return {
+      businessId: initialBusinessId != null
+        ? String(initialBusinessId)
+        : activeBusiness?.id != null ? String(activeBusiness.id) : "",
       title: "", clientId: prelinkedClientId ? String(prelinkedClientId) : "", propertyId: prelinkedPropertyId ? String(prelinkedPropertyId) : "", status: "scheduled",
       jobType: "", homeModel: "", address: "",
       locationName: "", city: "", state: "KY",
@@ -8558,7 +8579,18 @@ function JobFormDialog({
   }
 
   const [form, setFormState] = useState(makeForm);
-  const propertyBusinessId = editJob?.businessId ?? initialBusinessId ?? activeBusiness?.id;
+  const selectedBusiness = businessOptions.find(business => String(business.id) === form.businessId);
+  const propertyBusinessId = form.businessId
+    ? Number(form.businessId)
+    : editJob?.businessId ?? initialBusinessId ?? activeBusiness?.id;
+  const businessScopedClientsQuery = useListClients(
+    selectedBusiness
+      ? { businessId: selectedBusiness.legalBusinessId ?? selectedBusiness.id }
+      : undefined,
+  );
+  const availableClients = selectedBusiness
+    ? businessScopedClientsQuery.data ?? (selectedBusiness.id === activeBusiness?.id ? clients : [])
+    : editJob ? clients : [];
   const propertyOptionsQuery = useQuery({
     queryKey: ["job-property-options", propertyBusinessId, form.clientId],
     queryFn: () => listAerialQuoteProperties({
@@ -8591,7 +8623,7 @@ function JobFormDialog({
   const { data: constructionTypes = [] } = useListMfhConstructionTypes();
   // Fetch all (incl. inactive) so archived/service items already checked on an
   // existing job still resolve; display filtering happens below.
-  const { data: productionServiceTypes = [] } = useListProductionServiceTypes(activeBusiness?.id, true);
+  const { data: productionServiceTypes = [] } = useListProductionServiceTypes(selectedBusiness?.id ?? activeBusiness?.id, true);
   const createMfhManufacturer = useCreateMfhManufacturer();
   const updateMfhManufacturer = useUpdateMfhManufacturer();
   const createMfhModel = useCreateMfhModel();
@@ -8672,7 +8704,7 @@ function JobFormDialog({
 
   async function handleAddService() {
     if (!newServiceName.trim()) return;
-    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim(), appliesTo: "production", businessId: activeBusiness?.id ?? null });
+    const created = await createProductionServiceType.mutateAsync({ name: newServiceName.trim(), appliesTo: "production", businessId: selectedBusiness?.id ?? activeBusiness?.id ?? null });
     setMhProductionServices(prev => [...prev, created.id]);
     setNewServiceName("");
     setShowAddService(false);
@@ -8766,6 +8798,29 @@ function JobFormDialog({
   }, [open, editJob?.id]);
 
   useEffect(() => {
+    if (!open || editJob || form.businessId || activeBusiness?.id == null) return;
+    setFormState(current => ({
+      ...current,
+      businessId: String(activeBusiness.id),
+      businessLine: activeBusiness.slug,
+    }));
+  }, [open, editJob, form.businessId, activeBusiness?.id, activeBusiness?.slug]);
+
+  useEffect(() => {
+    if (!open || !editJob || form.businessId) return;
+    const legacySlug = editJob.businessLine === "contracting" ? "general_contracting"
+      : editJob.businessLine === "asphalt" ? "asphalt_sealing"
+      : editJob.businessLine;
+    const legacyBusiness = businessOptions.find(business => business.slug === legacySlug);
+    if (!legacyBusiness) return;
+    setFormState(current => ({
+      ...current,
+      businessId: String(legacyBusiness.id),
+      businessLine: legacyBusiness.slug,
+    }));
+  }, [open, editJob?.id, editJob?.businessLine, form.businessId, businessOptions]);
+
+  useEffect(() => {
     if (!open || !paymentFocus || !editJob?.id || Object.keys(subCompDefaults).length === 0) return;
     const input = paymentFocusInputRefs.current[paymentFocus.subcontractorId];
     if (!input) return;
@@ -8810,7 +8865,7 @@ function JobFormDialog({
 
   function fillLotAddressFromClient(clientId: string, constructionType = mfhConstructionType) {
     if (selectedWorkflow !== "mh_production" || !isLotModelPlacement(constructionType)) return;
-    const client = clients.find(candidate => String(candidate.id) === clientId);
+    const client = availableClients.find(candidate => String(candidate.id) === clientId);
     if (!client || (!client.address && !client.city && !client.state)) return;
 
     // Lot-model work is performed at the client's address. Selecting Lot Model
@@ -8829,7 +8884,7 @@ function JobFormDialog({
   // selected, so there is no button click to trigger the address fill. Keep
   // this effect dependent on the actual client address fields so it also runs
   // when the client list finishes loading.
-  const selectedClient = clients.find(candidate => String(candidate.id) === form.clientId);
+  const selectedClient = availableClients.find(candidate => String(candidate.id) === form.clientId);
   useEffect(() => {
     if (!open) return;
     fillLotAddressFromClient(form.clientId);
@@ -8850,6 +8905,10 @@ function JobFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!editJob && (!form.businessId || !Number.isSafeInteger(Number(form.businessId)) || Number(form.businessId) <= 0)) {
+      showFormError("Choose the owning business before creating this job.");
+      return;
+    }
     if (!form.title.trim()) {
       showFormError("Title is required");
       titleInputRef.current?.focus();
@@ -8889,6 +8948,7 @@ function JobFormDialog({
       }
 
       const payload: CreateJobRequest = {
+        ...(form.businessId ? { businessId: Number(form.businessId) } : {}),
         title: form.title.trim(),
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
         propertyId: form.propertyId ? parseInt(form.propertyId) : null,
@@ -8908,7 +8968,6 @@ function JobFormDialog({
         startDate: form.startDate || undefined,
         endDate: form.endDate || undefined,
         notes: form.notes || undefined,
-        businessLine: editJob ? (form.businessLine || null) : (form.businessLine || undefined),
         workflow: selectedWorkflow || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
         coats: form.businessLine === "asphalt_sealing" && form.coats !== "" ? parseInt(form.coats) : undefined,
@@ -9051,6 +9110,43 @@ function JobFormDialog({
           )}
 
           <div>
+            <label className="block text-sm font-medium text-foreground mb-1">Owning business{isCreate ? " *" : ""}</label>
+            {isCreate ? (
+              <>
+                <select
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  value={form.businessId}
+                  disabled={businessOptionsQuery.isLoading || businessOptions.length === 0}
+                  onChange={e => {
+                    const business = businessOptions.find(option => String(option.id) === e.target.value);
+                    setFormState(current => ({
+                      ...current,
+                      businessId: e.target.value,
+                      businessLine: business?.slug ?? "",
+                      clientId: "",
+                      propertyId: "",
+                    }));
+                  }}
+                >
+                  <option value="">Select a business…</option>
+                  {businessOptions.map(business => (
+                    <option key={business.id} value={business.id}>{business.name}</option>
+                  ))}
+                </select>
+                {businessOptionsQuery.isError && (
+                  <p role="alert" className="mt-1 text-xs text-destructive">
+                    Business choices could not be loaded. Refresh and try again.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
+                {selectedBusiness?.name ?? editJob?.businessLine ?? "Existing business association"}
+              </div>
+            )}
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-foreground mb-1">Job Title *</label>
             <input type="text" autoFocus={isCreate} ref={titleInputRef}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -9063,14 +9159,16 @@ function JobFormDialog({
             <select
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
               value={form.clientId}
+              disabled={!form.businessId}
               onChange={e => {
                 const clientId = e.target.value;
                 setFormState(current => ({ ...current, clientId, propertyId: "" }));
                 fillLotAddressFromClient(clientId);
               }}>
               <option value="">No client</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {availableClients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {!form.businessId && <p className="mt-1 text-xs text-muted-foreground">Choose the owning business first.</p>}
           </div>
 
           <div>

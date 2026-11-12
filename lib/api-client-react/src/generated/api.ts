@@ -70,6 +70,7 @@ import type {
   InvoiceCommunicationEvent,
   InvoiceDraft,
   Job,
+  JobBusinessOption,
   JobProfitResponse,
   JobReadinessCondition,
   JobReadinessConditionInput,
@@ -1365,6 +1366,82 @@ export const useCreateJob = <
 > => {
   return useMutation(getCreateJobMutationOptions(options));
 };
+
+/**
+ * @summary List businesses available for job assignment
+ */
+export const getListJobBusinessOptionsUrl = () => {
+  return `/api/jobs/business-options`;
+};
+
+export const listJobBusinessOptions = async (
+  options?: RequestInit,
+): Promise<JobBusinessOption[]> => {
+  return customFetch<JobBusinessOption[]>(getListJobBusinessOptionsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListJobBusinessOptionsQueryKey = () => {
+  return [`/api/jobs/business-options`] as const;
+};
+
+export const getListJobBusinessOptionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listJobBusinessOptions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listJobBusinessOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListJobBusinessOptionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listJobBusinessOptions>>
+  > = ({ signal }) => listJobBusinessOptions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listJobBusinessOptions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListJobBusinessOptionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listJobBusinessOptions>>
+>;
+export type ListJobBusinessOptionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List businesses available for job assignment
+ */
+
+export function useListJobBusinessOptions<
+  TData = Awaited<ReturnType<typeof listJobBusinessOptions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listJobBusinessOptions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListJobBusinessOptionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary Get open jobs without a definite start date and their production readiness details

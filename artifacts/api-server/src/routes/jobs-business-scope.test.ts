@@ -117,6 +117,39 @@ describe("GET /jobs business ownership scope", () => {
   });
 });
 
+describe("job business assignment", () => {
+  it("returns account-wide business choices for job assignment", async () => {
+    fixture.selectQueue.push([
+      { id: 1, name: "General Contracting", slug: "general_contracting", legalBusinessId: 1 },
+      { id: 2, name: "Asphalt Sealing", slug: "asphalt_sealing", legalBusinessId: 1 },
+    ]);
+
+    const response = await request(app).get("/jobs/business-options");
+
+    expect(response.status).toBe(200);
+    expect(response.body.map((business: { id: number }) => business.id)).toEqual([1, 2]);
+    expect(response.body[1].legalBusinessId).toBe(1);
+  });
+
+  it("rejects job creation without an explicit business ID", async () => {
+    const response = await request(app)
+      .post("/jobs")
+      .send({ title: "No business selected", businessLine: "asphalt_sealing" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("businessId is required");
+  });
+
+  it("rejects a business ID that does not match the resolved account business", async () => {
+    const response = await request(app)
+      .post("/jobs")
+      .send({ title: "Mismatched business", businessId: 2 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("businessId must identify");
+  });
+});
+
 describe("job property link eligibility", () => {
   it("rejects properties assigned to another client", async () => {
     fixture.selectQueue.push([{ businessId: 1, clientId: 22 }]);

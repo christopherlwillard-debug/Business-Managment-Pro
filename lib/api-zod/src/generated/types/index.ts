@@ -116,6 +116,7 @@ export * from "./invoiceDraft";
 export * from "./invoiceLineItem";
 export * from "./invoiceStatus";
 export * from "./job";
+export * from "./jobBusinessOption";
 export * from "./jobPermitChecklist";
 export * from "./jobPlanningState";
 export * from "./jobPriority";

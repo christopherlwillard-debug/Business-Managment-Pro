@@ -737,6 +737,8 @@ export const CreateJobRequestResourceDemand = {
 export type CreateJobRequestPermitChecklist = { [key: string]: unknown } | null;
 
 export interface CreateJobRequest {
+  /** Owning business ID; required when creating a job */
+  businessId?: number;
   title?: string;
   description?: string | null;
   clientId?: number | null;
@@ -772,6 +774,13 @@ export interface CreateJobRequest {
   permitChecklist?: CreateJobRequestPermitChecklist;
   includeMileageInJobCosts?: boolean;
   [key: string]: unknown;
+}
+
+export interface JobBusinessOption {
+  id: number;
+  name: string;
+  slug: string;
+  legalBusinessId?: number | null;
 }
 
 export type JobReadinessConditionInputReason =
