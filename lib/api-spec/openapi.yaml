@@ -5371,15 +5371,28 @@ components:
         ownerDrawTotal:
           type: number
         undrawnBalance:
-          type: number
+          type: ["number", "null"]
         subContractorOwed:
-          type: number
+          type: ["number", "null"]
         subContractorPaid:
           type: number
         subContractorRemaining:
-          type: number
+          type: ["number", "null"]
+        subContractorPayablesSummary:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [complete, incomplete]
+            amount:
+              type: ["number", "null"]
+            unresolvedCount:
+              type: integer
+            outstandingJobCount:
+              type: integer
+          required: [status, amount, unresolvedCount, outstandingJobCount]
         ownerProfit:
-          type: number
+          type: ["number", "null"]
         byBusinessLine:
           type: array
           items:
@@ -5398,7 +5411,7 @@ components:
               activeJobs:
                 type: integer
             required: [businessLine, label, totalRevenue, totalExpenses, operationalNetProfit, activeJobs]
-      required: [totalRevenue, revenueDateBasis, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue]
+      required: [totalRevenue, revenueDateBasis, pendingInvoices, activeJobs, totalExpenses, mileageDeduction, overdueInvoices, recentJobs, recentInvoices, monthlyRevenue, subContractorPayablesSummary]
 
     ComplianceReport:
       type: object

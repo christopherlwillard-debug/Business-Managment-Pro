@@ -8,7 +8,7 @@ import { sectionGuard, ownerGuard } from "./guards";
 import { summarizeMileageRecords } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
 import { computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
-import { groupSubcontractorPayables, resolveSubcontractorBalance } from "../lib/subcontractorPayables.js";
+import { groupSubcontractorPayables, resolveSubcontractorBalance, summarizeSubcontractorPayables } from "../lib/subcontractorPayables.js";
 import { calculateOwnerPayFromJobProfit } from "../lib/job-profit-reports.js";
 import { loadJobProfitByJob } from "../lib/job-profit-loader.js";
 import { requestedBusiness, resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
@@ -481,13 +481,35 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
     // means you spent that money — it does NOT count as "owed".
     const subPayRows = await db.select({
       amountOwed:       jobSubcontractorsTable.amountOwed,
+      fixedAmount:      jobSubcontractorsTable.fixedAmount,
       amountPaid:       jobSubcontractorsTable.amountPaid,
       paymentStatus:    jobSubcontractorsTable.paymentStatus,
       businessLine:     jobsTable.businessLine,
       businessId:       jobsTable.businessId,
       compensationType: jobSubcontractorsTable.compensationType,
       allocationPct:    jobSubcontractorsTable.allocationPct,
+      accruedBonus:     jobSubcontractorsTable.accruedBonus,
       jobId:            jobSubcontractorsTable.jobId,
+      ledgerPaid: sql<string>`COALESCE((
+        SELECT SUM(spr.amount + COALESCE(spr.advance_amount, 0))
+        FROM sub_payment_records spr
+        WHERE spr.job_id = ${jobSubcontractorsTable.jobId}
+          AND spr.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+          AND (spr.is_reversal IS NULL OR spr.is_reversal = false)
+      ), '0')`,
+      totalHours: sql<string>`COALESCE((
+        SELECT SUM(h.hours)
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+      ), 0)`,
+      unpricedHours: sql<string>`COALESCE((
+        SELECT SUM(h.hours)
+        FROM job_sub_hours h
+        WHERE h.job_id = ${jobSubcontractorsTable.jobId}
+          AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+          AND h.rate_snapshot IS NULL
+      ), 0)`,
       computedOwed: sql<string>`COALESCE((
         SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0))
         FROM job_sub_hours h
@@ -500,35 +522,74 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
 
     const allocationJobIds = [...new Set(
       subPayRows
-        .filter(r => r.amountOwed == null && r.compensationType === "allocation" && r.jobId != null)
+        .filter(r => reportBusinessContains(r, reportBusiness ?? null) && r.amountOwed == null && r.compensationType === "allocation" && r.jobId != null)
         .map(r => r.jobId as number),
     )];
     const splitPoolMap = await computeAllocationSplitPools(allocationJobIds);
 
-    let subContractorOwed = 0;
+    const outstandingSubPayables: Array<{
+      jobId: number | null;
+      amount: number | null;
+      balanceStatus: "known" | "unknown";
+    }> = [];
     let subContractorPaid = 0;
     for (const r of subPayRows) {
       if (!reportBusinessContains(r, reportBusiness ?? null)) continue;
       const paid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
       subContractorPaid += paid;
-      // Trust paymentStatus as authoritative — paid/overpaid rows have no outstanding liability.
-      // This matches the logic in /api/subcontractors/outstanding-balances.
-      if (r.paymentStatus === "paid" || r.paymentStatus === "overpaid") continue;
-      let owed: number;
+      let totalOwed: number | null;
       if (r.amountOwed != null) {
-        owed = parseFloat(r.amountOwed);
-      } else if (r.compensationType === "allocation" && r.allocationPct != null && r.jobId != null) {
-        const pool = splitPoolMap.get(r.jobId)?.splitPool ?? 0;
-        owed = computeSubOwed({ compensationType: "allocation", amountOwed: null, fixedAmount: null, allocationPct: r.allocationPct }, pool) ?? 0;
+        totalOwed = parseFloat(r.amountOwed);
+      } else if (r.compensationType === "allocation" && r.jobId != null) {
+        const pool = splitPoolMap.get(r.jobId)?.splitPool;
+        totalOwed = pool == null
+          ? null
+          : computeSubOwed({
+              compensationType: "allocation",
+              amountOwed: null,
+              fixedAmount: r.fixedAmount,
+              allocationPct: r.allocationPct,
+            }, pool);
+      } else if (r.compensationType === "fixed") {
+        totalOwed = r.fixedAmount == null ? null : parseFloat(r.fixedAmount);
+      } else if (r.compensationType === "hourly") {
+        const hours = parseFloat(r.totalHours ?? "0");
+        const unpricedHours = parseFloat(r.unpricedHours ?? "0");
+        const bonus = parseFloat(r.accruedBonus ?? "0");
+        totalOwed = hours <= 0 || unpricedHours > 0
+          ? null
+          : parseFloat(r.computedOwed ?? "0") + bonus;
       } else {
-        owed = parseFloat(r.computedOwed ?? "0");
+        totalOwed = null;
       }
-      subContractorOwed += Math.max(0, owed - paid);
+      const resolution = resolveSubcontractorBalance({
+        totalOwed,
+        amountPaid: r.amountPaid == null ? 0 : parseFloat(r.amountPaid),
+        ledgerPaid: parseFloat(r.ledgerPaid ?? "0"),
+        paymentStatus: r.paymentStatus,
+        legacyAllocationPaid: r.compensationType === "allocation" && r.amountOwed == null,
+        unknownReason: r.compensationType === "allocation"
+          ? "Allocation amount is unavailable because its percentage or split-pool amount is missing."
+          : r.compensationType === "hourly"
+            ? "Hourly pay amount is unavailable because logged hours or rates are missing."
+            : "Subcontractor pay amount is unavailable.",
+      });
+      if (resolution.outstanding) {
+        outstandingSubPayables.push({
+          jobId: r.jobId,
+          amount: resolution.remainingAmount,
+          balanceStatus: resolution.balanceStatus,
+        });
+      }
     }
-    const subContractorRemaining = subContractorOwed;
-    const ownerProfit = operationalNetProfit - subContractorRemaining;
+    const subContractorPayablesSummary = summarizeSubcontractorPayables(outstandingSubPayables);
+    const subContractorOwed = subContractorPayablesSummary.amount;
+    const subContractorRemaining = subContractorPayablesSummary.amount;
+    const ownerProfit = subContractorRemaining == null ? null : operationalNetProfit - subContractorRemaining;
     // undrawnBalance placed here (after subContractorRemaining) so it reflects real obligations
-    const undrawnBalance = operationalNetProfit - ownerDrawTotal - subContractorRemaining;
+    const undrawnBalance = subContractorRemaining == null
+      ? null
+      : operationalNetProfit - ownerDrawTotal - subContractorRemaining;
 
     // Profit by business line breakdown — always computed from full (unfiltered) data
     const OWNER_DRAW_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
@@ -724,6 +785,7 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       subContractorOwed,
       subContractorPaid,
       subContractorRemaining,
+      subContractorPayablesSummary,
       ownerProfit,
       byBusinessLine,
       recentJobs: recentJobsRows.map(j => ({ ...j, createdAt: j.createdAt.toISOString() })),

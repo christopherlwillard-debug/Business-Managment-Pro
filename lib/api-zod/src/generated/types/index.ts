@@ -67,6 +67,8 @@ export * from "./dashboardStats";
 export * from "./dashboardStatsByBusinessLineItem";
 export * from "./dashboardStatsMonthlyRevenueItem";
 export * from "./dashboardStatsRevenueDateBasis";
+export * from "./dashboardStatsSubContractorPayablesSummary";
+export * from "./dashboardStatsSubContractorPayablesSummaryStatus";
 export * from "./depreciationMethod";
 export * from "./draftLineItem";
 export * from "./errorEnvelope";

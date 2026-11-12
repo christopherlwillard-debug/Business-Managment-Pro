@@ -5118,11 +5118,17 @@ export const GetDashboardStatsResponse = zod.object({
   ytdMiles: zod.number().optional(),
   ytdMileageRate: zod.number().optional(),
   ownerDrawTotal: zod.number().optional(),
-  undrawnBalance: zod.number().optional(),
-  subContractorOwed: zod.number().optional(),
+  undrawnBalance: zod.number().nullish(),
+  subContractorOwed: zod.number().nullish(),
   subContractorPaid: zod.number().optional(),
-  subContractorRemaining: zod.number().optional(),
-  ownerProfit: zod.number().optional(),
+  subContractorRemaining: zod.number().nullish(),
+  subContractorPayablesSummary: zod.object({
+    status: zod.enum(["complete", "incomplete"]),
+    amount: zod.number().nullable(),
+    unresolvedCount: zod.number(),
+    outstandingJobCount: zod.number(),
+  }),
+  ownerProfit: zod.number().nullish(),
   byBusinessLine: zod
     .array(
       zod.object({

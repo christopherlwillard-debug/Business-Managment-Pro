@@ -2277,6 +2277,22 @@ export type DashboardStatsMonthlyRevenueItem = {
   expenses: number;
 };
 
+export type DashboardStatsSubContractorPayablesSummaryStatus =
+  (typeof DashboardStatsSubContractorPayablesSummaryStatus)[keyof typeof DashboardStatsSubContractorPayablesSummaryStatus];
+
+export const DashboardStatsSubContractorPayablesSummaryStatus = {
+  complete: "complete",
+  incomplete: "incomplete",
+} as const;
+
+export type DashboardStatsSubContractorPayablesSummary = {
+  status: DashboardStatsSubContractorPayablesSummaryStatus;
+  /** @nullable */
+  amount: number | null;
+  unresolvedCount: number;
+  outstandingJobCount: number;
+};
+
 export type DashboardStatsByBusinessLineItem = {
   businessLine: string;
   label: string;
@@ -2305,11 +2321,16 @@ export interface DashboardStats {
   ytdMiles?: number;
   ytdMileageRate?: number;
   ownerDrawTotal?: number;
-  undrawnBalance?: number;
-  subContractorOwed?: number;
+  /** @nullable */
+  undrawnBalance?: number | null;
+  /** @nullable */
+  subContractorOwed?: number | null;
   subContractorPaid?: number;
-  subContractorRemaining?: number;
-  ownerProfit?: number;
+  /** @nullable */
+  subContractorRemaining?: number | null;
+  subContractorPayablesSummary: DashboardStatsSubContractorPayablesSummary;
+  /** @nullable */
+  ownerProfit?: number | null;
   byBusinessLine?: DashboardStatsByBusinessLineItem[];
 }
 

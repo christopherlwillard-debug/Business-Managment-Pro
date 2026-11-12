@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupSubcontractorPayables, resolveSubcontractorBalance } from "./subcontractorPayables.js";
+import { groupSubcontractorPayables, resolveSubcontractorBalance, summarizeSubcontractorPayables } from "./subcontractorPayables.js";
 
 describe("resolveSubcontractorBalance", () => {
   it("subtracts the greater of the cached and ledger payments", () => {
@@ -103,6 +103,32 @@ describe("resolveSubcontractorBalance", () => {
       unresolvedCount: 1,
       isComplete: false,
       jobCount: 2,
+    });
+  });
+});
+
+describe("summarizeSubcontractorPayables", () => {
+  it("returns a total only when every outstanding balance is known", () => {
+    expect(summarizeSubcontractorPayables([
+      { amount: 120.125, balanceStatus: "known", jobId: 10 },
+      { amount: 79.875, balanceStatus: "known", jobId: 11 },
+    ])).toEqual({
+      status: "complete",
+      amount: 200,
+      unresolvedCount: 0,
+      outstandingJobCount: 2,
+    });
+  });
+
+  it("suppresses the known subtotal when any included balance is unresolved", () => {
+    expect(summarizeSubcontractorPayables([
+      { amount: 200, balanceStatus: "known", jobId: 10 },
+      { amount: null, balanceStatus: "unknown", jobId: 11 },
+    ])).toEqual({
+      status: "incomplete",
+      amount: null,
+      unresolvedCount: 1,
+      outstandingJobCount: 2,
     });
   });
 });

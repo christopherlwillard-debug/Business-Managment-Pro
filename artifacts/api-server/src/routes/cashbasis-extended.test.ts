@@ -97,7 +97,7 @@ vi.mock("../lib/irs-rates.js",  () => ({
   }),
 }));
 vi.mock("../lib/allocation.js", () => ({
-  computeAllocationSplitPools: vi.fn().mockResolvedValue([]),
+  computeAllocationSplitPools: vi.fn().mockResolvedValue(new Map()),
   computeSubOwed:              vi.fn().mockReturnValue(0),
 }));
 
@@ -1045,5 +1045,69 @@ describe("Revenue by month — yearly overview", () => {
     });
     expect(res.body.annualTotal).toBe(1625);
     expect(res.body.monthlyAverage).toBeCloseTo(135.4166666667, 8);
+  });
+
+  it("returns no payable dollar total when a scoped subcontractor balance is unresolved", async () => {
+    const business = { id: 10, slug: "mfh", name: "Manufactured Homes", legalBusinessId: null };
+    h.selectQueue.push([business]); // selected business
+    h.selectQueue.push([business]); // legal business members
+    for (let i = 0; i < 10; i++) h.selectQueue.push([]); // dashboard main queries
+    for (let i = 0; i < 5; i++) h.selectQueue.push([]); // unfiltered business-breakdown queries
+    h.selectQueue.push([]); // YTD mileage
+    h.selectQueue.push([
+      {
+        subcontractorId: 4,
+        subName: "Alex",
+        jobTitle: "Unresolved allocation",
+        amountOwed: null,
+        fixedAmount: null,
+        amountPaid: "0",
+        paymentStatus: "unpaid",
+        businessId: 10,
+        businessLine: "mfh",
+        compensationType: "allocation",
+        allocationPct: null,
+        accruedBonus: null,
+        jobId: 41,
+        ledgerPaid: "0",
+        totalHours: "0",
+        unpricedHours: "0",
+        computedOwed: "0",
+      },
+      {
+        subcontractorId: 5,
+        subName: "Other business",
+        jobTitle: "Other business job",
+        amountOwed: "300",
+        fixedAmount: "300",
+        amountPaid: "0",
+        paymentStatus: "unpaid",
+        businessId: 20,
+        businessLine: "other",
+        compensationType: "fixed",
+        allocationPct: null,
+        accruedBonus: null,
+        jobId: 52,
+        ledgerPaid: "0",
+        totalHours: "0",
+        unpricedHours: "0",
+        computedOwed: "0",
+      },
+    ]); // scoped subcontractor rows
+    h.selectQueue.push([business]); // business list
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]); // monthly chart
+
+    const res = await request(app).get("/reports/dashboard?businessId=10");
+
+    expect(res.status).toBe(200);
+    expect(res.body.subContractorPayablesSummary).toEqual({
+      status: "incomplete",
+      amount: null,
+      unresolvedCount: 1,
+      outstandingJobCount: 1,
+    });
+    expect(res.body.subContractorRemaining).toBeNull();
+    expect(res.body.ownerProfit).toBeNull();
+    expect(res.body.undrawnBalance).toBeNull();
   });
 });

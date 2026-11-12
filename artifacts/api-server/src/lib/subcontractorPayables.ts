@@ -21,6 +21,28 @@ export interface SubcontractorPayableItem {
   businessLine: string | null;
 }
 
+export interface SubcontractorPayablesSummary {
+  status: "complete" | "incomplete";
+  amount: number | null;
+  unresolvedCount: number;
+  outstandingJobCount: number;
+}
+
+export function summarizeSubcontractorPayables(
+  rows: Pick<SubcontractorPayableItem, "amount" | "balanceStatus" | "jobId">[],
+): SubcontractorPayablesSummary {
+  const unresolvedRows = rows.filter(row => row.balanceStatus === "unknown" || row.amount == null);
+  const amount = unresolvedRows.length > 0
+    ? null
+    : Number(rows.reduce((sum, row) => sum + (row.amount ?? 0), 0).toFixed(2));
+  return {
+    status: unresolvedRows.length > 0 ? "incomplete" : "complete",
+    amount,
+    unresolvedCount: unresolvedRows.length,
+    outstandingJobCount: new Set(rows.map(row => row.jobId).filter((jobId): jobId is number => jobId != null)).size,
+  };
+}
+
 export function groupSubcontractorPayables<T extends SubcontractorPayableItem>(rows: T[]) {
   const groups = new Map<number, {
     subcontractorId: number;

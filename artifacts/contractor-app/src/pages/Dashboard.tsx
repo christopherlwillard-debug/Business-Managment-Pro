@@ -455,7 +455,13 @@ function TodayScheduleCard({ stops, onNavigate }: {
   );
 }
 
-function NeedsAttentionCard({ pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate, onLogTaxPayment }: {
+function NeedsAttentionCard({ subcontractorPayables, pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate, onLogTaxPayment }: {
+  subcontractorPayables: {
+    status: "complete" | "incomplete";
+    amount: number | null;
+    unresolvedCount: number;
+    outstandingJobCount: number;
+  };
   pendingInvoices: number;
   overdueCount: number;
   complianceCount: number;
@@ -464,7 +470,22 @@ function NeedsAttentionCard({ pendingInvoices, overdueCount, complianceCount, ta
   onNavigate: (p: string) => void;
   onLogTaxPayment?: () => void;
 }) {
+  const hasSubcontractorBalance = subcontractorPayables.status === "incomplete"
+    || (subcontractorPayables.amount ?? 0) > 0.005;
   const rows = [
+    {
+      label: "Subcontractor Payables",
+      badge: subcontractorPayables.status === "incomplete"
+        ? "Incomplete"
+        : formatCurrency(subcontractorPayables.amount ?? 0),
+      extra: subcontractorPayables.status === "incomplete"
+        ? `${subcontractorPayables.unresolvedCount} unresolved`
+        : null,
+      dot: subcontractorPayables.status === "incomplete" ? "bg-red-500" : "bg-amber-500",
+      href: "/accounting",
+      show: hasSubcontractorBalance,
+      isTax: false,
+    },
     { label: "Outstanding Invoices", badge: pendingInvoices > 0 ? formatCurrency(pendingInvoices) : null,     extra: overdueCount > 0 ? `${overdueCount} overdue` : null,       dot: overdueCount > 0 ? "bg-red-500" : "bg-blue-400", href: "/accounting", show: pendingInvoices > 0 || overdueCount > 0, isTax: false },
     { label: "Compliance Items",     badge: complianceCount > 0 ? `${complianceCount} urgent` : null,         extra: null,                                                      dot: "bg-orange-500", href: "/accounting?tab=tax-calendar", show: complianceCount > 0,                   isTax: false },
     { label: "Tax Payments Due",     badge: taxAlertCount > 0 ? `${taxAlertCount} due` : null,                extra: null,                                                      dot: "bg-red-500",    href: "/accounting?tab=tax-calendar", show: taxAlertCount > 0,                     isTax: true  },
@@ -922,6 +943,7 @@ export default function Dashboard() {
         />
       ) : (
         <NeedsAttentionCard
+          subcontractorPayables={stats.subContractorPayablesSummary}
           pendingInvoices={stats.pendingInvoices ?? 0}
           overdueCount={overdueInvoices.length}
           complianceCount={urgentComplianceItems.length}

@@ -8,6 +8,7 @@
 import type { DashboardStatsByBusinessLineItem } from "./dashboardStatsByBusinessLineItem";
 import type { DashboardStatsMonthlyRevenueItem } from "./dashboardStatsMonthlyRevenueItem";
 import type { DashboardStatsRevenueDateBasis } from "./dashboardStatsRevenueDateBasis";
+import type { DashboardStatsSubContractorPayablesSummary } from "./dashboardStatsSubContractorPayablesSummary";
 import type { Invoice } from "./invoice";
 import type { Job } from "./job";
 
@@ -30,10 +31,15 @@ export interface DashboardStats {
   ytdMiles?: number;
   ytdMileageRate?: number;
   ownerDrawTotal?: number;
-  undrawnBalance?: number;
-  subContractorOwed?: number;
+  /** @nullable */
+  undrawnBalance?: number | null;
+  /** @nullable */
+  subContractorOwed?: number | null;
   subContractorPaid?: number;
-  subContractorRemaining?: number;
-  ownerProfit?: number;
+  /** @nullable */
+  subContractorRemaining?: number | null;
+  subContractorPayablesSummary: DashboardStatsSubContractorPayablesSummary;
+  /** @nullable */
+  ownerProfit?: number | null;
   byBusinessLine?: DashboardStatsByBusinessLineItem[];
 }
