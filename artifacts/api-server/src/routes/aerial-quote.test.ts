@@ -27,6 +27,30 @@ const h = vi.hoisted(() => ({
     notes: null,
     createdAt: new Date("2026-11-12T12:00:00.000Z"),
   },
+  pricingProfile: {
+    id: 301,
+    businessId: 11,
+    serviceKey: "snow_removal",
+    version: 1,
+    displayName: "Snow removal",
+    rules: {
+      components: [{
+        label: "Parking lot clearing",
+        category: "Snow",
+        basis: "customer_rate",
+        chargeType: "per_unit",
+        amount: 0.1,
+        measurementCategory: "Parking",
+        kind: "area",
+        unit: "sq_ft",
+      }],
+      marginMode: "none",
+      marginPercent: 0,
+      minimumCharge: 0,
+      quantityRounding: { mode: "none", increment: 1 },
+    },
+    createdAt: new Date("2026-11-12T12:00:00.000Z"),
+  },
   selectedTables: [] as unknown[],
   inserts: [] as unknown[],
   updates: [] as Array<{ table: unknown; values: Record<string, unknown> }>,
@@ -39,6 +63,7 @@ vi.mock("@workspace/db", () => {
       return h.grants.filter(grant => grant.businessId === h.businessId && grant.revokedAt === null);
     }
     if (table === h.tables.revisions) return [h.revision];
+    if (table === h.tables.pricingProfiles) return [h.pricingProfile];
     return [];
   };
   const db = {
@@ -62,7 +87,13 @@ vi.mock("@workspace/db", () => {
     insert: (table: unknown) => ({
       values: (values: unknown) => {
         h.inserts.push({ table, values });
-        return { returning: async () => [] };
+        return {
+          returning: async () => [{
+            id: 701,
+            createdAt: new Date("2026-11-12T12:00:00.000Z"),
+            ...(values as Record<string, unknown>),
+          }],
+        };
       },
     }),
     update: (table: unknown) => ({
@@ -109,7 +140,13 @@ vi.mock("./guards.js", () => ({
   getRequestUserId: () => "test-user",
 }));
 
-import { propertiesTable, propertyBusinessAccessTable, propertyMeasurementRevisionsTable } from "@workspace/db/schema";
+import {
+  estimatesTable,
+  propertiesTable,
+  propertyBusinessAccessTable,
+  propertyMeasurementRevisionsTable,
+  servicePricingProfileVersionsTable,
+} from "@workspace/db/schema";
 const { default: aerialQuoteRouter } = await import("./aerial-quote");
 
 const app = express();
@@ -126,6 +163,7 @@ beforeEach(() => {
     properties: propertiesTable,
     access: propertyBusinessAccessTable,
     revisions: propertyMeasurementRevisionsTable,
+    pricingProfiles: servicePricingProfileVersionsTable,
   };
   h.businessId = 0;
   h.sameLegalBusiness = true;
@@ -210,5 +248,45 @@ describe("Aerial Quote property permission routes", () => {
     expect(response.status).toBe(403);
     expect(h.inserts).toHaveLength(0);
     expectSelects(propertiesTable);
+  });
+
+  it("creates a standard estimate from a saved property revision and pricing profile", async () => {
+    const response = await request(app)
+      .post("/aerial-quote/estimates")
+      .send({
+        businessId: 11,
+        propertyId: 101,
+        measurementRevisionId: 201,
+        serviceKey: "snow_removal",
+        profileVersion: 1,
+        clientId: null,
+        title: "Snow removal — Permission Fixture",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      id: 701,
+      title: "Snow removal — Permission Fixture",
+      clientId: null,
+      propertyId: 101,
+      status: "draft",
+      subtotal: 100,
+      total: 100,
+    });
+    expect(h.inserts).toHaveLength(1);
+    expect(h.inserts[0]).toMatchObject({
+      table: estimatesTable,
+      values: {
+        propertyId: 101,
+        status: "draft",
+        calculationSnapshot: {
+          propertyId: 101,
+          measurementRevisionId: 201,
+          serviceKey: "snow_removal",
+          profileVersion: 1,
+        },
+      },
+    });
+    expectSelects(propertiesTable, propertyMeasurementRevisionsTable, servicePricingProfileVersionsTable);
   });
 });

@@ -18,13 +18,16 @@ import { Link } from "wouter";
 import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { getClientSourceBusinessFields } from "@/lib/clientBusinessScope";
+import { ClientPropertiesTab, ClientQuotesTab } from "@/components/ClientPropertiesQuotes";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-type Tab = "overview" | "jobs" | "invoices" | "payments" | "route" | "billing";
+type Tab = "overview" | "properties" | "quotes" | "jobs" | "invoices" | "payments" | "route" | "billing";
 
 const TAB_CONFIG: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "overview",  label: "Overview",  icon: Users },
+  { id: "properties", label: "Properties", icon: MapPin },
+  { id: "quotes",    label: "Quotes",    icon: FileText },
   { id: "jobs",      label: "Jobs",      icon: Briefcase },
   { id: "billing",   label: "Billing",   icon: Wrench },
   { id: "invoices",  label: "Invoices",  icon: Receipt },
@@ -68,8 +71,9 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
   const [syncing, setSyncing] = useState(false);
   const [chargingSquare, setChargingSquare] = useState(false);
   const { toast } = useToast();
-  const { canEdit } = useUserPermissions();
+  const { canEdit, isOwner } = useUserPermissions();
   const { activeBusiness } = useBusiness();
+  const activeBusinessId = businessId ?? activeBusiness?.id ?? 0;
   const updateServiceDate = useUpdateClientServiceDate();
 
   const { data, isLoading, isError, error, refetch } = useClientProfile(clientId, businessId ?? activeBusiness?.id);
@@ -329,7 +333,7 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
 
         {/* Tabs */}
         <div className="flex border-b border-border flex-shrink-0 overflow-x-auto">
-          {TAB_CONFIG.map(t => (
+          {TAB_CONFIG.filter(t => isOwner || (t.id !== "properties" && t.id !== "quotes")).map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -568,6 +572,18 @@ export function ClientProfileDrawer({ clientId, onClose, onAddToRoute, initialTa
                     ))
                   )}
                 </div>
+              )}
+
+              {tab === "properties" && isOwner && (
+                activeBusinessId > 0
+                  ? <ClientPropertiesTab businessId={activeBusinessId} clientId={client.id} />
+                  : <div className="p-6 text-sm text-muted-foreground">Choose a business to view its properties and measurements.</div>
+              )}
+
+              {tab === "quotes" && isOwner && (
+                activeBusinessId > 0
+                  ? <ClientQuotesTab businessId={activeBusinessId} clientId={client.id} />
+                  : <div className="p-6 text-sm text-muted-foreground">Choose a business to view client estimates.</div>
               )}
 
               {tab === "billing" && (
