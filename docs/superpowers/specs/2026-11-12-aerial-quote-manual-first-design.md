@@ -57,6 +57,10 @@ Add an optional `propertyId` to an estimate, scoped to the estimate's business. 
 
 Add versioned profiles scoped by business and service key. A profile version holds validated declarative rules and effective/creation metadata. Rules use an allowlisted schema for unit prices, fixed/minimum charges, labor, materials, equipment, travel, margin, and additional charges. Do not evaluate arbitrary code or user-authored expressions.
 
+Each priced component must declare whether its configured amount is already a customer selling rate or a direct cost to which profit is applied. The profile must choose exactly one profit mode for direct costs: markup (`cost × (1 + rate)`) or target gross margin (`cost ÷ (1 - rate)`). The engine must not infer or combine the two modes. Calculate all components, apply the selected profit mode only to cost-basis components, add customer-rate components, then apply the minimum service charge as a floor to the pre-tax total. If the minimum is triggered, return a distinct minimum-adjustment line. A profile that lacks a component basis or has an invalid profit mode is incomplete and cannot create an estimate.
+
+Travel and additional charges follow the same explicit component-basis rule. The evaluator returns pre-tax lines only. Tax remains owned by the existing estimate/quote workflow; the new evaluator does not add tax or tax lines.
+
 One API-side calculation service accepts a selected profile version and a measurement revision, validates inputs, and returns:
 
 - Customer-facing itemized lines and totals.
