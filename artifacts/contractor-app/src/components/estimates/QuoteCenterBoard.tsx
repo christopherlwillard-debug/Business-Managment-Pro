@@ -299,7 +299,7 @@ export function QuoteCenterBoard({
                 <div className="flex flex-wrap gap-1.5 xl:justify-end">
                   {estimate && <button onClick={() => onPreview(estimate)} className={buttonClass} title="Customer preview"><FileText className="h-3.5 w-3.5" /><span className="sr-only">Customer preview</span></button>}
                   {canEdit && estimate && <button onClick={() => onEdit(estimate)} className={buttonClass}>Edit</button>}
-                  {canEdit && estimate && !isDraft && item.documentStatus !== "archived" && <button onClick={() => onSend(estimate)} className={buttonClass}>Send</button>}
+                  {canEdit && estimate && item.documentStatus !== "archived" && <button onClick={() => onSend(estimate)} className={buttonClass}>Review &amp; Send</button>}
                   {canEdit && estimate && accepted && item.documentStatus !== "archived" && item.authorizationStatus !== "authorized" && item.revisionSnapshotId != null && <button onClick={() => open("authorize", item)} className={`${buttonClass} border-[#d5e1d7] text-[#55745f]`}>Authorize</button>}
                   {canEdit && estimate && item.jobId == null && item.authorizationStatus === "authorized" && <button onClick={() => onConvert(estimate)} className={`${buttonClass} border-[#d5e1d7] text-[#55745f]`}>Convert to Job</button>}
                   {estimate && (estimate.businessLine === "asphalt_sealing" || estimate.jobType === "Asphalt Sealing") && ["sent", "won"].includes(estimate.status) && Number(estimate.total) > 0 && (estimate.depositPaidAt

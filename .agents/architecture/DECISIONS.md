@@ -641,3 +641,30 @@ or CRM ledger.
 
 **Status:** Accepted
 **Date:** 2026-11-11
+
+## ADR-034
+
+**Title:** Website Studio drafts stay separate from published configuration
+
+**Decision:** Keep `website_configs` as the published snapshot and store the latest
+editor draft in `website_config_drafts`, keyed by business and revisioned. Only
+the explicit Publish transaction may update published fields. A database
+advisory lock serializes draft, publish, and media-reference writes; database
+triggers reject legacy published writes and protect referenced media. New
+draft-only media uses a private object namespace and is promoted to the public
+namespace during Publish.
+
+**Reason:** Older public handlers serialize published config rows and cannot
+distinguish draft fields after a code rollback. A separate table and persistent
+database guards prevent drafts from becoming live through old save handlers;
+private object paths keep staged images inaccessible through the old public
+image route.
+
+**Rejected Alternatives:**
+
+- Adding draft columns to `website_configs`
+- Relying only on current API handlers to keep drafts private
+- Replacing or deleting the currently published asset during draft editing
+
+**Status:** Accepted
+**Date:** 2026-11-11

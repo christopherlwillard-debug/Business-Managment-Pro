@@ -24,9 +24,12 @@ const h = vi.hoisted(() => {
     sendResults: [] as any[],
     failAcceptedWrite: false,
     failPdfUpload: false,
+    failPdfDownload: false,
+    failSnapshot: false,
+    contentHashOverride: null as string | null,
     transactionCount: 0,
     ProviderRejected,
-    storedPdf: Buffer.from("archived-original-pdf"),
+    storedPdf: Buffer.from("exact-original-quote-pdf"),
   };
 });
 
@@ -99,20 +102,27 @@ vi.mock("./guards.js", () => ({
   getOwnerId: async () => 77,
 }));
 vi.mock("../lib/estimateQuoteSnapshot.js", () => ({
-  buildEstimateQuoteSnapshot: async ({ revision }: { revision: number }) => ({
-    contentHash: "quote-content-v1",
-    customerSnapshot: {
-      revision,
-      quoteNumber: "Q-2026-000012",
-      title: "Driveway service",
-      customerName: "Customer",
-      items: [{ description: "Wash and seal", amount: 132 }],
-      total: 132,
-      terms: "Due on completion",
-    },
-    pdfDocument: { title: "mock pdf" },
-    logo: null,
-  }),
+  buildEstimateQuoteSnapshot: async ({ revision }: { revision: number }) => {
+    if (h.failSnapshot) {
+      const error = new Error("mismatch");
+      error.name = "EstimateQuoteTotalsMismatchError";
+      throw error;
+    }
+    return {
+      contentHash: h.contentHashOverride ?? "quote-content-v1",
+      customerSnapshot: {
+        revision,
+        quoteNumber: "Q-2026-000012",
+        title: "Driveway service",
+        customerName: "Customer",
+        items: [{ description: "Wash and seal", amount: 132 }],
+        total: 132,
+        terms: "Due on completion",
+      },
+      pdfDocument: { title: "mock pdf" },
+      logo: null,
+    };
+  },
 }));
 vi.mock("../lib/generateEstimateQuotePdf.js", () => ({
   generateEstimateQuotePdf: async () => {
@@ -142,7 +152,10 @@ vi.mock("../lib/objectStorage.js", () => ({
     }
     async getObjectEntityFile(path: string) {
       return {
-        download: async () => [h.storedPdf],
+        download: async () => {
+          if (h.failPdfDownload) throw new Error("mock storage download failure");
+          return [h.storedPdf];
+        },
         createReadStream: () => Readable.from(h.storedPdf),
       };
     }
@@ -197,7 +210,7 @@ const revision = (overrides: Record<string, unknown> = {}) => ({
   tokenActivatedAt: null,
   tokenRevokedAt: null,
   customerSnapshot: { quoteNumber: "Q-2026-000012", title: "Driveway service", total: 132 },
-  pdfObjectPath: null,
+  pdfObjectPath: "private/quote-archives/estimates/12/revision-1/quote",
   logoObjectPath: null,
   ...overrides,
 });
@@ -215,15 +228,21 @@ const attempt = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function queueInitialSend() {
-  h.selectQueue.push([], [estimate], [], [business], [], []);
-  h.insertQueue.push([revision()], [attempt()]);
+  const reviewed = revision();
+  h.selectQueue.push([], [estimate], [], [business], [], [reviewed], [reviewed]);
+  h.insertQueue.push([attempt()]);
 }
 
 function sendRequest(key = "unique-idempotency-key-0001") {
   return request(app).post("/estimates/12/send")
     .set("Host", "localhost")
     .set("X-Test-Business", "1")
-    .send({ recipient: "customer@example.test", idempotencyKey: key });
+    .send({ recipient: "customer@example.test", idempotencyKey: key, revisionEventId: 701 });
+}
+
+function previewRequest() {
+  return request(app).post("/estimates/12/quote-preview")
+    .set("X-Test-Business", "1");
 }
 
 beforeEach(() => {
@@ -244,6 +263,9 @@ beforeEach(() => {
   h.sendResults.length = 0;
   h.failAcceptedWrite = false;
   h.failPdfUpload = false;
+  h.failPdfDownload = false;
+  h.failSnapshot = false;
+  h.contentHashOverride = null;
   h.transactionCount = 0;
 });
 
@@ -385,15 +407,90 @@ afterEach(() => {
 });
 
 describe("mocked quote send and recovery lifecycle", () => {
-  it("stages and archives the exact PDF, then records successful provider acceptance", async () => {
+  it("prepares and archives a frozen PDF without sending email", async () => {
+    h.selectQueue.push([estimate], [estimate], [business], [], []);
+    h.insertQueue.push([revision()]);
+
+    const response = await previewRequest().expect(200);
+
+    expect(response.body).toMatchObject({
+      revisionEventId: 701,
+      revision: 1,
+      quoteNumber: "Q-2026-000012",
+      total: 132,
+    });
+    expect(h.inserts[0]).toMatchObject({ eventType: "revision", status: "snapshot" });
+    expect(h.inserts[0].tokenActivatedAt).toBeUndefined();
+    expect(h.pdfGenerations).toBe(1);
+    expect(h.uploadCalls.map(call => call.path)).toEqual([
+      "quote-archives/estimates/12/revision-1/quote",
+    ]);
+    expect(h.sent).toHaveLength(0);
+  });
+
+  it("blocks a mismatched estimate before creating a revision or sending", async () => {
+    h.selectQueue.push([estimate], [estimate], [business], [], []);
+    h.failSnapshot = true;
+
+    const response = await previewRequest().expect(409);
+
+    expect(response.body.error).toContain("pricing does not reconcile");
+    expect(h.inserts).toHaveLength(0);
+    expect(h.sent).toHaveLength(0);
+  });
+
+  it("reuses an unchanged prepared revision and its PDF", async () => {
+    h.selectQueue.push([estimate], [estimate], [business], [], [revision()]);
+
+    const response = await previewRequest().expect(200);
+
+    expect(response.body.revisionEventId).toBe(701);
+    expect(h.inserts).toHaveLength(0);
+    expect(h.pdfGenerations).toBe(0);
+    expect(h.uploadCalls).toHaveLength(0);
+    expect(h.sent).toHaveLength(0);
+  });
+
+  it("rejects sending when the estimate changed after its PDF was reviewed", async () => {
+    const reviewed = revision();
+    h.selectQueue.push([], [estimate], [], [business], [], [reviewed], [reviewed]);
+    h.contentHashOverride = "changed-after-preview";
+
+    const response = await sendRequest().expect(409);
+
+    expect(response.body.error).toContain("changed");
+    expect(h.sent).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it("refuses to send without a prepared revision", async () => {
+    await request(app).post("/estimates/12/send")
+      .set("Host", "localhost")
+      .send({ recipient: "customer@example.test", idempotencyKey: "unique-idempotency-key-0001" })
+      .expect(400);
+    expect(h.sent).toHaveLength(0);
+    expect(h.selectQueue).toHaveLength(0);
+  });
+
+  it("cleans staged objects when preview PDF storage fails", async () => {
+    h.selectQueue.push([estimate], [estimate], [business], [], []);
+    h.failPdfUpload = true;
+
+    await previewRequest().expect(409);
+
+    expect(h.inserts).toHaveLength(0);
+    expect(h.sent).toHaveLength(0);
+    expect(h.deleteCalls).toHaveLength(0);
+  });
+
+  it("sends the exact reviewed archived PDF and records provider acceptance", async () => {
     queueInitialSend();
     const response = await sendRequest().expect(200);
     expect(response.body.status).toBe("accepted");
     expect(h.sent).toHaveLength(1);
     expect(Buffer.from(h.sent[0].attachment.base64Data, "base64")).toEqual(Buffer.from("exact-original-quote-pdf"));
-    expect(h.uploadCalls.map(call => call.path)).toEqual([
-      "quote-archives/estimates/12/revision-1/quote",
-    ]);
+    expect(h.pdfGenerations).toBe(0);
+    expect(h.uploadCalls).toHaveLength(0);
     expect(h.updates.some(values => values.status === "accepted")).toBe(true);
     expect(h.sent[0].to).toBe("customer@example.test");
     expect(h.sent[0].html).toContain("http://localhost/quote/");
@@ -411,9 +508,8 @@ describe("mocked quote send and recovery lifecycle", () => {
   it("reuses the archived PDF bytes for a later send instead of regenerating the revision", async () => {
     const originalPdf = Buffer.from("immutable-archived-pdf-bytes");
     h.storedPdf = originalPdf;
-    h.selectQueue.push([], [estimate], [], [business], [], [
-      revision({ pdfObjectPath: "private/quote-archives/estimates/12/revision-1/quote" }),
-    ]);
+    const reviewed = revision();
+    h.selectQueue.push([], [estimate], [], [business], [], [reviewed], [reviewed]);
     h.insertQueue.push([attempt({ id: 703 })]);
 
     await sendRequest("second-explicit-send-key-00003").expect(200);
@@ -428,7 +524,7 @@ describe("mocked quote send and recovery lifecycle", () => {
     h.sendResults.push(new h.ProviderRejected("rejected"));
     const response = await sendRequest().expect(502);
     expect(response.body.status).toBe("failed");
-    expect(h.deleteCalls).toContain("private/quote-archives/estimates/12/revision-1/quote");
+    expect(h.deleteCalls).toHaveLength(0);
     expect(h.sent).toHaveLength(1);
     expect(h.updates.some(values => values.status === "failed")).toBe(true);
   });
@@ -463,13 +559,12 @@ describe("mocked quote send and recovery lifecycle", () => {
     expect(h.sent).toHaveLength(1);
   });
 
-  it("does not send when PDF storage fails and cleans staged files", async () => {
+  it("does not create a send attempt when the reviewed PDF cannot be loaded", async () => {
     queueInitialSend();
-    h.failPdfUpload = true;
-    const response = await sendRequest().expect(202);
-    expect(response.body.status).toBe("unresolved");
+    h.failPdfDownload = true;
+    const response = await sendRequest().expect(409);
     expect(h.sent).toHaveLength(0);
-    expect(h.updates.some(values => values.status === "unresolved")).toBe(true);
+    expect(h.inserts).toHaveLength(0);
   });
 });
 

@@ -757,6 +757,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Job"
+        "409":
+          description: Job cannot be closed while subcontractor balances are unresolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubcontractorCloseConflict"
     delete:
       operationId: deleteJob
       tags: [jobs]
@@ -2337,6 +2343,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DashboardStats"
+
+  /reports/accounting:
+    get:
+      operationId: getAccountingReport
+      tags: [reports]
+      summary: Get accounting report and subcontractor payables
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer }
+        - name: businessId
+          in: query
+          schema: { type: integer }
+        - name: businessLine
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Accounting report with outstanding subcontractor balances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountingReport"
 
   /reports/compliance:
     get:
@@ -4778,6 +4807,68 @@ components:
           type: number
           nullable: true
       required: [enabledFeatures]
+
+    SubcontractorPayableItem:
+      type: object
+      required: [subcontractorId, subName, jobId, jobTitle, compensationType, amount, remainingAmount, balanceStatus, balanceReason, paymentStatus, businessLine]
+      properties:
+        subcontractorId: { type: integer }
+        subName: { type: string }
+        jobId: { type: ["integer", "null"] }
+        jobTitle: { type: string }
+        compensationType: { type: string }
+        amount: { type: ["number", "null"] }
+        remainingAmount: { type: ["number", "null"] }
+        balanceStatus: { type: string, enum: [known, unknown] }
+        balanceReason: { type: ["string", "null"] }
+        paymentStatus: { type: ["string", "null"] }
+        businessLine: { type: ["string", "null"] }
+
+    SubcontractorPayableGroup:
+      type: object
+      required: [subcontractorId, subName, knownTotal, unresolvedCount, isComplete, jobCount, items]
+      properties:
+        subcontractorId: { type: integer }
+        subName: { type: string }
+        knownTotal: { type: number }
+        unresolvedCount: { type: integer }
+        isComplete: { type: boolean }
+        jobCount: { type: integer }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SubcontractorPayableItem" }
+
+    AccountingReport:
+      type: object
+      required: [outstandingSubPayments, outstandingSubTotal, subcontractorPayables]
+      properties:
+        outstandingSubPayments:
+          type: array
+          items: { $ref: "#/components/schemas/SubcontractorPayableItem" }
+        outstandingSubTotal:
+          type: number
+          description: Known subtotal only; inspect grouped completeness before treating it as the total owed.
+        subcontractorPayables:
+          type: array
+          items: { $ref: "#/components/schemas/SubcontractorPayableGroup" }
+
+    SubcontractorCloseConflict:
+      type: object
+      required: [code, error, outstanding]
+      properties:
+        code: { type: string, enum: [SUBCONTRACTOR_BALANCE_UNRESOLVED] }
+        error: { type: string }
+        outstanding:
+          type: array
+          items:
+            type: object
+            required: [subcontractorId, subName, remainingAmount, balanceStatus, balanceReason]
+            properties:
+              subcontractorId: { type: integer }
+              subName: { type: string }
+              remainingAmount: { type: ["number", "null"] }
+              balanceStatus: { type: string, enum: [known, unknown] }
+              balanceReason: { type: ["string", "null"] }
 
     DashboardStats:
       type: object

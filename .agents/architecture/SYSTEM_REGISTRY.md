@@ -450,13 +450,13 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Website / Marketing / Media
 
-- **Tables:** `website_configs`, `marketing_content`, `website_form_submissions`, `website_media`, `website_media_folders`, `website_page_views`, `portfolio_photos`, `saved_sections`, `deposit_submissions`
+- **Tables:** `website_configs` (published snapshot), `website_config_drafts` (latest private draft), `marketing_content`, `website_form_submissions`, `website_media`, `website_media_folders`, `website_page_views`, `portfolio_photos`, `saved_sections`, `deposit_submissions`
 - **Schemas:** `lib/db/src/schema/website.ts`, `portfolio-photos.ts`
 - **API:** `artifacts/api-server/src/routes/website.ts`, `wix-integration.ts`, `storage.ts`
 - **UI:** `website/*`, `PublicSite.tsx`
 - **Reports:** Website analytics and form submissions are operational; a submitted inquiry belongs to CRM only after explicit conversion/linking.
-- **Source of truth:** website tables own published configuration, content, media metadata, submissions, and analytics; `deposit_submissions` owns website deposit-request records; object storage owns file bytes.
-- **Rule:** Public-site content is not a customer or invoice record. Preserve submission IDs when promoting inquiries into prospects.
+- **Source of truth:** `website_configs` owns published configuration; `website_config_drafts` owns the latest private editor snapshot and revision markers; `website_media` owns media metadata; object storage owns file bytes. `deposit_submissions` owns website deposit-request records.
+- **Rule:** Only explicit Publish promotes a draft into `website_configs`. Public handlers read published rows only; draft-only media remains private until promotion. Database guards stay enabled through code rollback. Public-site content is not a customer or invoice record. Preserve submission IDs when promoting inquiries into prospects.
 
 ## Investments
 

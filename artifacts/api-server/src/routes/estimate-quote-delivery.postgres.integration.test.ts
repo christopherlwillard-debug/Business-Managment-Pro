@@ -62,7 +62,7 @@ vi.mock("./guards.js", () => ({
 }));
 vi.mock("../lib/business-scope.js", () => ({
   requestedBusinessReadScope: async (req: express.Request) => ({
-    businessIds: [Number(req.get("x-test-business"))],
+    businessIds: [Number(req.query?.businessId ?? req.headers?.["x-test-business"])],
     businessLines: [],
   }),
   invalidBusinessScope: () => false,
@@ -128,6 +128,14 @@ function estimatePost(records: TestRecords, path: string) {
   return request(app).post(path).set("Host", "localhost").set("X-Test-Business", String(records.businessId));
 }
 
+async function prepareQuoteRevision(records: TestRecords): Promise<number> {
+  const response = await estimatePost(records, `/estimates/${records.estimateId}/quote-preview`)
+    .query({ businessId: String(records.businessId) })
+    .send({});
+  expect(response.status, `${JSON.stringify(response.body)}\n${response.text}`).toBe(200);
+  return response.body.revisionEventId as number;
+}
+
 function estimateDelete(records: TestRecords, path: string) {
   return request(app).delete(path).set("Host", "localhost").set("X-Test-Business", String(records.businessId));
 }
@@ -157,6 +165,8 @@ afterEach(async () => {
 describe("quote delivery with real development PostgreSQL transactions", () => {
   it("serializes concurrent sends and prevents deletion after provider acceptance", async () => {
     const records = await createTestRecords("concurrent-send");
+    const revisionEventId = await prepareQuoteRevision(records);
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
     let releaseProvider!: () => void;
     let signalProviderEntered!: () => void;
     const providerEntered = new Promise<void>(resolve => { signalProviderEntered = resolve; });
@@ -170,11 +180,11 @@ describe("quote delivery with real development PostgreSQL transactions", () => {
     });
 
     const firstRequest = estimatePost(records, `/estimates/${records.estimateId}/send`)
-      .send({ recipient: "quote-integration@example.test", idempotencyKey: "concurrent-key-first-0001" })
+      .send({ recipient: "quote-integration@example.test", idempotencyKey: "concurrent-key-first-0001", revisionEventId })
       .then(response => response);
     await providerEntered;
     const secondResponse = await estimatePost(records, `/estimates/${records.estimateId}/send`)
-      .send({ recipient: "quote-integration@example.test", idempotencyKey: "concurrent-key-second-0002" });
+      .send({ recipient: "quote-integration@example.test", idempotencyKey: "concurrent-key-second-0002", revisionEventId });
     expect(secondResponse.status).toBe(409);
     releaseProvider();
     const firstResponse = await firstRequest;
@@ -196,10 +206,11 @@ describe("quote delivery with real development PostgreSQL transactions", () => {
 
   it("reconciles an uncertain send transactionally and records one response on its frozen revision", async () => {
     const records = await createTestRecords("reconcile-response");
+    const revisionEventId = await prepareQuoteRevision(records);
     mocks.sendEmail.mockRejectedValueOnce(new Error("simulated connection loss after provider handoff"));
 
     const sent = await estimatePost(records, `/estimates/${records.estimateId}/send`)
-      .send({ recipient: "quote-integration@example.test", idempotencyKey: "reconcile-key-first-0001" })
+      .send({ recipient: "quote-integration@example.test", idempotencyKey: "reconcile-key-first-0001", revisionEventId })
       .expect(202);
     expect(sent.body.status).toBe("unresolved");
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
@@ -222,7 +233,7 @@ describe("quote delivery with real development PostgreSQL transactions", () => {
     expect(revision.tokenRevokedAt).toBeNull();
 
     await estimatePost(records, `/estimates/${records.estimateId}/send`)
-      .send({ recipient: "quote-integration@example.test", idempotencyKey: "reconcile-key-first-0001" })
+      .send({ recipient: "quote-integration@example.test", idempotencyKey: "reconcile-key-first-0001", revisionEventId })
       .expect(409);
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
 

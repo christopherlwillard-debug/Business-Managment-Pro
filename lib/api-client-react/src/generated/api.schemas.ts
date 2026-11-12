@@ -1943,6 +1943,82 @@ export interface AppSettings {
   [key: string]: unknown;
 }
 
+export type SubcontractorPayableItemBalanceStatus =
+  (typeof SubcontractorPayableItemBalanceStatus)[keyof typeof SubcontractorPayableItemBalanceStatus];
+
+export const SubcontractorPayableItemBalanceStatus = {
+  known: "known",
+  unknown: "unknown",
+} as const;
+
+export interface SubcontractorPayableItem {
+  subcontractorId: number;
+  subName: string;
+  /** @nullable */
+  jobId: number | null;
+  jobTitle: string;
+  compensationType: string;
+  /** @nullable */
+  amount: number | null;
+  /** @nullable */
+  remainingAmount: number | null;
+  balanceStatus: SubcontractorPayableItemBalanceStatus;
+  /** @nullable */
+  balanceReason: string | null;
+  /** @nullable */
+  paymentStatus: string | null;
+  /** @nullable */
+  businessLine: string | null;
+}
+
+export interface SubcontractorPayableGroup {
+  subcontractorId: number;
+  subName: string;
+  knownTotal: number;
+  unresolvedCount: number;
+  isComplete: boolean;
+  jobCount: number;
+  items: SubcontractorPayableItem[];
+}
+
+export interface AccountingReport {
+  outstandingSubPayments: SubcontractorPayableItem[];
+  /** Known subtotal only; inspect grouped completeness before treating it as the total owed. */
+  outstandingSubTotal: number;
+  subcontractorPayables: SubcontractorPayableGroup[];
+}
+
+export type SubcontractorCloseConflictCode =
+  (typeof SubcontractorCloseConflictCode)[keyof typeof SubcontractorCloseConflictCode];
+
+export const SubcontractorCloseConflictCode = {
+  SUBCONTRACTOR_BALANCE_UNRESOLVED: "SUBCONTRACTOR_BALANCE_UNRESOLVED",
+} as const;
+
+export type SubcontractorCloseConflictOutstandingItemBalanceStatus =
+  (typeof SubcontractorCloseConflictOutstandingItemBalanceStatus)[keyof typeof SubcontractorCloseConflictOutstandingItemBalanceStatus];
+
+export const SubcontractorCloseConflictOutstandingItemBalanceStatus = {
+  known: "known",
+  unknown: "unknown",
+} as const;
+
+export type SubcontractorCloseConflictOutstandingItem = {
+  subcontractorId: number;
+  subName: string;
+  /** @nullable */
+  remainingAmount: number | null;
+  balanceStatus: SubcontractorCloseConflictOutstandingItemBalanceStatus;
+  /** @nullable */
+  balanceReason: string | null;
+};
+
+export interface SubcontractorCloseConflict {
+  code: SubcontractorCloseConflictCode;
+  error: string;
+  outstanding: SubcontractorCloseConflictOutstandingItem[];
+}
+
 export type DashboardStatsRevenueDateBasis = {
   paidInvoiceCount: number;
   verifiedDeliveryCount: number;
@@ -2549,6 +2625,12 @@ export const GetDashboardStatsBusinessLine = {
   asphalt_sealing: "asphalt_sealing",
   general_contracting: "general_contracting",
 } as const;
+
+export type GetAccountingReportParams = {
+  year?: number;
+  businessId?: number;
+  businessLine?: string;
+};
 
 export type UploadFileBody = {
   file?: Blob;

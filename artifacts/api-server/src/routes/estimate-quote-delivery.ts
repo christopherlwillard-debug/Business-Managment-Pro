@@ -454,6 +454,141 @@ router.get("/:id/quote-events", async (req, res): Promise<void> => {
   res.json(events.map(safeEvent));
 });
 
+router.post("/:id/quote-preview", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  const scoped = await scopedEstimate(req, res, id);
+  if (!scoped) return;
+  let stagedArchive: { pdfObjectPath: string; logoObjectPath: string | null } | null = null;
+  let archiveCommitted = false;
+
+  try {
+    const prepared = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT id FROM estimates WHERE id = ${id} FOR UPDATE`);
+      const [row] = await tx.select({
+        ...getTableColumns(estimatesTable),
+        clientName: clientsTable.name,
+        clientEmail: clientsTable.email,
+        clientPhone: clientsTable.phone,
+        clientAddress: clientsTable.address,
+        clientCity: clientsTable.city,
+        clientState: clientsTable.state,
+        clientZip: clientsTable.zip,
+      }).from(estimatesTable)
+        .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
+        .where(eq(estimatesTable.id, id));
+      if (!row || !belongsToBusinessReadScope(row, scoped.scope)) return { missing: true as const };
+
+      const business = row.businessId
+        ? (await tx.select().from(businessesTable).where(eq(businessesTable.id, row.businessId)).limit(1))[0]
+        : (await tx.select().from(businessesTable).where(eq(businessesTable.slug, row.businessLine ?? "")).limit(1))[0];
+      if (!business) return { conflict: true as const };
+      const settings = (await tx.select().from(settingsTable).limit(1))[0] ?? null;
+      const [latest] = await tx.select().from(estimateQuoteEventsTable).where(and(
+        eq(estimateQuoteEventsTable.estimateId, id),
+        eq(estimateQuoteEventsTable.eventType, "revision"),
+      )).orderBy(desc(estimateQuoteEventsTable.revision)).limit(1);
+      const expiresAt = row.quoteExpiresAt == null
+        ? new Date(Date.now() + Math.min(365, Math.max(1, business.defaultQuoteValidityDays ?? 30)) * 86400000).toISOString().slice(0, 10)
+        : String(row.quoteExpiresAt).slice(0, 10);
+      let revisionNumber = latest?.revision ?? 1;
+      let built = await buildEstimateQuoteSnapshot({
+        estimate: row as never,
+        business,
+        settings,
+        revision: revisionNumber,
+        expiresAt,
+      });
+      let revisionRow = latest;
+
+      if (!latest || latest.contentHash !== built.contentHash) {
+        revisionNumber = latest ? latest.revision + 1 : 1;
+        built = await buildEstimateQuoteSnapshot({
+          estimate: row as never,
+          business,
+          settings,
+          revision: revisionNumber,
+          expiresAt,
+        });
+        const pdf = await generateEstimateQuotePdf(built.pdfDocument);
+        stagedArchive = await stageEstimateQuoteArchive({
+          estimateId: id,
+          revision: revisionNumber,
+          pdf,
+          logo: built.logo,
+          storage,
+        });
+        const token = getEstimateQuoteToken(id, revisionNumber, built.contentHash);
+        [revisionRow] = await tx.insert(estimateQuoteEventsTable).values({
+          estimateId: id,
+          businessId: business.id,
+          revision: revisionNumber,
+          eventType: "revision",
+          status: "snapshot",
+          tokenHash: hashEstimateQuoteToken(token),
+          tokenExpiresAt: new Date(`${expiresAt}T23:59:59.999Z`),
+          contentHash: built.contentHash,
+          customerSnapshot: built.customerSnapshot,
+          pdfObjectPath: stagedArchive.pdfObjectPath,
+          logoObjectPath: stagedArchive.logoObjectPath,
+          logoContentType: built.logo?.mimeType ?? null,
+          metadata: {},
+        }).returning();
+      } else if (!latest.pdfObjectPath) {
+        const pdf = await generateEstimateQuotePdf(built.pdfDocument);
+        stagedArchive = await stageEstimateQuoteArchive({
+          estimateId: id,
+          revision: revisionNumber,
+          pdf,
+          logo: built.logo,
+          storage,
+        });
+        [revisionRow] = await tx.update(estimateQuoteEventsTable).set({
+          pdfObjectPath: stagedArchive.pdfObjectPath,
+          logoObjectPath: stagedArchive.logoObjectPath,
+          logoContentType: built.logo?.mimeType ?? null,
+        }).where(eq(estimateQuoteEventsTable.id, latest.id)).returning();
+      }
+
+      if (!revisionRow?.pdfObjectPath) return { conflict: true as const };
+      return {
+        revisionEventId: revisionRow.id,
+        revision: revisionRow.revision,
+        title: built.customerSnapshot.title,
+        quoteNumber: built.customerSnapshot.quoteNumber,
+        total: built.customerSnapshot.total,
+      };
+    });
+    if ("missing" in prepared) {
+      if (stagedArchive) await removeStagedEstimateQuoteArchive(stagedArchive, storage);
+      res.status(404).json({ error: "Estimate not found" });
+      return;
+    }
+    if ("conflict" in prepared) {
+      if (stagedArchive) await removeStagedEstimateQuoteArchive(stagedArchive, storage);
+      res.status(409).json({
+        error: "Could not prepare this quote revision. Refresh and try again.",
+        code: "preview_failed",
+      });
+      return;
+    }
+    archiveCommitted = stagedArchive != null;
+    res.json(prepared);
+  } catch (error) {
+    if (stagedArchive && !archiveCommitted) {
+      await removeStagedEstimateQuoteArchive(stagedArchive, storage);
+    }
+    const message = error instanceof Error && error.name === "EstimateQuoteTotalsMismatchError"
+      ? "Customer pricing does not reconcile with the saved estimate. Review the estimate before sending."
+      : "Unable to prepare the quote PDF. No email was sent.";
+    res.status(409).json({
+      error: message,
+      code: error instanceof Error && error.name === "EstimateQuoteTotalsMismatchError"
+        ? "pricing_mismatch"
+        : "preview_failed",
+    });
+  }
+});
+
 router.get("/:id/quote-events/:eventId/pdf", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const eventId = Number(req.params.eventId);
@@ -477,7 +612,10 @@ router.get("/:id/quote-events/:eventId/pdf", async (req, res): Promise<void> => 
     const [buffer] = await file.download();
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="quote-revision-${revision.revision}.pdf"`);
+    res.setHeader(
+      "Content-Disposition",
+      `${req.query.inline === "1" ? "inline" : "attachment"}; filename="quote-revision-${revision.revision}.pdf"`,
+    );
     res.send(buffer);
   } catch {
     res.status(404).json({ error: "Quote revision file not found" });
@@ -486,6 +624,7 @@ router.get("/:id/quote-events/:eventId/pdf", async (req, res): Promise<void> => 
 
 router.post("/:id/send", async (req, res): Promise<void> => {
   const id = Number(req.params.id);
+  const revisionEventId = Number(req.body?.revisionEventId);
   const recipient = typeof req.body?.recipient === "string" ? req.body.recipient.trim() : "";
   const idempotencyKey = typeof req.body?.idempotencyKey === "string" ? req.body.idempotencyKey.trim() : "";
   let publicOrigin: string;
@@ -497,9 +636,10 @@ router.post("/:id/send", async (req, res): Promise<void> => {
   }
   const scope = await requestedBusinessReadScope(req);
   if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
-  if (!Number.isSafeInteger(id) || id <= 0 || !scope || recipient.length > 254 || !emailPattern.test(recipient)
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(revisionEventId) || revisionEventId <= 0
+    || !scope || recipient.length > 254 || !emailPattern.test(recipient)
     || idempotencyKey.length < 16 || idempotencyKey.length > 128) {
-    res.status(400).json({ error: "A valid business, recipient, and idempotency key are required" });
+    res.status(400).json({ error: "A reviewed quote revision, business, recipient, and idempotency key are required" });
     return;
   }
   const key = createHash("sha256").update(`${id}:${idempotencyKey}`).digest("hex");
@@ -553,56 +693,49 @@ router.post("/:id/send", async (req, res): Promise<void> => {
         : (await tx.select().from(businessesTable).where(eq(businessesTable.slug, row.businessLine ?? "")).limit(1))[0];
       if (!business) return { conflict: true as const };
       const settings = (await tx.select().from(settingsTable).limit(1))[0] ?? null;
+      const [reviewedRevision] = await tx.select().from(estimateQuoteEventsTable).where(and(
+        eq(estimateQuoteEventsTable.id, revisionEventId),
+        eq(estimateQuoteEventsTable.estimateId, id),
+        eq(estimateQuoteEventsTable.eventType, "revision"),
+      )).limit(1);
       const [latest] = await tx.select().from(estimateQuoteEventsTable).where(and(
         eq(estimateQuoteEventsTable.estimateId, id),
         eq(estimateQuoteEventsTable.eventType, "revision"),
       )).orderBy(desc(estimateQuoteEventsTable.revision)).limit(1);
-      const revisionNumber = latest?.revision ?? 1;
-      const expiry = row.quoteExpiresAt == null
-        ? new Date(Date.now() + Math.min(365, Math.max(1, business.defaultQuoteValidityDays ?? 30)) * 86400000).toISOString().slice(0, 10)
-        : String(row.quoteExpiresAt).slice(0, 10);
-      let built = await buildEstimateQuoteSnapshot({
+      if (!reviewedRevision || !latest || latest.id !== reviewedRevision.id
+        || !["snapshot", "accepted"].includes(reviewedRevision.status)
+        || reviewedRevision.tokenRevokedAt
+        || !reviewedRevision.pdfObjectPath
+        || !reviewedRevision.contentHash
+        || !belongsToBusinessReadScope({ businessId: reviewedRevision.businessId }, scope)) {
+        return { stale: true as const };
+      }
+      const expiry = reviewedRevision.customerSnapshot
+        && typeof reviewedRevision.customerSnapshot === "object"
+        && "expiresAt" in reviewedRevision.customerSnapshot
+        ? String((reviewedRevision.customerSnapshot as Record<string, unknown>).expiresAt ?? "")
+        : row.quoteExpiresAt == null
+          ? new Date(Date.now() + Math.min(365, Math.max(1, business.defaultQuoteValidityDays ?? 30)) * 86400000).toISOString().slice(0, 10)
+          : String(row.quoteExpiresAt).slice(0, 10);
+      const built = await buildEstimateQuoteSnapshot({
         estimate: row as never,
         business,
         settings,
-        revision: revisionNumber,
+        revision: reviewedRevision.revision,
         expiresAt: expiry,
       });
-      let revisionRow = latest;
-      let createdRevision = false;
-      if (!latest || latest.contentHash !== built.contentHash) {
-        const nextRevision = latest ? latest.revision + 1 : 1;
-        built = await buildEstimateQuoteSnapshot({
-          estimate: row as never,
-          business,
-          settings,
-          revision: nextRevision,
-          expiresAt: expiry,
-        });
-        const token = getEstimateQuoteToken(id, nextRevision, built.contentHash);
-        [revisionRow] = await tx.insert(estimateQuoteEventsTable).values({
-          estimateId: id,
-          businessId: business.id,
-          revision: nextRevision,
-          eventType: "revision",
-          status: "snapshot",
-          tokenHash: hashEstimateQuoteToken(token),
-          tokenExpiresAt: new Date(`${expiry}T23:59:59.999Z`),
-          contentHash: built.contentHash,
-          customerSnapshot: built.customerSnapshot,
-          logoContentType: built.logo?.mimeType ?? null,
-          metadata: {},
-        }).returning();
-        createdRevision = true;
-      }
-      if (!revisionRow) return { conflict: true as const };
-      const token = getEstimateQuoteToken(id, revisionRow.revision, revisionRow.contentHash ?? "");
-      if (revisionRow.tokenHash !== hashEstimateQuoteToken(token)) return { conflict: true as const };
+      if (built.contentHash !== reviewedRevision.contentHash) return { stale: true as const };
+      const token = getEstimateQuoteToken(id, reviewedRevision.revision, reviewedRevision.contentHash);
+      if (reviewedRevision.tokenHash !== hashEstimateQuoteToken(token)) return { stale: true as const };
+      const file = await storage.getObjectEntityFile(reviewedRevision.pdfObjectPath);
+      const [downloaded] = await file.download();
+      const pdfBuffer = downloaded as Buffer;
+      if (!pdfBuffer.length) return { stale: true as const };
       const [attempt] = await tx.insert(estimateQuoteEventsTable).values({
         estimateId: id,
         businessId: business.id,
-        revisionSnapshotId: revisionRow.id,
-        revision: revisionRow.revision,
+        revisionSnapshotId: reviewedRevision.id,
+        revision: reviewedRevision.revision,
         eventType: "send_attempt",
         status: "pending",
         recipient,
@@ -612,24 +745,18 @@ router.post("/:id/send", async (req, res): Promise<void> => {
         requestedAt: new Date(),
         metadata: {},
       }).returning();
-      let pdfBuffer: Buffer | null = null;
-      if (revisionRow.pdfObjectPath && !createdRevision) {
-        const file = await storage.getObjectEntityFile(revisionRow.pdfObjectPath);
-        const [downloaded] = await file.download();
-        pdfBuffer = downloaded as Buffer;
-      }
       return {
         attemptId: attempt.id,
-        revisionId: revisionRow.id,
-        revision: revisionRow.revision,
+        revisionId: reviewedRevision.id,
+        revision: reviewedRevision.revision,
         token,
-        quoteNumber: built.customerSnapshot.quoteNumber,
+        quoteNumber: String((reviewedRevision.customerSnapshot as Record<string, unknown>).quoteNumber ?? ""),
         title: built.customerSnapshot.title,
-        customerSnapshot: revisionRow.customerSnapshot as Record<string, unknown>,
+        customerSnapshot: reviewedRevision.customerSnapshot as Record<string, unknown>,
         pdfBuffer,
-        pdfDocument: pdfBuffer ? null : built.pdfDocument,
-        logo: built.logo,
-        createdRevision,
+        pdfDocument: null,
+        logo: null,
+        createdRevision: false,
         businessId: business.id,
       };
     });
@@ -638,7 +765,17 @@ router.post("/:id/send", async (req, res): Promise<void> => {
       return;
     }
     if ("conflict" in prepared) {
-      res.status(409).json({ error: "A quote send is already pending or unresolved, or the send key was already used." });
+      res.status(409).json({
+        error: "A quote send is already pending or unresolved, or the send key was already used.",
+        code: "send_conflict",
+      });
+      return;
+    }
+    if ("stale" in prepared) {
+      res.status(409).json({
+        error: "This estimate changed or the reviewed PDF is unavailable. Review the latest PDF before sending.",
+        code: "stale_revision",
+      });
       return;
     }
     context = prepared;
@@ -646,7 +783,10 @@ router.post("/:id/send", async (req, res): Promise<void> => {
     const message = error instanceof Error && error.name === "EstimateQuoteTotalsMismatchError"
       ? "Customer pricing does not reconcile with the saved estimate."
       : "Unable to prepare this quote for sending.";
-    res.status(409).json({ error: message });
+    res.status(409).json({
+      error: message,
+      ...(error instanceof Error && error.name === "EstimateQuoteTotalsMismatchError" ? { code: "pricing_mismatch" } : {}),
+    });
     return;
   }
 

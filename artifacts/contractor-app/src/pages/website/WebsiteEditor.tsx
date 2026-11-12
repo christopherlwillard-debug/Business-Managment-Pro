@@ -190,6 +190,9 @@ interface WebsiteConfig {
   settings: SiteSettings;
   published: boolean;
   publishedAt: string | null;
+  draftRevision: number;
+  publishedRevision: number;
+  hasUnpublishedChanges: boolean;
 }
 
 function renderSection(
@@ -1535,6 +1538,7 @@ function WebsiteEditor() {
   const [publishing, setPublishing] = useState(false);
   const [showPublished, setShowPublished] = useState(false);
   const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState(false);
+  const [draftConflict, setDraftConflict] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [aboutPhotoUploading, setAboutPhotoUploading] = useState(false);
   const [uploadingPortfolioPhotoIds, setUploadingPortfolioPhotoIds] = useState<Set<string>>(new Set());
@@ -1783,6 +1787,7 @@ function WebsiteEditor() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dataInitializedRef = useRef(false);
   const editorRevisionRef = useRef(0);
+  const draftRevisionRef = useRef(0);
   const businessSessionRef = useRef(0);
   const saveInFlightRef = useRef(false);
   const saveQueuedRef = useRef(false);
@@ -1854,10 +1859,12 @@ function WebsiteEditor() {
     setActivePageId("home");
     isDirtyRef.current = false;
     editorRevisionRef.current = 0;
+    draftRevisionRef.current = 0;
     businessSessionRef.current += 1;
     saveInFlightRef.current = false;
     saveQueuedRef.current = false;
     saveErrorRevisionRef.current = null;
+    setDraftConflict(false);
     setHasUnpublishedChanges(false);
     setIsGenerating(false);
     setGeneratingStep("");
@@ -2424,25 +2431,11 @@ function WebsiteEditor() {
   useEffect(() => {
     if (!config || dataInitializedRef.current) return;
     dataInitializedRef.current = true;
+    draftRevisionRef.current = config.draftRevision ?? 0;
+    setHasUnpublishedChanges(config.hasUnpublishedChanges ?? false);
 
     const sorted = [...(config.sections as Section[])].sort((a, b) => a.order - b.order);
-    let migrated = sorted.map(s => {
-      if (s.type === "hero" && !s.blockStyle?.bgType && (s.content as any).bgColor) {
-        return { ...s, blockStyle: { ...(s.blockStyle ?? {}), bgType: "color" as const, bgColor: (s.content as any).bgColor } };
-      }
-      return s;
-    });
-    if (!migrated.find(s => s.type === "header")) {
-      const defHeader: Section = {
-        id: "header-" + Math.random().toString(36).slice(2, 9),
-        type: "header",
-        enabled: true,
-        order: -1,
-        content: defaultHeaderContent() as unknown as Record<string, unknown>,
-      };
-      migrated = [defHeader, ...migrated];
-      isDirtyRef.current = true;
-    }
+    const migrated = sorted;
     const rawSettings = config.settings as SiteSettings & { pages?: SitePage[] };
     const extraPages: SitePage[] = rawSettings.pages ?? [];
     const isNewSite = config.id === null;
@@ -2454,19 +2447,18 @@ function WebsiteEditor() {
           { id: "page-contact", name: "Contact", slug: "contact", sections: [] },
         ]
       : extraPages;
-    if (shouldBootstrapDefaults) {
-      const siteSlug = activeBusiness?.slug ?? "";
-      const defaultNavLinks = defaultExtraPages.map(p => ({
-        id: nanoid(), label: p.name, href: `/site/${siteSlug}/${p.slug}`, pageId: p.id,
-      }));
-      migrated = migrated.map(s => s.type === "header" ? {
+    const siteSlug = activeBusiness?.slug ?? "";
+    const defaultNavLinks = shouldBootstrapDefaults ? defaultExtraPages.map(p => ({
+      id: nanoid(), label: p.name, href: `/site/${siteSlug}/${p.slug}`, pageId: p.id,
+    })) : [];
+    const initializedHomeSections = shouldBootstrapDefaults
+      ? migrated.map(s => s.type === "header" ? {
         ...s,
         content: { ...s.content, navLinks: [...((s.content.navLinks as any[]) ?? []), ...defaultNavLinks] },
-      } : s);
-      isDirtyRef.current = true;
-    }
+      } : s)
+      : migrated;
     const allPages: SitePage[] = [
-      { id: "home", name: "Home", slug: "home", sections: migrated },
+      { id: "home", name: "Home", slug: "home", sections: initializedHomeSections },
       ...defaultExtraPages,
     ];
     setLocalPages(allPages);
@@ -2561,6 +2553,7 @@ function WebsiteEditor() {
     businessId: number;
     session: number;
     revision: number;
+    expectedDraftRevision: number;
     payload: { sections: Section[]; settings: SiteSettings & { pages?: SitePage[] } };
   };
 
@@ -2573,6 +2566,7 @@ function WebsiteEditor() {
       businessId: bizId,
       session: businessSessionRef.current,
       revision: editorRevisionRef.current,
+      expectedDraftRevision: draftRevisionRef.current,
       payload: {
         sections: (homePage?.sections ?? []).map((s, i) => ({ ...s, order: i })),
         settings: withWebsitePageList(settingsRef.current, additionalPages),
@@ -2586,7 +2580,7 @@ function WebsiteEditor() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(request.payload),
+        body: JSON.stringify({ ...request.payload, expectedDraftRevision: request.expectedDraftRevision }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null) as { error?: string } | null;
@@ -2597,6 +2591,9 @@ function WebsiteEditor() {
     onSuccess: ({ response, request }) => {
       if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
       saveErrorRevisionRef.current = null;
+      setDraftConflict(false);
+      draftRevisionRef.current = response.draftRevision ?? request.expectedDraftRevision;
+      setHasUnpublishedChanges(Boolean(response.hasUnpublishedChanges));
       qc.setQueryData(["website-config", bizId], response);
       if (request.revision === editorRevisionRef.current) {
         isDirtyRef.current = false;
@@ -2609,11 +2606,20 @@ function WebsiteEditor() {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setShowSaved(false), 2500);
     },
-    onError: (_error, request) => {
+    onError: (error, request) => {
       if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
       saveErrorRevisionRef.current = request.revision;
       isDirtyRef.current = true;
-      toast({ title: "Save failed", description: "Your changes are still here. Retry when ready.", variant: "destructive" });
+      if (error instanceof Error && error.message.toLowerCase().includes("changed in another session")) {
+        setDraftConflict(true);
+      }
+      toast({
+        title: "Draft was not saved",
+        description: error instanceof Error
+          ? `${error.message}. Your local changes are still here; the published site is unchanged.`
+          : "Your local changes are still here; the published site is unchanged. Retry when ready.",
+        variant: "destructive",
+      });
     },
     onSettled: (_data, _error, request) => {
       if (request.businessId !== bizId || request.session !== businessSessionRef.current) return;
@@ -2642,6 +2648,31 @@ function WebsiteEditor() {
         saveInFlightPromiseRef.current = null;
       }
     }).catch(() => undefined);
+  }
+
+  async function reloadServerDraft() {
+    if (!window.confirm("Reload the saved website draft? This replaces the edits currently open in this editor.")) return;
+    const result = await refetchConfig();
+    const fresh = result.data;
+    if (!fresh || fresh.businessId !== bizId) return;
+    const freshSettings = { ...(fresh.settings as SiteSettings & { pages?: SitePage[] }) };
+    const extraPages = freshSettings.pages ?? [];
+    delete (freshSettings as any).pages;
+    setLocalPages([
+      {
+        id: "home",
+        name: "Home",
+        slug: "home",
+        sections: [...fresh.sections].sort((a, b) => a.order - b.order),
+      },
+      ...extraPages,
+    ]);
+    setLocalSettings(freshSettings);
+    draftRevisionRef.current = fresh.draftRevision ?? 0;
+    setHasUnpublishedChanges(Boolean(fresh.hasUnpublishedChanges));
+    saveErrorRevisionRef.current = null;
+    isDirtyRef.current = false;
+    setDraftConflict(false);
   }
 
   const createSavedSectionMutation = useMutation({
@@ -2740,7 +2771,7 @@ function WebsiteEditor() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(request.payload),
+        body: JSON.stringify({ expectedDraftRevision: draftRevisionRef.current }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null) as { error?: string } | null;
@@ -2748,10 +2779,25 @@ function WebsiteEditor() {
       }
       const response = await res.json();
       if (request.businessId === bizId && request.session === businessSessionRef.current) {
+        draftRevisionRef.current = response.draftRevision ?? draftRevisionRef.current;
+        setHasUnpublishedChanges(Boolean(response.hasUnpublishedChanges));
         qc.setQueryData(["website-config", bizId], response);
         if (request.revision === editorRevisionRef.current) {
           setHasUnpublishedChanges(false);
           isDirtyRef.current = false;
+          const publishedSettings = { ...(response.settings as SiteSettings & { pages?: SitePage[] }) };
+          const publishedPages = publishedSettings.pages ?? pagesRef.current.filter(page => page.id !== "home");
+          delete (publishedSettings as any).pages;
+          setLocalPages([
+            {
+              id: "home",
+              name: "Home",
+              slug: "home",
+              sections: [...(response.sections as Section[])].sort((a, b) => a.order - b.order),
+            },
+            ...publishedPages,
+          ]);
+          setLocalSettings(publishedSettings);
         } else {
           setHasUnpublishedChanges(true);
           isDirtyRef.current = true;
@@ -7052,6 +7098,15 @@ function WebsiteEditor() {
               <Save className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Save Draft</span>
             </button>
+            {draftConflict && (
+              <button
+                type="button"
+                onClick={() => void reloadServerDraft()}
+                className="text-[11px] font-medium text-destructive hover:underline"
+              >
+                Reload saved draft
+              </button>
+            )}
 
             {/* Unpublished changes badge */}
             {hasUnpublishedChanges && !publishing && (

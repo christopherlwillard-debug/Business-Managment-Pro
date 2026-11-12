@@ -223,6 +223,67 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
     await page.setCookie({ name: "sid", value: SID, url: BASE, path: "/" });
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const closeAttempts = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const responses = [];
+      for (const status of ["closed", "completed"]) {
+        const response = await fetch(`/api/jobs/${jobId}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status, businessId, businessLine }),
+        });
+        const body = await response.json();
+        responses.push({ status: response.status, code: body.code });
+      }
+      const jobResponse = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+      const job = await jobResponse.json() as { status?: string };
+      return { responses, jobStatus: job.status };
+    }, {
+      jobId: markAllPaidFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Server rejects completion and closure while subcontractor pay remains",
+      closeAttempts.responses.length === 2 && closeAttempts.responses.every(
+        response => response.status === 409 && response.code === "SUBCONTRACTOR_BALANCE_UNRESOLVED",
+      ),
+      JSON.stringify(closeAttempts.responses),
+    );
+    record("Rejected transitions leave job open", closeAttempts.jobStatus === "scheduled", `status=${closeAttempts.jobStatus}`);
+    await db.update(jobsTable)
+      .set({ status: "completed", closedAt: "2026-11-11" })
+      .where(eq(jobsTable.id, markAllPaidFixture.jobId));
+    const reopened = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+      });
+      const body = await response.json() as { status?: string; closedAt?: string | null; error?: string };
+      return { httpStatus: response.status, status: body.status, closedAt: body.closedAt, error: body.error };
+    }, {
+      jobId: markAllPaidFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Explicit reopen clears the closed date without recording payment",
+      reopened.httpStatus === 200 && reopened.status === "completed" && reopened.closedAt == null,
+      JSON.stringify(reopened),
+    );
+    const jobsPageSource = fs.readFileSync(new URL("../../contractor-app/src/pages/Jobs.tsx", import.meta.url), "utf8");
+    record(
+      "Completion dialog routes unpaid work to payroll without recording payments",
+      jobsPageSource.includes("Open Job Payroll")
+        && !jobsPageSource.includes("Mark All Paid Now")
+        && !jobsPageSource.includes("Complete Job &amp; Keep As Outstanding"),
+    );
+    // The legacy browser interaction below targets the removed "keep outstanding"
+    // workflow. It remains opt-in for debugging old screenshots, not as a release check.
+    if (process.env.RUN_LEGACY_CLOSE_JOB_UI_CHECKS === "1") {
     const openCompletionDialog = async (fixture: CloseJobFixture, screenshotName: string) => {
       await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
       await page.waitForFunction(
@@ -476,6 +537,7 @@ async function main() {
           `active ${outstandingActiveAmounts.length} → ${outstandingActiveAmountsAfterReload.length}`,
       );
      await page.screenshot({ path: `${SHOTS}/02-keep-outstanding-reloaded.png` });
+    }
   } finally {
     const cleanupFailures: string[] = [];
     if (browser) {

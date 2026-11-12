@@ -273,13 +273,18 @@ export function MediaLibrary({ businessId, mode = "browse", onSelect, onClose }:
         setOperationNotice({ tone: "error", message: body?.error ?? "Replacement failed. Your original image is still in place. Retry." });
         return;
       }
-      const body = await res.json().catch(() => null) as { cleanupWarnings?: string[] } | null;
+      const body = await res.json().catch(() => null) as { cleanupWarnings?: string[]; replacedInDraft?: number } | null;
       invalidateAll();
       qc.invalidateQueries({ queryKey: ["website-media-usage-details", businessId, target.id] });
       setDetailItem(null);
       setOperationNotice(body?.cleanupWarnings?.length
         ? { tone: "error", message: `Image replaced, but old files could not all be cleaned up. ${body.cleanupWarnings[0]}` }
-        : { tone: "success", message: "Image replaced." });
+        : {
+          tone: "success",
+          message: body?.replacedInDraft
+            ? "Replacement staged in the draft. The published website keeps the original until you publish."
+            : "The new image is in your library. It is not live until you add it to the draft and publish.",
+        });
     } catch {
       setOperationNotice({ tone: "error", message: "Replacement failed. Your original image is still in place. Retry." });
     } finally {

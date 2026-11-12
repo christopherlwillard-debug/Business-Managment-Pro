@@ -4740,6 +4740,63 @@ export const GetDashboardStatsResponse = zod.object({
 });
 
 /**
+ * @summary Get accounting report and subcontractor payables
+ */
+export const GetAccountingReportQueryParams = zod.object({
+  year: zod.coerce.number().optional(),
+  businessId: zod.coerce.number().optional(),
+  businessLine: zod.coerce.string().optional(),
+});
+
+export const GetAccountingReportResponse = zod.object({
+  outstandingSubPayments: zod.array(
+    zod.object({
+      subcontractorId: zod.number(),
+      subName: zod.string(),
+      jobId: zod.number().nullable(),
+      jobTitle: zod.string(),
+      compensationType: zod.string(),
+      amount: zod.number().nullable(),
+      remainingAmount: zod.number().nullable(),
+      balanceStatus: zod.enum(["known", "unknown"]),
+      balanceReason: zod.string().nullable(),
+      paymentStatus: zod.string().nullable(),
+      businessLine: zod.string().nullable(),
+    }),
+  ),
+  outstandingSubTotal: zod
+    .number()
+    .describe(
+      "Known subtotal only; inspect grouped completeness before treating it as the total owed.",
+    ),
+  subcontractorPayables: zod.array(
+    zod.object({
+      subcontractorId: zod.number(),
+      subName: zod.string(),
+      knownTotal: zod.number(),
+      unresolvedCount: zod.number(),
+      isComplete: zod.boolean(),
+      jobCount: zod.number(),
+      items: zod.array(
+        zod.object({
+          subcontractorId: zod.number(),
+          subName: zod.string(),
+          jobId: zod.number().nullable(),
+          jobTitle: zod.string(),
+          compensationType: zod.string(),
+          amount: zod.number().nullable(),
+          remainingAmount: zod.number().nullable(),
+          balanceStatus: zod.enum(["known", "unknown"]),
+          balanceReason: zod.string().nullable(),
+          paymentStatus: zod.string().nullable(),
+          businessLine: zod.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
  * @summary Get compliance alerts (1099, mileage, licenses)
  */
 export const GetComplianceReportResponse = zod.object({

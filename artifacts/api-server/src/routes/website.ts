@@ -5,9 +5,10 @@ import { createHmac, createHash } from "crypto";
 import OpenAI from "openai";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { db } from "@workspace/db";
-import { websiteConfigsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable, savedSectionsTable, marketingContentTable } from "@workspace/db/schema";
+import { websiteConfigsTable, websiteConfigDraftsTable, websitePageViewsTable, businessesTable, prospectsTable, websiteFormSubmissionsTable, websiteMediaTable, websiteMediaFoldersTable, depositSubmissionsTable, contactsTable, savedSectionsTable, marketingContentTable } from "@workspace/db/schema";
 import { eq, and, sql, gte, desc, inArray } from "drizzle-orm";
-import { wrapAsync } from "./guards";
+import { isDeepStrictEqual } from "node:util";
+import { getOwnerId, getRequestUserId, wrapAsync } from "./guards";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getSuggestedImages } from "../lib/industryImageKeywords";
 import { createMediaVariants, applyEnhancements, detectWebsiteMediaMimeType, shouldGenerateWebsiteMediaVariants, validateEnhancementOptions } from "../lib/imageProcessor";
@@ -44,7 +45,29 @@ const openai = new OpenAI({
 
 const router = Router();
 const publicRouter = Router();
+const WEBSITE_CONTENT_LOCK_SQL = sql`SELECT pg_advisory_xact_lock(734210, 1)`;
 
+async function acquireWebsiteContentLock(tx: any): Promise<void> {
+  await tx.execute(WEBSITE_CONTENT_LOCK_SQL);
+}
+
+export function getReferencedWebsiteMediaKeys(value: unknown): Set<string> {
+  const text = JSON.stringify(value);
+  const keys = new Set<string>();
+  const pattern = /(?:media-image\/|uploads\/website-media(?:-[a-z]+)*\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.[a-z0-9]{1,16})?/gi;
+  for (const match of text.matchAll(pattern)) keys.add(match[1].toLowerCase());
+  return keys;
+}
+
+export function isWebsiteMediaPubliclyReferenced(
+  publishedConfig: { sections: unknown; settings: unknown } | null | undefined,
+  media: { url: string; objectPath: string; webpObjectPath?: string | null; thumbnailObjectPath?: string | null; displayObjectPath?: string | null },
+): boolean {
+  if (!publishedConfig) return false;
+  const content = JSON.stringify(publishedConfig);
+  return [media.url, media.objectPath, media.webpObjectPath, media.thumbnailObjectPath, media.displayObjectPath]
+    .some(path => Boolean(path && content.includes(path)));
+}
 /** Prevent active content in user-controlled files from executing when opened as a document. */
 export function applyPublicWebsiteImageSecurityHeaders(res: { setHeader(name: string, value: string): unknown }): void {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -863,36 +886,38 @@ router.get("/", wrapAsync(async (req, res) => {
     .select()
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
-
-  if (!config) {
-    const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
-    const autofill = defaultSettings();
-    if (biz?.phone) (defaultSections().find(s => s.id === "footer") as any).content.phone = biz.phone;
-    const sections = defaultSections();
-    if (biz) {
-      const hero = sections.find(s => s.id === "hero") as any;
-      hero.content.headline = `${biz.name} — Professional Services`;
-      const footer = sections.find(s => s.id === "footer") as any;
-      footer.content.phone = biz.phone ?? "";
-      footer.content.email = biz.email ?? "";
-      footer.content.licenseNumber = biz.licenseNumber ?? "";
-      footer.content.copyright = `© ${new Date().getFullYear()} ${biz.name}. All rights reserved.`;
-      if (biz.logoUrl) autofill.logoUrl = biz.logoUrl;
-    }
-    return res.json({
-      id: null,
-      businessId,
-      sections,
-      settings: autofill,
-      published: false,
-      publishedAt: null,
-    });
+  const [draft] = await db.select().from(websiteConfigDraftsTable)
+    .where(eq(websiteConfigDraftsTable.businessId, businessId));
+  const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.id, businessId));
+  const defaults = defaultSettings();
+  const defaultContent = defaultSections();
+  if (!config && biz) {
+    const hero = defaultContent.find(s => s.id === "hero") as any;
+    hero.content.headline = `${biz.name} — Professional Services`;
+    const footer = defaultContent.find(s => s.id === "footer") as any;
+    footer.content.phone = biz.phone ?? "";
+    footer.content.email = biz.email ?? "";
+    footer.content.licenseNumber = biz.licenseNumber ?? "";
+    footer.content.copyright = `© ${new Date().getFullYear()} ${biz.name}. All rights reserved.`;
+    if (biz.logoUrl) defaults.logoUrl = biz.logoUrl;
   }
-
-  const normalizedSections = normalizeSections(config.sections as SectionRow[]);
-  const settings = getWebsiteRequestBody(config.settings);
+  const sourceSections = draft?.sections ?? config?.sections ?? defaultContent;
+  const sourceSettings = draft?.settings ?? config?.settings ?? defaults;
+  const normalizedSections = ensureUniqueWebsiteSectionIds(getWebsiteSectionList(sourceSections));
+  const settings = getWebsiteRequestBody(sourceSettings);
   const pages = getWebsitePageList(settings.pages);
-  res.json({ ...config, sections: normalizedSections, settings: { ...settings, pages } });
+  const draftRevision = draft?.revision ?? 0;
+  const publishedRevision = draft?.publishedRevision ?? 0;
+  res.json({
+    ...(config ?? { id: null, businessId, published: false, publishedAt: null }),
+    sections: normalizedSections,
+    settings: { ...settings, pages },
+    draftRevision,
+    publishedRevision,
+    hasUnpublishedChanges: config?.published
+      ? draftRevision !== publishedRevision
+      : draftRevision > 0,
+  });
 }));
 
 router.put("/", wrapAsync(async (req, res) => {
@@ -901,7 +926,14 @@ router.put("/", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
+  const { sections, settings, expectedDraftRevision } = getWebsiteRequestBody(req.body) as {
+    sections?: unknown;
+    settings?: unknown;
+    expectedDraftRevision?: unknown;
+  };
+  if (!Number.isInteger(expectedDraftRevision) || (expectedDraftRevision as number) < 0) {
+    return res.status(400).json({ error: "expectedDraftRevision is required", code: "DRAFT_REVISION_REQUIRED" });
+  }
   const sectionsValidation = validateWebsiteSections(sections);
   if (!sectionsValidation.ok) return res.status(400).json({ error: sectionsValidation.error });
   const settingsValidation = validateWebsiteSettings(settings);
@@ -930,25 +962,83 @@ router.put("/", wrapAsync(async (req, res) => {
       : {}),
   };
 
-  const [existing] = await db
-    .select({ id: websiteConfigsTable.id })
-    .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
+  const result = await db.transaction(async tx => {
+    await acquireWebsiteContentLock(tx);
+    const referencedMediaKeys = getReferencedWebsiteMediaKeys({
+      sections: validatedSections,
+      settings: normalizedSettings,
+    });
+    const mediaRows = await tx.select({
+      url: websiteMediaTable.url,
+      objectPath: websiteMediaTable.objectPath,
+      webpObjectPath: websiteMediaTable.webpObjectPath,
+      thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
+      displayObjectPath: websiteMediaTable.displayObjectPath,
+    }).from(websiteMediaTable).where(eq(websiteMediaTable.businessId, businessId));
+    const availableMediaKeys = new Set(mediaRows.flatMap(row =>
+      [row.url, row.objectPath, row.webpObjectPath, row.thumbnailObjectPath, row.displayObjectPath]
+        .flatMap(value => value ? [...getReferencedWebsiteMediaKeys(value)] : []),
+    ));
+    const missingMediaKeys = [...referencedMediaKeys].filter(key => !availableMediaKeys.has(key));
+    if (missingMediaKeys.length) return { invalidMedia: true as const };
+    const [published] = await tx.select().from(websiteConfigsTable)
+      .where(eq(websiteConfigsTable.businessId, businessId)).for("update");
+    const [draft] = await tx.select().from(websiteConfigDraftsTable)
+      .where(eq(websiteConfigDraftsTable.businessId, businessId)).for("update");
+    const currentRevision = draft?.revision ?? 0;
+    if (currentRevision !== expectedDraftRevision) return { conflict: true as const };
 
-  if (existing) {
-    const [updated] = await db
-      .update(websiteConfigsTable)
-      .set({ sections: validatedSections as any, settings: normalizedSettings as any, updatedAt: new Date() })
-      .where(eq(websiteConfigsTable.id, existing.id))
-      .returning();
-    return res.json(updated);
+    const nextRevision = draft ? draft.revision + (
+      isDeepStrictEqual(draft.sections, validatedSections)
+      && isDeepStrictEqual(draft.settings, normalizedSettings) ? 0 : 1
+    ) : 1;
+    const matchesPublished = Boolean(published)
+      && isDeepStrictEqual(published!.sections, validatedSections)
+      && isDeepStrictEqual(published!.settings, normalizedSettings);
+    const publishedRevision = !published?.published
+      ? 0
+      : matchesPublished ? nextRevision : (draft?.publishedRevision ?? 0);
+    const [saved] = await tx.insert(websiteConfigDraftsTable).values({
+      businessId,
+      sections: validatedSections as any,
+      settings: normalizedSettings as any,
+      revision: nextRevision,
+      publishedRevision,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: websiteConfigDraftsTable.businessId,
+      set: {
+        sections: validatedSections as any,
+        settings: normalizedSettings as any,
+        revision: nextRevision,
+        publishedRevision,
+        updatedAt: new Date(),
+      },
+    }).returning();
+    return { saved, published };
+  });
+  if ("conflict" in result) {
+    return res.status(409).json({
+      error: "This website draft changed in another session. Reload before saving again.",
+      code: "DRAFT_REVISION_CONFLICT",
+    });
   }
-
-  const [created] = await db
-    .insert(websiteConfigsTable)
-    .values({ businessId, sections: validatedSections as any, settings: normalizedSettings as any })
-    .returning();
-  res.json(created);
+  if ("invalidMedia" in result) {
+    return res.status(422).json({
+      error: "One or more website images are missing or belong to another business. Your draft was not saved.",
+      code: "DRAFT_MEDIA_INVALID",
+    });
+  }
+  res.json({
+    ...(result.published ?? { id: null, businessId, published: false, publishedAt: null }),
+    sections: result.saved.sections,
+    settings: result.saved.settings,
+    draftRevision: result.saved.revision,
+    publishedRevision: result.saved.publishedRevision,
+    hasUnpublishedChanges: result.published?.published
+      ? result.saved.revision !== result.saved.publishedRevision
+      : true,
+  });
 }));
 
 router.post("/publish", wrapAsync(async (req, res) => {
@@ -957,69 +1047,95 @@ router.post("/publish", wrapAsync(async (req, res) => {
     return res.status(400).json({ error: "businessId required" });
   }
 
-  const { sections, settings } = getWebsiteRequestBody(req.body) as { sections?: unknown; settings?: unknown };
-  let validatedSections: Array<Record<string, unknown>> | undefined;
-  let validatedSettings: Record<string, unknown> | undefined;
-  if (sections !== undefined && sections !== null) {
-    const result = validateWebsiteSections(sections);
-    if (!result.ok) return res.status(400).json({ error: result.error });
-    validatedSections = result.sections;
+  const { expectedDraftRevision } = getWebsiteRequestBody(req.body) as { expectedDraftRevision?: unknown };
+  if (!Number.isInteger(expectedDraftRevision) || (expectedDraftRevision as number) < 1) {
+    return res.status(400).json({ error: "expectedDraftRevision is required", code: "DRAFT_REVISION_REQUIRED" });
   }
-  if (settings !== undefined && settings !== null) {
-    const result = validateWebsiteSettings(settings);
-    if (!result.ok) return res.status(400).json({ error: result.error });
-    validatedSettings = result.settings;
-  }
-  if (validatedSettings) {
-    const settings = validatedSettings;
-    if (settings.seo && typeof settings.seo === "object") {
-      const seo = settings.seo as Record<string, unknown>;
+  const uploadedPublishAssets: string[] = [];
+  let result: any;
+  try {
+  result = await db.transaction(async tx => {
+    await acquireWebsiteContentLock(tx);
+    const [draft] = await tx.select().from(websiteConfigDraftsTable)
+      .where(eq(websiteConfigDraftsTable.businessId, businessId)).for("update");
+    if (!draft || draft.revision !== expectedDraftRevision) return { conflict: true as const };
+
+    const sectionsResult = validateWebsiteSections(draft.sections);
+    if (!sectionsResult.ok) return { invalid: sectionsResult.error } as const;
+    const settingsResult = validateWebsiteSettings(draft.settings);
+    if (!settingsResult.ok) return { invalid: settingsResult.error } as const;
+    const validatedSections = sectionsResult.sections;
+    const validatedSettings = settingsResult.settings;
+    if (validatedSettings.seo && typeof validatedSettings.seo === "object") {
+      const seo = validatedSettings.seo as Record<string, unknown>;
       const seoErrors = validateSeoMetadata({
         ...seo,
         ogTitle: seo.ogTitle || seo.metaTitle,
         ogDescription: seo.ogDescription || seo.metaDescription,
       });
-      if (Object.keys(seoErrors).length > 0) {
-        return res.status(422).json({ error: "SEO metadata failed validation", fields: seoErrors });
-      }
+      if (Object.keys(seoErrors).length > 0) return { invalid: "SEO metadata failed validation" } as const;
     }
-    const pageValidation = validatePageSlugs(settings.pages);
-    if (!pageValidation.ok) {
-      return res.status(409).json({ error: pageValidation.error, code: "DUPLICATE_PAGE_SLUG", conflict: pageValidation.conflict });
-    }
-    settings.pages = pageValidation.pages;
-  }
+    const pageValidation = validatePageSlugs(validatedSettings.pages);
+    if (!pageValidation.ok) return { invalid: pageValidation.error } as const;
+    validatedSettings.pages = pageValidation.pages;
 
-  const [existing] = await db
-    .select({ id: websiteConfigsTable.id })
-    .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-
-  const now = new Date();
-
-  if (existing) {
-    const updateData: Record<string, unknown> = { published: true, publishedAt: now, updatedAt: now };
-    if (validatedSections) updateData.sections = validatedSections;
-    if (validatedSettings) updateData.settings = validatedSettings;
-    const [updated] = await db
-      .update(websiteConfigsTable)
-      .set(updateData as any)
-      .where(eq(websiteConfigsTable.id, existing.id))
-      .returning();
-    return res.json(updated);
-  }
-
-  const [created] = await db
-    .insert(websiteConfigsTable)
-    .values({
+    const promoted = await promoteDraftMediaAssets(tx, businessId, {
+      sections: validatedSections,
+      settings: validatedSettings,
+    }, uploadedPublishAssets);
+    await tx.execute(sql`SELECT set_config('app.website_publish_allowed', 'on', true)`);
+    const now = new Date();
+    const [published] = await tx.insert(websiteConfigsTable).values({
       businessId,
-      sections: (validatedSections ?? defaultSections()) as any,
-      settings: (validatedSettings ?? defaultSettings()) as any,
+      sections: promoted.sections as any,
+      settings: promoted.settings as any,
       published: true,
       publishedAt: now,
-    })
-    .returning();
-  res.json(created);
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: websiteConfigsTable.businessId,
+      set: {
+        sections: promoted.sections as any,
+        settings: promoted.settings as any,
+        published: true,
+        publishedAt: now,
+        updatedAt: now,
+      },
+    }).returning();
+    const [updatedDraft] = await tx.update(websiteConfigDraftsTable)
+      .set({
+        sections: promoted.sections as any,
+        settings: promoted.settings as any,
+        publishedRevision: draft.revision,
+      })
+      .where(eq(websiteConfigDraftsTable.businessId, businessId))
+      .returning();
+    return { published, draft: updatedDraft };
+  });
+  } catch (error) {
+    const cleanupFailures = await cleanupMediaObjects(uploadedPublishAssets);
+    if (cleanupFailures.length > 0) {
+      console.error("[website] Publish rolled back, but temporary media cleanup failed:", cleanupFailures);
+    }
+    throw error;
+  }
+  if ("conflict" in result) {
+    await cleanupMediaObjects(uploadedPublishAssets);
+    return res.status(409).json({
+      error: "This website draft changed before publishing. Reload before trying again.",
+      code: "DRAFT_REVISION_CONFLICT",
+    });
+  }
+  if ("invalid" in result) {
+    await cleanupMediaObjects(uploadedPublishAssets);
+    return res.status(400).json({ error: result.invalid, code: "INVALID_SAVED_DRAFT" });
+  }
+  res.json({
+    ...result.published,
+    draftRevision: result.draft.revision,
+    publishedRevision: result.draft.publishedRevision,
+    hasUnpublishedChanges: false,
+  });
 }));
 
 publicRouter.get("/:slug/logo", wrapAsync(async (req, res) => {
@@ -2911,6 +3027,88 @@ async function cleanupMediaObjects(paths: Array<string | null | undefined>): Pro
   );
 }
 
+async function copyWebsiteAssetToPublic(
+  sourcePath: string | null | undefined,
+  destinationFolder: string,
+  mimetype: string,
+  filename: string,
+  uploadedPaths: string[],
+): Promise<string | undefined> {
+  if (!sourcePath) return undefined;
+  const objectFile = await objectStorageService.getObjectEntityFile(sourcePath);
+  const response = await objectStorageService.downloadObject(objectFile);
+  if (!response.ok) throw new Error(`Could not read staged image asset (${response.status})`);
+  const objectPath = await objectStorageService.uploadBufferWithFilename(
+    Buffer.from(await response.arrayBuffer()), mimetype, destinationFolder, filename,
+  );
+  uploadedPaths.push(objectPath);
+  return objectPath;
+}
+
+async function promoteDraftMediaAssets(
+  tx: any,
+  businessId: number,
+  draft: { sections: unknown; settings: unknown },
+  uploadedPaths: string[],
+): Promise<{ sections: unknown; settings: unknown }> {
+  let sections = draft.sections;
+  let settings = draft.settings;
+  let contentText = JSON.stringify({ sections, settings });
+  const assets = await tx.select().from(websiteMediaTable)
+    .where(eq(websiteMediaTable.businessId, businessId)).for("update");
+
+  for (const asset of assets) {
+    if (!asset.objectPath.includes("/uploads/website-media-drafts/")) continue;
+    if (![asset.url, asset.objectPath, asset.webpObjectPath, asset.thumbnailObjectPath, asset.displayObjectPath]
+      .some(value => value && contentText.includes(value))) continue;
+
+    const ext = asset.objectPath.split(".").pop()?.toLowerCase() ?? "img";
+    const mimeTypes: Record<string, string> = {
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+      gif: "image/gif", tiff: "image/tiff", svg: "image/svg+xml", heic: "image/heic", avif: "image/avif",
+    };
+    const originalPath = await copyWebsiteAssetToPublic(
+      asset.objectPath, "uploads/website-media", mimeTypes[ext] ?? "application/octet-stream",
+      getWebsiteMediaStorageFilename(mimeTypes[ext] ?? "application/octet-stream"), uploadedPaths,
+    );
+    if (!originalPath) continue;
+    const webpPath = await copyWebsiteAssetToPublic(
+      asset.webpObjectPath, "uploads/website-media-webp", "image/webp", "website-media.webp", uploadedPaths,
+    );
+    const thumbnailPath = await copyWebsiteAssetToPublic(
+      asset.thumbnailObjectPath, "uploads/website-media-thumb", "image/webp", "website-media-thumb.webp", uploadedPaths,
+    );
+    const displayPath = await copyWebsiteAssetToPublic(
+      asset.displayObjectPath, "uploads/website-media-display", "image/webp", "website-media-display.webp", uploadedPaths,
+    );
+    const publicUrl = `${BASE_URL}/api/public/site/media-image/${originalPath.split("/").pop()}`;
+    const replacements: Array<[string, string]> = [
+      [asset.url, publicUrl],
+      [asset.objectPath, originalPath],
+      ...(asset.webpObjectPath && webpPath ? [[asset.webpObjectPath, webpPath] as [string, string]] : []),
+      ...(asset.thumbnailObjectPath && thumbnailPath ? [[asset.thumbnailObjectPath, thumbnailPath] as [string, string]] : []),
+      ...(asset.displayObjectPath && displayPath ? [[asset.displayObjectPath, displayPath] as [string, string]] : []),
+    ];
+    const serialized = JSON.stringify({ sections, settings });
+    let nextSerialized = serialized;
+    for (const [from, to] of replacements) nextSerialized = nextSerialized.split(from).join(to);
+    ({ sections, settings } = JSON.parse(nextSerialized));
+
+    await tx.update(websiteConfigDraftsTable)
+      .set({ sections: sections as any, settings: settings as any })
+      .where(eq(websiteConfigDraftsTable.businessId, businessId));
+    await tx.update(websiteMediaTable).set({
+      url: publicUrl,
+      objectPath: originalPath,
+      webpObjectPath: webpPath ?? null,
+      thumbnailObjectPath: thumbnailPath ?? null,
+      displayObjectPath: displayPath ?? null,
+    }).where(eq(websiteMediaTable.id, asset.id));
+    contentText = JSON.stringify({ sections, settings });
+  }
+  return { sections, settings };
+}
+
 /**
  * Upload the original and all generated variants as one media asset.
  * Callers only write the DB row after this resolves, so a failed variant
@@ -2934,7 +3132,7 @@ async function uploadMediaAssets(
 ): Promise<MediaAssetPaths> {
   const uploaded: string[] = [];
   try {
-    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media", getWebsiteMediaStorageFilename(mimetype));
+    const objectPath = await objectStorageService.uploadBufferWithFilename(buffer, mimetype, "uploads/website-media-drafts", getWebsiteMediaStorageFilename(mimetype));
     uploaded.push(objectPath);
     const assets: MediaAssetPaths = { objectPath };
 
@@ -2942,15 +3140,15 @@ async function uploadMediaAssets(
       const { webpBuffer, thumbBuffer, displayBuffer } = await createMediaVariants(buffer);
       const variantId = uuidPrefix ?? objectPath.split("/").pop()!.replace(/\.[^.]+$/, "");
       assets.webpObjectPath = await objectStorageService.uploadBufferWithFilename(
-        webpBuffer, "image/webp", "uploads/website-media-webp", `${variantId}.webp`,
+        webpBuffer, "image/webp", "uploads/website-media-drafts-webp", `${variantId}.webp`,
       );
       uploaded.push(assets.webpObjectPath);
       assets.thumbnailObjectPath = await objectStorageService.uploadBufferWithFilename(
-        thumbBuffer, "image/webp", "uploads/website-media-thumb", `${variantId}.webp`,
+        thumbBuffer, "image/webp", "uploads/website-media-drafts-thumb", `${variantId}.webp`,
       );
       uploaded.push(assets.thumbnailObjectPath);
       assets.displayObjectPath = await objectStorageService.uploadBufferWithFilename(
-        displayBuffer, "image/webp", "uploads/website-media-display", `${variantId}.webp`,
+        displayBuffer, "image/webp", "uploads/website-media-drafts-display", `${variantId}.webp`,
       );
       uploaded.push(assets.displayObjectPath);
     }
@@ -2995,7 +3193,7 @@ router.post("/media/upload", websiteMediaUploadMiddleware, wrapAsync(async (req,
   const assets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const objectPath = assets.objectPath;
   const uuid = objectPath.split("/").pop()!;
-  const url = `${BASE_URL}/api/public/site/media-image/${uuid}`;
+  const url = `${BASE_URL}/api/website/draft-media-image/${uuid}`;
   try {
     const [item] = await db
       .insert(websiteMediaTable)
@@ -3029,22 +3227,28 @@ router.delete("/media/:id", wrapAsync(async (req, res) => {
   const businessId = parsePositiveDatabaseId(req.query.businessId);
   const id = parsePositiveDatabaseId(req.params.id);
   if (!businessId || !id) return res.status(400).json({ error: "Invalid params" });
-  const [item] = await db
-    .select()
-    .from(websiteMediaTable)
-    .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId)));
-  if (!item) return res.status(404).json({ error: "Not found" });
-  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
-    .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-  const usageCount = countWebsiteMediaUrlReferences(configs, item.url);
-  if (usageCount > 0) {
+  const result = await db.transaction(async tx => {
+    await acquireWebsiteContentLock(tx);
+    const [item] = await tx.select().from(websiteMediaTable)
+      .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId))).for("update");
+    if (!item) return { notFound: true as const };
+    const configs = await tx.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable).where(eq(websiteConfigsTable.businessId, businessId));
+    const drafts = await tx.select({ sections: websiteConfigDraftsTable.sections, settings: websiteConfigDraftsTable.settings })
+      .from(websiteConfigDraftsTable).where(eq(websiteConfigDraftsTable.businessId, businessId));
+    const usageCount = countWebsiteMediaUrlReferences([...configs, ...drafts], item.url);
+    if (usageCount > 0) return { inUse: true as const, usageCount };
+    await tx.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
+    return { item };
+  });
+  if ("notFound" in result) return res.status(404).json({ error: "Not found" });
+  if ("inUse" in result) {
     return res.status(409).json({
-      error: "This image is still used on your website. Remove or replace those references before deleting it.",
-      usageCount,
+      error: "This image is still used by the published website or a saved draft.",
+      usageCount: result.usageCount,
     });
   }
-  await db.delete(websiteMediaTable).where(eq(websiteMediaTable.id, id));
+  const item = result.item;
   const cleanupWarnings = await cleanupMediaObjects([
     item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
   ]);
@@ -3155,7 +3359,7 @@ router.post("/media/:id/enhance", wrapAsync(async (req, res) => {
   const enhancedAssets = await uploadMediaAssets(enhancedBuffer, "image/webp", enhancedFilename);
   const enhancedPath = enhancedAssets.objectPath;
   const enhancedUuid = enhancedPath.split("/").pop()!;
-  const enhancedUrl  = `${BASE_URL}/api/public/site/media-image/${enhancedUuid}`;
+  const enhancedUrl  = `${BASE_URL}/api/website/draft-media-image/${enhancedUuid}`;
 
   try {
     const [newItem] = await db.insert(websiteMediaTable).values({
@@ -3207,44 +3411,51 @@ router.post("/media/:id/replace-upload", websiteMediaUploadMiddleware, wrapAsync
   const newAssets = await uploadMediaAssets(buffer, detectedMimeType, originalname);
   const newObjectPath = newAssets.objectPath;
   const uuid = newObjectPath.split("/").pop()!;
-  const newUrl = `${BASE_URL}/api/public/site/media-image/${uuid}`;
+  const newUrl = `${BASE_URL}/api/website/draft-media-image/${uuid}`;
   const oldUrl = item.url;
 
   try {
-    // Keep the config read inside the cleanup boundary: if it fails after the
-    // replacement objects were uploaded, those objects must not be orphaned.
-    const configs = await db.select().from(websiteConfigsTable)
-      .where(eq(websiteConfigsTable.businessId, businessId));
-    let replacedInConfigs = 0;
+    let replacedInDraft = 0;
     let updated;
     await db.transaction(async tx => {
-      for (const config of configs) {
-        const sectionsJson = JSON.stringify(config.sections);
-        const settingsJson = JSON.stringify(config.settings);
+      await acquireWebsiteContentLock(tx);
+      const [currentItem] = await tx.select().from(websiteMediaTable)
+        .where(and(eq(websiteMediaTable.id, id), eq(websiteMediaTable.businessId, businessId))).for("update");
+      if (!currentItem || currentItem.url !== oldUrl) throw new Error("This image changed before the replacement completed. Reload the Media Library and retry.");
+      const [draft] = await tx.select().from(websiteConfigDraftsTable)
+        .where(eq(websiteConfigDraftsTable.businessId, businessId)).for("update");
+      if (draft) {
+        const sectionsJson = JSON.stringify(draft.sections);
+        const settingsJson = JSON.stringify(draft.settings);
         const newSectionsJson = sectionsJson.split(oldUrl).join(newUrl);
         const newSettingsJson = settingsJson.split(oldUrl).join(newUrl);
         if (newSectionsJson !== sectionsJson || newSettingsJson !== settingsJson) {
-          await tx.update(websiteConfigsTable)
-            .set({ sections: JSON.parse(newSectionsJson) as any, settings: JSON.parse(newSettingsJson) as any, updatedAt: new Date() })
-            .where(eq(websiteConfigsTable.id, config.id));
-          replacedInConfigs++;
+          await tx.update(websiteConfigDraftsTable)
+            .set({
+              sections: JSON.parse(newSectionsJson) as any,
+              settings: JSON.parse(newSettingsJson) as any,
+              revision: draft.revision + 1,
+              updatedAt: new Date(),
+            })
+            .where(eq(websiteConfigDraftsTable.businessId, businessId));
+          replacedInDraft = 1;
         }
       }
-      [updated] = await tx.update(websiteMediaTable)
-        .set({
-          url: newUrl, objectPath: newObjectPath, filename: truncateWebsiteMediaFilename(originalname), size: size ?? item.size,
-          webpObjectPath: newAssets.webpObjectPath,
-          thumbnailObjectPath: newAssets.thumbnailObjectPath,
-          displayObjectPath: newAssets.displayObjectPath,
-          optimized: Boolean(newAssets.webpObjectPath),
-        })
-        .where(eq(websiteMediaTable.id, id))
-        .returning();
+      [updated] = await tx.insert(websiteMediaTable).values({
+        businessId,
+        filename: truncateWebsiteMediaFilename(originalname),
+        objectPath: newObjectPath,
+        url: newUrl,
+        size: size ?? item.size,
+        folderId: currentItem.folderId,
+        displayName: currentItem.displayName,
+        webpObjectPath: newAssets.webpObjectPath,
+        thumbnailObjectPath: newAssets.thumbnailObjectPath,
+        displayObjectPath: newAssets.displayObjectPath,
+        optimized: Boolean(newAssets.webpObjectPath),
+      }).returning();
     });
-    const cleanupWarnings = await cleanupMediaObjects([
-      item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
-    ]);
-    res.json({ ok: true, replacedInConfigs, item: updated, cleanupWarnings });
+    res.json({ ok: true, replacedInDraft, item: updated, cleanupWarnings: [] });
   } catch (error) {
     await cleanupMediaObjects(Object.values(newAssets));
     throw error;
@@ -3259,29 +3470,36 @@ router.post("/media/bulk-delete", wrapAsync(async (req, res) => {
   const validation = validateWebsiteMediaIds((req.body as { ids?: unknown } | undefined)?.ids);
   if (!validation.ok) return res.status(400).json({ error: validation.error });
   const ids = validation.ids;
-  const items = await db.select({
-    id: websiteMediaTable.id,
-    url: websiteMediaTable.url,
-    objectPath: websiteMediaTable.objectPath,
-    webpObjectPath: websiteMediaTable.webpObjectPath,
-    thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
-    displayObjectPath: websiteMediaTable.displayObjectPath,
-  }).from(websiteMediaTable)
-    .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
-  const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
-    .from(websiteConfigsTable)
-    .where(eq(websiteConfigsTable.businessId, businessId));
-  const inUse = items
-    .map(item => ({ id: item.id, usageCount: countWebsiteMediaUrlReferences(configs, item.url) }))
-    .filter(item => item.usageCount > 0);
-  if (inUse.length > 0) {
+  const result = await db.transaction(async tx => {
+    await acquireWebsiteContentLock(tx);
+    const items = await tx.select({
+      id: websiteMediaTable.id,
+      url: websiteMediaTable.url,
+      objectPath: websiteMediaTable.objectPath,
+      webpObjectPath: websiteMediaTable.webpObjectPath,
+      thumbnailObjectPath: websiteMediaTable.thumbnailObjectPath,
+      displayObjectPath: websiteMediaTable.displayObjectPath,
+    }).from(websiteMediaTable)
+      .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids))).for("update");
+    const configs = await tx.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
+      .from(websiteConfigsTable).where(eq(websiteConfigsTable.businessId, businessId));
+    const drafts = await tx.select({ sections: websiteConfigDraftsTable.sections, settings: websiteConfigDraftsTable.settings })
+      .from(websiteConfigDraftsTable).where(eq(websiteConfigDraftsTable.businessId, businessId));
+    const inUse = items
+      .map(item => ({ id: item.id, usageCount: countWebsiteMediaUrlReferences([...configs, ...drafts], item.url) }))
+      .filter(item => item.usageCount > 0);
+    if (inUse.length > 0) return { inUse };
+    await tx.delete(websiteMediaTable)
+      .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
+    return { items };
+  });
+  if ("inUse" in result) {
     return res.status(409).json({
-      error: "One or more selected images are still used on your website. Remove or replace those references before deleting them.",
-      inUse,
+      error: "One or more selected images are still used by the published website or a saved draft.",
+      inUse: result.inUse,
     });
   }
-  await db.delete(websiteMediaTable)
-    .where(and(eq(websiteMediaTable.businessId, businessId), inArray(websiteMediaTable.id, ids)));
+  const items = result.items;
   const cleanupWarnings = (await Promise.all(items.map(item => cleanupMediaObjects([
     item.objectPath, item.webpObjectPath, item.thumbnailObjectPath, item.displayObjectPath,
   ])))).flat();
@@ -3301,8 +3519,11 @@ router.get("/media/usage-counts", wrapAsync(async (req, res) => {
   const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
+  const drafts = await db.select({ sections: websiteConfigDraftsTable.sections, settings: websiteConfigDraftsTable.settings })
+    .from(websiteConfigDraftsTable)
+    .where(eq(websiteConfigDraftsTable.businessId, businessId));
 
-  const configBlob = JSON.stringify(configs);
+  const configBlob = JSON.stringify([...configs, ...drafts]);
   const counts: Record<number, number> = {};
   for (const item of items) {
     let count = 0;
@@ -3328,9 +3549,12 @@ router.get("/media/:id/usage-details", wrapAsync(async (req, res) => {
   const configs = await db.select({ sections: websiteConfigsTable.sections, settings: websiteConfigsTable.settings })
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, businessId));
+  const drafts = await db.select({ sections: websiteConfigDraftsTable.sections, settings: websiteConfigDraftsTable.settings })
+    .from(websiteConfigDraftsTable)
+    .where(eq(websiteConfigDraftsTable.businessId, businessId));
 
   const locations: Array<{ sectionId: string; sectionType: string }> = [];
-  for (const config of configs) {
+  for (const config of [...configs, ...drafts]) {
     const sections = getWebsiteSectionList(config.sections);
     if (Array.isArray(sections)) {
       for (const section of sections) {
@@ -3409,30 +3633,68 @@ router.delete("/media/folders/:folderId", wrapAsync(async (req, res) => {
   res.json({ ok: true });
 }));
 
+router.get("/draft-media-image/:uuid", wrapAsync(async (req, res) => {
+  const { uuid } = req.params as { uuid: string };
+  if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
+  const ownerId = await getOwnerId();
+  if (!req.isAuthenticated?.() || !ownerId || getRequestUserId(req) !== ownerId) {
+    return res.status(404).json({ error: "Image not found" });
+  }
+  const originalPath = `/objects/uploads/website-media-drafts/${uuid}`;
+  const [media] = await db.select().from(websiteMediaTable)
+    .where(eq(websiteMediaTable.objectPath, originalPath)).limit(1);
+  if (!media || !media.objectPath.includes("/uploads/website-media-drafts/")) {
+    return res.status(404).json({ error: "Image not found" });
+  }
+  const imagePath = (req.headers.accept ?? "").includes("image/webp") && media.webpObjectPath
+    ? media.webpObjectPath
+    : media.objectPath;
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
+    const response = await objectStorageService.downloadObject(objectFile);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    res.setHeader("Cache-Control", "private, no-store");
+    if (imagePath === media.webpObjectPath) res.setHeader("Content-Type", "image/webp");
+    applyPublicWebsiteImageSecurityHeaders(res);
+    if (response.body) Readable.fromWeb(response.body as any).pipe(res);
+    else res.end();
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) return res.status(404).json({ error: "Image not found" });
+    throw error;
+  }
+}));
+
 publicRouter.get("/media-image/:uuid", wrapAsync(async (req, res) => {
   const { uuid } = req.params as { uuid: string };
   if (!isWebsiteMediaObjectKey(uuid)) return res.status(404).json({ error: "Image not found" });
-  // The original image is always served from a deterministic path derived from
-  // the uuid, with no DB query. Published pages may still reference deleted
-  // URLs, but the underlying object is intentionally removed with the record.
-  //
-  // WebP content negotiation: when the browser sends Accept: image/webp, we
-  // look up the DB record by objectPath to find the actual webpObjectPath
-  // (which uses a different random UUID from the original upload). If a WebP
-  // variant exists, serve it; otherwise fall through to the original.
   const originalObjectPath = `/objects/uploads/website-media/${uuid}`;
+  const [media] = await db.select().from(websiteMediaTable)
+    .where(eq(websiteMediaTable.objectPath, originalObjectPath)).limit(1);
+  if (!media) return res.status(404).json({ error: "Image not found" });
+  const [publishedConfig] = await db.select({
+    sections: websiteConfigsTable.sections,
+    settings: websiteConfigsTable.settings,
+  }).from(websiteConfigsTable).where(and(
+    eq(websiteConfigsTable.businessId, media.businessId),
+    eq(websiteConfigsTable.published, true),
+  ));
+  const publiclyReferenced = isWebsiteMediaPubliclyReferenced(publishedConfig, media);
+  const authenticatedOwner = Boolean(
+    req.isAuthenticated?.()
+    && getRequestUserId(req)
+    && await getOwnerId() === getRequestUserId(req),
+  );
+  if (!publiclyReferenced && !authenticatedOwner) return res.status(404).json({ error: "Image not found" });
+  if (!publiclyReferenced) res.setHeader("Cache-Control", "private, no-store");
+
+  // WebP content negotiation: draft-only assets are served only to the owner.
   const acceptsWebP = (req.headers.accept ?? "").includes("image/webp");
 
-  if (acceptsWebP) {
+  if (acceptsWebP && media.webpObjectPath) {
     try {
-      const [row] = await db
-        .select({ webpObjectPath: websiteMediaTable.webpObjectPath })
-        .from(websiteMediaTable)
-        .where(eq(websiteMediaTable.objectPath, originalObjectPath))
-        .limit(1);
-
-      if (row?.webpObjectPath) {
-        const objectFile = await objectStorageService.getObjectEntityFile(row.webpObjectPath);
+      if (media.webpObjectPath) {
+        const objectFile = await objectStorageService.getObjectEntityFile(media.webpObjectPath);
         const response   = await objectStorageService.downloadObject(objectFile);
         res.status(response.status);
         response.headers.forEach((value, key) => res.setHeader(key, value));
@@ -3498,11 +3760,16 @@ router.get("/preview-by-slug/:slug", wrapAsync(async (req, res) => {
   const [biz] = await db.select().from(businessesTable).where(eq(businessesTable.slug, slug as string));
   if (!biz) return res.status(404).json({ error: "Not found" });
 
-  const [config] = await db
+  const [publishedConfig] = await db
     .select()
     .from(websiteConfigsTable)
     .where(eq(websiteConfigsTable.businessId, biz.id));
 
+  const [draft] = await db.select().from(websiteConfigDraftsTable)
+    .where(eq(websiteConfigDraftsTable.businessId, biz.id));
+  const config = publishedConfig
+    ? { ...publishedConfig, sections: draft?.sections ?? publishedConfig.sections, settings: draft?.settings ?? publishedConfig.settings }
+    : null;
   if (!config) return res.status(404).json({ error: "No website config" });
   const requestedPage = typeof req.query.page === "string" ? normalizePageSlug(req.query.page) : "";
   if (requestedPage) {

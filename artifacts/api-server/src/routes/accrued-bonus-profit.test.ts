@@ -946,6 +946,29 @@ describe("subcontractor settlement checks — ledger beats stale cached status",
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ "42": true });
   });
+
+  it("keeps an unknown allocation amount outstanding for the batch close gate", async () => {
+    h.computeSubOwed.mockReturnValue(null);
+    h.selectQueue.push(
+      [{
+        subcontractorId: 9,
+        subName: "Unresolved Worker",
+        compensationType: "allocation",
+        fixedAmount: null,
+        allocationPct: null,
+        amountOwed: null,
+        amountPaid: null,
+        paymentStatus: "unpaid",
+        ledgerPaid: "0.00",
+      }],
+      [], // no hourly subcontractors
+    );
+
+    const res = await request(app).get("/jobs/outstanding-sub-balances?jobIds=43");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ "43": true });
+  });
 });
 
 describe("GET /jobs/:id/profit — no double-count after a payment is recorded", () => {

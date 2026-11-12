@@ -36,6 +36,21 @@ JobPayBreakdownPanel inlines the same pattern for its Sub Payment Records.
 2. An invoice exists with `status !== 'paid'`
 Uses `invoiceSummaryMap.get(job.id)` from component scope.
 
+Archive/close also remains blocked while any subcontractor balance is outstanding. A paid customer invoice does not mean James, Dewayne, or another subcontractor has been paid; only the subcontractor payment ledger can confirm settlement. An amount that cannot be calculated is unresolved, not zero, so the job must stay open until it is known.
+
+The server gate must cover both `completed` and `closed` status transitions: a completion flow can bypass an archive-only check. Never offer a “keep outstanding” completion path or mark a subcontractor paid from the close dialog; record actual payments through Job Payroll.
+
+**Why:** The user explicitly said that a job with any remaining balance must stay open because the subcontractor has not been paid, and approved keeping jobs open until unknown amounts are resolved.
+
+**How to apply:** Enforce this through the shared server-side outstanding-sub-payment check for both completion and closure; do not bypass it or infer subcontractor settlement from invoice status. Record payment only when it was actually made.
+
+## Subcontractor payables overview
+The user approved an Accounting rollup grouped by subcontractor, with expandable job-level balances. Payments remain per job and are recorded through the existing Job Payroll flow; do not add another ledger or combine jobs into one payment.
+
+**Why:** The user needs a scalable per-person view of amounts owed while continuing to review and pay each job separately.
+
+**How to apply:** Use stable subcontractor IDs for grouping, derive amounts from the existing payroll sources, and link each job row to its existing payroll screen.
+
 ## Compensation at assignment time
 Job form shows SubcontractorPicker + per-sub comp defaults section for BOTH new AND edit jobs.
 After save: comp defaults applied via PUT sub-payments using `editJob.id` or `newJob.id`.

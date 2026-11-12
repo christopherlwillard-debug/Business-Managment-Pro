@@ -1181,7 +1181,7 @@ export default function Estimates() {
                       onClick={() => setSendTarget(est)}
                       className="flex items-center gap-1 text-xs text-amber-700 hover:text-amber-900 border border-amber-200 rounded-lg px-3 py-1.5 hover:bg-amber-50 transition-colors"
                     >
-                      <Mail className="w-3 h-3" /> Send Quote
+                      <Mail className="w-3 h-3" /> Review &amp; Send
                     </button>
                   )}
                   {canEdit("estimates") && (

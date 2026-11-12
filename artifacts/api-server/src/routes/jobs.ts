@@ -8,6 +8,7 @@ import { countConfirmedHereWorkdays } from "../lib/job-workdays.js";
 import { resolveJobFuelReconciliation, type JobFuelReconciliation } from "../lib/job-fuel-reconciliation.js";
 import { syncMaterialsToJobInvoice } from "./material-lists";
 import { calculateAllocationSplitPool, computeAllocationSplitPool, computeAllocationSplitPools, computeSubOwed } from "../lib/allocation.js";
+import { resolveSubcontractorBalance } from "../lib/subcontractorPayables.js";
 import { calcInvoice, buildInvoiceQuery, fmt } from "./invoices";
 import { buildProductionLineItems, ensureProductionBillingSeed } from "../lib/productionBilling.js";
 import { z } from "zod/v4";
@@ -2538,8 +2539,8 @@ router.get("/distinct-home-models", async (_req, res) => {
 });
 
 // Batch outstanding-sub check: GET /outstanding-sub-balances?jobIds=1,2,3
-// Returns Record<jobId, boolean> — true means the shared ledger-aware evaluator
-// found at least one outstanding subcontractor balance.
+// Returns Record<jobId, boolean> — true means a positive or unknown subcontractor
+// balance remains; unknown amounts are blocking, not zero.
 router.get("/outstanding-sub-balances", async (req, res) => {
   try {
     const { jobIds: jobIdsParam } = req.query;
@@ -2819,6 +2820,8 @@ router.put("/:id", async (req, res) => {
       businessId: jobsTable.businessId,
       businessLine: jobsTable.businessLine,
       clientId: jobsTable.clientId,
+      status: jobsTable.status,
+      closedAt: jobsTable.closedAt,
     }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
     if (!currentOwnership) return res.status(404).json({ error: "Job not found" });
     const requestedOwner = await resolveMutationBusiness(req);
@@ -2868,6 +2871,26 @@ router.put("/:id", async (req, res) => {
       const numericDays = typeof daysOnJob === "number" ? daysOnJob : Number(daysOnJob);
       if (!Number.isInteger(numericDays) || numericDays < 1 || numericDays > 365) {
         return res.status(400).json({ error: "daysOnJob must be a positive integer from 1 to 365 or null" });
+      }
+    }
+
+    const isReopeningClosedJob = status === "completed"
+      && (currentOwnership.status === "closed" || currentOwnership.closedAt != null);
+    if ((status === "closed" || status === "completed") && !isReopeningClosedJob) {
+      const outstanding = await getOutstandingSubPaymentsForJob(id);
+      if (outstanding.length > 0) {
+        res.status(409).json({
+          code: "SUBCONTRACTOR_BALANCE_UNRESOLVED",
+          error: "Job cannot be completed or closed until subcontractor balances are known and paid.",
+          outstanding: outstanding.map(row => ({
+            subcontractorId: row.subcontractorId,
+            subName: row.subName,
+            remainingAmount: row.remainingAmount,
+            balanceStatus: row.balanceStatus,
+            balanceReason: row.balanceReason,
+          })),
+        });
+        return;
       }
     }
 
@@ -4015,8 +4038,8 @@ async function getOutstandingSubPaymentsForJob(id: number) {
           inArray(jobSubcontractorsTable.compensationType, ["fixed", "allocation"]),
         )),
 
-      // Hourly subs with real labor: they need the payroll screen, not inline pay.
-      // Include only when they have accrued bonus OR at least one hours entry.
+      // Include every assigned hourly sub. Missing hours/rates cannot silently
+      // turn an unpaid assignment into a zero-dollar balance at completion time.
       db.select({
         subcontractorId: jobSubcontractorsTable.subcontractorId,
         subName: subcontractorsTable.name,
@@ -4035,19 +4058,18 @@ async function getOutstandingSubPaymentsForJob(id: number) {
           SELECT SUM(h.hours * COALESCE(h.rate_snapshot, 0)) FROM job_sub_hours h
           WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
         ), '0')`,
+        unpricedHours: sql<string>`COALESCE((
+          SELECT SUM(h.hours) FROM job_sub_hours h
+          WHERE h.job_id = ${id}
+            AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
+            AND h.rate_snapshot IS NULL
+        ), '0')`,
       })
         .from(jobSubcontractorsTable)
         .leftJoin(subcontractorsTable, eq(jobSubcontractorsTable.subcontractorId, subcontractorsTable.id))
         .where(and(
           eq(jobSubcontractorsTable.jobId, id),
           eq(jobSubcontractorsTable.compensationType, "hourly"),
-          sql`(
-            COALESCE(${jobSubcontractorsTable.accruedBonus}, 0) > 0
-            OR EXISTS (
-              SELECT 1 FROM job_sub_hours h
-              WHERE h.job_id = ${id} AND h.subcontractor_id = ${jobSubcontractorsTable.subcontractorId}
-            )
-          )`,
         )),
     ]);
 
@@ -4055,22 +4077,14 @@ async function getOutstandingSubPaymentsForJob(id: number) {
     const hasAlloc = fixedAllocRows.some(r => r.compensationType === "allocation");
     const splitPool = hasAlloc ? (await computeAllocationSplitPool(id)).splitPool : 0;
 
-    // Helper: pick the higher of ledger total vs stale amountPaid column
-    function effectivePaid(amountPaid: string | null, ledgerPaid: string): number {
-      return Math.max(
-        amountPaid != null ? parseFloat(amountPaid) : 0,
-        parseFloat(ledgerPaid ?? "0"),
-      );
-    }
-
     // Track subs needing background repair: [subcontractorId, lockAmountOwed | null]
     // lockAmountOwed set means we also need to write amountOwed back to the DB.
     const repairItems: { subId: number; lockOwed: string | null }[] = [];
 
     const fixedAllocResult = fixedAllocRows
       .map(r => {
-        const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
         const ledger = parseFloat(r.ledgerPaid ?? "0");
+        const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
 
         // Legacy repair: allocation sub paid before amountOwed locking was introduced.
         // amountOwed is null so computeSubOwed recomputes from the live pool on every
@@ -4084,29 +4098,35 @@ async function getOutstandingSubPaymentsForJob(id: number) {
           const subId = r.subcontractorId;
           if (subId != null) repairItems.push({ subId, lockOwed: ledger.toFixed(2) });
           // Not outstanding — the ledger covers the (now-locked) obligation
-          return { row: r, paid, outstanding: false };
-        }
-
-        // Trust explicit user confirmation: paymentStatus='paid' + real ledger payment.
-        // Handles jobs that were paid and closed under the old system then reopened for
-        // edits — the user agreed to the payment amount, no re-payment should be required.
-        if (r.paymentStatus === "paid" && ledger > 0) {
-          return { row: r, paid, outstanding: false };
+          return {
+            row: r,
+            resolution: resolveSubcontractorBalance({
+              totalOwed: null,
+              amountPaid,
+              ledgerPaid: ledger,
+              paymentStatus: "paid",
+              unknownReason: "Allocation amount is unavailable.",
+            }),
+          };
         }
 
         const owed = computeSubOwed({
           amountOwed: r.amountOwed, compensationType: r.compensationType,
           fixedAmount: r.fixedAmount, allocationPct: r.allocationPct, computedOwed: "0",
         }, splitPool);
-        // Truly outstanding = owed is known, positive, and not yet covered
-        const outstanding = owed == null || owed <= 0 ? false : paid < owed - 0.005;
-        if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
-          if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
-        }
-        return { row: r, paid, owed, outstanding };
+        const resolution = resolveSubcontractorBalance({
+          totalOwed: owed,
+          amountPaid,
+          ledgerPaid: ledger,
+          paymentStatus: r.paymentStatus,
+          unknownReason: r.compensationType === "allocation"
+            ? "Allocation amount is unavailable because its percentage or split-pool amount is missing."
+            : "Subcontractor pay amount is unavailable.",
+        });
+        return { row: r, resolution, owed };
       })
-      .filter(({ outstanding }) => outstanding)
-      .map(({ row: r, paid, owed }) => ({
+      .filter(({ resolution }) => resolution.outstanding)
+      .map(({ row: r, resolution, owed }) => ({
         subcontractorId: r.subcontractorId,
         subName: r.subName ?? `Sub #${r.subcontractorId}`,
         compensationType: r.compensationType ?? "fixed",
@@ -4114,7 +4134,11 @@ async function getOutstandingSubPaymentsForJob(id: number) {
         allocationPct: r.allocationPct != null ? parseFloat(r.allocationPct) : null,
         amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
         computedOwed: r.compensationType === "allocation" && r.amountOwed == null ? owed : undefined,
-        amountPaid: paid,
+        amountPaid: resolution.paid,
+        amount: resolution.remainingAmount,
+        remainingAmount: resolution.remainingAmount,
+        balanceStatus: resolution.balanceStatus,
+        balanceReason: resolution.balanceReason,
         paymentStatus: r.paymentStatus ?? "unpaid",
         totalHours: null as number | null,
         accruedBonus: null as number | null,
@@ -4122,28 +4146,30 @@ async function getOutstandingSubPaymentsForJob(id: number) {
 
     const hourlyResult = hourlyRows
       .map(r => {
-        const paid = effectivePaid(r.amountPaid, r.ledgerPaid);
         const ledgerH = parseFloat(r.ledgerPaid ?? "0");
+        const amountPaid = r.amountPaid != null ? parseFloat(r.amountPaid) : 0;
         const hours = parseFloat(r.totalHours ?? "0");
         const bonus = r.accruedBonus != null ? parseFloat(r.accruedBonus) : 0;
         const owedFromHours = parseFloat(r.computedOwed ?? "0");
 
-        // Trust explicit user confirmation: paymentStatus='paid' + real ledger payment.
-        if (r.paymentStatus === "paid" && ledgerH > 0) {
-          return { row: r, paid, hours, bonus, outstanding: false };
-        }
-
         // A saved agreed amount is authoritative for hourly pay, just as it is
         // in computeSubOwed and the Job Financials waterfall.
-        const owed = r.amountOwed != null ? parseFloat(r.amountOwed) : owedFromHours;
-        const outstanding = (owed + bonus) > (paid + 0.005);
-        if (!outstanding && (r.paymentStatus === "unpaid" || r.paymentStatus === "partial")) {
-          if (r.subcontractorId != null) repairItems.push({ subId: r.subcontractorId, lockOwed: null });
-        }
-        return { row: r, paid, hours, bonus, outstanding };
+        const owed = r.amountOwed != null
+          ? parseFloat(r.amountOwed)
+          : parseFloat(r.unpricedHours ?? "0") > 0 || hours <= 0
+            ? null
+            : owedFromHours;
+        const resolution = resolveSubcontractorBalance({
+          totalOwed: owed == null ? null : owed + bonus,
+          amountPaid,
+          ledgerPaid: ledgerH,
+          paymentStatus: r.paymentStatus,
+          unknownReason: "Hourly pay amount is unavailable because logged hours or rates are missing.",
+        });
+        return { row: r, resolution, hours, bonus };
       })
-      .filter(({ outstanding }) => outstanding)
-      .map(({ row: r, paid, hours, bonus }) => ({
+      .filter(({ resolution }) => resolution.outstanding)
+      .map(({ row: r, resolution, hours, bonus }) => ({
         subcontractorId: r.subcontractorId,
         subName: r.subName ?? `Sub #${r.subcontractorId}`,
         compensationType: "hourly" as const,
@@ -4151,7 +4177,11 @@ async function getOutstandingSubPaymentsForJob(id: number) {
         allocationPct: null as number | null,
         amountOwed: r.amountOwed != null ? parseFloat(r.amountOwed) : null,
          computedOwed: parseFloat(r.computedOwed ?? "0"),
-        amountPaid: paid,
+        amountPaid: resolution.paid,
+        amount: resolution.remainingAmount,
+        remainingAmount: resolution.remainingAmount,
+        balanceStatus: resolution.balanceStatus,
+        balanceReason: resolution.balanceReason,
         paymentStatus: r.paymentStatus ?? "unpaid",
         totalHours: hours,
         accruedBonus: bonus || null,

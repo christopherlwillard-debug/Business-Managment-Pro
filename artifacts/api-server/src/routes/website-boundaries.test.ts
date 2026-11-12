@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import multer from "multer";
-import { applyPublicWebsiteImageSecurityHeaders, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteSectionRecordItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getWebsiteContactFieldError, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, getWebsiteDepositFieldConfig, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter } from "./website";
+import { applyPublicWebsiteImageSecurityHeaders, getReferencedWebsiteMediaKeys, isWebsiteMediaPubliclyReferenced, getWebsiteMediaUploadError, getWebsiteMediaStorageFilename, isTrustedWebsiteLogoObjectPath, isWebsiteMediaObjectKey, isWebsiteStoredObjectPath, getWebsiteRequestBody, ensureUniqueWebsiteSectionIds, normalizeDealerManufacturerIds, normalizePageSlug, normalizeSections, getWebsitePageList, getWebsiteSectionList, getWebsiteSectionTextItems, getWebsiteSectionRecordItems, getWebsiteStringList, getWebsiteSocialLinks, getWebsiteWorkingHours, hasWebsitePortfolioPhoto, getWebsiteSitemapPages, escapeWebsiteXml, getSafeWebsiteCustomDomain, getSafeWebsitePaymentReturnUrl, createWebsiteDepositCheckout, buildSitemapXml, buildManifest, escapeWebsiteEmailHtml, getWebsiteContactText, getWebsiteContactFieldError, getSafeWebsiteSubmissionFields, parseWebsiteMoneyCents, getEnabledWebsiteDepositSection, getWebsiteDepositFieldConfig, parseWebsiteMediaFolderId, validatePageSlugs, validateWebsiteMediaFolderName, websiteRouter, websitePublicRouter } from "./website";
 
 
 describe("Website Studio route registration", () => {
@@ -9,6 +9,47 @@ describe("Website Studio route registration", () => {
       (layer: any) => layer.route?.path === "/regenerate-section" && layer.route.methods.post,
     );
     expect(handlers).toHaveLength(1);
+  });
+
+  it("keeps private draft-media delivery off the public website router", () => {
+    const privateImageRoute = (websiteRouter as any).stack.find(
+      (layer: any) => layer.route?.path === "/draft-media-image/:uuid" && layer.route.methods.get,
+    );
+    const publicPrivateImageRoute = (websitePublicRouter as any).stack.find(
+      (layer: any) => layer.route?.path === "/draft-media-image/:uuid",
+    );
+    expect(privateImageRoute).toBeTruthy();
+    expect(publicPrivateImageRoute).toBeUndefined();
+  });
+});
+
+describe("Website draft media reference validation", () => {
+  it("extracts only BuildPro website media asset keys from saved content", () => {
+    const keys = getReferencedWebsiteMediaKeys({
+      imageUrl: "https://app.example/api/website/draft-media-image/550e8400-e29b-41d4-a716-446655440000",
+      objectPath: "/objects/uploads/website-media-drafts-webp/550e8400-e29b-41d4-a716-446655440001.webp",
+      externalImage: "https://cdn.example/other-image.png",
+    });
+    expect([...keys].sort()).toEqual([
+      "550e8400-e29b-41d4-a716-446655440000",
+      "550e8400-e29b-41d4-a716-446655440001",
+    ]);
+  });
+
+  it("serves only assets referenced by the published snapshot", () => {
+    const media = {
+      url: "https://app.example/api/website/draft-media-image/550e8400-e29b-41d4-a716-446655440000",
+      objectPath: "/objects/uploads/website-media-drafts/550e8400-e29b-41d4-a716-446655440000.png",
+    };
+    expect(isWebsiteMediaPubliclyReferenced(null, media)).toBe(false);
+    expect(isWebsiteMediaPubliclyReferenced({
+      sections: [{ content: { imageUrl: media.url } }],
+      settings: {},
+    }, media)).toBe(true);
+    expect(isWebsiteMediaPubliclyReferenced({
+      sections: [{ content: { headline: "public content only" } }],
+      settings: {},
+    }, media)).toBe(false);
   });
 });
 

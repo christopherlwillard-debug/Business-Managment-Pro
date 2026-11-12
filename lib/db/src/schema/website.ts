@@ -27,6 +27,18 @@ export const websiteConfigsTable = pgTable("website_configs", {
 export type WebsiteConfig = typeof websiteConfigsTable.$inferSelect;
 export type InsertWebsiteConfig = typeof websiteConfigsTable.$inferInsert;
 
+export const websiteConfigDraftsTable = pgTable("website_config_drafts", {
+  businessId: integer("business_id").primaryKey().references(() => businessesTable.id, { onDelete: "cascade" }),
+  sections: jsonb("sections").notNull().default([]),
+  settings: jsonb("settings").notNull().default({}),
+  revision: integer("revision").notNull().default(1),
+  publishedRevision: integer("published_revision").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type WebsiteConfigDraft = typeof websiteConfigDraftsTable.$inferSelect;
+export type InsertWebsiteConfigDraft = typeof websiteConfigDraftsTable.$inferInsert;
+
 export const websiteFormSubmissionsTable = pgTable("website_form_submissions", {
   id: serial("id").primaryKey(),
   businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "cascade" }),

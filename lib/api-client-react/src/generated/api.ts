@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AccountingReport,
   AppSettings,
   AuthUserEnvelope,
   BeginBrowserLoginParams,
@@ -50,6 +51,7 @@ import type {
   Expense,
   FinalizeInvoiceCommunicationRequest,
   Get1099ReportParams,
+  GetAccountingReportParams,
   GetDashboardStatsParams,
   GetEstimateQuoteCenterParams,
   GetInvoiceTaxReportParams,
@@ -106,6 +108,7 @@ import type {
   SendEstimateQuoteInput,
   StartJobRequest,
   Subcontractor,
+  SubcontractorCloseConflict,
   TaxReportRow,
   TrimOutCatalogResponse,
   UpdateClientBillingProfileRequest,
@@ -3154,7 +3157,7 @@ export const updateJob = async (
 };
 
 export const getUpdateJobMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<SubcontractorCloseConflict>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -3195,13 +3198,13 @@ export type UpdateJobMutationResult = NonNullable<
   Awaited<ReturnType<typeof updateJob>>
 >;
 export type UpdateJobMutationBody = BodyType<CreateJobRequest>;
-export type UpdateJobMutationError = ErrorType<unknown>;
+export type UpdateJobMutationError = ErrorType<SubcontractorCloseConflict>;
 
 /**
  * @summary Update a job
  */
 export const useUpdateJob = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<SubcontractorCloseConflict>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -9753,6 +9756,106 @@ export function useGetDashboardStats<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetDashboardStatsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get accounting report and subcontractor payables
+ */
+export const getGetAccountingReportUrl = (
+  params?: GetAccountingReportParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/reports/accounting?${stringifiedParams}`
+    : `/api/reports/accounting`;
+};
+
+export const getAccountingReport = async (
+  params?: GetAccountingReportParams,
+  options?: RequestInit,
+): Promise<AccountingReport> => {
+  return customFetch<AccountingReport>(getGetAccountingReportUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAccountingReportQueryKey = (
+  params?: GetAccountingReportParams,
+) => {
+  return [`/api/reports/accounting`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetAccountingReportQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAccountingReport>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAccountingReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAccountingReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAccountingReportQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAccountingReport>>
+  > = ({ signal }) =>
+    getAccountingReport(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAccountingReport>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAccountingReportQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAccountingReport>>
+>;
+export type GetAccountingReportQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get accounting report and subcontractor payables
+ */
+
+export function useGetAccountingReport<
+  TData = Awaited<ReturnType<typeof getAccountingReport>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetAccountingReportParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAccountingReport>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAccountingReportQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

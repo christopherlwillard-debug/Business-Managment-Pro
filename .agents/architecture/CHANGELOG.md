@@ -12,6 +12,15 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-11-11
+
+### Separate Website Studio drafts from live content
+
+- Added `website_config_drafts` and an additive development migration that backfills existing config rows without changing published content.
+- Moved editor saves to revision-checked drafts; only explicit Publish promotes content in one transaction. Public slug and media responses continue to serve only published content.
+- Added rollback-safe database guards, draft-only private image storage, and promotion to public image paths during Publish. The guards remain active if application code is rolled back.
+- Verified the development migration, direct-write and failed-transaction guards, authenticated draft/public API flow, private image delivery and publish promotion, API and app typechecks, and the schema contract check. No production database, live website, deployment, or Phase C behavior was changed.
+
 ## 2026-11-10
 
 ### LLC dashboard roll-up groundwork

@@ -1917,57 +1917,89 @@ function OverviewTab({ data, year, setActiveTab }: { data: any; year: number; se
 
       {/* ── Outstanding Sub Payments ── */}
       {(() => {
-        const outstanding: any[] = data.outstandingSubPayments ?? [];
-        const total: number = data.outstandingSubTotal ?? 0;
-        if (outstanding.length === 0) return null;
+        const groups: Array<{
+          subcontractorId: number;
+          subName: string;
+          knownTotal: number;
+          unresolvedCount: number;
+          isComplete: boolean;
+          jobCount: number;
+          items: Array<{
+            jobId: number;
+            jobTitle: string;
+            compensationType: string;
+            amount: number | null;
+            balanceReason: string | null;
+            paymentStatus: string | null;
+          }>;
+        }> = data?.subcontractorPayables ?? [];
+        const knownTotal: number = data?.outstandingSubTotal ?? 0;
+        const hasUnknown = groups.some(group => !group.isComplete);
+        if (groups.length === 0) return null;
         return (
           <div className="bg-card border border-amber-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-amber-50/80 border-b border-amber-200 flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
                 <span className="font-semibold text-sm text-amber-900">Outstanding Sub Payments</span>
-                <span className="text-sm font-bold text-amber-700">{formatCurrency(total)}</span>
+                <span className="text-sm font-bold text-amber-700">
+                  {hasUnknown ? `Known subtotal ${formatCurrency(knownTotal)}` : formatCurrency(knownTotal)}
+                </span>
               </div>
-              <span className="text-xs text-amber-700/80">Subs not yet marked paid</span>
+              <span className="text-xs text-amber-700/80">
+                {hasUnknown ? "Some amounts need review; totals are incomplete" : "Unpaid subcontractor balances"}
+              </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-amber-50/60 text-amber-800 text-xs uppercase font-semibold border-b border-amber-100">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left">Subcontractor</th>
-                    <th className="px-4 py-2.5 text-left">Job</th>
-                    <th className="px-4 py-2.5 text-left">Type</th>
-                    <th className="px-4 py-2.5 text-right">Amount Owed</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-amber-100/60">
-                  {outstanding.map((row: any, i: number) => (
-                    <tr key={i} className="hover:bg-amber-50/40 transition-colors">
-                      <td className="px-4 py-2.5 font-medium text-foreground">{row.subName}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{row.jobTitle || "—"}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-100 text-amber-700">
-                          {row.compensationType}
+            <div className="divide-y divide-amber-100/70">
+              {groups.map(group => (
+                <details key={group.subcontractorId} className="group">
+                  <summary className="list-none cursor-pointer px-5 py-3 flex flex-wrap items-center justify-between gap-2 hover:bg-amber-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-amber-600">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <ChevronDown className="w-4 h-4 text-amber-600 transition-transform group-open:rotate-180" aria-hidden="true" />
+                      <span className="font-semibold text-foreground truncate">{group.subName}</span>
+                      <span className="text-xs text-muted-foreground">{group.jobCount} {group.jobCount === 1 ? "job" : "jobs"}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className="font-bold text-amber-800">{formatCurrency(group.knownTotal)}</span>
+                      {!group.isComplete && (
+                        <span className="block text-xs text-red-700">
+                          Incomplete · {group.unresolvedCount} {group.unresolvedCount === 1 ? "amount" : "amounts"} need review
                         </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-amber-700">
-                        {row.amount != null ? formatCurrency(row.amount) : <span className="text-muted-foreground italic">TBD</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="bg-amber-50/60 border-t border-amber-200 font-semibold text-sm">
-                  <tr>
-                    <td colSpan={3} className="px-4 py-2.5 text-amber-800">{outstanding.length} unpaid sub{outstanding.length !== 1 ? "s" : ""}</td>
-                    <td className="px-4 py-2.5 text-right text-amber-700">{formatCurrency(total)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+                      )}
+                    </span>
+                  </summary>
+                  <div className="px-5 pb-3 space-y-2">
+                    {group.items.map(item => (
+                      <div key={`${group.subcontractorId}:${item.jobId}`} className="rounded-lg border border-amber-100 bg-background px-3 py-2.5 flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm text-foreground">{item.jobTitle || `Job #${item.jobId}`}</p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {item.compensationType} · {item.paymentStatus ?? "unpaid"}
+                          </p>
+                          {item.balanceReason && <p className="text-xs text-red-700 mt-1">{item.balanceReason}</p>}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={item.amount == null ? "text-xs font-medium text-red-700" : "text-sm font-semibold text-amber-800"}>
+                            {item.amount == null ? "Amount needs review" : formatCurrency(item.amount)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/jobs/${item.jobId}/payroll`)}
+                            className="text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                          >
+                            Open payroll
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ))}
             </div>
             <div className="px-5 py-2.5 bg-amber-50/40 border-t border-amber-100 flex items-start gap-2">
               <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
               <p className="text-xs text-amber-800">
-                These amounts are not in your expense totals yet. Go to the job card and click <strong>Mark Paid</strong> to record the payment and add it to your books.
+                Payments are recorded separately for each job in Job Payroll. Unknown amounts must be resolved before a job can be closed.
               </p>
             </div>
           </div>

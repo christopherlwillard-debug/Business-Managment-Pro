@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { ArrowLeft, Plus, Trash2, DollarSign, ChevronDown, ChevronUp, X, CheckCircle2, Pencil, Save, AlertCircle, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -1285,6 +1286,7 @@ export default function JobPayroll() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const jobId = parseInt(id ?? "0");
   const payrollSearchParams = new URLSearchParams(window.location.search);
@@ -1321,6 +1323,7 @@ export default function JobPayroll() {
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: ["accounting"] });
     const profitRefresh = startJobProfitRefresh<JobProfitResponse>();
     setProfit(profitRefresh.profit);
     setProfitError(profitRefresh.profitError);
@@ -1359,7 +1362,7 @@ export default function JobPayroll() {
     setProfitError(profitState.profitError);
     if (hoursRes.status === "fulfilled") setSubHours(hoursRes.value as SubHourEntry[]);
     setRefreshing(false);
-  }, [jobId]);
+  }, [jobId, queryClient]);
 
   useEffect(() => {
     const requestedJobId = jobId;

@@ -1,5 +1,5 @@
 import { Download, Printer, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Estimate } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 
@@ -37,23 +37,68 @@ export function buildCustomerQuoteView(estimate: Estimate): CustomerQuoteView {
 export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate; onClose: () => void }) {
   const quote = buildCustomerQuoteView(estimate);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const downloadPdf = async () => {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const params = new URLSearchParams();
+    if (typeof estimate.businessId === "number") params.set("businessId", String(estimate.businessId));
+    else if (estimate.businessLine) params.set("businessLine", estimate.businessLine);
+    setLoadingPdf(true);
     setDownloadError(null);
     try {
-      const response = await fetch(`/api/estimates/${estimate.id}/pdf`, { credentials: "include" });
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error ?? "Could not generate the quote PDF.");
-      }
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `quote-${estimate.id}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      void (async () => {
+        try {
+          const prepareResponse = await fetch(`${base}/api/estimates/${estimate.id}/quote-preview?${params}`, {
+            method: "POST",
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          });
+          const prepared = await prepareResponse.json().catch(() => null) as { revisionEventId?: number; error?: string } | null;
+          if (!prepareResponse.ok || typeof prepared?.revisionEventId !== "number") {
+            throw new Error(prepared?.error ?? "Could not prepare the quote PDF.");
+          }
+          const pdfParams = new URLSearchParams(params);
+          pdfParams.set("inline", "1");
+          const pdfResponse = await fetch(
+            `${base}/api/estimates/${estimate.id}/quote-events/${prepared.revisionEventId}/pdf?${pdfParams}`,
+            { credentials: "include", headers: { Accept: "application/pdf" } },
+          );
+          if (!pdfResponse.ok) {
+            const body = await pdfResponse.json().catch(() => ({}));
+            throw new Error(body.error ?? "Could not load the quote PDF.");
+          }
+          const pdf = await pdfResponse.blob();
+          if (pdf.type && pdf.type !== "application/pdf") throw new Error("The server did not return a valid PDF.");
+          if (!cancelled) setPreviewUrl(URL.createObjectURL(pdf));
+        } catch (error) {
+          if (!cancelled) setDownloadError(error instanceof Error ? error.message : "Could not prepare the quote PDF.");
+        } finally {
+          if (!cancelled) setLoadingPdf(false);
+        }
+      })();
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : "Could not generate the quote PDF.");
+      if (!cancelled) {
+        setDownloadError(error instanceof Error ? error.message : "Could not prepare the quote PDF.");
+        setLoadingPdf(false);
+      }
     }
+    return () => { cancelled = true; };
+  }, [estimate.id, estimate.businessId, estimate.businessLine]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const downloadPdf = () => {
+    setDownloadError(null);
+    if (!previewUrl) return;
+    const link = document.createElement("a");
+    link.href = previewUrl;
+    link.download = `quote-${estimate.id}.pdf`;
+    link.click();
   };
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -72,7 +117,7 @@ export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate
             <p className="text-xs text-gray-500">Internal pricing details are hidden.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={downloadPdf} className="flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white">
+            <button type="button" onClick={downloadPdf} disabled={!previewUrl} className="flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
               <Download className="h-4 w-4" /> Download branded PDF
             </button>
             <button type="button" aria-label="Close preview" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100">
@@ -80,12 +125,16 @@ export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate
             </button>
           </div>
         </div>
-        {downloadError && <p role="alert" className="px-5 py-2 text-sm text-red-700">{downloadError}</p>}
-        <iframe
-          title={`Branded quote PDF preview: ${quote.title}`}
-          src={`/api/estimates/${estimate.id}/pdf?inline=1`}
-          className="h-[78vh] w-full border-0"
-        />
+        {loadingPdf
+          ? <div className="grid h-[78vh] place-items-center text-sm text-gray-600">Preparing customer PDF…</div>
+          : downloadError
+            ? <p role="alert" className="mx-5 my-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{downloadError}</p>
+            : previewUrl && <iframe
+                title={`Branded quote PDF preview: ${quote.title}`}
+                src={previewUrl}
+                className="h-[78vh] w-full border-0"
+              />}
+        {!downloadError && <>
         {/*
           The server-generated PDF is the source of truth for customer-visible pricing;
           the legacy HTML preview below is retained as an accessible text fallback.
@@ -128,6 +177,7 @@ export function CustomerQuotePreview({ estimate, onClose }: { estimate: Estimate
             </div>
           </section>
         </article>
+        </>}
       </div>
     </div>
   );
