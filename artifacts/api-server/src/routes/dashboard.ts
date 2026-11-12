@@ -19,7 +19,7 @@ import {
 import { eq, asc, lte, ne, and, or, isNotNull, desc, inArray, isNull, not, lt } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { OWNER_WITHDRAWAL_EXPENSE_CATEGORIES } from "../lib/owner-withdrawals.js";
-import { hasRequestedBusiness, invalidBusinessScope, mutationBusinessPredicate, requestedBusiness } from "../lib/business-scope.js";
+import { businessReadPredicate, hasRequestedBusiness, invalidBusinessScope, requestedBusinessReadScope } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -39,7 +39,7 @@ function formatComplianceItem(item: any) {
 }
 
 router.get("/today", wrapAsync(async (req, res) => {
-  const scope = await requestedBusiness(req);
+  const scope = await requestedBusinessReadScope(req);
   if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
   const today = new Date();
@@ -49,14 +49,14 @@ router.get("/today", wrapAsync(async (req, res) => {
     ? or(
         and(
           isNotNull(routeStopsTable.clientId),
-          mutationBusinessPredicate(
+          businessReadPredicate(
             { businessId: clientsTable.businessId, businessLine: clientsTable.businessLine },
             scope,
           ),
         ),
         and(
           isNotNull(routeStopsTable.prospectId),
-          mutationBusinessPredicate(
+          businessReadPredicate(
             { businessId: prospectsTable.businessId, businessLine: prospectsTable.businessLine },
             scope,
           ),
@@ -102,7 +102,7 @@ router.get("/today", wrapAsync(async (req, res) => {
           lte(prospectsTable.followUpDate, todayStr),
           ne(prospectsTable.status, "lost"),
           scope
-            ? mutationBusinessPredicate(
+            ? businessReadPredicate(
                 { businessId: prospectsTable.businessId, businessLine: prospectsTable.businessLine },
                 scope,
               )
@@ -122,7 +122,7 @@ router.get("/today", wrapAsync(async (req, res) => {
       .where(and(
         eq(invoicesTable.status, "overdue"),
         scope
-          ? mutationBusinessPredicate(
+          ? businessReadPredicate(
               { businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine },
               scope,
             )
@@ -144,13 +144,13 @@ router.get("/today", wrapAsync(async (req, res) => {
 // ─── Continue Working ──────────────────────────────────────────────────────────
 // Returns the most-recently-active job (by checklist updatedAt fallback createdAt).
 router.get("/continue-working", wrapAsync(async (req, res) => {
-  const scope = await requestedBusiness(req);
+  const scope = await requestedBusinessReadScope(req);
   if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
   const activeWhere = and(
     ne(jobsTable.status, "closed"),
     ne(jobsTable.status, "cancelled"),
     scope
-      ? mutationBusinessPredicate(
+      ? businessReadPredicate(
           { businessId: jobsTable.businessId, businessLine: jobsTable.businessLine },
           scope,
         )
@@ -235,7 +235,7 @@ router.get("/continue-working", wrapAsync(async (req, res) => {
 // canonical owner withdrawals.
 router.get("/recent-activity", wrapAsync(async (req, res) => {
   const OWNER_CATS = OWNER_WITHDRAWAL_EXPENSE_CATEGORIES;
-  const scope = await requestedBusiness(req);
+  const scope = await requestedBusinessReadScope(req);
   if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
   const [expenses, invoicesRows, subPays, ownerPay] = await Promise.all([
@@ -252,7 +252,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
         not(inArray(expensesTable.category, [...OWNER_CATS, "mileage"])),
         isNull(expensesTable.jobSubHoursId),
         scope
-          ? mutationBusinessPredicate(
+          ? businessReadPredicate(
               { businessId: expensesTable.businessId, businessLine: expensesTable.businessLine },
               scope,
             )
@@ -273,7 +273,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .from(invoicesTable)
       .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
       .where(scope
-        ? mutationBusinessPredicate(
+        ? businessReadPredicate(
             { businessId: invoicesTable.businessId, businessLine: invoicesTable.businessLine },
             scope,
           )
@@ -293,7 +293,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .leftJoin(subcontractorsTable, eq(subPaymentRecordsTable.subcontractorId, subcontractorsTable.id))
       .leftJoin(jobsTable, eq(subPaymentRecordsTable.jobId, jobsTable.id))
       .where(scope
-        ? mutationBusinessPredicate(
+        ? businessReadPredicate(
             { businessId: jobsTable.businessId, businessLine: jobsTable.businessLine },
             scope,
           )
@@ -312,7 +312,7 @@ router.get("/recent-activity", wrapAsync(async (req, res) => {
       .where(and(
         lt(ownerCapitalEntriesTable.amount, "0"),
         isNull(ownerCapitalEntriesTable.voidedAt),
-        scope ? eq(ownerCapitalEntriesTable.businessId, scope.id) : undefined,
+        scope ? inArray(ownerCapitalEntriesTable.businessId, scope.memberIds) : undefined,
       ))
       .orderBy(desc(ownerCapitalEntriesTable.createdAt))
       .limit(5),

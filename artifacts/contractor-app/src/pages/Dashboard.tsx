@@ -12,7 +12,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import {
   Briefcase, DollarSign, Receipt, AlertTriangle, ArrowRight, ShieldAlert,
   CheckCircle2, Clock, TrendingUp, TrendingDown, CalendarClock, MapPin,
-  Navigation, Phone, FileText, Sparkles, HardHat, Wallet, Plus, Camera,
+  Navigation, Phone, FileText, Sparkles, HardHat, Wallet, Plus,
   Bell, Activity, Route,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -68,6 +68,25 @@ function getTodayStr() {
   return `${y}-${m}-${d}`;
 }
 
+function dashboardBusinessQuery(businessId?: number | null, businessLine?: string) {
+  const params = new URLSearchParams();
+  if (businessId != null) params.set("businessId", String(businessId));
+  if (businessLine) params.set("businessLine", businessLine);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function DashboardSectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
+      <span>{message}</span>
+      <button type="button" onClick={onRetry} className="shrink-0 font-semibold text-primary underline underline-offset-2">
+        Retry
+      </button>
+    </div>
+  );
+}
+
 interface DashboardToday {
   complianceItems: Array<{ id: number; title: string; dueDate: string; computedStatus: string; daysUntilDue: number }>;
   routeStops: Array<{ id: number; title: string | null; address: string; status: string; clientName: string | null; prospectContactName: string | null }>;
@@ -75,12 +94,12 @@ interface DashboardToday {
   overdueInvoices: Array<{ id: number; invoiceNumber: string; clientName: string | null; dueDate: string | null; total: number }>;
 }
 
-function useDashboardToday(businessId?: number | null) {
+function useDashboardToday(businessId?: number | null, businessLine?: string) {
   const today = getTodayStr();
   return useQuery<DashboardToday>({
-    queryKey: ["dashboard-today", today, businessId ?? "all"],
+    queryKey: ["dashboard-today", today, businessId ?? "all", businessLine ?? "all"],
     queryFn: async () => {
-      const params = businessId != null ? `?businessId=${businessId}` : "";
+      const params = dashboardBusinessQuery(businessId, businessLine);
       const res = await fetch(`${BASE}/api/dashboard/today${params}`);
       if (!res.ok) throw new Error("Failed to load dashboard data");
       return res.json();
@@ -130,65 +149,6 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
     <div className="mb-3">
       <h2 className="text-lg font-display font-bold text-foreground">{title}</h2>
       {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
-    </div>
-  );
-}
-
-// ─── Quick Actions (original — preserved) ─────────────────────────────────────
-interface QuickAction {
-  icon: React.ElementType;
-  label: string;
-  description: string;
-  onClick: () => void;
-  color: string;
-  iconBg: string;
-}
-
-function QuickActions({ onNavigate }: {
-  onNavigate: (path: string) => void;
-}) {
-  const actions: QuickAction[] = [
-    {
-      icon: Camera,
-      label: "Scan Receipt",
-      description: "AI scans & logs the expense",
-      onClick: () => onNavigate("/expenses?scan=1"),
-      color: "border-violet-200/70 hover:border-violet-300 hover:bg-violet-50/60",
-      iconBg: "bg-violet-100 text-violet-700",
-    },
-    {
-      icon: Briefcase,
-      label: "New Job",
-      description: "Create a new job",
-      onClick: () => onNavigate("/jobs"),
-      color: "border-amber-200/70 hover:border-amber-300 hover:bg-amber-50/60",
-      iconBg: "bg-amber-100 text-amber-700",
-    },
-  ];
-
-  return (
-    <div>
-      <SectionHeader title="Quick Actions" />
-      <div className="grid grid-cols-2 gap-3">
-        {actions.map(action => (
-          <button
-            key={action.label}
-            onClick={action.onClick}
-            className={cn(
-              "flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all active:scale-[0.98] shadow-sm",
-              action.color,
-            )}
-          >
-            <div className={cn("p-2.5 rounded-xl", action.iconBg)}>
-              <action.icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground leading-tight">{action.label}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{action.description}</p>
-            </div>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -288,13 +248,13 @@ interface ContinueWorkingData {
   crewNames: string[];
 }
 
-function useContinueWorking(businessId?: number | null) {
+function useContinueWorking(businessId?: number | null, businessLine?: string) {
   return useQuery<ContinueWorkingData | null>({
-    queryKey: ["dashboard-continue-working", businessId ?? "all"],
+    queryKey: ["dashboard-continue-working", businessId ?? "all", businessLine ?? "all"],
     queryFn: async () => {
-      const params = businessId != null ? `?businessId=${businessId}` : "";
+      const params = dashboardBusinessQuery(businessId, businessLine);
       const res = await fetch(`${BASE}/api/dashboard/continue-working${params}`);
-      if (!res.ok) return null;
+      if (!res.ok) throw new Error("Failed to load the active job");
       return res.json();
     },
     staleTime: 2 * 60 * 1000,
@@ -311,13 +271,13 @@ interface ActivityEvent {
   linkPath: string;
 }
 
-function useRecentActivity(businessId?: number | null) {
+function useRecentActivity(businessId?: number | null, businessLine?: string) {
   return useQuery<ActivityEvent[]>({
-    queryKey: ["dashboard-recent-activity", businessId ?? "all"],
+    queryKey: ["dashboard-recent-activity", businessId ?? "all", businessLine ?? "all"],
     queryFn: async () => {
-      const params = businessId != null ? `?businessId=${businessId}` : "";
+      const params = dashboardBusinessQuery(businessId, businessLine);
       const res = await fetch(`${BASE}/api/dashboard/recent-activity${params}`);
-      if (!res.ok) return [];
+      if (!res.ok) throw new Error("Failed to load recent activity");
       return res.json();
     },
     staleTime: 2 * 60 * 1000,
@@ -337,7 +297,7 @@ function useCashFlow() {
     queryKey: ["dashboard-cash-flow"],
     queryFn: async () => {
       const res = await fetch(`${BASE}/api/reports/business-reserve`);
-      if (!res.ok) return { checkingBalance: null, estimatedTaxes: 0, growthFundAvailable: 0, availableToSpend: null, plaidConnected: false };
+      if (!res.ok) throw new Error("Failed to load cash flow");
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
@@ -363,41 +323,19 @@ function DashboardHeader({ companyName, todayFormatted }: { companyName: string;
   );
 }
 
-function HeroCard({ onNavigate }: { onNavigate: (path: string) => void }) {
-  return (
-    <button
-      onClick={() => onNavigate("/expenses?scan=1")}
-      className="w-full rounded-2xl overflow-hidden shadow-md active:scale-[0.98] transition-transform text-left"
-      style={{ background: "linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.75) 100%)" }}
-    >
-      <div className="px-5 py-5 flex items-center justify-between">
-        <div>
-          <span className="inline-block text-[10px] font-bold uppercase tracking-widest text-primary-foreground/60 bg-primary-foreground/10 px-2.5 py-0.5 rounded-full mb-2">
-            AI Powered
-          </span>
-          <p className="text-xl font-display font-bold text-primary-foreground leading-tight">Scan Receipt</p>
-          <p className="text-xs text-primary-foreground/70 mt-1">AI reads and logs it instantly</p>
-        </div>
-        <div className="p-3.5 rounded-2xl bg-primary-foreground/15 flex-shrink-0">
-          <Camera className="w-8 h-8 text-primary-foreground" />
-        </div>
-      </div>
-    </button>
-  );
-}
-
 function QuickActionsV2({ onNavigate, onRecordPay }: {
   onNavigate: (path: string) => void;
   onRecordPay: () => void;
 }) {
   const actions = [
+    { icon: Receipt,   label: "Scan Receipt", onClick: () => onNavigate("/expenses?scan=1"), color: "border-cyan-200/70 hover:bg-cyan-50/60",     iconBg: "bg-cyan-100 text-cyan-700"      },
     { icon: Briefcase, label: "New Job",    onClick: () => onNavigate("/jobs"),          color: "border-amber-200/70 hover:bg-amber-50/60",    iconBg: "bg-amber-100 text-amber-700"    },
     { icon: Route,     label: "Route Plan", onClick: () => onNavigate("/route-planner"), color: "border-blue-200/70 hover:bg-blue-50/60",      iconBg: "bg-blue-100 text-blue-700"      },
     { icon: Wallet,    label: "Owner Withdrawal", onClick: onRecordPay,                  color: "border-emerald-200/70 hover:bg-emerald-50/60", iconBg: "bg-emerald-100 text-emerald-700" },
     { icon: HardHat,   label: "Open Jobs",  onClick: () => onNavigate("/jobs"),          color: "border-violet-200/70 hover:bg-violet-50/60",  iconBg: "bg-violet-100 text-violet-700"  },
   ];
   return (
-    <div className="grid grid-cols-4 gap-2">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
       {actions.map(a => (
         <button
           key={a.label}
@@ -412,10 +350,11 @@ function QuickActionsV2({ onNavigate, onRecordPay }: {
   );
 }
 
-function ContinueWorkingCard({ onNavigate, businessId }: { onNavigate: (p: string) => void; businessId?: number | null }) {
-  const { data: job, isLoading } = useContinueWorking(businessId);
+function ContinueWorkingCard({ onNavigate, businessId, businessLine }: { onNavigate: (p: string) => void; businessId?: number | null; businessLine?: string }) {
+  const { data: job, isLoading, isError, refetch } = useContinueWorking(businessId, businessLine);
   if (isLoading) return <div className="h-24 rounded-2xl bg-muted/30 animate-pulse" />;
-  if (!job) return null;
+  if (isError) return <DashboardSectionError message="Could not load the active job." onRetry={() => { void refetch(); }} />;
+  if (!job) return <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">No active job to continue.</p>;
   const invColors: Record<string, string> = { sent: "text-blue-600", paid: "text-emerald-600", overdue: "text-red-600", draft: "text-muted-foreground" };
   return (
     <div>
@@ -468,7 +407,14 @@ function TodayScheduleCard({ stops, onNavigate }: {
   stops: DashboardToday["routeStops"];
   onNavigate: (p: string) => void;
 }) {
-  if (!stops.length) return null;
+  if (!stops.length) {
+    return (
+      <div>
+        <SectionHeader title="Today's Schedule" />
+        <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">No route stops are scheduled today.</p>
+      </div>
+    );
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -509,8 +455,7 @@ function TodayScheduleCard({ stops, onNavigate }: {
   );
 }
 
-function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate, onLogTaxPayment }: {
-  subContractorOwed: number;
+function NeedsAttentionCard({ pendingInvoices, overdueCount, complianceCount, taxAlertCount, followUpCount, onNavigate, onLogTaxPayment }: {
   pendingInvoices: number;
   overdueCount: number;
   complianceCount: number;
@@ -520,7 +465,6 @@ function NeedsAttentionCard({ subContractorOwed, pendingInvoices, overdueCount, 
   onLogTaxPayment?: () => void;
 }) {
   const rows = [
-    { label: "Subs Need Paid",       badge: subContractorOwed > 0 ? formatCurrency(subContractorOwed) : null, extra: null,                                                      dot: "bg-amber-500",  href: "/people",                      show: subContractorOwed > 0,   isTax: false },
     { label: "Outstanding Invoices", badge: pendingInvoices > 0 ? formatCurrency(pendingInvoices) : null,     extra: overdueCount > 0 ? `${overdueCount} overdue` : null,       dot: overdueCount > 0 ? "bg-red-500" : "bg-blue-400", href: "/accounting", show: pendingInvoices > 0 || overdueCount > 0, isTax: false },
     { label: "Compliance Items",     badge: complianceCount > 0 ? `${complianceCount} urgent` : null,         extra: null,                                                      dot: "bg-orange-500", href: "/accounting?tab=tax-calendar", show: complianceCount > 0,                   isTax: false },
     { label: "Tax Payments Due",     badge: taxAlertCount > 0 ? `${taxAlertCount} due` : null,                extra: null,                                                      dot: "bg-red-500",    href: "/accounting?tab=tax-calendar", show: taxAlertCount > 0,                     isTax: true  },
@@ -777,8 +721,9 @@ function BusinessHealthCard({ stats, period, onPeriodChange, businessLine, busin
 }
 
 function CashFlowCard() {
-  const { data: cf, isLoading } = useCashFlow();
+  const { data: cf, isLoading, isError, refetch } = useCashFlow();
   if (isLoading) return <div className="h-20 rounded-2xl bg-muted/30 animate-pulse" />;
+  if (isError) return <DashboardSectionError message="Could not load cash and reserve details." onRetry={() => { void refetch(); }} />;
   if (!cf) return null;
   const rows = [
     { label: "Checking Balance",  val: cf.checkingBalance,     color: "text-foreground",  show: cf.plaidConnected, bold: false },
@@ -826,9 +771,10 @@ const ACTIVITY_COLOR_MAP: Record<string, string> = {
   owner_pay:   "bg-emerald-100 text-emerald-700",
 };
 
-function RecentActivityCard({ onNavigate, businessId }: { onNavigate: (p: string) => void; businessId?: number | null }) {
-  const { data: events = [], isLoading } = useRecentActivity(businessId);
+function RecentActivityCard({ onNavigate, businessId, businessLine }: { onNavigate: (p: string) => void; businessId?: number | null; businessLine?: string }) {
+  const { data: events = [], isLoading, isError, refetch } = useRecentActivity(businessId, businessLine);
   if (isLoading) return <div className="h-32 rounded-2xl bg-muted/30 animate-pulse" />;
+  if (isError) return <DashboardSectionError message="Could not load recent activity." onRetry={() => { void refetch(); }} />;
   if (!events.length) return null;
   return (
     <div>
@@ -877,6 +823,11 @@ export default function Dashboard() {
   const businessLine = selectedBusiness
     ? (isLegalBusinessSelection ? localBLFilter : selectedBusiness.slug)
     : localBLFilter;
+  const localScopeBusiness = localBLFilter
+    ? businesses.find((business) => business.slug === localBLFilter) ?? null
+    : null;
+  const ownerPayBusinessId = businessId
+    ?? (localScopeBusiness ? (localScopeBusiness.legalBusinessId ?? localScopeBusiness.id) : null);
   const willardsDivisions = selectedBusiness && isLegalBusinessSelection
     ? businesses.filter((business) =>
         (business.legalBusinessId ?? business.id) === selectedBusiness.id,
@@ -886,17 +837,17 @@ export default function Dashboard() {
     && willardsDivisions.some((business) => business.slug === "asphalt_sealing");
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
-  const { data: stats, isLoading } = useGetDashboardStats({
+  const { data: stats, isLoading, isError: statsError, refetch: refetchStats } = useGetDashboardStats({
     period,
     businessId: businessId ?? undefined,
     businessLine: (businessLine || undefined) as any,
   });
-  const { data: todayData } = useDashboardToday(businessId);
+  const { data: todayData, isError: todayError, refetch: refetchToday } = useDashboardToday(businessId, businessLine || undefined);
   const complianceItems = todayData?.complianceItems ?? [];
   const todayStops = todayData?.routeStops ?? [];
   const followUpProspects = todayData?.followUpProspects ?? [];
   const overdueInvoices = todayData?.overdueInvoices ?? [];
-  const { data: taxAlerts = [] } = useTaxAlerts();
+  const { data: taxAlerts = [], isError: taxAlertsError, refetch: refetchTaxAlerts } = useTaxAlerts();
   const { data: appSettings } = useGetSettings();
   const annualOnly = (appSettings as any)?.taxFilingFrequency === "annual";
 
@@ -953,7 +904,9 @@ export default function Dashboard() {
   if (isLoading) {
     return <div className="flex items-center justify-center h-full animate-pulse text-muted-foreground">Loading dashboard...</div>;
   }
-  if (!stats) return null;
+  if (statsError || !stats) {
+    return <DashboardSectionError message="Could not load the business snapshot." onRetry={() => { void refetchStats(); }} />;
+  }
 
   return (
     <div className="space-y-6">
@@ -961,32 +914,39 @@ export default function Dashboard() {
       {/* ── 1. HEADER ── */}
       <DashboardHeader companyName={appSettings?.companyName ?? "Business"} todayFormatted={todayFormatted} />
 
-      {/* ── 2. HERO: SCAN RECEIPT ── */}
-      <HeroCard onNavigate={navigate} />
+      {/* ── NEEDS ATTENTION ── */}
+      {(todayError || taxAlertsError) ? (
+        <DashboardSectionError
+          message="Some attention items could not be loaded."
+          onRetry={() => { void Promise.all([refetchToday(), refetchTaxAlerts()]); }}
+        />
+      ) : (
+        <NeedsAttentionCard
+          pendingInvoices={stats.pendingInvoices ?? 0}
+          overdueCount={overdueInvoices.length}
+          complianceCount={urgentComplianceItems.length}
+          taxAlertCount={annualOnly ? 0 : taxAlerts.length}
+          followUpCount={followUpProspects.length}
+          onNavigate={navigate}
+          onLogTaxPayment={!annualOnly && taxAlerts.length > 0 ? () => { setLogTaxDate(getTodayStr()); setLogTaxOpen(true); } : undefined}
+        />
+      )}
 
-      {/* ── 3. QUICK ACTIONS ── */}
+      <DashboardTasksWidget />
+
+      {/* ── TODAY / NEXT ── */}
+      <ContinueWorkingCard onNavigate={navigate} businessId={businessId} businessLine={businessLine || undefined} />
+      {todayError ? (
+        <DashboardSectionError message="Could not load today's schedule." onRetry={() => { void refetchToday(); }} />
+      ) : (
+        <TodayScheduleCard stops={todayStops} onNavigate={navigate} />
+      )}
+
+      {/* ── QUICK ACTIONS ── */}
       <div>
         <SectionHeader title="Quick Actions" />
         <QuickActionsV2 onNavigate={navigate} onRecordPay={() => setDrawOpen(true)} />
       </div>
-
-      {/* ── 4. CONTINUE WORKING ── */}
-      <ContinueWorkingCard onNavigate={navigate} businessId={businessId} />
-
-      {/* ── 5. TODAY'S SCHEDULE ── */}
-      <TodayScheduleCard stops={todayStops} onNavigate={navigate} />
-
-      {/* ── 6. NEEDS ATTENTION ── */}
-      <NeedsAttentionCard
-        subContractorOwed={stats.subContractorOwed ?? 0}
-        pendingInvoices={stats.pendingInvoices ?? 0}
-        overdueCount={overdueInvoices.length}
-        complianceCount={urgentComplianceItems.length}
-        taxAlertCount={annualOnly ? 0 : taxAlerts.length}
-        followUpCount={followUpProspects.length}
-        onNavigate={navigate}
-        onLogTaxPayment={!annualOnly && taxAlerts.length > 0 ? () => { setLogTaxDate(getTodayStr()); setLogTaxOpen(true); } : undefined}
-      />
 
       {/* Quick-log tax payment dialog */}
       {firstDueTaxQuarter && (
@@ -1045,10 +1005,7 @@ export default function Dashboard() {
         </Dialog>
       )}
 
-      {/* ── 7. MY TO-DO LIST ── */}
-      <DashboardTasksWidget />
-
-      {/* ── 8. BUSINESS HEALTH ── */}
+      {/* ── BUSINESS SNAPSHOT ── */}
       <BusinessHealthCard
         stats={stats}
         period={period}
@@ -1064,16 +1021,16 @@ export default function Dashboard() {
       />
 
       {/* ── 8. CASH FLOW ── */}
-      {businessId == null && <CashFlowCard />}
+      {businessId == null && !businessLine && <CashFlowCard />}
 
       {/* ── 9. OWNER PAY ── */}
       <div>
         <SectionHeader title="Owner Withdrawals" />
-        <MyPayCard businessId={businessId} externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
+        <MyPayCard businessId={ownerPayBusinessId} externalDialogOpen={drawOpen} onExternalDialogChange={setDrawOpen} />
       </div>
 
       {/* ── 10. RECENT ACTIVITY ── */}
-      <RecentActivityCard onNavigate={navigate} businessId={businessId} />
+      <RecentActivityCard onNavigate={navigate} businessId={businessId} businessLine={businessLine || undefined} />
 
     </div>
   );
@@ -1206,12 +1163,16 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   const [date, setDate] = useState(getTodayStr());
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["owner-pay-summary", businessId ?? "all"],
-    queryFn: () => fetch(
-      `${BASE}/api/reports/owner-pay-summary${businessId != null ? `?businessId=${businessId}` : ""}`,
-      { credentials: "include" },
-    ).then(r => r.json()),
+    queryFn: async () => {
+      const res = await fetch(
+        `${BASE}/api/reports/owner-pay-summary${businessId != null ? `?businessId=${businessId}` : ""}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Failed to load owner withdrawals");
+      return res.json();
+    },
     enabled: true,
   });
 
@@ -1244,6 +1205,7 @@ function MyPayCard({ businessId, externalDialogOpen, onExternalDialogChange }: {
   }
 
   if (isLoading) return <div className="animate-pulse h-40 rounded-2xl bg-muted" />;
+  if (isError) return <DashboardSectionError message="Could not load owner withdrawal details." onRetry={() => { void refetch(); }} />;
 
   const totalEarned    = data?.totalEarned    ?? 0;
   const totalWithdrawn = data?.totalWithdrawn ?? 0;
