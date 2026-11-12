@@ -27,6 +27,10 @@ const REQUIRED_OWNERSHIP_COLUMNS = [
   const [tableName, columnName] = qualifiedName.split(".");
   return { tableName, columnName, qualifiedName };
 });
+const JOB_PROPERTY_REQUIRED_COLUMNS = ["jobs.property_id"].map((qualifiedName) => {
+  const [tableName, columnName] = qualifiedName.split(".");
+  return { tableName, columnName, qualifiedName };
+});
 const PAY_WORKER_REQUIRED_COLUMNS = [
   "sub_payment_records.id",
   "sub_payment_records.job_id",
@@ -64,7 +68,7 @@ const MATERIAL_LIST_REQUIRED_COLUMNS = [
 });
 const REQUIRED_SCHEMA_COLUMNS = [
   ...new Map(
-    [...REQUIRED_OWNERSHIP_COLUMNS, ...PAY_WORKER_REQUIRED_COLUMNS, ...MATERIAL_LIST_REQUIRED_COLUMNS]
+    [...REQUIRED_OWNERSHIP_COLUMNS, ...JOB_PROPERTY_REQUIRED_COLUMNS, ...PAY_WORKER_REQUIRED_COLUMNS, ...MATERIAL_LIST_REQUIRED_COLUMNS]
       .map((requirement) => [requirement.qualifiedName, requirement]),
   ).values(),
 ];
@@ -87,6 +91,9 @@ const PAY_WORKER_COLUMN_NAMES = new Set(
 const MATERIAL_LIST_COLUMN_NAMES = new Set(
   MATERIAL_LIST_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
 );
+const JOB_PROPERTY_COLUMN_NAMES = new Set(
+  JOB_PROPERTY_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
+);
 
 const DATABASE_SCHEMA = "public";
 
@@ -100,6 +107,7 @@ function describeRequirement(qualifiedName) {
   if (OWNERSHIP_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("business ownership contract");
   if (PAY_WORKER_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("POST /api/jobs/:id/pay-worker");
   if (MATERIAL_LIST_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("material-list invoice assignment");
+  if (JOB_PROPERTY_COLUMN_NAMES.has(qualifiedName)) requiredBy.push("job property display");
   return requiredBy.join(" and ");
 }
 
@@ -141,7 +149,9 @@ function validateMetadata({ tables, columns, foreignKeys }) {
     if (!column) {
       const migration = requirement.qualifiedName === "sub_payment_records.business_id"
         ? "; apply lib/db/migrations/0069_financial_business_ownership.sql"
-        : MATERIAL_LIST_COLUMN_NAMES.has(requirement.qualifiedName)
+        : JOB_PROPERTY_COLUMN_NAMES.has(requirement.qualifiedName)
+          ? "; apply lib/db/migrations/0086_job_property_link.sql"
+          : MATERIAL_LIST_COLUMN_NAMES.has(requirement.qualifiedName)
           ? "; apply lib/db/migrations/0075_material_list_invoice_assignment.sql"
           : "";
       errors.push(`${requirement.qualifiedName}: column is missing (required by ${context}${migration})`);
@@ -267,6 +277,7 @@ export {
   PAY_WORKER_REQUIRED_COLUMNS,
   MATERIAL_LIST_REQUIRED_COLUMNS,
   REQUIRED_OWNERSHIP_COLUMNS,
+  JOB_PROPERTY_REQUIRED_COLUMNS,
   REQUIRED_SCHEMA_COLUMNS,
   REQUIRED_SCHEMA_TABLES,
   validateMetadata,

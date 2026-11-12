@@ -4,6 +4,7 @@ import {
   PAY_WORKER_REQUIRED_COLUMNS,
   MATERIAL_LIST_REQUIRED_COLUMNS,
   REQUIRED_OWNERSHIP_COLUMNS,
+  JOB_PROPERTY_REQUIRED_COLUMNS,
   REQUIRED_SCHEMA_COLUMNS,
   REQUIRED_SCHEMA_TABLES,
   validateMetadata,
@@ -12,6 +13,9 @@ import {
 function validMetadata() {
   const ownershipNames = new Set(
     REQUIRED_OWNERSHIP_COLUMNS.map(({ qualifiedName }) => qualifiedName),
+  );
+  const jobPropertyNames = new Set(
+    JOB_PROPERTY_REQUIRED_COLUMNS.map(({ qualifiedName }) => qualifiedName),
   );
   const tableNames = [...new Set([
     ...REQUIRED_SCHEMA_COLUMNS.map(({ tableName }) => tableName),
@@ -22,8 +26,8 @@ function validMetadata() {
     columns: REQUIRED_SCHEMA_COLUMNS.map(({ tableName, columnName, qualifiedName }) => ({
       table_name: tableName,
       column_name: columnName,
-      data_type: ownershipNames.has(qualifiedName) ? "integer" : "text",
-      udt_name: ownershipNames.has(qualifiedName) ? "int4" : "text",
+      data_type: ownershipNames.has(qualifiedName) || jobPropertyNames.has(qualifiedName) ? "integer" : "text",
+      udt_name: ownershipNames.has(qualifiedName) || jobPropertyNames.has(qualifiedName) ? "int4" : "text",
       is_nullable: "YES",
     })),
     foreignKeys: REQUIRED_OWNERSHIP_COLUMNS.map(({ tableName, columnName }) => ({
@@ -43,6 +47,17 @@ test("accepts a target schema with all required columns and tables", () => {
     ["material_lists.invoice_id", "material_lists.invoice_assignment_initialized"],
   );
   assert.deepEqual(validateMetadata(validMetadata()), []);
+});
+
+test("names the missing job property link column and its migration", () => {
+  const metadata = validMetadata();
+  metadata.columns = metadata.columns.filter(
+    (column) => column.column_name !== "property_id" || column.table_name !== "jobs",
+  );
+
+  assert.deepEqual(validateMetadata(metadata), [
+    "jobs.property_id: column is missing (required by job property display; apply lib/db/migrations/0086_job_property_link.sql)",
+  ]);
 });
 
 test("names a missing material-list invoice column and its migration", () => {

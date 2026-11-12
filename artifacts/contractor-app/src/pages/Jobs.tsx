@@ -10056,7 +10056,7 @@ export default function Jobs() {
       ? (localBLFilter ? { businessLine: localBLFilter } : { businessId: activeBusiness.id })
       : { businessId: activeBusiness.id }
     : (localBLFilter ? { businessLine: localBLFilter } : undefined);
-  const { data: jobs = [],    isLoading } = useListJobs(jobsParams);
+  const { data: jobs = [], isLoading, isError: jobsLoadFailed, refetch: refetchJobs } = useListJobs(jobsParams);
   const { data: clients = [] }            = useListClients(
     activeBusiness?.id != null
       ? { businessId: activeBusiness.legalBusinessId ?? activeBusiness.id }
@@ -11237,7 +11237,9 @@ export default function Jobs() {
            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Job records</p>
            <h2 className="text-xl font-display font-bold text-foreground">All jobs</h2>
          </div>
-          <span className="text-xs text-muted-foreground">{jobs.length} total</span>
+           <span className="text-xs text-muted-foreground">
+             {jobsLoadFailed ? "Unavailable" : `${jobs.length} total`}
+           </span>
        </div>
 
       {/* Loading */}
@@ -11247,8 +11249,20 @@ export default function Jobs() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!isLoading && jobs.length === 0 && (
+      {/* Error and empty states must stay distinct so a failed request never looks like deleted records. */}
+      {!isLoading && jobsLoadFailed ? (
+        <Card role="alert" className="py-12 text-center space-y-3">
+          <p className="font-semibold text-foreground">Could not load jobs</p>
+          <p className="text-sm text-muted-foreground">Your job records have not been deleted. Try loading them again.</p>
+          <button
+            type="button"
+            onClick={() => void refetchJobs()}
+            className="mx-auto mt-2 inline-flex min-h-10 items-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-muted/50"
+          >
+            Retry
+          </button>
+        </Card>
+      ) : !isLoading && jobs.length === 0 ? (
         <Card className="py-16 text-center space-y-3">
           <Briefcase className="w-12 h-12 text-muted-foreground/30 mx-auto" />
           <p className="font-semibold text-foreground">No jobs yet</p>
@@ -11260,7 +11274,7 @@ export default function Jobs() {
             </button>
           )}
         </Card>
-      )}
+      ) : null}
 
       {/* Business-line filter tabs — only in All Businesses mode */}
       {!isLoading && jobs.length > 0 && (activeBusiness === null || hasWillardsDivisions) && (
