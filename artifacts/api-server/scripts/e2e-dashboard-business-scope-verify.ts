@@ -229,7 +229,7 @@ async function createBusinessFixtures(runTag: string): Promise<{
     for (const business of businesses) {
       const [job] = await db.insert(jobsTable).values({
         title: `${business.marker}-ACTIVE-JOB`,
-        status: "in_progress",
+        status: "scheduled",
         startDate: today,
         businessId: business.id,
         businessLine: business.slug,
@@ -246,9 +246,8 @@ async function createBusinessFixtures(runTag: string): Promise<{
       }).returning({ id: expensesTable.id });
       fixtureIds.expenseIds.push(expense.id);
 
-      const invoiceDigits = `${Date.now()}${business.id}`.slice(-8);
       const [invoice] = await db.insert(invoicesTable).values({
-        invoiceNumber: `9${invoiceDigits}`,
+        invoiceNumber: `${business.marker}-INVOICE`,
         status: "sent",
         issueDate: today,
         subtotal: "1.00",
@@ -352,6 +351,26 @@ async function assertScopedDatasets(
     `wrong responses=${mismatched.map(item => `${item.url} (${item.status})`).join(", ") || "none"}; missing scoped reads=${missing.join(", ") || "none"}`,
   );
   if (!pass) await page.screenshot({ path: `/tmp/e2e-dashboard-business-scope-${label.replaceAll(" ", "-")}.png`, fullPage: true }).catch(() => undefined);
+}
+
+async function assertPageShowsSelectedBusiness(
+  page: Page,
+  marker: string,
+  otherMarker: string,
+  label: string,
+) {
+  try {
+    await page.waitForFunction(
+      ({ selected, other }) => document.body.innerText.includes(selected) && !document.body.innerText.includes(other),
+      { timeout: 12_000 },
+      { selected: marker, other: otherMarker },
+    );
+    record(`${label} displays only the selected business's records`, true, `${marker}; not ${otherMarker}`);
+  } catch {
+    const body = await page.$eval("body", element => element.innerText.replace(/\s+/g, " ").slice(0, 1_000)).catch(() => "page body unavailable");
+    await page.screenshot({ path: `/tmp/e2e-dashboard-business-scope-${label.replaceAll(" ", "-")}.png`, fullPage: true }).catch(() => undefined);
+    record(`${label} displays only the selected business's records`, false, `missing ${marker} or found ${otherMarker}; page text: ${body}`);
+  }
 }
 
 async function main() {
@@ -532,12 +551,12 @@ async function main() {
 
     for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
       await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForFunction(
-        ({ marker, other }) => document.body.innerText.includes(marker) && !document.body.innerText.includes(other),
-        { timeout: 30_000 },
-        { marker: label === "Jobs" ? `${markers.willard}-ACTIVE-JOB` : label === "Expenses" ? `${markers.willard}-EXPENSE` : markers.willard, other: markers.kinora },
+      await assertPageShowsSelectedBusiness(
+        page,
+        label === "Jobs" ? `${markers.willard}-ACTIVE-JOB` : label === "Expenses" ? `${markers.willard}-EXPENSE` : markers.willard,
+        markers.kinora,
+        `Willard ${label}`,
       );
-      record(`Willard ${label} view excludes Kinora records`, true, `${markers.willard}; not ${markers.kinora}`);
     }
 
     await page.click('[data-testid="business-switcher"]');
@@ -546,12 +565,12 @@ async function main() {
     await waitForDashboard(page);
     for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
       await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForFunction(
-        ({ marker, other }) => document.body.innerText.includes(marker) && !document.body.innerText.includes(other),
-        { timeout: 30_000 },
-        { marker: label === "Jobs" ? `${markers.kinora}-ACTIVE-JOB` : label === "Expenses" ? `${markers.kinora}-EXPENSE` : markers.kinora, other: markers.willard },
+      await assertPageShowsSelectedBusiness(
+        page,
+        label === "Jobs" ? `${markers.kinora}-ACTIVE-JOB` : label === "Expenses" ? `${markers.kinora}-EXPENSE` : markers.kinora,
+        markers.willard,
+        `Kinora ${label}`,
       );
-      record(`Kinora ${label} view excludes Willard records`, true, `${markers.kinora}; not ${markers.willard}`);
     }
 
     if (blockedWrites.length > 0) {
