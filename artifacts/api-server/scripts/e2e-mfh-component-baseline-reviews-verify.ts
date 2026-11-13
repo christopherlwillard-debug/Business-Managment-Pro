@@ -447,7 +447,9 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 1200 });
     await page.evaluateOnNewDocument((businessId) => {
-      localStorage.setItem("buildpro_selection_mode", String(businessId));
+      if (!localStorage.getItem("buildpro_selection_mode")) {
+        localStorage.setItem("buildpro_selection_mode", String(businessId));
+      }
     }, completeFixture.businessId);
     await page.setRequestInterception(true);
     page.on("dialog", dialog => void dialog.accept());
