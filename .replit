@@ -98,7 +98,7 @@ isValidation = true
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck"
+args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck'"
 
 [[workflows.workflow]]
 name = "typecheck-api"
@@ -109,7 +109,7 @@ isValidation = true
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck"
+args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck'"
 
 [[workflows.workflow]]
 name = "typecheck-libs"
@@ -120,7 +120,7 @@ isValidation = true
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "pnpm exec tsc -b lib/api-client-react lib/replit-auth-web"
+args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/api-client-react lib/replit-auth-web'"
 
 [[workflows.workflow]]
 name = "close-job"

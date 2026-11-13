@@ -710,7 +710,7 @@ async function main() {
       document.dispatchEvent(new Event("visibilitychange"));
     });
     await page.waitForFunction(
-      selector => document.querySelector(`${selector} button[data-state="here"]`)?.className.includes("bg-emerald-600") ?? false,
+      selector => document.querySelector(`${selector} button[data-state="not_here"]`)?.className.includes("bg-orange-600") ?? false,
       { timeout: 15_000 },
       dayOne,
     );
