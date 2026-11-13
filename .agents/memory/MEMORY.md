@@ -9,7 +9,7 @@
 - [Card editor panel architecture](card-editor-panel.md) — specialContent injection into InspectorPanel was unreliable; replaced with selectedCardData state captured at click-time + standalone panel that returns early before InspectorPanel renders
 - [Owner Capital Ledger](owner-capital-ledger.md) — owner_capital_entries table replaces single ownerPersonalInvestment setting; auto-migrates on first GET; drizzle push needs interactive TTY so use psql directly
 - [Plaid balance cache](plaid-balance-cache.md) — cache reduced to 1 hour; sync route now also refreshes balance; Banking.tsx sync must invalidate ["plaid-balance"]
-- [Compensation type & pay-worker](comp-type-pay-worker.md) — hourly/fixed/allocation pay uses the ledger; jobs stay open until settled; Accounting groups dues by person with job-level payment
+- [Compensation type & pay-worker](comp-type-pay-worker.md) — shared ledger gate blocks close/completion for unpaid or unknown subs; reopening skips only the work-item confirmation
 - [Sub payment ledger (Phase 2)](sub-payment-ledger.md) — pay-worker no longer dual-writes to expenses (Task #892 removed that); sub_payment_records is the sole ledger; admin-migrations has delete-payworker-expenses endpoint (Drizzle query builder, not raw SQL)
 - [Admin migration key bypass](admin-migration-key.md) — admin/migrations is mounted pre-requireAuth with MIGRATION_KEY env-var intercept; allows curl-triggered one-time ops without browser session
 - [PDF generation: use pdfkit not Puppeteer](pdf-generation.md) — Puppeteer/Chrome is broken in production; use pdfkit (pure Node.js) for all server-side PDF generation

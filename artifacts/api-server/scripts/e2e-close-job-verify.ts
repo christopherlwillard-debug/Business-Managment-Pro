@@ -128,7 +128,6 @@ async function createFixture(
       subcontractorId: sub.id,
       compensationType,
       allocationPct: compensationType === "allocation" ? "20.00" : null,
-      hourlyRate: compensationType === "hourly" ? null : null,
       amountOwed,
       amountPaid,
       paymentStatus: payment === "paid" ? "paid" : payment === "unknown" ? "unpaid" : "partial",
@@ -244,6 +243,16 @@ async function main() {
 
     const markAllPaidFixture = await createFixture(business, "Mark All Paid");
     const keepOutstandingFixture = await createFixture(business, "Keep Outstanding");
+    const reopenIncompleteFixture = await createFixture(business, "Reopen Incomplete", {
+      incompleteComponent: true,
+    });
+    const unknownBalanceFixture = await createFixture(business, "Unknown Balance", {
+      payment: "unknown",
+    });
+    const normalCompletionFixture = await createFixture(business, "Normal Completion", {
+      payment: "paid",
+      incompleteComponent: true,
+    });
 
     browser = await launchBrowser();
     const page = await browser.newPage();
@@ -278,8 +287,142 @@ async function main() {
       JSON.stringify(closeAttempts.responses),
     );
     record("Rejected transitions leave job open", closeAttempts.jobStatus === "scheduled", `status=${closeAttempts.jobStatus}`);
+    const unknownAttempts = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const responses = [];
+      for (const status of ["closed", "completed"]) {
+        const response = await fetch(`/api/jobs/${jobId}`, {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status, businessId, businessLine }),
+        });
+        const body = await response.json();
+        responses.push({ httpStatus: response.status, code: body.code, outstanding: body.outstanding });
+      }
+      const jobResponse = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+      const job = await jobResponse.json() as { status?: string };
+      return { responses, jobStatus: job.status };
+    }, {
+      jobId: unknownBalanceFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Unknown subcontractor balances block both closing and completion",
+      unknownAttempts.responses.length === 2 && unknownAttempts.responses.every(
+        response => response.httpStatus === 409
+          && response.code === "SUBCONTRACTOR_BALANCE_UNRESOLVED"
+          && response.outstanding?.some((row: { balanceStatus?: string; remainingAmount?: number | null }) =>
+            row.balanceStatus === "unknown" && row.remainingAmount == null),
+      ),
+      JSON.stringify(unknownAttempts.responses),
+    );
+    record("Unknown balances leave job open", unknownAttempts.jobStatus === "scheduled", `status=${unknownAttempts.jobStatus}`);
+
+    const normalCompletion = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+      });
+      const body = await response.json();
+      return { httpStatus: response.status, code: body.code };
+    }, {
+      jobId: normalCompletionFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Normal completion still requires incomplete work confirmation",
+      normalCompletion.httpStatus === 409 && normalCompletion.code === "INCOMPLETE_WORK_ITEMS",
+      JSON.stringify(normalCompletion),
+    );
+    const normalComponentRows = await db.select({ status: jobProductionComponentsTable.status })
+      .from(jobProductionComponentsTable)
+      .where(eq(jobProductionComponentsTable.jobId, normalCompletionFixture.jobId));
+    record(
+      "Rejected normal completion leaves work item incomplete",
+      normalComponentRows.length === 1 && normalComponentRows[0].status === "planned",
+      JSON.stringify(normalComponentRows),
+    );
+
     await db.update(jobsTable)
-      .set({ status: "completed", closedAt: "2026-11-11" })
+      .set({ status: "closed", closedAt: "2026-11-11" })
+      .where(eq(jobsTable.id, reopenIncompleteFixture.jobId));
+    const reopenIncomplete = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+      });
+      const body = await response.json() as { status?: string; closedAt?: string | null; error?: string };
+      return { httpStatus: response.status, status: body.status, closedAt: body.closedAt, error: body.error };
+    }, {
+      jobId: reopenIncompleteFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Closed job reopens despite incomplete work and unpaid subcontractors",
+      reopenIncomplete.httpStatus === 200
+        && reopenIncomplete.status === "completed"
+        && reopenIncomplete.closedAt == null,
+      JSON.stringify(reopenIncomplete),
+    );
+    const [reopenedComponentRows, reopenedSubRows, reopenedLedgerRows] = await Promise.all([
+      db.select({ status: jobProductionComponentsTable.status })
+        .from(jobProductionComponentsTable)
+        .where(eq(jobProductionComponentsTable.jobId, reopenIncompleteFixture.jobId)),
+      db.select({ amountPaid: jobSubcontractorsTable.amountPaid, paymentStatus: jobSubcontractorsTable.paymentStatus })
+        .from(jobSubcontractorsTable)
+        .where(eq(jobSubcontractorsTable.jobId, reopenIncompleteFixture.jobId)),
+      db.select({
+        amount: subPaymentRecordsTable.amount,
+        netPaid: subPaymentRecordsTable.netPaid,
+      }).from(subPaymentRecordsTable)
+        .where(eq(subPaymentRecordsTable.jobId, reopenIncompleteFixture.jobId)),
+    ]);
+    record(
+      "Reopening does not complete work items or alter subcontractor payments",
+      reopenedComponentRows.length === 1
+        && reopenedComponentRows[0].status === "planned"
+        && reopenedSubRows.length === 1
+        && reopenedSubRows[0].paymentStatus === "partial"
+        && Number(reopenedSubRows[0].amountPaid) === 25
+        && reopenedLedgerRows.length === 1
+        && Number(reopenedLedgerRows[0].netPaid ?? reopenedLedgerRows[0].amount) === 25,
+      JSON.stringify({
+        components: reopenedComponentRows,
+        subcontractors: reopenedSubRows,
+        payments: reopenedLedgerRows,
+      }),
+    );
+
+    const completionAfterReopen = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+      });
+      const body = await response.json() as { code?: string };
+      return { httpStatus: response.status, code: body.code };
+    }, {
+      jobId: reopenIncompleteFixture.jobId,
+      businessId: business.id,
+      businessLine: business.slug,
+    });
+    record(
+      "Unpaid subcontractors still block completion after reopening",
+      completionAfterReopen.httpStatus === 409
+        && completionAfterReopen.code === "SUBCONTRACTOR_BALANCE_UNRESOLVED",
+      JSON.stringify(completionAfterReopen),
+    );
+
+    await db.update(jobsTable)
+      .set({ status: "closed", closedAt: "2026-11-11" })
       .where(eq(jobsTable.id, markAllPaidFixture.jobId));
     const reopened = await page.evaluate(async ({ jobId, businessId, businessLine }) => {
       const response = await fetch(`/api/jobs/${jobId}`, {
@@ -585,38 +728,41 @@ async function main() {
     }
 
     try {
-     const remaining = await Promise.all(cleanupTargets.map(async (target) => {
-       const [[job], [sub], [invoice], payments, assignments] = await Promise.all([
-         target.jobId == null
-           ? Promise.resolve([] as { id: number }[])
-           : db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, target.jobId)),
-         target.subId == null
-           ? Promise.resolve([] as { id: number }[])
-           : db.select({ id: subcontractorsTable.id }).from(subcontractorsTable).where(eq(subcontractorsTable.id, target.subId)),
-         target.invoiceId == null
-           ? Promise.resolve([] as { id: number }[])
-           : db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, target.invoiceId)),
-         target.jobId == null
-           ? Promise.resolve([] as { id: number }[])
-           : db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, target.jobId)),
-         target.jobId == null
-           ? Promise.resolve([] as { subcontractorId: number }[])
-           : db.select({ subcontractorId: jobSubcontractorsTable.subcontractorId }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, target.jobId)),
-       ]);
-       return job || sub || invoice || payments.length > 0 || assignments.length > 0;
-     }));
-     const sessionRows = await db.select({ sid: sessionsTable.sid }).from(sessionsTable).where(eq(sessionsTable.sid, SID));
-     const cleanupPassed = cleanupFailures.length === 0 && remaining.every((leftover) => !leftover) && sessionRows.length === 0;
-     record(
-       "All temporary jobs, subcontractors, payments, assignments, and session records are removed",
-       cleanupPassed,
-       cleanupFailures.length
-         ? cleanupFailures.join("; ")
-         : `fixtures=${cleanupTargets.length}, sessionRows=${sessionRows.length}`,
-     );
-     if (sessionCreated && !cleanupPassed) {
-       console.error("Close-job verification cleanup did not reach a clean state.");
-     }
+      const remaining = await Promise.all(cleanupTargets.map(async (target) => {
+        const [[job], [sub], [invoice], payments, assignments, components] = await Promise.all([
+          target.jobId == null
+            ? Promise.resolve([] as { id: number }[])
+            : db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, target.jobId)),
+          target.subId == null
+            ? Promise.resolve([] as { id: number }[])
+            : db.select({ id: subcontractorsTable.id }).from(subcontractorsTable).where(eq(subcontractorsTable.id, target.subId)),
+          target.invoiceId == null
+            ? Promise.resolve([] as { id: number }[])
+            : db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, target.invoiceId)),
+          target.jobId == null
+            ? Promise.resolve([] as { id: number }[])
+            : db.select({ id: subPaymentRecordsTable.id }).from(subPaymentRecordsTable).where(eq(subPaymentRecordsTable.jobId, target.jobId)),
+          target.jobId == null
+            ? Promise.resolve([] as { subcontractorId: number }[])
+            : db.select({ subcontractorId: jobSubcontractorsTable.subcontractorId }).from(jobSubcontractorsTable).where(eq(jobSubcontractorsTable.jobId, target.jobId)),
+        target.jobId == null
+          ? Promise.resolve([] as { id: number }[])
+          : db.select({ id: jobProductionComponentsTable.id }).from(jobProductionComponentsTable).where(eq(jobProductionComponentsTable.jobId, target.jobId)),
+        ]);
+        return job || sub || invoice || payments.length > 0 || assignments.length > 0 || components.length > 0;
+      }));
+      const sessionRows = await db.select({ sid: sessionsTable.sid }).from(sessionsTable).where(eq(sessionsTable.sid, SID));
+      const cleanupPassed = cleanupFailures.length === 0 && remaining.every((leftover) => !leftover) && sessionRows.length === 0;
+      record(
+        "All temporary jobs, subcontractors, payments, assignments, and session records are removed",
+        cleanupPassed,
+        cleanupFailures.length
+          ? cleanupFailures.join("; ")
+          : `fixtures=${cleanupTargets.length}, sessionRows=${sessionRows.length}`,
+      );
+      if (sessionCreated && !cleanupPassed) {
+        console.error("Close-job verification cleanup did not reach a clean state.");
+      }
     } catch (error) {
       record(
         "All temporary jobs, subcontractors, payments, assignments, and session records are removed",

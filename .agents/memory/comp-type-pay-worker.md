@@ -44,6 +44,13 @@ The server gate must cover both `completed` and `closed` status transitions: a c
 
 **How to apply:** Enforce this through the shared server-side outstanding-sub-payment check for both completion and closure; do not bypass it or infer subcontractor settlement from invoice status. Record payment only when it was actually made.
 
+## Reopening a previously closed job
+A closed job may reopen even when production components remain incomplete. This exception is only for the closed-to-completed reopen transition: it must not update component statuses or subcontractor payment records. Normal completion still requires the existing incomplete-work confirmation, and all closing/completion transitions remain blocked by unpaid or unknown subcontractor balances.
+
+**Why:** Reopening is a recovery step that lets the business resume work and resolve payroll; it is not evidence that work is complete or that a subcontractor was paid.
+
+**How to apply:** Determine the exception from the locked job row. Bypass only the incomplete-work gate for an already-closed job being reopened; preserve the shared balance evaluator and every normal completion/closure safeguard.
+
 ## Subcontractor payables overview
 The user approved an Accounting rollup grouped by subcontractor, with expandable job-level balances. Payments remain per job and are recorded through the existing Job Payroll flow; do not add another ledger or combine jobs into one payment.
 
