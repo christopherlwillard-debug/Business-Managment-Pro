@@ -119,6 +119,11 @@ async function openModelForCurrentBusiness(page: Page, fixture: Fixture) {
 async function switchModelBusiness(page: Page, fixture: Fixture, businessId: number) {
   await click(page, `[data-testid="business-switcher"]`);
   await click(page, `[data-testid="business-select-${businessId}"]`);
+  await page.waitForFunction(
+    expectedId => localStorage.getItem("buildpro_selection_mode") === String(expectedId),
+    { timeout: 10_000 },
+    businessId,
+  );
   await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
   await openModelForCurrentBusiness(page, fixture);
 }
@@ -151,6 +156,7 @@ async function createFixture(): Promise<Fixture> {
       slug: `e2e-baseline-${suffix}`,
       type: "general_contracting",
       parentBusinessId: business.id,
+      legalBusinessId: business.id,
       enabledFeatures: ["jobs"],
     }).returning({ id: businessesTable.id, slug: businessesTable.slug });
     if (!secondBusiness) throw new Error("Failed to create second business fixture");

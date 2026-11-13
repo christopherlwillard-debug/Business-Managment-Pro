@@ -1245,21 +1245,22 @@ describe("Business-line-filtered monthly income includes fixed/allocation sub pa
   };
 
   it("/accounting?businessLine=mfh monthlyIncome includes the filtered sub payment", async () => {
-    h.selectQueue.push([{ id: 1, slug: "mfh" }]); // [0] business lookup
-    h.selectQueue.push([]);                      // [1] paidInvoices
-    h.selectQueue.push([]);                      // [2] nonPaidInvoices
-    h.selectQueue.push([]);                      // [3] expenses
-    h.selectQueue.push([]);                      // [4] mileageLogs
-    h.selectQueue.push([]);                      // [5] subs
-    h.selectQueue.push([SETTINGS_ROW]);          // [6] settings
-    h.selectQueue.push([]);                      // [7] otherIncome
-    h.selectQueue.push([FILTERED_SUB_PAY]);      // [8] blFilteredFixedAllocSubPayments
-    h.selectQueue.push([]);                      // [9] assets
-    h.selectQueue.push([]);                      // [10] assetBusinessUse
-    h.selectQueue.push([]);                      // [11] waterfallPaidInvs
-    h.selectQueue.push([]);                      // [12] accOwnerContribRows
-    h.selectQueue.push([]);                      // [13] allBusinesses
-    h.selectQueue.push([]);                      // [14] outstandingSubRows
+    h.selectQueue.push([{ id: 1, slug: "mfh" }]); // [0] selected business
+    h.selectQueue.push([{ id: 1, slug: "mfh", legalBusinessId: null }]); // [1] legal-business members
+    h.selectQueue.push([]);                      // [2] paidInvoices
+    h.selectQueue.push([]);                      // [3] nonPaidInvoices
+    h.selectQueue.push([]);                      // [4] expenses
+    h.selectQueue.push([]);                      // [5] mileageLogs
+    h.selectQueue.push([]);                      // [6] subs
+    h.selectQueue.push([SETTINGS_ROW]);          // [7] settings
+    h.selectQueue.push([]);                      // [8] otherIncome
+    h.selectQueue.push([FILTERED_SUB_PAY]);      // [9] blFilteredFixedAllocSubPayments
+    h.selectQueue.push([]);                      // [10] assets
+    h.selectQueue.push([]);                      // [11] assetBusinessUse
+    h.selectQueue.push([]);                      // [12] waterfallPaidInvs
+    h.selectQueue.push([]);                      // [13] accOwnerContribRows
+    h.selectQueue.push([]);                      // [14] allBusinesses
+    h.selectQueue.push([]);                      // [15] outstandingSubRows
 
     const res = await request(app).get(`/reports/accounting?year=${YEAR}&businessLine=mfh`);
     expect(res.status).toBe(200);

@@ -114,6 +114,21 @@ export function resolveSubcontractorBalance(input: {
   }
 
   const remainingAmount = Math.max(0, input.totalOwed - paid);
+  // A fully covered canonical ledger balance is authoritative even if the
+  // cached paymentStatus still says unpaid/partial.
+  if (
+    ledgerPaid > 0 &&
+    remainingAmount <= 0.005 &&
+    ledgerPaid >= input.totalOwed - 0.005
+  ) {
+    return {
+      paid,
+      remainingAmount: 0,
+      balanceStatus: "known",
+      balanceReason: null,
+      outstanding: false,
+    };
+  }
   if (
     remainingAmount <= 0.005 &&
     (

@@ -418,6 +418,7 @@ describe("job mileage reimbursement ownership and validation", () => {
       [{ id: 1, slug: "general_contracting" }], // requested owner
       [{ id: 2, slug: "asphalt_sealing" }], // canonical current owner
       [{ id: 44 }], // linked invoice
+      [], [], [], [], [], [], [], [], [], [], [], // remaining linked-ledger checks run in parallel
     );
 
     const res = await request(app)
@@ -425,7 +426,7 @@ describe("job mileage reimbursement ownership and validation", () => {
       .send({ businessLine: "general_contracting" });
 
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/cannot be changed while invoices are linked/i);
+    expect(res.body.error).toMatch(/cannot be changed while financial or cost records are linked/i);
     expect(h.updates).toHaveLength(0);
   });
 
@@ -877,14 +878,13 @@ describe("subcontractor settlement checks — ledger beats stale cached status",
         compensationType: "fixed",
         fixedAmount: "100.00",
         allocationPct: null,
-        amountOwed: "100.00",
+        amountOwedOverride: "100.00",
         amountPaid: "100.00",
         paymentStatus: "partial",
         ledgerPaid: "100.00",
       }], // shared evaluator fixed/allocation rows
       [], // shared evaluator hourly rows
       [], // payment history
-      [], // background recomputeSubPaid repair
     );
 
     const res = await request(app).get("/jobs/41/sub-payments");
@@ -912,7 +912,6 @@ describe("subcontractor settlement checks — ledger beats stale cached status",
         ledgerPaid: "100.00",
       }],
       [], // no hourly subcontractors
-      [], // background recomputeSubPaid repair
     );
 
     const res = await request(app).get("/jobs/outstanding-sub-balances?jobIds=41");

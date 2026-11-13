@@ -408,6 +408,10 @@ async function main() {
   let sessionId: string | undefined;
   try {
     const page = await browser.newPage();
+    // The app computes calendar "today" in the browser's local timezone.
+    // Match the business timezone used by this fixture instead of Chromium's
+    // container default (often UTC), which can be a different calendar day.
+    await page.emulateTimezone("America/Chicago");
     await page.setViewport({ width: 1440, height: 1200 });
     await page.setRequestInterception(true);
     page.on("request", (request: HTTPRequest) => {

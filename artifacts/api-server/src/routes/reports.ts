@@ -612,13 +612,14 @@ router.get("/dashboard", sectionGuard("invoices"), async (req, res) => {
       if (row.businessId == null) return row.businessLine === biz.slug;
       const id = Number(row.businessId);
       const legalId = biz.legalBusinessId ?? biz.id;
+      // A canonical division ID wins over a stale compatibility slug.
+      if (id === biz.id && biz.id !== legalId) return true;
       if (row.businessLine) {
-        return row.businessLine === biz.slug && (id === biz.id || id === legalId);
+        return row.businessLine === biz.slug && id === legalId;
       }
-      // A legacy division-owned record can inherit its division from that
-      // division's compatibility business ID. Owner-level rows without a
-      // division label remain unassigned in the division breakdown.
-      return id === biz.id && biz.id !== legalId;
+      // Owner-level rows without a division label remain unassigned in the
+      // division breakdown.
+      return false;
     };
     const belongsToOtherIncomeBusiness = (row: { businessId?: string | number | null; businessLine?: string | null }, biz: { id: number; slug: string; legalBusinessId: number | null }) => {
       if (row.businessId != null) return belongsToBusinessLine(row, biz);

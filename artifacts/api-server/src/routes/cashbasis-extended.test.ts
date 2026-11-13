@@ -436,7 +436,7 @@ describe("Dashboard canonical business attribution", () => {
   it("uses canonical businessId before stale or missing businessLine in every breakdown", async () => {
     const currentMonth = monthAgo(0);
     const date = `${currentMonth}-01`;
-    const business = { id: 10, slug: "mfh", name: "Manufactured Homes" };
+    const business = { id: 10, slug: "mfh", name: "Manufactured Homes", legalBusinessId: 1 };
 
     const canonicalInvoice = {
       id: 1001, status: "sent", issueDate: date, total: "200.00",
@@ -776,6 +776,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
 
     function pushFilteredPAndLFixture() {
       h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh", legalBusinessId: null }]); // legal-business members
       h.selectQueue.push([FILTERED_INVOICE]);       // invRows
       h.selectQueue.push([]);                       // expRows
       h.selectQueue.push(NO_MILEAGE);               // mileage
@@ -792,6 +793,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
 
     function pushFilteredAccountingFixture() {
       h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh", legalBusinessId: null }]); // legal-business members
       h.selectQueue.push([FILTERED_INVOICE]);       // paid invoices
       h.selectQueue.push([]);                       // non-paid invoices
       h.selectQueue.push([]);                       // expenses
@@ -806,10 +808,12 @@ describe("Cash-basis net-profit consistency across reports", () => {
       h.selectQueue.push([]);                       // owner capital
       h.selectQueue.push([]);                       // businesses
       h.selectQueue.push([]);                       // outstanding subs
+      h.selectQueue.push([]);                       // remaining report summary rows
     }
 
     function pushFilteredYearEndFixture() {
       h.selectQueue.push([{ id: 1, slug: "mfh" }]); // business lookup
+      h.selectQueue.push([{ id: 1, slug: "mfh", legalBusinessId: null }]); // legal-business members
       h.selectQueue.push([FILTERED_INVOICE]);       // invoices
       h.selectQueue.push([]);                       // expenses
       h.selectQueue.push([]);                       // mileage
