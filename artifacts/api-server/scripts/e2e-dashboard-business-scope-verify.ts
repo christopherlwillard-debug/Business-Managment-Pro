@@ -1,12 +1,31 @@
 /* Read-only browser regression for Dashboard business-selection query scope. */
 import type { HTTPRequest, Page } from "puppeteer";
-import { eq } from "drizzle-orm";
-import { db, businessesTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
+import {
+  db,
+  businessesTable,
+  jobsTable,
+  expensesTable,
+  invoicesTable,
+  ownerCapitalEntriesTable,
+} from "@workspace/db";
 import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import { launchBrowser } from "../src/lib/launchBrowser";
+import { randomUUID } from "node:crypto";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const ROUTES = [
+  "/api/reports/dashboard",
+  "/api/reports/owner-pay-summary",
+  "/api/dashboard/today",
+  "/api/dashboard/continue-working",
+  "/api/dashboard/recent-activity",
+] as const;
+const SCOPED_DATA_ROUTES = [
+  "/api/jobs",
+  "/api/expenses",
+  "/api/invoices",
+  "/api/jobs/financials-summary",
   "/api/reports/dashboard",
   "/api/reports/owner-pay-summary",
   "/api/dashboard/today",
@@ -46,6 +65,13 @@ if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(
 }
 
 type CapturedRequest = { pathname: string; params: URLSearchParams };
+type TestFixtures = {
+  businessId?: number;
+  jobIds: number[];
+  expenseIds: number[];
+  invoiceIds: number[];
+  ownerEntryIds: number[];
+};
 
 function record(name: string, pass: boolean, detail: string) {
   results.push({ name, pass, detail });
@@ -161,6 +187,173 @@ async function clickAllBusinesses(page: Page) {
   });
 }
 
+async function createBusinessFixtures(runTag: string): Promise<{
+  kinora: { id: number; slug: string; legalBusinessId: number | null };
+  markers: { willard: string; kinora: string };
+  fixtureIds: TestFixtures;
+}> {
+  const fixtureIds: TestFixtures = { jobIds: [], expenseIds: [], invoiceIds: [], ownerEntryIds: [] };
+  const [legal] = await db.select({
+    id: businessesTable.id,
+    slug: businessesTable.slug,
+    legalBusinessId: businessesTable.legalBusinessId,
+  }).from(businessesTable).where(eq(businessesTable.slug, "general_contracting")).limit(1);
+  if (!legal) throw new Error("Willard's General Contracting business is required for this regression");
+
+  try {
+    const kinoraSlug = `kinora_e2e_${randomUUID().slice(0, 8)}`;
+    const [kinora] = await db.insert(businessesTable).values({
+      name: `Kinora ${runTag}`,
+      slug: kinoraSlug,
+      type: "other",
+      legalBusinessId: null,
+      parentBusinessId: null,
+      defaultQuoteValidityDays: 30,
+      sortOrder: 9999,
+    }).returning({
+      id: businessesTable.id,
+      slug: businessesTable.slug,
+      legalBusinessId: businessesTable.legalBusinessId,
+    });
+    fixtureIds.businessId = kinora.id;
+    const markers = {
+      willard: `SCOPE-${runTag}-WILLARD`,
+      kinora: `SCOPE-${runTag}-KINORA`,
+    };
+    const today = new Date().toISOString().slice(0, 10);
+    const businesses = [
+      { id: legal.id, slug: legal.slug, marker: markers.willard, withdrawal: "-17.31" },
+      { id: kinora.id, slug: kinora.slug, marker: markers.kinora, withdrawal: "-29.47" },
+    ];
+
+    for (const business of businesses) {
+      const [job] = await db.insert(jobsTable).values({
+        title: `${business.marker}-ACTIVE-JOB`,
+        status: "in_progress",
+        startDate: today,
+        businessId: business.id,
+        businessLine: business.slug,
+      }).returning({ id: jobsTable.id });
+      fixtureIds.jobIds.push(job.id);
+
+      const [expense] = await db.insert(expensesTable).values({
+        description: `${business.marker}-EXPENSE`,
+        amount: business.withdrawal === "-17.31" ? "17.31" : "29.47",
+        category: "Other",
+        date: today,
+        businessId: business.id,
+        businessLine: business.slug,
+      }).returning({ id: expensesTable.id });
+      fixtureIds.expenseIds.push(expense.id);
+
+      const invoiceDigits = `${Date.now()}${business.id}`.slice(-8);
+      const [invoice] = await db.insert(invoicesTable).values({
+        invoiceNumber: `9${invoiceDigits}`,
+        status: "sent",
+        issueDate: today,
+        subtotal: "1.00",
+        total: "1.00",
+        lineItems: [{ description: `${business.marker}-INVOICE`, quantity: 1, unitPrice: 1 }],
+        businessId: business.id,
+        businessLine: business.slug,
+      }).returning({ id: invoicesTable.id });
+      fixtureIds.invoiceIds.push(invoice.id);
+
+      const [ownerEntry] = await db.insert(ownerCapitalEntriesTable).values({
+        businessId: business.id,
+        date: today,
+        description: `${business.marker}-WITHDRAWAL`,
+        amount: business.withdrawal,
+        source: "capital_entry_withdrawal",
+      }).returning({ id: ownerCapitalEntriesTable.id });
+      fixtureIds.ownerEntryIds.push(ownerEntry.id);
+    }
+    return { kinora, markers, fixtureIds };
+  } catch (error) {
+    await cleanupBusinessFixtures(fixtureIds);
+    throw error;
+  }
+}
+
+async function cleanupBusinessFixtures(fixtures: TestFixtures) {
+  const failures: unknown[] = [];
+  const cleanups = [
+    () => fixtures.invoiceIds.length && db.delete(invoicesTable).where(inArray(invoicesTable.id, fixtures.invoiceIds)),
+    () => fixtures.expenseIds.length && db.delete(expensesTable).where(inArray(expensesTable.id, fixtures.expenseIds)),
+    () => fixtures.ownerEntryIds.length && db.delete(ownerCapitalEntriesTable).where(inArray(ownerCapitalEntriesTable.id, fixtures.ownerEntryIds)),
+    () => fixtures.jobIds.length && db.delete(jobsTable).where(inArray(jobsTable.id, fixtures.jobIds)),
+    () => fixtures.businessId != null && db.delete(businessesTable).where(eq(businessesTable.id, fixtures.businessId!)),
+  ];
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length) {
+    throw new Error(`Could not fully clean up business-scope fixtures: ${failures.map(String).join("; ")}`);
+  }
+}
+
+async function assertScopedDatasets(
+  page: Page,
+  requests: CapturedRequest[],
+  expected: { businessId: number; slug: string; marker: string; otherMarker: string },
+  label: string,
+) {
+  const previousCount = requests.length;
+  const data = await page.evaluate(async ({ businessId }) => {
+    const urls = [
+      `/api/jobs?businessId=${businessId}`,
+      `/api/expenses?businessId=${businessId}`,
+      `/api/invoices?businessId=${businessId}&includeDrafts=true`,
+      `/api/jobs/financials-summary?businessId=${businessId}`,
+      `/api/reports/dashboard?businessId=${businessId}&period=month`,
+      `/api/reports/owner-pay-summary?businessId=${businessId}`,
+      `/api/dashboard/today?businessId=${businessId}`,
+      `/api/dashboard/continue-working?businessId=${businessId}`,
+      `/api/dashboard/recent-activity?businessId=${businessId}`,
+    ];
+    return Promise.all(urls.map(async url => {
+      const response = await fetch(url, { credentials: "include" });
+      const body = await response.text();
+      return { url, status: response.status, body };
+    }));
+  }, { businessId: expected.businessId });
+  const requiredMarkersByRoute: Record<string, string> = {
+    "/api/jobs": `${expected.marker}-ACTIVE-JOB`,
+    "/api/expenses": `${expected.marker}-EXPENSE`,
+    "/api/invoices": expected.marker,
+    "/api/jobs/financials-summary": `${expected.marker}-ACTIVE-JOB`,
+    "/api/reports/owner-pay-summary": `${expected.marker}-ACTIVE-JOB`,
+    "/api/dashboard/today": `${expected.marker}-SCHEDULE`,
+    "/api/dashboard/continue-working": `${expected.marker}-ACTIVE-JOB`,
+    "/api/dashboard/recent-activity": `${expected.marker}-EXPENSE`,
+  };
+  const mismatched = data.filter(response => {
+    const path = new URL(response.url, "http://localhost").pathname;
+    const requiredMarker = requiredMarkersByRoute[path];
+    return response.status < 200 || response.status >= 300
+      || response.body.includes(expected.otherMarker)
+      || (requiredMarker != null && !response.body.includes(requiredMarker))
+      || !response.url.includes(`businessId=${expected.businessId}`);
+  });
+  const captured = requests.slice(previousCount);
+  const missing = SCOPED_DATA_ROUTES.filter(route =>
+    !captured.some(request =>
+      request.pathname === route && request.params.get("businessId") === String(expected.businessId),
+    ),
+  );
+  const pass = mismatched.length === 0 && missing.length === 0;
+  record(
+    `${label} keeps jobs, expenses, invoices, financial summaries, and dashboard reads isolated`,
+    pass,
+    `wrong responses=${mismatched.map(item => `${item.url} (${item.status})`).join(", ") || "none"}; missing scoped reads=${missing.join(", ") || "none"}`,
+  );
+  if (!pass) await page.screenshot({ path: `/tmp/e2e-dashboard-business-scope-${label.replaceAll(" ", "-")}.png`, fullPage: true }).catch(() => undefined);
+}
+
 async function main() {
   const [legal, division] = await Promise.all([
     db.select({ id: businessesTable.id, slug: businessesTable.slug, legalBusinessId: businessesTable.legalBusinessId })
@@ -174,6 +367,8 @@ async function main() {
     throw new Error("The development business fixtures do not represent the expected legal-business/division relationship");
   }
 
+  const runTag = randomUUID().slice(0, 8).toUpperCase();
+  const { kinora, markers, fixtureIds } = await createBusinessFixtures(runTag);
   const requests: CapturedRequest[] = [];
   let sessionId: string | undefined;
   let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
@@ -192,16 +387,20 @@ async function main() {
       if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
         try {
           const url = new URL(request.url());
-          if (ROUTES.includes(url.pathname as typeof ROUTES[number])) {
+          if (SCOPED_DATA_ROUTES.includes(url.pathname as typeof SCOPED_DATA_ROUTES[number])) {
             requests.push({ pathname: url.pathname, params: url.searchParams });
           }
           if (method === "GET" && url.pathname === "/api/dashboard/today") {
+            const businessId = url.searchParams.get("businessId");
+            const scheduleMarker = businessId === String(kinora.id)
+              ? `${markers.kinora}-SCHEDULE`
+              : businessId === String(legalId) ? `${markers.willard}-SCHEDULE` : "All-businesses schedule";
             void request.respond({
               status: 200,
               contentType: "application/json",
               body: JSON.stringify({
                 ...COMPANY_ALERT_FIXTURES,
-                routeStops: [],
+                routeStops: [{ id: -1, title: scheduleMarker, clientName: scheduleMarker, address: "Test-only route stop", status: "scheduled" }],
                 followUpProspects: [],
                 overdueInvoices: [],
               }),
@@ -291,21 +490,92 @@ async function main() {
       "Selected division after reload",
     );
 
+    await page.click('[data-testid="business-switcher"]');
+    await waitForSelectorScreen(page);
+    startIndex = requests.length;
+    await page.click(`[data-testid="business-select-${kinora.id}"]`);
+    await waitForDashboard(page);
+    await assertCompanyAlerts(page, "Selected Kinora");
+    await assertCashFlowVisibility(page, false, "Selected Kinora");
+    await assertScopeRequests(page, requests, startIndex, { businessId: String(kinora.id) }, "Selected Kinora after switching", true);
+    await assertScopedDatasets(
+      page,
+      requests,
+      { businessId: kinora.id, slug: kinora.slug, marker: markers.kinora, otherMarker: markers.willard },
+      "Selected Kinora",
+    );
+    await page.waitForFunction(
+      marker => document.body.innerText.includes(`${marker}-ACTIVE-JOB`) && !document.body.innerText.includes(`${marker.replace("KINORA", "WILLARD")}-ACTIVE-JOB`),
+      { timeout: 30_000 },
+      markers.kinora,
+    );
+    record("Kinora dashboard displays only Kinora's active job", true, `${markers.kinora}-ACTIVE-JOB`);
+
+    await page.click('[data-testid="business-switcher"]');
+    await waitForSelectorScreen(page);
+    startIndex = requests.length;
+    await page.click(`[data-testid="business-select-${legal.id}"]`);
+    await waitForDashboard(page);
+    await assertScopeRequests(page, requests, startIndex, { businessId: String(legalId) }, "Switched back to Willard after Kinora", true);
+    await assertScopedDatasets(
+      page,
+      requests,
+      { businessId: legalId, slug: legal.slug, marker: markers.willard, otherMarker: markers.kinora },
+      "Switched back to Willard",
+    );
+    await page.waitForFunction(
+      marker => document.body.innerText.includes(`${marker}-ACTIVE-JOB`) && !document.body.innerText.includes(`${marker.replace("WILLARD", "KINORA")}-ACTIVE-JOB`),
+      { timeout: 30_000 },
+      markers.willard,
+    );
+    record("Willard dashboard refreshes after switching back from Kinora", true, `${markers.willard}-ACTIVE-JOB`);
+
+    for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
+      await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.waitForFunction(
+        ({ marker, other }) => document.body.innerText.includes(marker) && !document.body.innerText.includes(other),
+        { timeout: 30_000 },
+        { marker: label === "Jobs" ? `${markers.willard}-ACTIVE-JOB` : label === "Expenses" ? `${markers.willard}-EXPENSE` : markers.willard, other: markers.kinora },
+      );
+      record(`Willard ${label} view excludes Kinora records`, true, `${markers.willard}; not ${markers.kinora}`);
+    }
+
+    await page.click('[data-testid="business-switcher"]');
+    await waitForSelectorScreen(page);
+    await page.click(`[data-testid="business-select-${kinora.id}"]`);
+    await waitForDashboard(page);
+    for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
+      await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.waitForFunction(
+        ({ marker, other }) => document.body.innerText.includes(marker) && !document.body.innerText.includes(other),
+        { timeout: 30_000 },
+        { marker: label === "Jobs" ? `${markers.kinora}-ACTIVE-JOB` : label === "Expenses" ? `${markers.kinora}-EXPENSE` : markers.kinora, other: markers.willard },
+      );
+      record(`Kinora ${label} view excludes Willard records`, true, `${markers.kinora}; not ${markers.willard}`);
+    }
+
     if (blockedWrites.length > 0) {
-      record("Dashboard scope verification stays read-only", false, blockedWrites.join(", "));
+      record("Business-scope verification blocks browser writes", false, blockedWrites.join(", "));
     } else {
-      record("Dashboard scope verification stays read-only", true, "no browser writes");
+      record("Business-scope verification blocks browser writes", true, "no browser writes");
     }
   } finally {
-    if (browser) await browser.close();
-    if (sessionId) await deleteSession(sessionId).catch(() => undefined);
+    try {
+      if (browser) await browser.close();
+    } finally {
+      try {
+        if (sessionId) await deleteSession(sessionId);
+      } finally {
+        await cleanupBusinessFixtures(fixtureIds);
+      }
+    }
   }
 
   const failures = results.filter(result => !result.pass);
   if (failures.length > 0) {
     throw new Error(`Dashboard business-scope E2E failed: ${failures.map(result => result.name).join(", ")}`);
   }
-  console.log(`Dashboard business-scope E2E passed (${results.length} checks)`);
+  console.log(`Business-scope E2E passed (${results.length} checks)`);
 }
 
 main().catch(error => {
