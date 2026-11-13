@@ -459,13 +459,14 @@ async function assertAdditionalBusinessScreens(
     sharedMaterialMarker: string;
   },
   label: string,
+  appDocumentTimeOrigin: number,
 ) {
   for (const [route, markerType, screenLabel] of [
     ["/estimates", "estimate", "Estimates"],
     ["/clients", "client", "Clients"],
     ["/materials", "sharedMaterial", "Materials"],
   ] as const) {
-    await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await navigateWithinApp(page, route, `${label} ${screenLabel}`, appDocumentTimeOrigin);
     if (markerType === "sharedMaterial") {
       await page.waitForFunction(
         marker => document.body.innerText.includes(marker),
@@ -492,6 +493,56 @@ async function assertAdditionalBusinessScreens(
     }
   }
   await assertAdditionalBusinessLists(page, expected, label);
+}
+
+async function navigateWithinApp(
+  page: Page,
+  route: string,
+  label: string,
+  expectedTimeOrigin: number,
+) {
+  const navigationPath = route === "/clients" ? "/people" : route;
+  await page.evaluate((path) => {
+    const link = [...document.querySelectorAll("a[href]")].find(anchor => {
+      const url = new URL((anchor as HTMLAnchorElement).href, window.location.href);
+      const pathname = url.pathname.replace(/\/$/, "");
+      return pathname === path || pathname.endsWith(path);
+    }) as HTMLAnchorElement | undefined;
+    if (!link) throw new Error(`Visible in-app navigation link for ${path} was not found`);
+    link.click();
+  }, navigationPath);
+  await page.waitForFunction(
+    path => {
+      const pathname = window.location.pathname.replace(/\/$/, "");
+      return pathname === path || pathname.endsWith(path);
+    },
+    { timeout: 15_000 },
+    navigationPath,
+  );
+  if (route === "/clients") {
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("button")].some(element =>
+        /^Clients(?:\s|\(|$)/.test(element.textContent?.trim() ?? ""),
+      ),
+    { timeout: 15_000 });
+    await page.evaluate(() => {
+      const button = [...document.querySelectorAll("button")].find(element =>
+        /^Clients(?:\s|\(|$)/.test(element.textContent?.trim() ?? ""),
+      ) as HTMLButtonElement | undefined;
+      if (!button) throw new Error("Clients tab was not found after in-app navigation");
+      button.click();
+    });
+  }
+  await assertAppSessionPreserved(page, expectedTimeOrigin, `${label} navigation`);
+}
+
+async function assertAppSessionPreserved(page: Page, expectedTimeOrigin: number, label: string) {
+  const actualTimeOrigin = await page.evaluate(() => performance.timeOrigin);
+  record(
+    `${label} preserves the authenticated app session`,
+    actualTimeOrigin === expectedTimeOrigin,
+    `documentTimeOrigin=${actualTimeOrigin}`,
+  );
 }
 
 async function assertScopedDatasets(
@@ -707,12 +758,14 @@ async function main() {
       { businessId: String(legalId), businessLine: division.slug },
       "Selected division after reload",
     );
+    const appDocumentTimeOrigin = await page.evaluate(() => performance.timeOrigin);
 
     await page.click('[data-testid="business-switcher"]');
     await waitForSelectorScreen(page);
     startIndex = requests.length;
     await page.click(`[data-testid="business-select-${kinora.id}"]`);
     await waitForDashboard(page);
+    await assertAppSessionPreserved(page, appDocumentTimeOrigin, "Switching to Kinora");
     await assertCompanyAlerts(page, "Selected Kinora");
     await assertCashFlowVisibility(page, false, "Selected Kinora");
     await assertScopeRequests(page, requests, startIndex, { businessId: String(kinora.id) }, "Selected Kinora after switching", true);
@@ -749,7 +802,7 @@ async function main() {
     record("Willard dashboard refreshes after switching back from Kinora", true, `${markers.willard}-ACTIVE-JOB`);
 
     for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
-      await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await navigateWithinApp(page, route, `Willard ${label}`, appDocumentTimeOrigin);
       await assertPageShowsSelectedBusiness(
         page,
         label === "Jobs" ? `${markers.willard}-ACTIVE-JOB` : label === "Expenses" ? `${markers.willard}-EXPENSE` : markers.willard,
@@ -763,14 +816,14 @@ async function main() {
       marker: markers.willard,
       otherMarker: markers.kinora,
       sharedMaterialMarker: markers.sharedMaterial,
-    }, "Willard");
+    }, "Willard", appDocumentTimeOrigin);
 
     await page.click('[data-testid="business-switcher"]');
     await waitForSelectorScreen(page);
     await page.click(`[data-testid="business-select-${kinora.id}"]`);
     await waitForDashboard(page);
     for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
-      await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await navigateWithinApp(page, route, `Kinora ${label}`, appDocumentTimeOrigin);
       await assertPageShowsSelectedBusiness(
         page,
         label === "Jobs" ? `${markers.kinora}-ACTIVE-JOB` : label === "Expenses" ? `${markers.kinora}-EXPENSE` : markers.kinora,
@@ -784,19 +837,29 @@ async function main() {
       marker: markers.kinora,
       otherMarker: markers.willard,
       sharedMaterialMarker: markers.sharedMaterial,
-    }, "Kinora");
+    }, "Kinora", appDocumentTimeOrigin);
 
     await page.click('[data-testid="business-switcher"]');
     await waitForSelectorScreen(page);
     await page.click(`[data-testid="business-select-${legal.id}"]`);
     await waitForDashboard(page);
+    await assertAppSessionPreserved(page, appDocumentTimeOrigin, "Switching back to Willard");
+    for (const [route, label] of [["/jobs", "Jobs"], ["/expenses", "Expenses"], ["/invoices", "Invoices"]] as const) {
+      await navigateWithinApp(page, route, `Willard after switching back ${label}`, appDocumentTimeOrigin);
+      await assertPageShowsSelectedBusiness(
+        page,
+        label === "Jobs" ? `${markers.willard}-ACTIVE-JOB` : label === "Expenses" ? `${markers.willard}-EXPENSE` : markers.willard,
+        markers.kinora,
+        `Willard after switching back ${label}`,
+      );
+    }
     await assertAdditionalBusinessScreens(page, {
       businessId: legalId,
       jobId: fixtureIds.jobIds[0],
       marker: markers.willard,
       otherMarker: markers.kinora,
       sharedMaterialMarker: markers.sharedMaterial,
-    }, "Willard after switching back");
+    }, "Willard after switching back", appDocumentTimeOrigin);
 
     if (blockedWrites.length > 0) {
       record("Business-scope verification blocks browser writes", false, blockedWrites.join(", "));
