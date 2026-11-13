@@ -3140,7 +3140,13 @@ router.put("/:id", async (req, res) => {
             componentLabel: component.componentLabel,
             status: component.status,
           }));
-        if (incompleteWorkItems.length > 0 && req.body.confirmIncompleteWork !== true) {
+        const isReopeningLockedJob = status === "completed"
+          && (lockedJob.status === "closed" || lockedJob.closedAt != null);
+        if (
+          !isReopeningLockedJob
+          && incompleteWorkItems.length > 0
+          && req.body.confirmIncompleteWork !== true
+        ) {
           return { kind: "incomplete" as const, incompleteWorkItems };
         }
 

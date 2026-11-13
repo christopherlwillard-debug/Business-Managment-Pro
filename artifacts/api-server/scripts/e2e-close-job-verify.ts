@@ -28,6 +28,7 @@ import {
   settingsTable,
   subPaymentRecordsTable,
   subcontractorsTable,
+  jobProductionComponentsTable,
 } from "@workspace/db/schema";
 import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
@@ -64,6 +65,10 @@ type CloseJobFixture = {
   jobTitle: string;
   invoiceId: number;
 };
+type FixtureOptions = {
+  payment?: "partial" | "paid" | "unknown";
+  incompleteComponent?: boolean;
+};
 
 type VerificationBusiness = { id: number; slug: string };
 
@@ -75,7 +80,11 @@ type CleanupTarget = {
 };
 const cleanupTargets: CleanupTarget[] = [];
 
-async function createFixture(business: VerificationBusiness, label: string): Promise<CloseJobFixture> {
+async function createFixture(
+  business: VerificationBusiness,
+  label: string,
+  options: FixtureOptions = {},
+): Promise<CloseJobFixture> {
   const target: CleanupTarget = {};
   cleanupTargets.push(target);
 
@@ -110,27 +119,44 @@ async function createFixture(business: VerificationBusiness, label: string): Pro
     }).returning();
     target.invoiceId = invoice.id;
 
+    const payment = options.payment ?? "partial";
+    const compensationType = payment === "unknown" ? "hourly" : "allocation";
+    const amountOwed = payment === "unknown" ? null : "190.00";
+    const amountPaid = payment === "paid" ? "190.00" : payment === "unknown" ? "0.00" : "25.00";
     await db.insert(jobSubcontractorsTable).values({
       jobId: job.id,
       subcontractorId: sub.id,
-      compensationType: "allocation",
-      allocationPct: "20.00",
-      amountOwed: "190.00",
-      amountPaid: "25.00",
-      paymentStatus: "partial",
+      compensationType,
+      allocationPct: compensationType === "allocation" ? "20.00" : null,
+      hourlyRate: compensationType === "hourly" ? null : null,
+      amountOwed,
+      amountPaid,
+      paymentStatus: payment === "paid" ? "paid" : payment === "unknown" ? "unpaid" : "partial",
     });
-    await db.insert(subPaymentRecordsTable).values({
-      jobId: job.id,
-      subcontractorId: sub.id,
-      businessLine: business.slug,
-      amount: "25.00",
-      paymentDate: new Date().toISOString().slice(0, 10),
-      description: "E2E partial payment",
-      createdFrom: "e2e-close-job-verify",
-      idempotencyKey: `e2e-close-partial-${job.id}`,
-      agreedOwedSnapshot: "190.00",
-      netPaid: "25.00",
-    });
+    if (payment !== "unknown") {
+      await db.insert(subPaymentRecordsTable).values({
+        jobId: job.id,
+        subcontractorId: sub.id,
+        businessLine: business.slug,
+        amount: amountPaid!,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        description: payment === "paid" ? "E2E full payment" : "E2E partial payment",
+        createdFrom: "e2e-close-job-verify",
+        idempotencyKey: `e2e-close-${payment}-${job.id}`,
+        agreedOwedSnapshot: "190.00",
+        netPaid: amountPaid!,
+      });
+    }
+    if (options.incompleteComponent) {
+      await db.insert(jobProductionComponentsTable).values({
+        jobId: job.id,
+        businessId: business.id,
+        componentKey: "siding",
+        componentInstanceKey: `e2e-${job.id}-siding`,
+        componentLabel: "Temporary incomplete siding",
+        status: "planned",
+      });
+    }
 
     const fixture = {
       subId: sub.id,
