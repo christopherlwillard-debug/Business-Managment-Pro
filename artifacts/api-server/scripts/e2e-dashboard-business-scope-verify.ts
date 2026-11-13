@@ -13,6 +13,26 @@ const ROUTES = [
   "/api/dashboard/continue-working",
   "/api/dashboard/recent-activity",
 ] as const;
+const COMPANY_ALERT_FIXTURES = {
+  complianceItems: [{
+    id: -2589,
+    title: "Company-level compliance test",
+    dueDate: "2000-01-01",
+    computedStatus: "overdue",
+    daysUntilDue: -1,
+  }],
+  taxQuarters: [{
+    quarter: 1,
+    label: "Q1",
+    period: "Current year Q1",
+    federalDueDate: "2000-01-01",
+    federalDueDateLabel: "overdue",
+    safeHarborTotal: 100,
+    recommendedTotal: 100,
+    totalPaid: 0,
+    status: "overdue" as const,
+  }],
+};
 const results: Array<{ name: string; pass: boolean; detail: string }> = [];
 const blockedWrites: string[] = [];
 
@@ -67,6 +87,23 @@ async function assertCashFlowVisibility(page: Page, expectedVisible: boolean, la
     `${label} keeps company-wide cash flow in the correct view`,
     visible === expectedVisible,
     `visible=${visible}`,
+  );
+}
+
+async function assertCompanyAlerts(page: Page, label: string) {
+  const rows = await page.$$eval("button", buttons =>
+    buttons.map(button => button.innerText.replace(/\s+/g, " ").trim()),
+  );
+  const complianceRows = rows.filter(text => text.includes("Compliance Items"));
+  const taxRows = rows.filter(text => text.includes("Tax Payments Due"));
+  const pass = complianceRows.length === 1
+    && complianceRows[0].includes("1 urgent")
+    && taxRows.length === 1
+    && taxRows[0].includes("1 due");
+  record(
+    `${label} keeps company-level compliance and tax alerts visible once`,
+    pass,
+    `compliance=${JSON.stringify(complianceRows)}; tax=${JSON.stringify(taxRows)}`,
   );
 }
 
@@ -158,6 +195,35 @@ async function main() {
           if (ROUTES.includes(url.pathname as typeof ROUTES[number])) {
             requests.push({ pathname: url.pathname, params: url.searchParams });
           }
+          if (method === "GET" && url.pathname === "/api/dashboard/today") {
+            void request.respond({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                ...COMPANY_ALERT_FIXTURES,
+                routeStops: [],
+                followUpProspects: [],
+                overdueInvoices: [],
+              }),
+            });
+            return;
+          }
+          if (method === "GET" && url.pathname === "/api/estimated-tax-payments") {
+            void request.respond({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ quarters: COMPANY_ALERT_FIXTURES.taxQuarters }),
+            });
+            return;
+          }
+          if (method === "GET" && url.pathname === "/api/settings") {
+            void request.respond({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ taxFilingFrequency: "quarterly" }),
+            });
+            return;
+          }
         } catch { /* Non-HTTP browser requests are irrelevant to query scope. */ }
         void request.continue();
       } else {
@@ -176,6 +242,7 @@ async function main() {
     let startIndex = requests.length;
     await clickAllBusinesses(page);
     await waitForDashboard(page);
+    await assertCompanyAlerts(page, "All Businesses");
     await assertCashFlowVisibility(page, true, "All Businesses");
     await assertScopeRequests(page, requests, startIndex, {}, "All Businesses");
 
@@ -184,6 +251,7 @@ async function main() {
     startIndex = requests.length;
     await page.click(`[data-testid="business-select-${legal.id}"]`);
     await waitForDashboard(page);
+    await assertCompanyAlerts(page, "Selected legal business");
     await assertCashFlowVisibility(page, false, "Selected legal business");
     await assertScopeRequests(
       page, requests, startIndex, { businessId: String(legalId) }, "Selected legal business after switching", true,
@@ -191,6 +259,7 @@ async function main() {
     startIndex = requests.length;
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await waitForDashboard(page);
+    await assertCompanyAlerts(page, "Selected legal business after reload");
     await assertCashFlowVisibility(page, false, "Selected legal business after reload");
     await assertScopeRequests(page, requests, startIndex, { businessId: String(legalId) }, "Selected legal business after reload");
 
@@ -199,6 +268,7 @@ async function main() {
     startIndex = requests.length;
     await page.click(`[data-testid="business-select-${division.id}"]`);
     await waitForDashboard(page);
+    await assertCompanyAlerts(page, "Selected division");
     await assertCashFlowVisibility(page, false, "Selected division");
     await assertScopeRequests(
       page,
@@ -211,6 +281,7 @@ async function main() {
     startIndex = requests.length;
     await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await waitForDashboard(page);
+    await assertCompanyAlerts(page, "Selected division after reload");
     await assertCashFlowVisibility(page, false, "Selected division after reload");
     await assertScopeRequests(
       page,
