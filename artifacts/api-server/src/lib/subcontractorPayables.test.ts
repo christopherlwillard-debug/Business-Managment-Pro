@@ -32,20 +32,36 @@ describe("resolveSubcontractorBalance", () => {
     });
   });
 
-  it("does not treat a zero-dollar calculation without payment evidence as settled", () => {
-    for (const paymentStatus of ["unpaid", "paid"]) {
-      expect(resolveSubcontractorBalance({
-        totalOwed: 0,
-        amountPaid: 0,
-        ledgerPaid: 0,
-        paymentStatus,
-        unknownReason: "Unavailable",
-      })).toMatchObject({
-        remainingAmount: null,
-        balanceStatus: "unknown",
-        outstanding: true,
-      });
-    }
+  it("keeps a cached paid amount unknown when unpaid status has no ledger entry", () => {
+    expect(resolveSubcontractorBalance({
+      totalOwed: 1000,
+      amountPaid: 1000,
+      ledgerPaid: 0,
+      paymentStatus: "unpaid",
+      unknownReason: "Unavailable",
+    })).toMatchObject({
+      paid: 1000,
+      remainingAmount: null,
+      balanceStatus: "unknown",
+      balanceReason: "Payroll is not marked settled; confirm the amount or record the actual payment in Job Payroll.",
+      outstanding: true,
+    });
+  });
+
+  it("keeps a zero-dollar fixed assignment unknown without ledger evidence", () => {
+    // For a fixed assignment, totalOwed is the resolved fixed amount.
+    expect(resolveSubcontractorBalance({
+      totalOwed: 0,
+      amountPaid: null,
+      ledgerPaid: 0,
+      paymentStatus: "paid",
+      unknownReason: "Unavailable",
+    })).toMatchObject({
+      paid: 0,
+      remainingAmount: null,
+      balanceStatus: "unknown",
+      outstanding: true,
+    });
   });
 
   it("preserves a ledger-backed legacy paid confirmation", () => {
@@ -129,6 +145,25 @@ describe("summarizeSubcontractorPayables", () => {
       amount: null,
       unresolvedCount: 1,
       outstandingJobCount: 2,
+    });
+  });
+
+  it("reports a cached-paid balance without ledger proof as unresolved", () => {
+    const balance = resolveSubcontractorBalance({
+      totalOwed: 1000,
+      amountPaid: 1000,
+      ledgerPaid: 0,
+      paymentStatus: "unpaid",
+      unknownReason: "Unavailable",
+    });
+
+    expect(summarizeSubcontractorPayables([
+      { amount: balance.remainingAmount, balanceStatus: balance.balanceStatus, jobId: 65 },
+    ])).toEqual({
+      status: "incomplete",
+      amount: null,
+      unresolvedCount: 1,
+      outstandingJobCount: 1,
     });
   });
 });
