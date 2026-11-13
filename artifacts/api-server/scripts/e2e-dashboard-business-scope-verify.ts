@@ -4,13 +4,19 @@ import { eq, inArray } from "drizzle-orm";
 import {
   db,
   businessesTable,
+  clientsTable,
+  estimatesTable,
   jobsTable,
   expensesTable,
   invoicesTable,
   ownerCapitalEntriesTable,
+  materialsTable,
+  materialListsTable,
+  materialListItemsTable,
 } from "@workspace/db";
 import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import { launchBrowser } from "../src/lib/launchBrowser";
+import { getOwnerId } from "../src/routes/guards";
 import { randomUUID } from "node:crypto";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
@@ -67,10 +73,15 @@ if (baseUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "::1"].includes(
 type CapturedRequest = { pathname: string; params: URLSearchParams };
 type TestFixtures = {
   businessId?: number;
+  clientIds: number[];
+  estimateIds: number[];
   jobIds: number[];
   expenseIds: number[];
   invoiceIds: number[];
   ownerEntryIds: number[];
+  materialIds: number[];
+  materialListIds: number[];
+  materialListItemIds: number[];
 };
 
 function record(name: string, pass: boolean, detail: string) {
@@ -117,6 +128,18 @@ async function assertCashFlowVisibility(page: Page, expectedVisible: boolean, la
 }
 
 async function assertCompanyAlerts(page: Page, label: string) {
+  try {
+    await page.waitForFunction(() => {
+      const rows = [...document.querySelectorAll("button")]
+        .map(button => button.innerText.replace(/\s+/g, " ").trim());
+      const complianceRows = rows.filter(text => text.includes("Compliance Items"));
+      const taxRows = rows.filter(text => text.includes("Tax Payments Due"));
+      return complianceRows.length === 1
+        && complianceRows[0].includes("1 urgent")
+        && taxRows.length === 1
+        && taxRows[0].includes("1 due");
+    }, { timeout: 15_000 });
+  } catch { /* Record the final visible state below for useful failure output. */ }
   const rows = await page.$$eval("button", buttons =>
     buttons.map(button => button.innerText.replace(/\s+/g, " ").trim()),
   );
@@ -192,7 +215,17 @@ async function createBusinessFixtures(runTag: string): Promise<{
   markers: { willard: string; kinora: string };
   fixtureIds: TestFixtures;
 }> {
-  const fixtureIds: TestFixtures = { jobIds: [], expenseIds: [], invoiceIds: [], ownerEntryIds: [] };
+  const fixtureIds: TestFixtures = {
+    clientIds: [],
+    estimateIds: [],
+    jobIds: [],
+    expenseIds: [],
+    invoiceIds: [],
+    ownerEntryIds: [],
+    materialIds: [],
+    materialListIds: [],
+    materialListItemIds: [],
+  };
   const [legal] = await db.select({
     id: businessesTable.id,
     slug: businessesTable.slug,
@@ -219,7 +252,19 @@ async function createBusinessFixtures(runTag: string): Promise<{
     const markers = {
       willard: `SCOPE-${runTag}-WILLARD`,
       kinora: `SCOPE-${runTag}-KINORA`,
+      sharedMaterial: `SCOPE-${runTag}-SHARED-MATERIAL`,
     };
+    const materialListUserId = process.env.BUILDPRO_E2E_USER_ID?.trim() || await getOwnerId();
+    if (!materialListUserId) throw new Error("An approved development test identity is required for material-list fixtures");
+    const [sharedMaterial] = await db.insert(materialsTable).values({
+      name: markers.sharedMaterial,
+      description: "Temporary shared-catalog item for business-scope verification",
+      unit: "ea",
+      unitCost: "1.00",
+      category: "E2E Test",
+      isActive: true,
+    }).returning({ id: materialsTable.id });
+    fixtureIds.materialIds.push(sharedMaterial.id);
     const today = new Date().toISOString().slice(0, 10);
     const businesses = [
       { id: legal.id, slug: legal.slug, marker: markers.willard, withdrawal: "-17.31" },
@@ -227,14 +272,53 @@ async function createBusinessFixtures(runTag: string): Promise<{
     ];
 
     for (const business of businesses) {
+      const [client] = await db.insert(clientsTable).values({
+        name: `${business.marker}-CLIENT`,
+        businessId: business.id,
+        businessLine: business.slug,
+      }).returning({ id: clientsTable.id });
+      fixtureIds.clientIds.push(client.id);
+
       const [job] = await db.insert(jobsTable).values({
         title: `${business.marker}-ACTIVE-JOB`,
         status: "scheduled",
         startDate: today,
         businessId: business.id,
         businessLine: business.slug,
+        clientId: client.id,
       }).returning({ id: jobsTable.id });
       fixtureIds.jobIds.push(job.id);
+
+      const [estimate] = await db.insert(estimatesTable).values({
+        title: `${business.marker}-ESTIMATE`,
+        clientId: client.id,
+        jobId: job.id,
+        status: "draft",
+        subtotal: "1.00",
+        total: "1.00",
+        lineItems: [{ description: `${business.marker}-ESTIMATE`, quantity: 1, unitPrice: 1 }],
+        businessId: business.id,
+        businessLine: business.slug,
+      }).returning({ id: estimatesTable.id });
+      fixtureIds.estimateIds.push(estimate.id);
+
+      const [materialList] = await db.insert(materialListsTable).values({
+        name: `${business.marker}-MATERIAL-LIST`,
+        userId: materialListUserId,
+        jobId: job.id,
+        markup: "40",
+      }).returning({ id: materialListsTable.id });
+      fixtureIds.materialListIds.push(materialList.id);
+      const [materialListItem] = await db.insert(materialListItemsTable).values({
+        listId: materialList.id,
+        materialId: sharedMaterial.id,
+        nameSnapshot: `${business.marker}-MATERIAL-LIST-ITEM`,
+        unitSnapshot: "ea",
+        unitCostSnapshot: "1.00",
+        qty: "1",
+        addToJobExpenses: false,
+      }).returning({ id: materialListItemsTable.id });
+      fixtureIds.materialListItemIds.push(materialListItem.id);
 
       const [expense] = await db.insert(expensesTable).values({
         description: `${business.marker}-EXPENSE`,
@@ -250,6 +334,8 @@ async function createBusinessFixtures(runTag: string): Promise<{
         invoiceNumber: `${business.marker}-INVOICE`,
         status: "sent",
         issueDate: today,
+        clientId: client.id,
+        jobId: job.id,
         subtotal: "1.00",
         total: "1.00",
         lineItems: [{ description: `${business.marker}-INVOICE`, quantity: 1, unitPrice: 1 }],
@@ -277,10 +363,15 @@ async function createBusinessFixtures(runTag: string): Promise<{
 async function cleanupBusinessFixtures(fixtures: TestFixtures) {
   const failures: unknown[] = [];
   const cleanups = [
+    () => fixtures.materialListItemIds.length && db.delete(materialListItemsTable).where(inArray(materialListItemsTable.id, fixtures.materialListItemIds)),
+    () => fixtures.materialListIds.length && db.delete(materialListsTable).where(inArray(materialListsTable.id, fixtures.materialListIds)),
+    () => fixtures.estimateIds.length && db.delete(estimatesTable).where(inArray(estimatesTable.id, fixtures.estimateIds)),
     () => fixtures.invoiceIds.length && db.delete(invoicesTable).where(inArray(invoicesTable.id, fixtures.invoiceIds)),
     () => fixtures.expenseIds.length && db.delete(expensesTable).where(inArray(expensesTable.id, fixtures.expenseIds)),
     () => fixtures.ownerEntryIds.length && db.delete(ownerCapitalEntriesTable).where(inArray(ownerCapitalEntriesTable.id, fixtures.ownerEntryIds)),
     () => fixtures.jobIds.length && db.delete(jobsTable).where(inArray(jobsTable.id, fixtures.jobIds)),
+    () => fixtures.clientIds.length && db.delete(clientsTable).where(inArray(clientsTable.id, fixtures.clientIds)),
+    () => fixtures.materialIds.length && db.delete(materialsTable).where(inArray(materialsTable.id, fixtures.materialIds)),
     () => fixtures.businessId != null && db.delete(businessesTable).where(eq(businessesTable.id, fixtures.businessId!)),
   ];
   for (const cleanup of cleanups) {
@@ -293,6 +384,114 @@ async function cleanupBusinessFixtures(fixtures: TestFixtures) {
   if (failures.length) {
     throw new Error(`Could not fully clean up business-scope fixtures: ${failures.map(String).join("; ")}`);
   }
+}
+
+async function assertAdditionalBusinessLists(
+  page: Page,
+  expected: {
+    businessId: number;
+    jobId: number;
+    marker: string;
+    otherMarker: string;
+    sharedMaterialMarker: string;
+  },
+  label: string,
+) {
+  const responses = await page.evaluate(async ({ businessId, jobId, sharedMaterialMarker }) => {
+    const urls = [
+      `/api/estimates?businessId=${businessId}`,
+      `/api/estimates/quote-center?businessId=${businessId}`,
+      `/api/clients?businessId=${businessId}`,
+      `/api/materials?search=${encodeURIComponent(sharedMaterialMarker)}`,
+      `/api/material-lists?jobId=${jobId}`,
+    ];
+    return Promise.all(urls.map(async url => {
+      const response = await fetch(url, { credentials: "include" });
+      return { url, status: response.status, body: await response.text() };
+    }));
+  }, {
+    businessId: expected.businessId,
+    jobId: expected.jobId,
+    sharedMaterialMarker: expected.sharedMaterialMarker,
+  });
+  const [estimates, quoteCenter, clients, materials, materialLists] = responses;
+  let quoteCenterData: any = null;
+  let clientData: any[] = [];
+  try {
+    quoteCenterData = JSON.parse(quoteCenter.body);
+    clientData = JSON.parse(clients.body);
+  } catch { /* The status/body assertions below report invalid responses. */ }
+  const clientSummary = clientData.find(client => client.name === `${expected.marker}-CLIENT`);
+  const pass = estimates.status === 200
+    && estimates.body.includes(`${expected.marker}-ESTIMATE`)
+    && !estimates.body.includes(`${expected.otherMarker}-ESTIMATE`)
+    && quoteCenter.status === 200
+    && Array.isArray(quoteCenterData?.items)
+    && quoteCenterData.items.some((item: { title?: string }) => item.title === `${expected.marker}-ESTIMATE`)
+    && !quoteCenterData.items.some((item: { title?: string }) => item.title === `${expected.otherMarker}-ESTIMATE`)
+    && quoteCenterData.summary?.totalQuotes === quoteCenterData.items.length
+    && clients.status === 200
+    && clients.body.includes(`${expected.marker}-CLIENT`)
+    && !clients.body.includes(`${expected.otherMarker}-CLIENT`)
+    && clientSummary?.openInvoiceCount === 1
+    && clientSummary?.outstandingBalance === 1
+    && clientSummary?.hasOverdueInvoice === false
+    && materials.status === 200
+    && materials.body.includes(expected.sharedMaterialMarker)
+    && materialLists.status === 200
+    && materialLists.body.includes(`${expected.marker}-MATERIAL-LIST`)
+    && materialLists.body.includes(`${expected.marker}-MATERIAL-LIST-ITEM`)
+    && !materialLists.body.includes(`${expected.otherMarker}-MATERIAL-LIST`);
+  record(
+    `${label} scopes estimates, clients, and job materials while sharing the catalog`,
+    pass,
+    `statuses=${responses.map(response => response.status).join("/")}; quote-center and client summaries match ${expected.marker}; job-list marker is scoped; shared catalog marker is visible`,
+  );
+}
+
+async function assertAdditionalBusinessScreens(
+  page: Page,
+  expected: {
+    businessId: number;
+    jobId: number;
+    marker: string;
+    otherMarker: string;
+    sharedMaterialMarker: string;
+  },
+  label: string,
+) {
+  for (const [route, markerType, screenLabel] of [
+    ["/estimates", "estimate", "Estimates"],
+    ["/clients", "client", "Clients"],
+    ["/materials", "sharedMaterial", "Materials"],
+  ] as const) {
+    await page.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    if (markerType === "sharedMaterial") {
+      await page.waitForFunction(
+        marker => document.body.innerText.includes(marker),
+        { timeout: 12_000 },
+        expected.sharedMaterialMarker,
+      ).then(() => record(
+        `${label} ${screenLabel} shows the shared material catalog`,
+        true,
+        expected.sharedMaterialMarker,
+      )).catch(async () => {
+        const body = await page.$eval("body", element => element.innerText.replace(/\s+/g, " ").slice(0, 1_000)).catch(() => "page body unavailable");
+        record(
+          `${label} ${screenLabel} shows the shared material catalog`,
+          false,
+          `missing ${expected.sharedMaterialMarker}; page text: ${body}`,
+        );
+      });
+    } else {
+      const marker = markerType === "estimate" ? `${expected.marker}-ESTIMATE` : `${expected.marker}-CLIENT`;
+      const otherMarker = markerType === "estimate"
+        ? `${expected.otherMarker}-ESTIMATE`
+        : `${expected.otherMarker}-CLIENT`;
+      await assertPageShowsSelectedBusiness(page, marker, otherMarker, `${label} ${screenLabel}`);
+    }
+  }
+  await assertAdditionalBusinessLists(page, expected, label);
 }
 
 async function assertScopedDatasets(
@@ -558,6 +757,13 @@ async function main() {
         `Willard ${label}`,
       );
     }
+    await assertAdditionalBusinessScreens(page, {
+      businessId: legalId,
+      jobId: fixtureIds.jobIds[0],
+      marker: markers.willard,
+      otherMarker: markers.kinora,
+      sharedMaterialMarker: markers.sharedMaterial,
+    }, "Willard");
 
     await page.click('[data-testid="business-switcher"]');
     await waitForSelectorScreen(page);
@@ -572,6 +778,25 @@ async function main() {
         `Kinora ${label}`,
       );
     }
+    await assertAdditionalBusinessScreens(page, {
+      businessId: kinora.id,
+      jobId: fixtureIds.jobIds[1],
+      marker: markers.kinora,
+      otherMarker: markers.willard,
+      sharedMaterialMarker: markers.sharedMaterial,
+    }, "Kinora");
+
+    await page.click('[data-testid="business-switcher"]');
+    await waitForSelectorScreen(page);
+    await page.click(`[data-testid="business-select-${legal.id}"]`);
+    await waitForDashboard(page);
+    await assertAdditionalBusinessScreens(page, {
+      businessId: legalId,
+      jobId: fixtureIds.jobIds[0],
+      marker: markers.willard,
+      otherMarker: markers.kinora,
+      sharedMaterialMarker: markers.sharedMaterial,
+    }, "Willard after switching back");
 
     if (blockedWrites.length > 0) {
       record("Business-scope verification blocks browser writes", false, blockedWrites.join(", "));
@@ -592,7 +817,7 @@ async function main() {
 
   const failures = results.filter(result => !result.pass);
   if (failures.length > 0) {
-    throw new Error(`Dashboard business-scope E2E failed: ${failures.map(result => result.name).join(", ")}`);
+    throw new Error(`Business-scope E2E failed: ${failures.map(result => result.name).join(", ")}`);
   }
   console.log(`Business-scope E2E passed (${results.length} checks)`);
 }
