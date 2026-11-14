@@ -1317,6 +1317,8 @@ router.patch("/:id/component-work-sessions/:sessionId", async (req, res) => {
 // Per-job profit: GET /:id/profit
 // NOTE: this route must be registered before /:id so it is not shadowed
 router.get("/:id/profit", async (req, res) => {
+  // Authenticated job financials must never be served from a browser or proxy cache.
+  res.setHeader("Cache-Control", "private, no-store, max-age=0");
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });

@@ -2771,7 +2771,7 @@ function JobFinancialsPanel({ job, profitData: initialProfit, initialTab = "brea
       }),
       fetch(`${BASE}/api/jobs/${requestedJobId}/sub-hours`, requestOptions).then(r => r.ok ? r.json() : []),
       fetch(`${BASE}/api/owner-capital?jobId=${requestedJobId}`, requestOptions).then(r => r.ok ? r.json() : []),
-      getJobProfit(requestedJobId, requestOptions),
+      getJobProfit(requestedJobId, { ...requestOptions, cache: "no-store" }),
     ];
     // Always fetch the full per-job profit endpoint — the bulk profit-summary used by
     // the job list omits estimatedFuelCost/fuelStatus, so we must refresh here even
@@ -10289,8 +10289,8 @@ export default function Jobs() {
 
   async function handleReopenJob(job: Job) {
     try {
-      const reopenedJob = await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-      if (reopenedJob.status !== "completed" || reopenedJob.closedAt != null) {
+      const reopenedJob = await updateJob.mutateAsync({ id: job.id, data: { status: "in_progress" } });
+      if (reopenedJob.status !== "in_progress" || reopenedJob.closedAt != null) {
         throw new Error("The server did not confirm that this job was reopened.");
       }
       await queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
@@ -10299,7 +10299,7 @@ export default function Jobs() {
       if (!refreshedJob || refreshedJob.status === "closed" || refreshedJob.closedAt != null) {
         throw new Error("The jobs list still reports this job as closed. Please try reopening it again.");
       }
-      toast({ title: "Job reopened", description: `"${job.title}" moved back to active jobs.` });
+      toast({ title: "Job reopened", description: `"${job.title}" moved back to active work.` });
     } catch (err) {
       const serverMessage = err && typeof err === "object" && "data" in err
         ? (err as { data?: { error?: string } }).data?.error

@@ -355,7 +355,7 @@ async function main() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+        body: JSON.stringify({ status: "in_progress", businessId, businessLine }),
       });
       const body = await response.json() as { status?: string; closedAt?: string | null; error?: string };
       return { httpStatus: response.status, status: body.status, closedAt: body.closedAt, error: body.error };
@@ -367,7 +367,7 @@ async function main() {
     record(
       "Closed job reopens despite incomplete work and unpaid subcontractors",
       reopenIncomplete.httpStatus === 200
-        && reopenIncomplete.status === "completed"
+        && reopenIncomplete.status === "in_progress"
         && reopenIncomplete.closedAt == null,
       JSON.stringify(reopenIncomplete),
     );
@@ -429,7 +429,7 @@ async function main() {
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "completed", businessId, businessLine }),
+        body: JSON.stringify({ status: "in_progress", businessId, businessLine }),
       });
       const body = await response.json() as { status?: string; closedAt?: string | null; error?: string };
       return { httpStatus: response.status, status: body.status, closedAt: body.closedAt, error: body.error };
@@ -439,8 +439,8 @@ async function main() {
       businessLine: business.slug,
     });
     record(
-      "Explicit reopen clears the closed date without recording payment",
-      reopened.httpStatus === 200 && reopened.status === "completed" && reopened.closedAt == null,
+      "Explicit reopen restores active work and clears the closed date without recording payment",
+      reopened.httpStatus === 200 && reopened.status === "in_progress" && reopened.closedAt == null,
       JSON.stringify(reopened),
     );
     await db.update(jobsTable)
@@ -506,7 +506,7 @@ async function main() {
     record(
       "Reopen action confirms the job left Closed Jobs",
       reopenUiResult.httpStatus === 200
-        && reopenUiResult.status === "completed"
+        && reopenUiResult.status === "in_progress"
         && reopenUiResult.closedAt == null
         && reopenUiResult.successMessageShown
         && !reopenUiResult.errorMessageShown,
