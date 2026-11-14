@@ -8,7 +8,6 @@ export function isJobCreationStepVisible(
 
 export type JobWorkspaceSectionId =
   | "details"
-  | "schedule"
   | "work"
   | "subcontractors"
   | "materials"

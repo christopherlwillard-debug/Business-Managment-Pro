@@ -12,6 +12,17 @@ For the current state of each system, see `SYSTEM_REGISTRY.md`.
 
 ---
 
+## 2026-11-14
+
+### Combine job overview and management in one workspace
+
+- Removed the separate Job and Overview tabs and now show both views in one expandable workspace, with direct expandable entry points to existing job sections.
+- New jobs of all three supported work types open in the same workspace after save; existing job IDs, API routes, financial engines, payment ledgers, and closeout safeguards remain unchanged.
+- Removed the retired job workday controls and history from this workspace without changing stored historical dates or records.
+- Verified authenticated creation and workspace entry for each work type with disposable development jobs that were deleted, plus existing-job navigation, closeout/reopen safeguards, typechecks, and the production build.
+
+---
+
 ## 2026-11-12
 
 ### Add permission-scoped property detail editing

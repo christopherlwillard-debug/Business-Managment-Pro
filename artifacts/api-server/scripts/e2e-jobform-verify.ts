@@ -1,5 +1,6 @@
-/* Authenticated, read-only browser check for the manufactured-home Job Builder.
- * The supported development login proof is short-lived; all browser writes are denied.
+/* Authenticated browser check for the Job Builder and unified workspace.
+ * Only short-lived test jobs created by this script may be written, and each
+ * is deleted before exit. The supported development login proof is short-lived.
  */
 import { launchBrowser } from "../src/lib/launchBrowser";
 import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
@@ -16,6 +17,10 @@ if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT
 }
 
 const results: { name: string; pass: boolean; detail: string }[] = [];
+const createdJobIds = new Set<number>();
+const allowedDeleteJobIds = new Set<number>();
+const allowedWrites: string[] = [];
+let allowTestJobCreate = false;
 function record(name: string, pass: boolean, detail = "") {
   results.push({ name, pass, detail });
   console.log(`${pass ? "PASS" : "FAIL"}: ${name}${detail ? " — " + detail : ""}`);
@@ -37,6 +42,15 @@ async function clickByText(page: Page, selector: string, text: string): Promise<
   );
 }
 
+async function clickWorkflowChoice(page: Page, text: string): Promise<boolean> {
+  return page.evaluate(label => {
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>(".fixed.inset-0.z-50 button"));
+    const button = buttons.find(element => (element.innerText || "").includes(label));
+    button?.click();
+    return Boolean(button);
+  }, text);
+}
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function main() {
@@ -44,8 +58,9 @@ async function main() {
   const browser = await launchBrowser();
   let sessionId: string | undefined;
   const blockedWrites: string[] = [];
+  let page: Page | undefined;
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setViewport({ width: 400, height: 720, isMobile: true, hasTouch: true });
     await page.setRequestInterception(true);
     page.on("request", (request: HTTPRequest) => {
@@ -53,8 +68,28 @@ async function main() {
         void request.continue();
         return;
       }
+      const requestUrl = new URL(request.url());
+      const requestPath = requestUrl.pathname.replace(/\/$/, "");
+      if (allowTestJobCreate && request.method() === "POST" && requestPath === "/api/jobs") {
+        allowedWrites.push(`${request.method()} ${requestPath}`);
+        void request.continue();
+        return;
+      }
+      const deleteMatch = requestPath.match(/^\/api\/jobs\/(\d+)$/);
+      if (request.method() === "DELETE" && deleteMatch && allowedDeleteJobIds.has(Number(deleteMatch[1]))) {
+        allowedWrites.push(`${request.method()} ${requestPath}`);
+        void request.continue();
+        return;
+      }
       blockedWrites.push(`${request.method()} ${request.url()}`);
       void request.abort("blockedbyclient");
+    });
+    page.on("response", response => {
+      const request = response.request();
+      if (request.method() !== "POST" || new URL(response.url()).pathname.replace(/\/$/, "") !== "/api/jobs" || !response.ok()) return;
+      void response.json().then((created: { id?: number }) => {
+        if (Number.isSafeInteger(created.id)) createdJobIds.add(created.id!);
+      }).catch(() => undefined);
     });
 
     const returnTo = "/jobs";
@@ -83,7 +118,7 @@ async function main() {
       document.body.innerText.includes("Choose the type of work"),
     );
     record("Workflow picker shown", pickerVisible);
-    const clickedProd = await clickByText(page, "button", "MH Production");
+    const clickedProd = await clickWorkflowChoice(page, "MH Production");
     record("'MH Production' selected", clickedProd);
     await sleep(1200);
     await page.screenshot({ path: `${SHOTS}/03-create-dialog.png` });
@@ -256,12 +291,126 @@ async function main() {
     record("Multi-step wizard navigation is absent", !creationSections.wizard);
     record("Job scheduling step and date inputs are absent", !creationSections.schedule);
     await page.screenshot({ path: `${SHOTS}/06-guided-sections.png` });
+
+    // 8. Open a real existing job without changing it and verify both former
+    // workspace views now render together without tab navigation.
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await sleep(1000);
+    const existingJobButton = await page.$('button[data-testid^="job-card-open-"]');
+    if (!existingJobButton) {
+      record("Existing job workspace opens", false, "No visible job card was available");
+    } else {
+      await existingJobButton.click();
+      await page.waitForSelector('[data-testid^="job-workspace-unified-"]', { timeout: 15_000 });
+      const workspaceState = await page.evaluate(() => {
+        const root = document.querySelector<HTMLElement>('[data-testid^="job-workspace-unified-"]');
+        return {
+          unified: !!root,
+          overview: !!root?.querySelector('[data-testid^="job-workspace-overview-"]'),
+          management: !!root?.querySelector('[data-testid^="job-workspace-job-"]'),
+          tabs: !!document.querySelector('[role="tablist"][aria-label="Job workspace"]'),
+          sections: ["details", "work", "subcontractors", "materials", "financials", "photos", "closeout"]
+            .map(id => !!root?.querySelector(`[data-testid^="job-section-${id}-"]`)),
+          retiredWorkday: !!root?.querySelector('[data-testid^="job-workspace-schedule-"]')
+            || /Start Work Today|Done for Today|Daily work history/.test(root?.innerText ?? ""),
+        };
+      });
+      record("Existing job opens the unified workspace",
+        workspaceState.unified && workspaceState.overview && workspaceState.management);
+      record("Former workspace tabs are removed", !workspaceState.tabs);
+      record("All seven direct job sections remain accessible", workspaceState.sections.every(Boolean));
+      record("Retired workday interface is absent", !workspaceState.retiredWorkday);
+      await page.screenshot({ path: `${SHOTS}/07-unified-job-workspace.png` });
+    }
+
+    // 9. Create disposable development-only jobs through the real form and
+    // confirm each opens in the same workspace. Cleanup uses exact IDs only.
+    const workflows = [
+      { key: "mh_production", label: "MH Production" },
+      { key: "mh_service", label: "MH Service" },
+      { key: "general_contracting", label: "General Contracting" },
+    ];
+    for (const workflow of workflows) {
+      await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+      await clickByText(page, "button", "New Job");
+      await sleep(250);
+      const choseWorkflow = await clickWorkflowChoice(page, workflow.label);
+      const title = `E2E disposable ${workflow.key} ${Date.now()}`;
+      const titleInput = await page.$('form input[placeholder="e.g. Farm House Renovation"]');
+      if (titleInput) await titleInput.type(title);
+      await page.evaluate(() => {
+        const select = document.querySelector<HTMLSelectElement>('form select');
+        if (!select || select.value) return;
+        const firstBusiness = Array.from(select.options).find(option => option.value);
+        if (!firstBusiness) return;
+        select.value = firstBusiness.value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      allowTestJobCreate = true;
+      const submit = await clickByText(page, "form button", "Create Job");
+      if (submit) {
+        try {
+          await page.waitForFunction(
+            () => !!document.querySelector('[data-testid^="job-workspace-unified-"]'),
+            { timeout: 20_000 },
+          );
+        } catch {
+          // The result is recorded below with enough context to diagnose.
+        }
+      }
+      allowTestJobCreate = false;
+      await sleep(300);
+      const createdId = [...createdJobIds].at(-1);
+      const openedInWorkspace = await page.evaluate(() => {
+        const unified = document.querySelector<HTMLElement>('[data-testid^="job-workspace-unified-"]');
+        return !!unified && !!unified.querySelector('[data-testid^="job-workspace-overview-"]')
+          && !!unified.querySelector('[data-testid^="job-workspace-job-"]');
+      });
+      const creationFeedback = await page.evaluate(() => document.body.innerText.slice(-900));
+      record(`${workflow.label} creation opens the unified workspace`,
+        choseWorkflow && !!titleInput && submit && !!createdId && openedInWorkspace,
+        createdId ? `job ${createdId}` : `creation did not return a job ID; ${creationFeedback.replace(/\n/g, " | ")}`);
+      if (!createdId) await page.screenshot({ path: `${SHOTS}/failed-${workflow.key}-create.png` });
+      if (createdId) {
+        allowedDeleteJobIds.add(createdId);
+        await page.evaluate(() => {
+          const close = document.querySelector<HTMLElement>('[aria-label="Close job workspace"]');
+          close?.click();
+        });
+        await sleep(250);
+        const cleanup = await page.evaluate(async id => {
+          const response = await fetch(`/api/jobs/${id}`, { method: "DELETE", credentials: "include" });
+          return { ok: response.ok, status: response.status };
+        }, createdId);
+        allowedDeleteJobIds.delete(createdId);
+        record(`${workflow.label} test job was removed`, cleanup.ok, `HTTP ${cleanup.status}`);
+        createdJobIds.delete(createdId);
+      }
+    }
   } finally {
+    allowTestJobCreate = false;
+    for (const id of createdJobIds) {
+      allowedDeleteJobIds.add(id);
+      try {
+        if (page) {
+          await page.evaluate(async jobId => {
+            await fetch(`/api/jobs/${jobId}`, { method: "DELETE", credentials: "include" });
+          }, id);
+        }
+      } catch {
+        blockedWrites.push(`cleanup failed for temporary job ${id}`);
+      }
+      allowedDeleteJobIds.delete(id);
+    }
     if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await browser.close();
   }
 
-  record("Authenticated browser made no writes", blockedWrites.length === 0, blockedWrites.join("; "));
+  record(
+    "Browser writes stayed within the disposable-job allowlist",
+    blockedWrites.length === 0 && allowedWrites.every(write => write.startsWith("POST /api/jobs") || /^DELETE \/api\/jobs\/\d+$/.test(write)),
+    `allowed=${allowedWrites.length}; blocked=${blockedWrites.join("; ") || "none"}`,
+  );
   const failed = results.filter(r => !r.pass);
   console.log(`\n=== ${results.length - failed.length}/${results.length} checks passed ===`);
   if (failed.length) {

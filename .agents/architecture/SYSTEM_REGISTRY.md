@@ -169,7 +169,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Table:** `jobs`
 - **Schema:** `lib/db/src/schema/jobs.ts`
 - **API:** `artifacts/api-server/src/routes/jobs.ts`
-- **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx`
+- **UI:** `artifacts/contractor-app/src/pages/Jobs.tsx` → unified expandable Job Workspace for creation follow-through and existing-job management; existing job financials, materials, payroll, invoices, and closeout components remain authoritative.
 - **Reports:** Yes — central to all P&L, job profit, and labor calculations
 - **Source of truth:** `jobs`. The central entity linking invoices, expenses, mileage, payroll, materials, owner pay, and an optional customer property. `jobs.property_id` references `properties`; it does not replace job address fields or change calculations.
 - **Active financial visibility:** unavailable worker, subcontractor, and Owner Pay balances remain `null` and include server-derived missing-input reasons; clients must not invent fallback amounts or explanations.

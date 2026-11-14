@@ -109,7 +109,6 @@ import { sumIncludedJobCostDetails } from "@/lib/jobExpenseDisplay";
 import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
 import { JobMarginCard } from "@/components/JobMarginCard";
 import { ExtendedJob } from "@/components/planner/types";
-import { JobPresencePanel, type JobPresenceSnapshot } from "@/components/planner/JobPresencePanel";
 import type { ReadinessBlocker } from "@/components/planner/types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -132,16 +131,6 @@ function getJobWorkflow(job: Job): WorkflowKey | null {
 function displayStatus(status: string): "scheduled" | "completed" {
   if (status === "completed" || status === "invoiced") return "completed";
   return "scheduled";
-}
-
-type WorkdaySnapshot = JobPresenceSnapshot;
-
-function formatWorkdayTime(value: string | null): string {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? ""
-    : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
 type ScheduleItem = {
@@ -6251,7 +6240,7 @@ function JobCard({
   paymentSummaryStatus?: "loading" | "ready" | "error";
   onPaymentSummaryChanged?: () => void;
   businessId?: number;
-  workspaceTab?: "job" | "overview";
+  workspaceTab?: "job" | "overview" | "unified";
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -6326,65 +6315,6 @@ function JobCard({
   const propertyDisplay = getJobPropertyDisplay(job);
   const isCompleted = displayStatus(job.status) === "completed";
   const isClosed = job.status === "closed" || job.closedAt != null;
-  const today = localDateString();
-  const hasJobBusinessContext = job.businessId != null;
-  const workdayQuery = useQuery<WorkdaySnapshot>({
-    queryKey: ["job-workday", job.id],
-    queryFn: () => fetch(`${BASE}/api/jobs/production-presence?jobIds=${job.id}`, { credentials: "include" })
-      .then(response => response.ok ? response.json() as Promise<{ jobs: WorkdaySnapshot[] }> : Promise.reject(new Error("Workday state unavailable")))
-      .then(data => data.jobs[0] ?? { jobId: job.id, records: [] }),
-    enabled: hasJobBusinessContext,
-    staleTime: 15_000,
-  });
-  const todayWorkday = workdayQuery.data?.records.find(record => record.date === today) ?? null;
-  const isWorkingToday = todayWorkday?.state === "here" && todayWorkday.workStartedAt != null && todayWorkday.workEndedAt == null;
-  const workedToday = todayWorkday?.state === "here" && todayWorkday.workEndedAt != null;
-  const [workdayBusy, setWorkdayBusy] = useState(false);
-
-  async function updateWorkday(action: "start" | "end") {
-    setWorkdayBusy(true);
-    try {
-      const response = await fetch(`${BASE}/api/jobs/${job.id}/workday/${action}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: today }),
-      });
-      const data = await response.json().catch(() => ({})) as {
-        error?: string;
-        startMode?: "first_day" | "resume" | "additional_day";
-        alreadyStarted?: boolean;
-      };
-      if (!response.ok) throw new Error(data.error ?? "Could not update today's work");
-      await Promise.all([
-        workdayQuery.refetch(),
-        qc.invalidateQueries({ queryKey: ["/api/jobs"] }),
-        qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] }),
-      ]);
-      void refreshDisplayProfit();
-      onPaymentSummaryChanged?.();
-      const modeLabel = data.startMode === "resume"
-        ? "Resumed after a recorded interruption."
-        : data.startMode === "additional_day"
-          ? "Additional production day recorded."
-          : data.startMode === "first_day"
-            ? "First production day recorded."
-            : undefined;
-      toast({
-        title: action === "start" ? (data.alreadyStarted ? "Work was already started" : "Work started") : "Work finished for today",
-        description: action === "start" ? modeLabel : undefined,
-      });
-    } catch (error) {
-      toast({
-        title: action === "start" ? "Could not start work" : "Could not finish today's work",
-        description: error instanceof Error ? error.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setWorkdayBusy(false);
-    }
-  }
-
   async function markJobActive() {
     try {
       const response = await fetch(`${BASE}/api/jobs/${job.id}`, {
@@ -6611,13 +6541,6 @@ function JobCard({
     }
   }
 
-  const workspaceScheduleJob = {
-    ...job,
-    checklistItems: [],
-    unscheduledChecklistItems: [],
-  } as ScheduleJob;
-  const workspaceTiming = workdayQuery.data?.timing;
-
   function renderWorkspacePanels() {
     return (
       <>
@@ -6698,85 +6621,43 @@ function JobCard({
     );
   }
 
-  function renderWorkspaceTab() {
-    if (!workspaceTab) return null;
-
-    if ((workspaceTab as string) === "schedule") {
-      const records = workdayQuery.data?.records ?? [];
-      const locationLabel = job.locationName
-        || job.address
-        || [job.city, job.state].filter(Boolean).join(", ")
-        || "Location not recorded";
-      const expectedDaysLabel = workspaceTiming?.expectedDurationSource === "job_override"
-        ? "Job expected days · manual"
-        : workspaceTiming?.expectedDurationSource === "component"
-          ? "Job expected days · longest component"
-          : "Job expected days";
+  function renderWorkspaceTab(tab: "job" | "overview" | "unified" = workspaceTab ?? "job") {
+    if (tab === "unified") {
       return (
-        <div className="space-y-5" data-testid={`job-workspace-schedule-${job.id}`}>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {([
-              [expectedDaysLabel, workspaceTiming?.expectedDurationDays ?? "Not set"],
-              ["Actual days", workspaceTiming?.actualProductionDays ?? 0],
-              ["Actual start", workspaceTiming?.actualProductionStartDate ? formatDate(workspaceTiming.actualProductionStartDate) : "Not recorded"],
-              ["Last work date", workspaceTiming?.lastWorkDate ? formatDate(workspaceTiming.lastWorkDate) : "Not recorded"],
-            ] as Array<[string, string | number]>).map(([label, value]) => (
-              <div key={String(label)} className="rounded-2xl border border-border bg-card p-4">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-                <p className="mt-2 text-lg font-bold text-foreground">{String(value)}</p>
-              </div>
-            ))}
-          </section>
-
-          <section className="rounded-2xl border border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="font-bold text-foreground">Daily work history</h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">The recorded production days for this job · {locationLabel}</p>
+        <div className="space-y-4" data-testid={`job-workspace-unified-${job.id}`}>
+          <details open className="group rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center justify-between gap-3">
+                <span>
+                  <span className="block text-base font-bold text-foreground">At a glance</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Job details, progress, financial summary, and quick access to common tools.</span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </span>
+            </summary>
+            <div className="mt-4 border-t border-border pt-4">
+              {renderWorkspaceTab("overview")}
             </div>
-            {workdayQuery.isLoading ? (
-              <div className="p-5 text-sm text-muted-foreground">Loading recorded days…</div>
-            ) : workdayQuery.isError ? (
-              <div className="p-5 text-sm text-red-700">Schedule history is unavailable right now. Try again in a moment.</div>
-            ) : records.length === 0 ? (
-              <div className="p-5 text-sm text-muted-foreground">No daily work has been recorded yet.</div>
-            ) : (
-              <div className="divide-y divide-border">
-                {[...records].reverse().map(record => (
-                  <div key={record.date} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{formatDate(record.date)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {record.state === "here" ? "Here" : record.state === "not_here" ? "Not here" : "Unrecorded"}
-                        {record.notHereReason ? ` · ${record.notHereReason.replace(/_/g, " ")}` : ""}
-                      </p>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {record.workStartedAt ? `Started ${formatWorkdayTime(record.workStartedAt)}` : "No start time"}
-                      {record.workEndedAt ? ` · Finished ${formatWorkdayTime(record.workEndedAt)}` : ""}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <JobPresencePanel
-            job={workspaceScheduleJob}
-            snapshot={workdayQuery.data ?? null}
-            loading={workdayQuery.isLoading}
-            error={workdayQuery.isError}
-            onSnapshotChange={next => {
-              qc.setQueryData(["job-workday", job.id], next);
-              void qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] });
-              void refreshDisplayProfit();
-              onPaymentSummaryChanged?.();
-            }}
-          />
+          </details>
+          <details open className="group rounded-2xl border border-border bg-card p-4 sm:p-5">
+            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <span className="flex items-center justify-between gap-3">
+                <span>
+                  <span className="block text-base font-bold text-foreground">Manage this job</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">Work tools, materials, subcontractor pay, history, and closeout.</span>
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </span>
+            </summary>
+            <div className="mt-4 border-t border-border pt-4">
+              {renderWorkspaceTab("job")}
+            </div>
+          </details>
         </div>
       );
     }
 
-    if (workspaceTab === "overview") {
+    if (tab === "overview") {
       const location = job.locationName
         || job.address
         || [job.city, job.state].filter(Boolean).join(", ")
@@ -6987,9 +6868,16 @@ function JobCard({
                 <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job Financials</p>
                 <h3 className="mt-1 text-base font-bold text-foreground">Current job economics</h3>
               </div>
-              <button type="button" onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
-                Details
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                {canEdit("expenses") && (
+                  <button type="button" onClick={() => setJobExpenseOpen(true)} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
+                    Allocate expense
+                  </button>
+                )}
+                <button type="button" onClick={() => { setFinancialsInitialTab("breakdown"); setFinancialsPanelOpen(true); }} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">
+                  Details
+                </button>
+              </div>
             </div>
             {profitDisplayState === "loading" ? (
               <p className="mt-4 text-sm text-muted-foreground">Loading current financials…</p>
@@ -7075,7 +6963,8 @@ function JobCard({
           setChecklistPanelOpen(true);
           break;
         case "subcontractors":
-          navigate(`/jobs/${job.id}/payroll`);
+          setFinancialsInitialTab("hours");
+          setFinancialsPanelOpen(true);
           break;
         case "materials":
           setMaterialsPanelOpen(true);
@@ -7128,21 +7017,42 @@ function JobCard({
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             {getJobWorkspaceSections().map(section => (
-              <button
+              <details
                 key={section.id}
-                type="button"
-                onClick={() => openWorkspaceSection(section.id)}
-                data-testid={`job-section-${section.id}-${job.id}`}
-                className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-border/80 bg-background px-3 py-2.5 text-left hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="group rounded-xl border border-border/80 bg-background p-3 open:border-amber-300 open:bg-amber-50/30"
               >
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-foreground">{section.label}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{section.description}</span>
-                </span>
-                {section.id === "subcontractors"
-                  ? <span className="shrink-0 rounded-lg bg-amber-500 px-2.5 py-1.5 text-[11px] font-bold text-white">Manage &amp; pay</span>
-                  : <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-              </button>
+                <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-foreground">{section.label}</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">{section.description}</span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <button
+                  type="button"
+                  onClick={() => openWorkspaceSection(section.id)}
+                  data-testid={`job-section-${section.id}-${job.id}`}
+                  className={`mt-3 min-h-10 w-full rounded-lg px-3 text-xs font-bold transition-colors focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                    section.id === "subcontractors"
+                      ? "bg-amber-500 text-white hover:bg-amber-600"
+                      : "border border-border text-foreground hover:bg-muted/50"
+                  }`}
+                >
+                  {section.id === "subcontractors"
+                    ? "Manage & pay"
+                    : section.id === "details"
+                      ? "Edit job details"
+                      : section.id === "work"
+                        ? "Open checklist and work"
+                        : section.id === "materials"
+                          ? "Open materials"
+                          : section.id === "financials"
+                            ? "Open financial details"
+                            : section.id === "photos"
+                              ? "Open photos and documents"
+                              : "Review closeout"}
+                </button>
+              </details>
             ))}
           </div>
         </section>
@@ -8352,15 +8262,11 @@ function JobCard({
 
 function JobWorkspaceShell({
   job,
-  tab,
-  onTabChange,
   onClose,
   onEdit,
   children,
 }: {
   job: Job;
-  tab: "job" | "overview";
-  onTabChange: (tab: "job" | "overview") => void;
   onClose: () => void;
   onEdit: () => void;
   children: ReactNode;
@@ -8412,25 +8318,6 @@ function JobWorkspaceShell({
             </div>
             <button type="button" onClick={onEdit} className="min-h-11 rounded-xl border border-border px-3 text-xs font-bold text-foreground hover:bg-muted/50">Edit job</button>
           </div>
-          <nav className="flex gap-1 overflow-x-auto px-4 sm:px-6" role="tablist" aria-label="Job workspace">
-            {([
-              ["job", "JOB"],
-              ["overview", "OVERVIEW"],
-            ] as const).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => onTabChange(value)}
-                className={`min-h-12 shrink-0 border-b-2 px-4 text-xs font-bold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-amber-400 ${
-                  tab === value ? "border-amber-500 text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 px-4 py-5 sm:px-6 sm:py-6">
           {children}
@@ -8521,7 +8408,7 @@ function JobFormDialog({
   editJob: Job | null;
   clients: Client[];
   subcontractors: Subcontractor[];
-  onSaved: () => void;
+  onSaved: (savedJob?: Job) => void;
   paymentFocus?: JobPaymentFocus | null;
   prelinkedClientId?: number;
   prelinkedPropertyId?: number;
@@ -8920,6 +8807,7 @@ function JobFormDialog({
     setSubmitting(true);
     setError("");
     try {
+      let savedJob: Job | undefined;
       const builderText = builderQuery.trim();
       const modelText = modelQuery.trim();
       const selectedBuilder = mfhMfgId != null
@@ -8975,7 +8863,7 @@ function JobFormDialog({
         includeMileageInJobCosts: form.includeMileageInJobCosts,
       };
       if (editJob) {
-        await updateJob.mutateAsync({ id: editJob.id, data: payload });
+        savedJob = await updateJob.mutateAsync({ id: editJob.id, data: payload }) as Job;
         const idsToClear = [...new Set(clearHoursForSubIds.filter(id => !subIds.includes(id)))];
         if (idsToClear.length > 0) {
           const delRes = await fetch(`${BASE}/api/jobs/${editJob.id}/sub-hours`, {
@@ -9004,6 +8892,7 @@ function JobFormDialog({
         }
       } else {
         const newJob = await createJob.mutateAsync({ data: payload });
+        savedJob = newJob as Job;
         const compEntries = Object.entries(subCompDefaults);
         if (compEntries.length > 0 && newJob?.id) {
           await Promise.all(compEntries.map(([sid, comp]) => {
@@ -9019,7 +8908,7 @@ function JobFormDialog({
           }));
         }
       }
-      onSaved();
+      onSaved(savedJob);
       onOpenChange(false);
     } catch (saveError) {
       const serverMessage = saveError && typeof saveError === "object" && "data" in saveError
@@ -10165,7 +10054,7 @@ export default function Jobs() {
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
 
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [workspaceTab, setWorkspaceTab] = useState<"job" | "overview">("job");
+  const [newlySavedWorkspaceJob, setNewlySavedWorkspaceJob] = useState<Job | null>(null);
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
   const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
@@ -10697,15 +10586,17 @@ export default function Jobs() {
 
   const selectedWorkspaceJob = selectedJobId == null
     ? null
-    : jobs.find(job => job.id === selectedJobId) ?? null;
+    : (newlySavedWorkspaceJob?.id === selectedJobId ? newlySavedWorkspaceJob : null)
+      ?? jobs.find(job => job.id === selectedJobId)
+      ?? null;
 
   function renderWorkspaceJob(job: Job) {
     return (
       <JobCard
-        key={`${job.id}-${workspaceTab}`}
+        key={job.id}
         job={job}
         businessLabel={businessLabelForJob(job)}
-        workspaceTab={workspaceTab}
+        workspaceTab="unified"
         onEdit={openEditJob}
         onDelete={openDeleteTarget}
         onReviewInvoice={handleReviewInvoice}
@@ -10771,13 +10662,13 @@ export default function Jobs() {
   }
 
   function openJobWorkspace(job: Job) {
+    setNewlySavedWorkspaceJob(null);
     setSelectedJobId(job.id);
-    setWorkspaceTab("job");
   }
 
   function closeJobWorkspace() {
     setSelectedJobId(null);
-    setWorkspaceTab("job");
+    setNewlySavedWorkspaceJob(null);
   }
 
   async function openEditJob(job: Job, focus?: JobPaymentFocus) {
@@ -11720,8 +11611,6 @@ export default function Jobs() {
       {selectedWorkspaceJob && (
         <JobWorkspaceShell
           job={selectedWorkspaceJob}
-          tab={workspaceTab}
-          onTabChange={setWorkspaceTab}
           onClose={closeJobWorkspace}
           onEdit={() => void openEditJob(selectedWorkspaceJob)}
         >
@@ -11745,9 +11634,13 @@ export default function Jobs() {
           propertyBusinessId={jobFormPrefill?.businessId}
           clients={clients}
           subcontractors={subcontractors}
-          onSaved={() => {
+          onSaved={savedJob => {
             queryClient.invalidateQueries();
             refreshJobFinancialSummary();
+            if (savedJob) {
+              setNewlySavedWorkspaceJob(savedJob);
+              setSelectedJobId(savedJob.id);
+            }
           }}
         />
       )}
