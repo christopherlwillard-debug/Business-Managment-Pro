@@ -56,6 +56,7 @@
 - [Confirmed Here fuel estimates](job-workday-estimates.md) — estimated gas days use only distinct confirmed Here dates; no Here dates means unavailable
 - [Award intelligence boundary](award-intelligence-boundary.md) — historical USA Spending awards must stay out of actionable bid APIs, counts, and lifecycle controls
 - [Jobs scheduling boundary](jobs-scheduling-boundary.md) — planning is compact and Jobs-first; only open jobs and actionable incomplete checklist work participate
+- [Job Builder preservation rule](job-builder-preservation.md) — improve navigation and organization without removing existing fields, workflows, records, calculations, or safeguards
 - [Orval js-yaml compatibility](orval-js-yaml-compatibility.md) — keep the workspace js-yaml override on secure 4.x; forcing 5.x breaks Orval’s default import
 - [Owner withdrawals model](owner-withdrawals-model.md) — Owner Withdrawals is the only user-facing owner-money concept; historical contributions remain internal in the same ledger
 - [Growth Reserve waterfall](growth-reserve-waterfall.md) — calculate after split-eligible job expenses, before hourly labor and split; tax comes from owner share
