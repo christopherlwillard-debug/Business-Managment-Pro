@@ -2845,49 +2845,11 @@ router.post("/:id/readiness/:conditionId/clear", async (req, res) => {
   }
 });
 
-// Start is a scheduling transition only. It assigns the requested real start
-// date and moves the planning state to scheduled; it never writes presence or
-// clears readiness conditions.
-router.post("/:id/start", async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid job id" });
-    const startDate = req.body?.startDate;
-    if (!isDateOnly(startDate)) return res.status(400).json({ error: "startDate must be a valid YYYY-MM-DD date" });
-
-    const scope = await requestedBusiness(req);
-    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
-    if (!job || !scope || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
-    if (job.status === "completed" || job.status === "invoiced" || job.status === "closed" || job.closedAt != null) {
-      return res.status(409).json({ error: "Closed jobs cannot be started from the active schedule" });
-    }
-    if (job.startDate) return res.status(409).json({ error: "Job already has a start date" });
-    if (job.planningState !== "ready") {
-      return res.status(409).json({ error: "Only jobs marked ready to schedule can be started" });
-    }
-
-    const [activeCondition] = await db.select({ id: jobReadinessConditionsTable.id })
-      .from(jobReadinessConditionsTable)
-      .where(and(
-        eq(jobReadinessConditionsTable.jobId, id),
-        eq(jobReadinessConditionsTable.businessId, scope.id),
-        isNull(jobReadinessConditionsTable.clearedAt),
-      ))
-      .limit(1);
-    if (activeCondition) {
-      return res.status(409).json({ error: "Clear the active readiness blocker before starting this job" });
-    }
-
-    const [updated] = await db.update(jobsTable)
-      .set({ startDate, planningState: "scheduled" })
-      .where(and(eq(jobsTable.id, id), isNull(jobsTable.startDate)))
-      .returning();
-    if (!updated) return res.status(409).json({ error: "Job changed before it could be started" });
-    res.json(updated);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to start job" });
-  }
+router.post("/:id/start", (_req, res) => {
+  return res.status(410).json({
+    code: "JOB_SCHEDULING_RETIRED",
+    error: "Job scheduling has been retired.",
+  });
 });
 
 router.get("/:id", async (req, res) => {

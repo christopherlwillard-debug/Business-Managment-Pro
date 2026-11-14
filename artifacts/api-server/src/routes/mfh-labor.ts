@@ -12,20 +12,11 @@ import {
 } from "@workspace/db/schema";
 import { eq, sql, and, inArray, isNull } from "drizzle-orm";
 import { calcInvoiceFromStored } from "./invoices.js";
+import { calculateDaysOnSiteFromDateSpan, requiresManualDaysOnSite } from "../lib/job-workdays.js";
 
 const router = Router();
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-
-function parseDaysOnSite(startDate: string | null | undefined, endDate: string | null | undefined): number {
-  if (!startDate || !endDate) return 1;
-  try {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diff = Math.round((end.getTime() - start.getTime()) / 86400000);
-    return Math.max(1, diff + 1);
-  } catch { return 1; }
-}
 
 async function computeDraft(jobId: number) {
   const [job] = await db.select({
@@ -104,7 +95,7 @@ async function computeDraft(jobId: number) {
     productiveHours: parseFloat(laborAgg?.productiveHours ?? "0"),
     travelHours: parseFloat(laborAgg?.travelHours ?? "0"),
     crewSize: Number(laborAgg?.crewSize ?? 0),
-    daysOnSite: parseDaysOnSite(job?.startDate, job?.endDate),
+    daysOnSite: calculateDaysOnSiteFromDateSpan(job?.startDate, job?.endDate),
     invoiceAmount: invoiceAmount || null,
     materialCost: materialCost || null,
     consumablesCost: consumablesCost || null,
@@ -323,6 +314,17 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
       callbacks, warrantyVisit, missingMaterialsNotes, factoryDefectNotes, editReason,
     } = req.body;
 
+    const [existing] = await db.select().from(jobKnowledgeRecordsTable)
+      .where(eq(jobKnowledgeRecordsTable.jobId, jobId));
+    const suppliedDaysOnSite = daysOnSite == null || daysOnSite === "" ? null : Number(daysOnSite);
+    if (daysOnSite != null && daysOnSite !== ""
+      && (!Number.isInteger(suppliedDaysOnSite) || Number(suppliedDaysOnSite) < 1)) {
+      return res.status(400).json({ code: "DAYS_ON_SITE_INVALID", error: "Days On-Site must be a positive whole number." });
+    }
+    if (requiresManualDaysOnSite(draft.daysOnSite, suppliedDaysOnSite, Boolean(existing))) {
+      return res.status(400).json({ code: "DAYS_ON_SITE_REQUIRED", error: "Enter Days On-Site before saving this home job's labor review." });
+    }
+
     const now = new Date();
     const prodHours = productiveHours != null ? parseFloat(productiveHours) : draft.productiveHours;
 
@@ -356,7 +358,7 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
       productiveHours: String(prodHours),
       travelHours: String(travelHours != null ? parseFloat(travelHours) : draft.travelHours),
       crewSize: crewSize != null ? parseInt(crewSize) : draft.crewSize,
-      daysOnSite: daysOnSite != null ? parseInt(daysOnSite) : draft.daysOnSite,
+      daysOnSite: suppliedDaysOnSite ?? existing?.daysOnSite ?? draft.daysOnSite,
       invoiceAmount: invoiceAmount != null ? String(parseFloat(invoiceAmount)) : (draft.invoiceAmount != null ? String(draft.invoiceAmount) : null),
       materialCost: materialCost != null ? String(parseFloat(materialCost)) : (draft.materialCost != null ? String(draft.materialCost) : null),
       consumablesCost: consumablesCost != null ? String(parseFloat(consumablesCost)) : (draft.consumablesCost != null ? String(draft.consumablesCost) : null),
@@ -371,9 +373,6 @@ router.put("/:jobId/knowledge-record", async (req, res) => {
       editedAt,
       updatedAt: now,
     };
-
-    const [existing] = await db.select().from(jobKnowledgeRecordsTable)
-      .where(eq(jobKnowledgeRecordsTable.jobId, jobId));
 
     let record;
     if (existing) {

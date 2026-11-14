@@ -1,16 +1,18 @@
-/* One-off verification script for Task #1078: mobile Create Job flow.
- * Run: SID=<session-id> pnpm --filter @workspace/api-server exec tsx scripts/e2e-jobform-verify.ts
+/* Authenticated, read-only browser check for the manufactured-home Job Builder.
+ * The supported development login proof is short-lived; all browser writes are denied.
  */
 import { launchBrowser } from "../src/lib/launchBrowser";
+import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import fs from "node:fs";
-import type { Page } from "puppeteer";
+import type { HTTPRequest, Page } from "puppeteer";
 
-const BASE = "http://localhost:80";
+const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-shots";
-const SID = process.env.SID;
-if (!SID) {
-  console.error("FATAL: SID env var required");
-  process.exit(1);
+const baseUrl = new URL(BASE);
+if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT
+  || baseUrl.protocol !== "http:"
+  || !["localhost", "127.0.0.1", "::1"].includes(baseUrl.hostname.replace(/^\[|\]$/g, ""))) {
+  throw new Error(`Refusing authenticated Job Builder verification against non-local target ${baseUrl.origin}`);
 }
 
 const results: { name: string; pass: boolean; detail: string }[] = [];
@@ -40,10 +42,27 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   const browser = await launchBrowser();
+  let sessionId: string | undefined;
+  const blockedWrites: string[] = [];
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 400, height: 720, isMobile: true, hasTouch: true });
-    await page.setCookie({ name: "sid", value: SID!, domain: "localhost", path: "/" });
+    await page.setRequestInterception(true);
+    page.on("request", (request: HTTPRequest) => {
+      if (["GET", "HEAD", "OPTIONS"].includes(request.method().toUpperCase())) {
+        void request.continue();
+        return;
+      }
+      blockedWrites.push(`${request.method()} ${request.url()}`);
+      void request.abort("blockedbyclient");
+    });
+
+    const returnTo = "/jobs";
+    const proof = createTestLoginProof(returnTo);
+    const loginParams = new URLSearchParams({ returnTo, ...proof });
+    await page.goto(`${BASE}/api/dev-test-login?${loginParams}`, { waitUntil: "networkidle2", timeout: 60_000 });
+    sessionId = (await page.cookies()).find(cookie => cookie.name === SESSION_COOKIE)?.value;
+    if (!sessionId) throw new Error("Development test login did not create a session");
 
     // 1. Load /jobs authenticated
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60000 });
@@ -68,6 +87,46 @@ async function main() {
     record("'MH Production' selected", clickedProd);
     await sleep(1200);
     await page.screenshot({ path: `${SHOTS}/03-create-dialog.png` });
+
+    const mfhOptions = await page.evaluate(async () => {
+      const manufacturers = await fetch("/api/mfh/manufacturers").then(response => response.json());
+      const manufacturer = Array.isArray(manufacturers) ? manufacturers.find(row => row.active) : null;
+      if (!manufacturer) return null;
+      const models = await fetch(`/api/mfh/models?manufacturerId=${manufacturer.id}`).then(response => response.json());
+      const model = Array.isArray(models) ? models.find(row => row.active !== false) : null;
+      return model ? { manufacturerName: manufacturer.name, modelName: model.name } : null;
+    });
+    if (mfhOptions) {
+      const referenceInputs = await page.$$('form input[placeholder="Search or type to add…"]');
+      if (referenceInputs.length >= 2) {
+        await referenceInputs[0].type(mfhOptions.manufacturerName);
+        await sleep(250);
+        const selectedManufacturer = await page.evaluate((name) => {
+          const option = Array.from(document.querySelectorAll<HTMLElement>("form .absolute button"))
+            .find(element => (element.textContent ?? "").trim() === name);
+          option?.click();
+          return Boolean(option);
+        }, mfhOptions.manufacturerName);
+        await sleep(500);
+        await referenceInputs[1].type(mfhOptions.modelName);
+        await sleep(250);
+        const selectedModel = await page.evaluate((name) => {
+          const option = Array.from(document.querySelectorAll<HTMLElement>("form .absolute button"))
+            .find(element => (element.textContent ?? "").trim() === name);
+          option?.click();
+          return Boolean(option);
+        }, mfhOptions.modelName);
+        await sleep(250);
+        const selectedValues = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLInputElement>(
+          'form input[placeholder="Search or type to add…"]',
+        )).map(input => input.value));
+        record("Existing manufacturer and model can be selected",
+          selectedManufacturer && selectedModel
+            && selectedValues[0] === mfhOptions.manufacturerName
+            && selectedValues[1] === mfhOptions.modelName,
+          selectedValues.join(" · "));
+      } else record("Existing manufacturer and model can be selected", false, "reference inputs not found");
+    } else record("Existing manufacturer and model can be selected", false, "no active model fixture available");
 
     // 4. Dialog fits viewport, form area scrolls internally
     const scrollInfo = await page.evaluate(() => {
@@ -175,42 +234,28 @@ async function main() {
     await clickByText(page, "form button", "Cancel");
     await sleep(300);
 
-    // 7. Empty-title submit -> error banner, scroll to top, focus title
-    await page.evaluate(() => {
-      const sc = document.querySelector<HTMLElement>("form .overflow-y-auto");
-      if (sc) sc.scrollTop = sc.scrollHeight;
-    });
-    await sleep(400);
-    await page.screenshot({ path: `${SHOTS}/06-scrolled-bottom.png` });
-    const clickedSubmit = await clickByText(page, 'button[type="submit"]', "Create Job");
-    record("'Create Job' clicked with empty title", clickedSubmit);
-    await sleep(1200); // allow smooth scroll + focus
-
-    const validation = await page.evaluate(() => {
-      const sc = document.querySelector<HTMLElement>("form .overflow-y-auto");
-      const banner = Array.from(document.querySelectorAll<HTMLElement>("form div")).find(
-        d => d.className.includes("destructive") && (d.textContent || "").includes("Title is required"),
-      );
-      const title = document.querySelector<HTMLInputElement>('input[placeholder="e.g. Farm House Renovation"]');
-      const bannerRect = banner?.getBoundingClientRect();
+    // 7. The guided flow keeps direct access to every section without a schedule step.
+    const creationSections = await page.evaluate(() => {
+      const text = document.querySelector("form")?.innerText ?? "";
+      const dateInputs = document.querySelectorAll('form input[type="date"]').length;
       return {
-        bannerFound: !!banner,
-        bannerVisibleInViewport: bannerRect ? bannerRect.top >= 0 && bannerRect.bottom <= window.innerHeight : false,
-        scrollTop: sc?.scrollTop ?? -1,
-        titleFocused: !!title && document.activeElement === title,
-        dialogStillOpen: !!document.querySelector("form .overflow-y-auto"),
+        details: text.includes("Home & production details"),
+        customer: text.includes("Customer & location"),
+        subcontractors: text.includes("Subcontractors"),
+        review: text.includes("Review & create"),
+        schedule: /\bSchedule\b|Start Date|End Date/.test(text) || dateInputs > 0,
       };
     });
-    record("Form did NOT submit (dialog still open)", validation.dialogStillOpen);
-    record("Red 'Title is required' banner shown", validation.bannerFound);
-    record("Banner visible in viewport (scrolled to top)", validation.bannerVisibleInViewport, `scrollTop=${validation.scrollTop}`);
-    record("Scroll container returned to top", validation.scrollTop <= 20, `scrollTop=${validation.scrollTop}`);
-    record("Title input focused", validation.titleFocused);
-    await page.screenshot({ path: `${SHOTS}/07-validation-error.png` });
+    record("Creation keeps the existing detail, customer, subcontractor, and review sections",
+      creationSections.details && creationSections.customer && creationSections.subcontractors && creationSections.review);
+    record("Job scheduling step and date inputs are absent", !creationSections.schedule);
+    await page.screenshot({ path: `${SHOTS}/06-guided-sections.png` });
   } finally {
+    if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await browser.close();
   }
 
+  record("Authenticated browser made no writes", blockedWrites.length === 0, blockedWrites.join("; "));
   const failed = results.filter(r => !r.pass);
   console.log(`\n=== ${results.length - failed.length}/${results.length} checks passed ===`);
   if (failed.length) {

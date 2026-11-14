@@ -173,3 +173,17 @@ mtime_ms = 1794484525944
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/49e53c1f-609b-4493-887f-30e18546743f/595df671-f598-4399-8a49-e0e5a629717e"
 storage_version_token = "1794484581057563"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "T035ssMiK7weC6cHGG0nV"
+uri = "file://docs/manufactured-home-knowledge-system-retirement-audit.md"
+type = "text"
+title = "Manufactured-home system audit"
+description = "Read-only findings, production usage counts, dependencies, and a no-deletion retirement plan."
+logical_id = "255fd3b6-6df9-40ab-90d9-53cfe6427d57"
+content_hash = "sha256:e60c7cd01a9f883f3b6c5ff780167f824353c597cb0560d6668324866806a71a"
+size = 12742
+mtime_ms = 1794625881123
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/255fd3b6-6df9-40ab-90d9-53cfe6427d57/932f4e79-ce58-4571-bf61-9b6e374094b5"
+storage_version_token = "1794625895016282"
+content_type = "text/markdown"

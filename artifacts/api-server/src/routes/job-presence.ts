@@ -18,6 +18,16 @@ import {
 
 const router = Router();
 
+const workdayTrackingRetired = (_req: Request, res: import("express").Response) =>
+  res.status(410).json({
+    code: "WORKDAY_TRACKING_RETIRED",
+    error: "Daily production presence and workday tracking are no longer available.",
+  });
+
+router.post("/:jobId/workday/start", workdayTrackingRetired);
+router.post("/:jobId/workday/end", workdayTrackingRetired);
+router.put("/:jobId/production-presence/:date", workdayTrackingRetired);
+
 function isDateOnly(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);

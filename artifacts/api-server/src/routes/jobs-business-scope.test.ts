@@ -197,6 +197,20 @@ describe("job business assignment", () => {
   });
 });
 
+describe("retired job scheduling start", () => {
+  it("rejects calendar start requests without changing a job", async () => {
+    fixture.selectQueue.push([{ id: 11, businessId: 1, businessLine: "asphalt_sealing" }]);
+    const response = await request(app)
+      .post("/jobs/11/start")
+      .send({ startDate: "2026-09-04" });
+
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("JOB_SCHEDULING_RETIRED");
+    expect(fixture.consumed).toBe(1);
+    expect(fixture.updatedValues).toHaveLength(0);
+  });
+});
+
 describe("job property link eligibility", () => {
   it("rejects properties assigned to another client", async () => {
     fixture.selectQueue.push([{ businessId: 1, clientId: 22 }]);

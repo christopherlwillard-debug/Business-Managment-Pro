@@ -5,7 +5,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { getJobOwningBusinessDisplay } from "@/lib/jobBusinessDisplay";
 import { getJobPropertyDisplay } from "@/lib/jobPropertyDisplay";
-import { getJobCreationSteps, getJobWorkspaceSections } from "@/lib/jobBuilderNavigation";
+import { getJobCreationSteps, getJobWorkspaceSections, isJobCreationStepVisible } from "@/lib/jobBuilderNavigation";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -108,9 +108,7 @@ import { calculateJobMargin } from "@/lib/jobMargin";
 import { sumIncludedJobCostDetails } from "@/lib/jobExpenseDisplay";
 import { belongsToSelectedBusiness } from "@/lib/businessOwnership";
 import { JobMarginCard } from "@/components/JobMarginCard";
-import { JobPlanningDialog } from "@/components/planner/JobPlanningDialog";
 import { ExtendedJob } from "@/components/planner/types";
-import { JobsPlanner } from "@/components/planner/JobsPlanner";
 import { JobPresencePanel, type JobPresenceSnapshot } from "@/components/planner/JobPresencePanel";
 import type { ReadinessBlocker } from "@/components/planner/types";
 
@@ -6121,7 +6119,7 @@ function CompactJobRow({
   const isCompleted = displayStatus(job.status) === "completed";
   const statusValue = String(job.status);
   const isActive = statusValue === "active" || statusValue === "in_progress";
-  const statusLabel = isClosed ? "Closed" : isCompleted ? "Completed" : isActive ? "Active" : "Scheduled";
+  const statusLabel = isClosed ? "Closed" : isCompleted ? "Completed" : isActive ? "Active" : "Not started";
   const location = job.locationName
     || job.address
     || [job.city, job.state].filter(Boolean).join(", ")
@@ -6217,9 +6215,8 @@ function JobCard({
   job, businessLabel, onEdit, onDelete, onReviewInvoice, onMarkCompleted, materialListCount, estimateTotal, estimatesLoading, onLoadEstimateIntoInvoice,
   invoiceSummary, invoiceSummaryStatus, onRetryInvoiceSummary, onCreateInvoice, onClientClick, hasSubExpenses,
   onSendPaymentLink, onGoToInvoices, generatingLinkId, onSmartEstimate, onArchiveJob, subsSettled, subsSettlementCheckFailed,
-  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], scheduleJob, compact = false,
+  checklistSummary, productionServiceTypes = [], onApplyProductionPricing, onAcceptInvoice, subcontractorOptions = [], compact = false,
   paymentSummary, paymentSummaryStatus = "ready", onPaymentSummaryChanged, businessId, workspaceTab,
-  onViewSchedule,
 }: {
   job: Job;
   businessLabel: string;
@@ -6249,14 +6246,12 @@ function JobCard({
   onApplyProductionPricing?: () => void;
   onAcceptInvoice?: (job: Job, invoice: Invoice) => void;
   subcontractorOptions?: Subcontractor[];
-  scheduleJob?: ScheduleJob;
   compact?: boolean;
   paymentSummary?: JobFinancialSummary;
   paymentSummaryStatus?: "loading" | "ready" | "error";
   onPaymentSummaryChanged?: () => void;
   businessId?: number;
-  workspaceTab?: "job" | "schedule" | "overview";
-  onViewSchedule?: () => void;
+  workspaceTab?: "job" | "overview";
 }) {
   const { canEdit } = useUserPermissions();
   const { toast } = useToast();
@@ -6389,9 +6384,30 @@ function JobCard({
       setWorkdayBusy(false);
     }
   }
-  const nextScheduledItem = scheduleJob?.checklistItems
-    .filter(item => item.scheduledDate != null && item.scheduledDate >= today)
-    .sort((a, b) => (a.scheduledDate ?? "").localeCompare(b.scheduledDate ?? ""))[0];
+
+  async function markJobActive() {
+    try {
+      const response = await fetch(`${BASE}/api/jobs/${job.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "in_progress" }),
+      });
+      const result = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Could not update job status");
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/jobs"] }),
+        qc.invalidateQueries({ queryKey: [`/api/jobs/${job.id}`] }),
+      ]);
+      toast({ title: "Job marked Active" });
+    } catch (error) {
+      toast({
+        title: "Could not update job status",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  }
   const overviewOnly = compact && !compactExpanded;
   const productionServiceIds = jobWorkflow === "mh_production" && Array.isArray((job as unknown as Record<string, unknown>).mhProductionServices)
     ? (job as unknown as Record<string, unknown>).mhProductionServices as number[]
@@ -6595,7 +6611,7 @@ function JobCard({
     }
   }
 
-  const workspaceScheduleJob = scheduleJob ?? {
+  const workspaceScheduleJob = {
     ...job,
     checklistItems: [],
     unscheduledChecklistItems: [],
@@ -6685,7 +6701,7 @@ function JobCard({
   function renderWorkspaceTab() {
     if (!workspaceTab) return null;
 
-    if (workspaceTab === "schedule") {
+    if ((workspaceTab as string) === "schedule") {
       const records = workdayQuery.data?.records ?? [];
       const locationLabel = job.locationName
         || job.address
@@ -6772,7 +6788,7 @@ function JobCard({
           ? "Completed"
           : statusValue === "active" || statusValue === "in_progress"
             ? "Active"
-            : "Scheduled";
+            : "Not started";
       const statusClass = statusValue === "closed" || isCompleted
         ? "bg-slate-100 text-slate-700"
         : statusValue === "active" || statusValue === "in_progress"
@@ -6785,9 +6801,6 @@ function JobCard({
         job.businessLine === "asphalt_sealing" && job.coats != null ? `${job.coats} coat${job.coats === 1 ? "" : "s"}` : null,
       ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
       const assignedCrew = job.subcontractorNames?.filter(Boolean) ?? [];
-      const scheduledCrew = nextScheduledItem?.assignedSubcontractorName
-        ? [nextScheduledItem.assignedSubcontractorName]
-        : assignedCrew;
       const checklistPercent = checklistSummary?.overallPercent ?? null;
       const contractValue = displayProfit?.grossInvoiced ?? null;
       const laborValue = displayProfit?.subLaborCost ?? null;
@@ -6899,18 +6912,10 @@ function JobCard({
                   {businessMiles != null && <p className="mt-0.5 text-xs text-muted-foreground">{businessMiles} mi from shop</p>}
                 </div>
                 <div className="rounded-xl bg-muted/35 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Scheduled</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job dates</p>
                   <p className="mt-1 text-sm font-bold text-foreground">
                     {job.startDate ? `${formatDate(job.startDate)}${job.endDate ? ` – ${formatDate(job.endDate)}` : ""}` : "Dates not set"}
                   </p>
-                  {scheduledCrew.length > 0 && <p className="mt-0.5 truncate text-xs text-muted-foreground">Crew: {scheduledCrew.join(", ")}</p>}
-                </div>
-                <div className="rounded-xl bg-muted/35 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Today</p>
-                  <p className="mt-1 text-sm font-bold text-foreground">
-                    {isWorkingToday ? "Work in progress" : workedToday ? "Done for today" : "Not started"}
-                  </p>
-                  {todayWorkday?.workStartedAt && <p className="mt-0.5 text-xs text-muted-foreground">Started {formatWorkdayTime(todayWorkday.workStartedAt)}</p>}
                 </div>
               </div>
             </div>
@@ -6934,9 +6939,6 @@ function JobCard({
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Production progress</p>
                   <div className="flex items-center gap-1">
-                    {onViewSchedule && (
-                      <button type="button" onClick={onViewSchedule} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">View on Schedule</button>
-                    )}
                     <button type="button" onClick={() => setPhasesPanelOpen(true)} className="min-h-9 rounded-lg px-2 text-xs font-bold text-amber-800 hover:bg-amber-100">Details</button>
                   </div>
                 </div>
@@ -6949,17 +6951,6 @@ function JobCard({
                 <p className="mt-2 text-xs text-amber-900">
                   {productionComponents.filter(component => component.status === "completed").length} of {productionComponents.length} components complete
                 </p>
-                {scheduleJob && (
-                  <p className="mt-1 text-xs text-amber-800">
-                    {scheduleJob.productionPlanStatus === "unavailable"
-                      ? "Planned dates are unavailable until component data loads."
-                      : scheduleJob.productionPlanStatus === "partial"
-                        ? "Some components need a start date or duration before they can be planned."
-                        : scheduleJob.productionPlanItems?.length
-                          ? "Planned component work is on the Schedule."
-                          : "No planned component dates yet."}
-                  </p>
-                )}
               </div>
             )}
           </section>
@@ -6983,7 +6974,6 @@ function JobCard({
                 </div>
                 <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
                   <span>{checklistSummary.completedItems} of {checklistSummary.totalItems} items complete</span>
-                  {nextScheduledItem && <span className="font-semibold text-foreground">Next: {nextScheduledItem.title}</span>}
                 </div>
               </>
             ) : (
@@ -7081,9 +7071,6 @@ function JobCard({
         case "details":
           onEdit(job);
           break;
-        case "schedule":
-          onViewSchedule?.();
-          break;
         case "work":
           setChecklistPanelOpen(true);
           break;
@@ -7108,48 +7095,24 @@ function JobCard({
 
     return (
       <div className="space-y-5" data-testid={`job-workspace-job-${job.id}`}>
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-          <div className="rounded-2xl border border-border bg-card p-5">
+        <section className="rounded-2xl border border-border bg-card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Today&apos;s work</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Job status</p>
                 <h3 className="mt-1 text-xl font-bold text-foreground">
-                  {isCompleted ? "This job is completed" : isWorkingToday ? "Work is in progress" : workedToday ? "Done for today" : "Ready to work"}
+                  {isClosed ? "Closed" : isCompleted ? "Completed" : job.status === "in_progress" ? "Active" : "Not started"}
                 </h3>
               </div>
-              {!isCompleted && hasJobBusinessContext && !workdayQuery.isError && (
+              {!isClosed && !isCompleted && job.status !== "in_progress" && canEdit("jobs") && (
                 <button
                   type="button"
-                  onClick={() => void updateWorkday(isWorkingToday ? "end" : "start")}
-                  disabled={workdayBusy || workdayQuery.isLoading || workedToday}
-                  className={`min-h-11 rounded-xl px-4 text-xs font-bold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${isWorkingToday ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"}`}
+                  onClick={() => void markJobActive()}
+                  className="min-h-11 rounded-xl bg-blue-600 px-4 text-xs font-bold text-white shadow-sm transition-colors hover:bg-blue-700"
                 >
-                  {workdayBusy ? "Saving…" : isWorkingToday ? "DONE FOR TODAY" : workedToday ? "DONE FOR TODAY" : "START WORK TODAY"}
+                  MARK ACTIVE
                 </button>
               )}
             </div>
-            {!hasJobBusinessContext && !isCompleted && (
-              <p className="mt-3 text-sm text-amber-800">This job needs a business context before work can start.</p>
-            )}
-            {workdayQuery.isError && !isCompleted && (
-              <p className="mt-3 text-sm text-red-700">Today&apos;s work state is unavailable right now. Try again in a moment.</p>
-            )}
-            {(isWorkingToday || workedToday) && todayWorkday?.workStartedAt && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Started at {formatWorkdayTime(todayWorkday.workStartedAt)}
-                {todayWorkday.workEndedAt ? ` · Finished at ${formatWorkdayTime(todayWorkday.workEndedAt)}` : ""}
-              </p>
-            )}
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Schedule summary</p>
-            <p className="mt-2 text-base font-bold text-foreground">
-              {job.startDate ? `${formatDate(job.startDate)}${job.endDate ? ` – ${formatDate(job.endDate)}` : ""}` : "Dates not set"}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {workspaceTiming?.actualProductionDays ?? 0} actual production day{workspaceTiming?.actualProductionDays === 1 ? "" : "s"}
-            </p>
-          </div>
         </section>
 
         <JobPaymentSummary
@@ -7236,10 +7199,9 @@ function JobCard({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Work breakdown</p>
-              <h3 className="mt-1 text-base font-bold text-foreground">What is planned next</h3>
+              <h3 className="mt-1 text-base font-bold text-foreground">Current progress</h3>
             </div>
             <div className="flex items-center gap-2">
-              {nextScheduledItem && <span className="text-xs font-semibold text-muted-foreground">{formatScheduleDate(nextScheduledItem.scheduledDate!)} next</span>}
               {productionComponents.length > 0 && (
                 <button
                   type="button"
@@ -7312,8 +7274,6 @@ function JobCard({
                 </div>
               ))}
             </div>
-          ) : nextScheduledItem ? (
-            <p className="mt-4 rounded-xl bg-muted/30 px-3 py-3 text-sm text-foreground">{nextScheduledItem.title}</p>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">No work breakdown has been recorded yet.</p>
           )}
@@ -7455,7 +7415,7 @@ function JobCard({
                 isCompleted ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
               }`}>
                 {isCompleted ? <CheckCircle className="w-2.5 h-2.5" /> : <Clock className="w-2.5 h-2.5" />}
-                {isCompleted ? "Completed" : String(job.status) === "active" ? "Active" : "Scheduled"}
+              {isCompleted ? "Completed" : String(job.status) === "in_progress" ? "Active" : "Not started"}
               </span>
               {job.businessLine === "asphalt_sealing" && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
@@ -7601,80 +7561,6 @@ function JobCard({
             <div className="flex items-center gap-1.5">
               <Calendar className="w-3 h-3 flex-shrink-0" />
               <span>{formatDate(job.startDate)}{job.endDate && ` – ${formatDate(job.endDate)}`}</span>
-            </div>
-          )}
-          {!isCompleted && (!overviewOnly || nextScheduledItem) && (
-            <div className="mt-1 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-2 text-amber-950">
-              <div className="flex items-center gap-1.5">
-                <CalendarDays className="w-3 h-3 shrink-0 text-amber-700" />
-                <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                  {nextScheduledItem ? "Next" : "Schedule"}
-                </span>
-              </div>
-              {nextScheduledItem ? (
-                <p className="mt-0.5 text-[11px] leading-4">
-                  <span className="font-bold">{formatScheduleDate(nextScheduledItem.scheduledDate!)}</span>
-                  {" · "}{nextScheduledItem.title}
-                  {nextScheduledItem.assignedSubcontractorName ? ` · ${nextScheduledItem.assignedSubcontractorName}` : ""}
-                </p>
-              ) : job.startDate ? (
-                <p className="mt-0.5 text-[11px] leading-4">
-                  {job.startDate > today ? `Starts ${formatScheduleDate(job.startDate)}` :
-                    job.endDate ? `Active through ${formatScheduleDate(job.endDate)}` : `Started ${formatScheduleDate(job.startDate)}`}
-                </p>
-              ) : (
-                <p className="mt-0.5 text-[11px] leading-4 font-medium">Job dates not set</p>
-              )}
-            </div>
-          )}
-          {!isCompleted && (
-            <div className={`mt-1 rounded-lg border px-2.5 py-2 ${
-              isWorkingToday
-                ? "border-emerald-200 bg-emerald-50/70"
-                : workedToday
-                  ? "border-slate-200 bg-slate-50/80"
-                  : "border-blue-200 bg-blue-50/70"
-            }`} data-testid={`job-workday-control-${job.id}`}>
-              {!hasJobBusinessContext ? (
-                <p className="text-[11px] font-medium text-amber-800">
-                  This job needs a business context before work can start.
-                </p>
-              ) : workdayQuery.isError ? (
-                <p className="text-[11px] font-medium text-red-700">
-                  Today&apos;s work state is unavailable right now. Try again in a moment.
-                </p>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className={`text-[10px] font-bold uppercase tracking-wide ${
-                    isWorkingToday ? "text-emerald-700" : workedToday ? "text-slate-600" : "text-blue-700"
-                  }`}>
-                    {isWorkingToday ? "WORKING TODAY" : workedToday ? "DONE FOR TODAY" : "READY TO WORK"}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-foreground/75">
-                    Today · {isWorkingToday || workedToday ? "Here" : "Not started"}
-                  </p>
-                  {(isWorkingToday || workedToday) && todayWorkday?.workStartedAt && (
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      Started at {formatWorkdayTime(todayWorkday.workStartedAt)}
-                      {todayWorkday.workEndedAt ? ` · Finished at ${formatWorkdayTime(todayWorkday.workEndedAt)}` : ""}
-                    </p>
-                  )}
-                </div>
-                {!workedToday && (
-                  <button
-                    type="button"
-                    onClick={() => void updateWorkday(isWorkingToday ? "end" : "start")}
-                    disabled={workdayBusy || workdayQuery.isLoading}
-                    className={`inline-flex min-h-9 items-center justify-center rounded-lg px-3 text-[11px] font-bold text-white shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                      isWorkingToday ? "bg-emerald-600 hover:bg-emerald-700" : "bg-blue-600 hover:bg-blue-700"
-                    }`}
-                  >
-                    {workdayBusy ? "Saving…" : isWorkingToday ? "DONE FOR TODAY" : "START WORK TODAY"}
-                  </button>
-                )}
-                </div>
-              )}
             </div>
           )}
           {!overviewOnly && jobWorkflow === "mh_production" && productionComponents.length > 0 && (
@@ -8473,8 +8359,8 @@ function JobWorkspaceShell({
   children,
 }: {
   job: Job;
-  tab: "job" | "schedule" | "overview";
-  onTabChange: (tab: "job" | "schedule" | "overview") => void;
+  tab: "job" | "overview";
+  onTabChange: (tab: "job" | "overview") => void;
   onClose: () => void;
   onEdit: () => void;
   children: ReactNode;
@@ -8498,7 +8384,7 @@ function JobWorkspaceShell({
       ? "Completed"
       : String(job.status) === "active" || String(job.status) === "in_progress"
         ? "Active"
-        : "Scheduled";
+        : "Not started";
 
   return createPortal(
     <div className="fixed inset-0 z-[60]">
@@ -8529,7 +8415,6 @@ function JobWorkspaceShell({
           <nav className="flex gap-1 overflow-x-auto px-4 sm:px-6" role="tablist" aria-label="Job workspace">
             {([
               ["job", "JOB"],
-              ["schedule", "SCHEDULE"],
               ["overview", "OVERVIEW"],
             ] as const).map(([value, label]) => (
               <button
@@ -8896,6 +8781,7 @@ function JobFormDialog({
   useEffect(() => {
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
+    setActiveCreationStep("details");
     setSubIds(editJob?.subcontractorIds ?? []);
     setSelectedWorkflow(editJob?.workflow ?? null);
     const existing = (editJob as unknown as Record<string, unknown>)?.manHours;
@@ -9025,16 +8911,14 @@ function JobFormDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editJob && (!form.businessId || !Number.isSafeInteger(Number(form.businessId)) || Number(form.businessId) <= 0)) {
+      setActiveCreationStep("details");
       showFormError("Choose the owning business before creating this job.");
       return;
     }
     if (!form.title.trim()) {
+      if (isCreate) setActiveCreationStep("details");
       showFormError("Title is required");
-      titleInputRef.current?.focus();
-      return;
-    }
-    if (form.startDate && form.endDate && form.endDate < form.startDate) {
-      showFormError("End date must be on or after the start date");
+      requestAnimationFrame(() => titleInputRef.current?.focus());
       return;
     }
     setSubmitting(true);
@@ -9053,18 +8937,22 @@ function JobFormDialog({
         : {};
 
       if (builderText && !mfhMfgId) {
+        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the builder from the list or use the Add option before saving.");
         return;
       }
       if (builderText && selectedBuilder && selectedBuilder.name.trim().toLowerCase() !== builderText.toLowerCase()) {
+        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the builder from the list or use the Add option before saving.");
         return;
       }
       if (modelText && !mfhModelId) {
+        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the model from the list or use the Add option before saving.");
         return;
       }
       if (modelText && selectedModel && selectedModel.name.trim().toLowerCase() !== modelText.toLowerCase()) {
+        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the model from the list or use the Add option before saving.");
         return;
       }
@@ -9087,8 +8975,6 @@ function JobFormDialog({
         locationName: form.locationName || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
-        startDate: form.startDate || undefined,
-        endDate: form.endDate || undefined,
         notes: form.notes || undefined,
         workflow: selectedWorkflow || undefined,
         sqFt: form.businessLine === "asphalt_sealing" && form.sqFt !== "" ? parseInt(form.sqFt) : undefined,
@@ -9168,8 +9054,7 @@ function JobFormDialog({
 
   function goToCreationStep(stepId: string) {
     setActiveCreationStep(stepId);
-    const target = formScrollRef.current?.querySelector<HTMLElement>(`[data-job-form-step="${stepId}"]`);
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    formScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function moveCreationStep(offset: number) {
@@ -9203,7 +9088,7 @@ function JobFormDialog({
               { key: "general_contracting", emoji: "🏡", label: "General Contracting", desc: "Kitchen, deck, siding, roofing, remodel, addition" },
             ].map(w => (
               <button key={w.key} type="button"
-                onClick={() => setSelectedWorkflow(w.key)}
+                onClick={() => { setActiveCreationStep("details"); setSelectedWorkflow(w.key); }}
                 className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-border hover:border-amber-400 hover:bg-amber-50/60 transition-all text-left group">
                 <span className="text-2xl leading-none">{w.emoji}</span>
                 <div className="flex-1">
@@ -9233,7 +9118,7 @@ function JobFormDialog({
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].color}`}>
                   {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].emoji} {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].label}
                   {!editJob && (
-                    <button type="button" onClick={() => setSelectedWorkflow(null)}
+                    <button type="button" onClick={() => { setActiveCreationStep("details"); setSelectedWorkflow(null); }}
                       className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
                       <X className="w-2.5 h-2.5" />
                     </button>
@@ -9258,7 +9143,7 @@ function JobFormDialog({
           {isCreate && (
             <section aria-label="Job creation guide" className="sticky top-0 z-10 rounded-xl border border-amber-200 bg-background/95 p-3 shadow-sm backdrop-blur">
               <p className="text-sm font-semibold text-foreground">Create this job in a few steps</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Choose any section. Optional details can be skipped, and all job options stay available below.</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Choose any section. Optional details can be skipped; your entries stay saved as you move between steps.</p>
               <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                 {creationSteps.map((step, index) => (
                   <button
@@ -9303,7 +9188,7 @@ function JobFormDialog({
             </section>
           )}
 
-          <div data-job-form-step="details" className="scroll-mt-4">
+          <div data-job-form-step="details" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Owning business{isCreate ? " *" : ""}</label>
             {isCreate ? (
               <>
@@ -9340,7 +9225,7 @@ function JobFormDialog({
             )}
           </div>
 
-          <div>
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")}>
             <label className="block text-sm font-medium text-foreground mb-1">Job Title *</label>
             <input type="text" autoFocus={isCreate} ref={titleInputRef}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -9348,7 +9233,7 @@ function JobFormDialog({
               value={form.title} onChange={e => setField("title", e.target.value)} />
           </div>
 
-          <div data-job-form-step="customer" className="scroll-mt-4">
+          <div data-job-form-step="customer" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "customer")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Client <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
             <select
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -9365,7 +9250,7 @@ function JobFormDialog({
             {!form.businessId && <p className="mt-1 text-xs text-muted-foreground">Choose the owning business first.</p>}
           </div>
 
-          <div>
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "customer")}>
             <label className="block text-sm font-medium text-foreground mb-1">Customer property <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
             <select
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60"
@@ -9390,7 +9275,7 @@ function JobFormDialog({
             {!form.clientId && <p className="mt-1 text-xs text-muted-foreground">Choose a client to see their available properties.</p>}
           </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3 cursor-pointer">
+          <label hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} style={{ display: isJobCreationStepVisible(isCreate, activeCreationStep, "details") ? undefined : "none" }} className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3 cursor-pointer">
             <input
               type="checkbox"
               className="mt-0.5 h-4 w-4 rounded accent-amber-500"
@@ -9406,7 +9291,7 @@ function JobFormDialog({
           </label>
 
           {form.businessLine === "asphalt_sealing" && (
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} style={{ display: isJobCreationStepVisible(isCreate, activeCreationStep, "details") ? undefined : "none" }} className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
               <div>
                 <label className="block text-xs font-semibold text-amber-800 mb-1">Sq Ft</label>
                 <input
@@ -9437,7 +9322,7 @@ function JobFormDialog({
           )}
 
           {selectedWorkflow === "mh_production" && (
-          <div>
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")}>
             <label className="block text-sm font-medium text-foreground mb-2">
               <ListChecks className="w-3.5 h-3.5 inline mr-1 text-amber-500" />Services Included
             </label>
@@ -9611,7 +9496,7 @@ function JobFormDialog({
           })()}
 
           {(editJob || selectedWorkflow) && form.businessLine !== "asphalt_sealing" && selectedWorkflow !== "mh_production" && (
-          <div>
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")}>
             <label className="block text-sm font-medium text-foreground mb-1">
               <Briefcase className="w-3 h-3 inline mr-1 text-amber-500" />Job Type
             </label>
@@ -9652,7 +9537,7 @@ function JobFormDialog({
 
           {/* Manufactured Home structured fields — MH Production and MH Service only */}
           {(selectedWorkflow === "mh_production" || selectedWorkflow === "mh_service" || (!selectedWorkflow && form.businessLine !== "general_contracting" && form.businessLine !== "asphalt_sealing")) && (
-          <div className="space-y-2">
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} className="space-y-2">
             <label className="block text-sm font-medium text-foreground">
               <span className="text-amber-500 font-bold text-xs mr-1">🏠</span>Manufactured Home
               <span className="text-xs font-normal text-muted-foreground ml-1">(optional)</span>
@@ -9873,29 +9758,7 @@ function JobFormDialog({
           </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Status</label>
-            <div className="flex gap-3">
-              {["scheduled", "completed"].map(s => (
-                <label key={s} className="flex-1">
-                  <input type="radio" name="status" value={s} checked={form.status === s}
-                    onChange={() => setField("status", s)} className="sr-only" />
-                  <span className={`flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${
-                    form.status === s
-                      ? s === "completed"
-                        ? "bg-emerald-500 border-emerald-500 text-white shadow-sm"
-                        : "bg-blue-500 border-blue-500 text-white shadow-sm"
-                      : "bg-background border-border text-muted-foreground hover:border-primary/30"
-                  }`}>
-                    {s === "completed" ? <CheckCircle className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-                    {s === "completed" ? "Completed" : "Scheduled"}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "customer")} className="space-y-2">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">
                 <MapPin className="w-3 h-3 inline mr-1 text-amber-500" />Work Location Name
@@ -9933,7 +9796,7 @@ function JobFormDialog({
             </div>
           </div>
 
-          <div data-job-form-step="subcontractors" className="scroll-mt-4">
+          <div data-job-form-step="subcontractors" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "subcontractors")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
@@ -10031,25 +9894,8 @@ function JobFormDialog({
             )}
           </div>
 
-          <div data-job-form-step="schedule" className="grid grid-cols-2 gap-2 scroll-mt-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Start Date</label>
-              <input type="date"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                value={form.startDate} onChange={e => setField("startDate", e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
-                End Date <span className="text-[10px] font-normal text-muted-foreground">(optional)</span>
-              </label>
-              <input type="date"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                value={form.endDate} onChange={e => setField("endDate", e.target.value)} />
-            </div>
-          </div>
-
           {/* Man Hours Calculator — collapsible */}
-          <div className="rounded-xl border border-border overflow-hidden">
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} className="rounded-xl border border-border overflow-hidden">
             <button
               type="button"
               onClick={() => setManHoursExpanded(e => !e)}
@@ -10113,7 +9959,7 @@ function JobFormDialog({
             )}
           </div>
 
-          <div>
+          <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")}>
             <label className="block text-sm font-medium text-foreground mb-1">Notes</label>
             <textarea rows={2}
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
@@ -10121,18 +9967,29 @@ function JobFormDialog({
           </div>
 
           {isCreate && (
-            <section data-job-form-step="review" aria-labelledby="job-create-review-title" className="scroll-mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <section data-job-form-step="review" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "review")} aria-labelledby="job-create-review-title" className="scroll-mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Final step</p>
               <h3 id="job-create-review-title" className="mt-1 text-base font-bold text-foreground">Review before creating</h3>
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div><dt className="text-xs text-muted-foreground">Business</dt><dd className="font-semibold text-foreground">{selectedBusiness?.name || "Choose a business above"}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Job</dt><dd className="font-semibold text-foreground">{form.title || "Add a job title above"}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Client</dt><dd className="font-semibold text-foreground">{availableClients.find(client => String(client.id) === form.clientId)?.name ?? "No client selected"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Customer property</dt><dd className="font-semibold text-foreground">{propertyOptions.find(property => String(property.id) === form.propertyId)?.label ?? "No property linked"}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Work type</dt><dd className="font-semibold text-foreground">{form.jobType || (selectedWorkflow ? JOB_WORKFLOWS[selectedWorkflow as WorkflowKey]?.label : null) || form.businessLine || "Not selected"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Schedule</dt><dd className="font-semibold text-foreground">{form.startDate || "No date set"}{form.endDate ? ` – ${form.endDate}` : ""}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Work location</dt><dd className="font-semibold text-foreground">{[form.locationName, form.address, form.city, form.state].filter(Boolean).join(", ") || "No location entered"}</dd></div>
+                {(selectedWorkflow === "mh_production" || selectedWorkflow === "mh_service") && (
+                  <div><dt className="text-xs text-muted-foreground">Manufactured home</dt><dd className="font-semibold text-foreground">{[builderQuery, modelQuery, mfhYear].filter(Boolean).join(" · ") || "Not specified"}</dd></div>
+                )}
+                {selectedWorkflow === "mh_production" && (
+                  <div><dt className="text-xs text-muted-foreground">Production services</dt><dd className="font-semibold text-foreground">{mhProductionServices.length ? `${mhProductionServices.length} selected` : "None selected"}</dd></div>
+                )}
+                {form.businessLine === "asphalt_sealing" && (
+                  <div><dt className="text-xs text-muted-foreground">Asphalt area</dt><dd className="font-semibold text-foreground">{form.sqFt ? `${form.sqFt} sq ft · ${form.coats} coat${form.coats === "1" ? "" : "s"}` : "Not entered"}</dd></div>
+                )}
                 <div><dt className="text-xs text-muted-foreground">Subcontractors</dt><dd className="font-semibold text-foreground">{subIds.length ? `${subIds.length} assigned` : "None assigned"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Planned labor hours</dt><dd className="font-semibold text-foreground">{manHoursTotal ? `${manHoursTotal} hrs` : "Not entered"}</dd></div>
               </dl>
-              <p className="mt-3 text-xs text-muted-foreground">You can return to any section above. Schedule and subcontractor details are optional.</p>
+              <p className="mt-3 text-xs text-muted-foreground">You can return to any section above. Subcontractor assignment is optional.</p>
             </section>
           )}
 
@@ -10143,9 +10000,12 @@ function JobFormDialog({
               className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-muted/50 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={submitting}
+            <button
+              type={isCreate && activeCreationStep !== "review" ? "button" : "submit"}
+              onClick={isCreate && activeCreationStep !== "review" ? () => moveCreationStep(1) : undefined}
+              disabled={submitting}
               className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow disabled:opacity-60">
-              {submitting ? "Saving…" : editJob ? "Save Changes" : "Create Job"}
+              {submitting ? "Saving…" : editJob ? "Save Changes" : activeCreationStep === "review" ? "Create Job" : "Next"}
             </button>
           </div>
         </form>
@@ -10345,10 +10205,6 @@ export default function Jobs() {
   const [jobFormPrefill, setJobFormPrefill] = useState<{ clientId: number; propertyId: number; businessId?: number } | null>(null);
   const [editJob, setEditJob]           = useState<Job | null>(null);
   const [jobFormPaymentFocus, setJobFormPaymentFocus] = useState<JobPaymentFocus | null>(null);
-  const [scheduleChecklistJob, setScheduleChecklistJob] = useState<Job | null>(null);
-  const [scheduleJobsById, setScheduleJobsById] = useState<Map<number, ScheduleJob>>(new Map());
-  const [scheduleRefreshKey] = useState(0);
-  const [scheduleFocus, setScheduleFocus] = useState<{ date: string; jobId: number; token: number } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
   const [deleting, setDeleting]         = useState(false);
   const [relatedCounts, setRelatedCounts] = useState<{ dailyLogs: number; expenses: number; mileageLogs: number; recurringExpenses: number; invoices: number } | null>(null);
@@ -10361,9 +10217,8 @@ export default function Jobs() {
 
   const [gcWizardJob, setGcWizardJob] = useState<Job | null>(null);
 
-  const [planningJob, setPlanningJob] = useState<ExtendedJob | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [workspaceTab, setWorkspaceTab] = useState<"job" | "schedule" | "overview">("job");
+  const [workspaceTab, setWorkspaceTab] = useState<"job" | "overview">("job");
 
   const [paymentLinkResult, setPaymentLinkResult] = useState<{ url: string; invoiceNumber: string; invoiceId: number } | null>(null);
   const [generatingLinkId, setGeneratingLinkId]   = useState<number | null>(null);
@@ -10939,8 +10794,6 @@ export default function Jobs() {
         checklistSummary={checklistSummaries[job.id] ?? null}
         subcontractorOptions={subcontractors}
         productionServiceTypes={allProductionServiceTypes}
-         scheduleJob={scheduleJobsById.get(job.id)}
-         onViewSchedule={() => openJobSchedule(job)}
         onApplyProductionPricing={getJobWorkflow(job) === "mh_production" ? () => setProductionPricingJob(job) : undefined}
       />
     );
@@ -10978,23 +10831,6 @@ export default function Jobs() {
   function closeJobWorkspace() {
     setSelectedJobId(null);
     setWorkspaceTab("job");
-  }
-
-  function openJobSchedule(job: Job) {
-    const scheduleJob = scheduleJobsById.get(job.id);
-    const plannedStartDate = scheduleJob?.productionPlanItems?.find(item =>
-      item.plannedDate === item.plannedStartDate
-    )?.plannedStartDate
-      ?? scheduleJob?.productionPlanItems?.[0]?.plannedStartDate
-      ?? localDateString();
-    setSelectedJobId(null);
-    setWorkspaceTab("job");
-    setScheduleFocus(current => ({
-      date: plannedStartDate,
-      jobId: job.id,
-      token: (current?.token ?? 0) + 1,
-    }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function openEditJob(job: Job, focus?: JobPaymentFocus) {
@@ -11397,7 +11233,7 @@ export default function Jobs() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-foreground">Jobs</h1>
-           <p className="text-muted-foreground mt-1">Plan the work, manage job details, and keep billing moving.</p>
+            <p className="text-muted-foreground mt-1">Manage job details, work, and billing.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <div className="relative">
@@ -11419,20 +11255,7 @@ export default function Jobs() {
         </div>
       </div>
 
-      <>
-       <JobsPlanner
-        businessId={activeBusiness?.id}
-         allJobs={jobs}
-        onOpenChecklist={setScheduleChecklistJob}
-         onOpenJob={openJobWorkspace}
-         onOpenPlanning={job => setPlanningJob(job)}
-         focusRequest={scheduleFocus}
-         checklistSummaries={checklistSummaries}
-        onLoaded={loadedJobs => setScheduleJobsById(new Map(loadedJobs.map(job => [job.id, job])))}
-        refreshKey={scheduleRefreshKey}
-         simple
-      />
-
+       <>
        <div className="flex items-center justify-between gap-3 pt-1" data-testid="job-records-heading">
          <div>
            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Job records</p>
@@ -11563,7 +11386,7 @@ export default function Jobs() {
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Clock className="w-4 h-4 text-blue-500" />
-                <h2 className="font-semibold text-foreground">Scheduled</h2>
+                <h2 className="font-semibold text-foreground">Not started</h2>
                 <span className="text-sm text-muted-foreground">({scheduledJobs.length})</span>
               </div>
               <div className="space-y-3">
@@ -11960,9 +11783,6 @@ export default function Jobs() {
       )}
 
       {/* Dialogs */}
-      {planningJob && (
-        <JobPlanningDialog job={planningJob} onClose={() => setPlanningJob(null)} />
-      )}
 
       {jobFormOpen && (
         <JobFormDialog
@@ -11985,16 +11805,6 @@ export default function Jobs() {
         />
       )}
 
-       {scheduleChecklistJob && (
-         <JobChecklistPanel
-           job={scheduleChecklistJob}
-           subcontractors={subcontractors.filter(sub => (scheduleChecklistJob.subcontractorIds as number[] | null | undefined)?.includes(sub.id))}
-           onClose={() => {
-             setScheduleChecklistJob(null);
-             queryClient.invalidateQueries({ queryKey: ["checklist-summaries"] });
-           }}
-         />
-       )}
 
       <InvoicePanel
         open={invoiceEditorOpen}

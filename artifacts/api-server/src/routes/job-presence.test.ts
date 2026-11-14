@@ -158,114 +158,37 @@ describe("GET /jobs/production-presence", () => {
   });
 });
 
-describe("PUT /jobs/:jobId/production-presence/:date", () => {
-  it("persists here with confirmed manual provenance and returns derived timing", async () => {
-    h.selectQueue.push([job]);
-    const saved = {
-      id: 3,
-      jobId: 11,
-      date: "2026-09-04",
-      state: "here",
-      notHereReason: null,
-      notes: null,
-      source: "manual_presence",
-      provenance: "confirmed",
-      createdAt: new Date("2026-09-04T12:00:00Z"),
-      createdByUserId: "user_1",
-      createdByName: "Test User",
-      updatedAt: new Date("2026-09-04T12:00:00Z"),
-      updatedByUserId: "user_1",
-      updatedByName: "Test User",
-    };
-    h.upsertRecords.push([saved]);
-    h.selectQueue.push([saved]);
-
+describe("retired workday writes", () => {
+  it("rejects manual presence writes without touching stored history", async () => {
     const response = await request(app)
       .put("/jobs/11/production-presence/2026-09-04")
       .send({ state: "here" });
 
-    expect(response.status).toBe(200);
-    expect(h.insertPayloads[0]).toMatchObject({
-      jobId: 11,
-      date: "2026-09-04",
-      state: "here",
-      source: "manual_presence",
-      provenance: "confirmed",
-      createdByUserId: "user_1",
-    });
-    expect(response.body.record.state).toBe("here");
-    expect(response.body.timing.actualProductionDays).toBe(1);
-  });
-
-  it("persists not_here with an optional reason and notes, and permits clearing to unrecorded", async () => {
-    h.selectQueue.push([job]);
-    const notHere = {
-      id: 4,
-      jobId: 11,
-      date: "2026-09-05",
-      state: "not_here",
-      notHereReason: "material_delay",
-      notes: "Waiting for trim",
-      source: "manual_presence",
-      provenance: "confirmed",
-      createdAt: new Date("2026-09-05T12:00:00Z"),
-      createdByUserId: "user_1",
-      createdByName: "Test User",
-      updatedAt: new Date("2026-09-05T12:00:00Z"),
-      updatedByUserId: "user_1",
-      updatedByName: "Test User",
-    };
-    h.upsertRecords.push([notHere]);
-    h.selectQueue.push([notHere]);
-
-    const notHereResponse = await request(app)
-      .put("/jobs/11/production-presence/2026-09-05")
-      .send({ state: "not_here", notHereReason: "material_delay", notes: "Waiting for trim" });
-
-    expect(notHereResponse.status).toBe(200);
-    expect(h.insertPayloads[0]).toMatchObject({
-      state: "not_here",
-      notHereReason: "material_delay",
-      notes: "Waiting for trim",
-    });
-
-    h.selectQueue.push([job]);
-    const unrecorded = { ...notHere, state: "unrecorded", notHereReason: null, notes: null };
-    h.upsertRecords.push([unrecorded]);
-    h.selectQueue.push([unrecorded]);
-
-    const clearedResponse = await request(app)
-      .put("/jobs/11/production-presence/2026-09-05")
-      .send({ state: "unrecorded" });
-
-    expect(clearedResponse.status).toBe(200);
-    expect(h.insertPayloads[1]).toMatchObject({
-      state: "unrecorded",
-      notHereReason: null,
-      notes: null,
-    });
-    expect(clearedResponse.body.record.state).toBe("unrecorded");
-  });
-
-  it("rejects an invalid reason and does not write", async () => {
-    h.selectQueue.push([job]);
-
-    const response = await request(app)
-      .put("/jobs/11/production-presence/2026-09-06")
-      .send({ state: "not_here", notHereReason: "crew_shortage" });
-
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("WORKDAY_TRACKING_RETIRED");
+    expect(h.selectQueue).toHaveLength(0);
     expect(h.insertPayloads).toHaveLength(0);
   });
 
-  it("does not allow a cross-business mutation", async () => {
-    h.selectQueue.push([{ ...job, businessId: 2 }]);
-
+  it("rejects Start Work Today without changing job status or presence", async () => {
     const response = await request(app)
-      .put("/jobs/11/production-presence/2026-09-06")
-      .send({ state: "here" });
+      .post("/jobs/11/workday/start")
+      .send({ date: "2026-09-04" });
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("WORKDAY_TRACKING_RETIRED");
+    expect(h.selectQueue).toHaveLength(0);
+    expect(h.insertPayloads).toHaveLength(0);
+  });
+
+  it("rejects Done for Today without changing a presence row", async () => {
+    const response = await request(app)
+      .post("/jobs/11/workday/end")
+      .send({ date: "2026-09-04" });
+
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("WORKDAY_TRACKING_RETIRED");
+    expect(h.selectQueue).toHaveLength(0);
     expect(h.insertPayloads).toHaveLength(0);
   });
 });

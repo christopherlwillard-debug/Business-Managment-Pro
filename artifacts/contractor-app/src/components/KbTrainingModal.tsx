@@ -148,12 +148,17 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
   }
 
   async function saveRecord() {
+    const parsedDaysOnSite = fields.daysOnSite.trim() ? Number(fields.daysOnSite) : null;
+    if (kbRaw?.isDraft && kbRaw.daysOnSite == null
+      && (parsedDaysOnSite == null || !Number.isInteger(parsedDaysOnSite) || parsedDaysOnSite < 1)) {
+      throw new Error("Enter a positive whole number for Days On-Site before saving this labor review.");
+    }
     const payload: Partial<KnowledgeRecord> & { jobId: number } = {
       jobId: job.id,
       productiveHours: parseFloat(fields.productiveHours) || 0,
       travelHours: parseFloat(fields.travelHours) || 0,
       crewSize: parseInt(fields.crewSize) || null,
-      daysOnSite: parseInt(fields.daysOnSite) || null,
+      daysOnSite: parsedDaysOnSite,
       invoiceAmount: fields.invoiceAmount ? parseFloat(fields.invoiceAmount) : null,
       materialCost: fields.materialCost ? parseFloat(fields.materialCost) : null,
       consumablesCost: fields.consumablesCost ? parseFloat(fields.consumablesCost) : null,
@@ -295,6 +300,11 @@ export function KbTrainingModal({ job, onComplete, onClose }: Props) {
                       <NumInput label="Crew Size" value={fields.crewSize} onChange={v => set("crewSize", v)} suffix="people" badge={fieldBadge("crewSize", fields.crewSize)} />
                       <NumInput label="Days On-Site" value={fields.daysOnSite} onChange={v => set("daysOnSite", v)} suffix="days" badge={fieldBadge("daysOnSite", fields.daysOnSite)} />
                     </div>
+                    {kbRaw?.isDraft && kbRaw.daysOnSite == null && (
+                      <p className="text-xs font-semibold text-amber-800" role="status">
+                        Enter the actual number of days on site before saving this review.
+                      </p>
+                    )}
                     {(parseFloat(fields.productiveHours) !== parseFloat(fmtNum(kbRaw?.productiveHours))) && (
                       <div>
                         <label className="text-[10px] font-semibold text-muted-foreground">Reason for edit (optional)</label>

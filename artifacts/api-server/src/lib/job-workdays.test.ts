@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { countConfirmedHereWorkdays } from "./job-workdays.js";
+import { calculateDaysOnSiteFromDateSpan, countConfirmedHereWorkdays, requiresManualDaysOnSite } from "./job-workdays.js";
 
 describe("countConfirmedHereWorkdays", () => {
   it("counts distinct confirmed Here dates rather than the scheduled span", () => {
@@ -32,5 +32,26 @@ describe("countConfirmedHereWorkdays", () => {
 
   it("returns unavailable when there are no confirmed Here dates", () => {
     expect(countConfirmedHereWorkdays([])).toBeNull();
+  });
+});
+
+describe("calculateDaysOnSiteFromDateSpan", () => {
+  it("uses a complete date span when both dates are present", () => {
+    expect(calculateDaysOnSiteFromDateSpan("2026-09-01", "2026-09-03")).toBe(3);
+  });
+
+  it("requires a manual value when either date is missing", () => {
+    expect(calculateDaysOnSiteFromDateSpan(null, "2026-09-03")).toBeNull();
+    expect(calculateDaysOnSiteFromDateSpan("2026-09-01", null)).toBeNull();
+    expect(calculateDaysOnSiteFromDateSpan(null, null)).toBeNull();
+  });
+});
+
+describe("requiresManualDaysOnSite", () => {
+  it("requires a value only for new reviews without a complete date span", () => {
+    expect(requiresManualDaysOnSite(null, null, false)).toBe(true);
+    expect(requiresManualDaysOnSite(3, null, false)).toBe(false);
+    expect(requiresManualDaysOnSite(null, 2, false)).toBe(false);
+    expect(requiresManualDaysOnSite(null, null, true)).toBe(false);
   });
 });

@@ -98,48 +98,27 @@ afterEach(() => {
 });
 
 describe("POST /jobs/:id/start", () => {
-  it("writes only the requested start date and scheduled planning state", async () => {
-    const existing = job();
-    const updated = job({ startDate: "2026-09-12", planningState: "scheduled" });
-    h.selectQueue.push([existing], [existing], []);
-    h.updatedRows.push(updated);
+  it("returns a retired response without changing a ready job", async () => {
+    h.selectQueue.push([job()]);
 
     const response = await request(app)
       .post("/jobs/51/start")
       .send({ startDate: "2026-09-12" });
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(expect.objectContaining({
-      id: 51,
-      startDate: "2026-09-12",
-      planningState: "scheduled",
-    }));
-    expect(h.updatePayloads).toEqual([{ startDate: "2026-09-12", planningState: "scheduled" }]);
-  });
-
-  it("rejects waiting jobs without changing their state or readiness history", async () => {
-    const waiting = job({ planningState: "waiting" });
-    h.selectQueue.push([waiting], [waiting]);
-
-    const response = await request(app)
-      .post("/jobs/51/start")
-      .send({ startDate: "2026-09-12" });
-
-    expect(response.status).toBe(409);
-    expect(response.body.error).toContain("ready to schedule");
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("JOB_SCHEDULING_RETIRED");
     expect(h.updatePayloads).toHaveLength(0);
   });
 
-  it("rejects a ready job with an active blocker without clearing or scheduling it", async () => {
-    const existing = job();
-    h.selectQueue.push([existing], [existing], [{ id: 220 }]);
+  it("returns a retired response without changing a waiting job", async () => {
+    h.selectQueue.push([job({ planningState: "waiting" })]);
 
     const response = await request(app)
       .post("/jobs/51/start")
       .send({ startDate: "2026-09-12" });
 
-    expect(response.status).toBe(409);
-    expect(response.body.error).toContain("readiness blocker");
+    expect(response.status).toBe(410);
+    expect(response.body.code).toBe("JOB_SCHEDULING_RETIRED");
     expect(h.updatePayloads).toHaveLength(0);
   });
 

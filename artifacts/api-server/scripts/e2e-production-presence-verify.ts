@@ -553,6 +553,31 @@ async function main() {
     if (!sessionId) throw new Error("Development login did not create a session cookie");
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    await page.waitForSelector('[data-testid="job-records-heading"]', { timeout: 20_000 });
+    recordResult(
+      "Jobs Planner is no longer shown on Jobs",
+      await page.$('[data-testid="jobs-planner"]') === null,
+    );
+    recordResult(
+      "Daily workday controls are no longer shown",
+      await page.$('[data-testid^="job-workday-control-"]') === null &&
+        await page.$('[data-testid^="job-presence-toggle-"]') === null,
+    );
+    recordResult(
+      "Schedule History navigation is no longer shown",
+      await page.$('[data-testid="schedule-history-tab"]') === null,
+    );
+    await page.setViewport({ width: 390, height: 844 });
+    recordResult(
+      "Retired scheduling controls stay absent on narrow screens",
+      await page.$('[data-testid="jobs-planner"]') === null &&
+        await page.$('[data-testid^="job-workday-control-"]') === null,
+    );
+    await page.setViewport({ width: 1440, height: 1200 });
+
+    // Keep the former presence UI checks available for explicit historical
+    // comparisons, but do not run them as current acceptance criteria.
+    if (process.env.RUN_LEGACY_PRESENCE_UI_CHECKS === "1") {
     await verifyActivePlannerView(page, "week", "Active Schedule week view");
     await verifyOpenPanelRefresh(page);
     await verifyActivePlannerView(page, "agenda", "Active Schedule agenda view");
@@ -1090,6 +1115,7 @@ async function main() {
     );
 
     await page.screenshot({ path: `${SHOTS}/02-presence-error.png`, fullPage: true });
+    }
   } finally {
     if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await browser.close();

@@ -1,7 +1,6 @@
 export type JobCreationStepId =
   | "details"
   | "customer"
-  | "schedule"
   | "subcontractors"
   | "review";
 
@@ -10,6 +9,14 @@ export type JobCreationStep = {
   label: string;
   optional: boolean;
 };
+
+export function isJobCreationStepVisible(
+  isCreate: boolean,
+  activeStep: string,
+  sectionStep: string,
+): boolean {
+  return !isCreate || activeStep === sectionStep;
+}
 
 export type JobWorkspaceSectionId =
   | "details"
@@ -44,7 +51,6 @@ export function getJobCreationSteps(
   return [
     { id: "details", label: detailsLabel, optional: false },
     { id: "customer", label: "Customer & location", optional: true },
-    { id: "schedule", label: "Schedule", optional: true },
     { id: "subcontractors", label: "Subcontractors", optional: true },
     { id: "review", label: "Review & create", optional: false },
   ];
@@ -53,7 +59,6 @@ export function getJobCreationSteps(
 export function getJobWorkspaceSections(): JobWorkspaceSection[] {
   return [
     { id: "details", label: "Job Details", description: "Customer, work type, and location" },
-    { id: "schedule", label: "Schedule", description: "Dates, planned work, and actual workdays" },
     { id: "work", label: "Work & Checklist", description: "Progress, checklist, and job history" },
     { id: "subcontractors", label: "Subcontractors & Pay", description: "Assigned crew, balances, and payments" },
     { id: "materials", label: "Materials", description: "Job material lists and costs" },
