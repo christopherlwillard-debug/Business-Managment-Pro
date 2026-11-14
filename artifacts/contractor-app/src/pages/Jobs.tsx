@@ -8796,6 +8796,7 @@ function JobFormDialog({
   useEffect(() => {
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
+    setSubIds(editJob?.subcontractorIds ?? []);
     setSelectedWorkflow(editJob?.workflow ?? null);
     const existing = (editJob as unknown as Record<string, unknown>)?.manHours;
     setManHoursTotal(existing != null ? String(parseFloat(String(existing))) : "");
@@ -8947,6 +8948,9 @@ function JobFormDialog({
       const selectedModel = mfhModelId != null
         ? mfhModels.find(model => model.id === mfhModelId)
         : undefined;
+      const statusUpdate = !editJob || form.status !== displayStatus(editJob.status)
+        ? { status: form.status as CreateJobRequest["status"] }
+        : {};
 
       if (builderText && !mfhMfgId) {
         showFormError("Select the builder from the list or use the Add option before saving.");
@@ -8971,7 +8975,7 @@ function JobFormDialog({
         clientId: form.clientId ? parseInt(form.clientId) : undefined,
         propertyId: form.propertyId ? parseInt(form.propertyId) : null,
         subcontractorIds: subIds,
-        status: form.status as CreateJobRequest["status"],
+        ...statusUpdate,
         jobType: selectedWorkflow === "mh_production" ? undefined : (form.jobType || undefined),
         homeModel: form.homeModel || undefined,
         mfhManufacturerId: mfhMfgId,
@@ -9039,8 +9043,16 @@ function JobFormDialog({
       }
       onSaved();
       onOpenChange(false);
-    } catch {
-      showFormError("Failed to save job. Please try again.");
+    } catch (saveError) {
+      const serverMessage = saveError && typeof saveError === "object" && "data" in saveError
+        ? (saveError as { data?: { error?: unknown } }).data?.error
+        : undefined;
+      const message = typeof serverMessage === "string" && serverMessage.trim()
+        ? serverMessage
+        : saveError instanceof Error && saveError.message.trim()
+          ? saveError.message
+          : "Failed to save job. Please try again.";
+      showFormError(message);
     } finally {
       setSubmitting(false);
     }
