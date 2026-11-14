@@ -443,6 +443,75 @@ async function main() {
       reopened.httpStatus === 200 && reopened.status === "completed" && reopened.closedAt == null,
       JSON.stringify(reopened),
     );
+    await db.update(jobsTable)
+      .set({ status: "closed", closedAt: "2026-11-11" })
+      .where(eq(jobsTable.id, markAllPaidFixture.jobId));
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const closedSectionExpanded = await page.evaluate(() => {
+      const heading = Array.from(document.querySelectorAll<HTMLElement>("h2"))
+        .find(node => node.textContent?.trim() === "Closed Jobs");
+      const button = heading?.closest("button");
+      button?.click();
+      return !!button;
+    });
+    record("Closed Jobs section opens for action verification", closedSectionExpanded);
+    await page.waitForSelector(`[data-testid="compact-job-row-${markAllPaidFixture.jobId}"]`, { timeout: 30_000 });
+    const closedRowOpened = await page.evaluate(jobId => {
+      const row = document.querySelector<HTMLElement>(`[data-testid="compact-job-row-${jobId}"]`);
+      const button = row?.querySelector<HTMLButtonElement>("button");
+      button?.click();
+      return !!button;
+    }, markAllPaidFixture.jobId);
+    record("Closed job opens its workspace", closedRowOpened);
+    await page.waitForSelector(`[data-testid="job-workspace-${markAllPaidFixture.jobId}"]`, { timeout: 15_000 });
+    const closedJobFinishActionVisible = await page.$eval(
+      `[data-testid="job-workspace-${markAllPaidFixture.jobId}"]`,
+      element => Array.from(element.querySelectorAll("button"))
+        .some(button => button.textContent?.includes("FINISH JOB")),
+    );
+    record(
+      "Closed job workspace does not offer Finish Job",
+      !closedJobFinishActionVisible,
+    );
+    await page.click(`[data-testid="job-workspace-${markAllPaidFixture.jobId}"] button[aria-label="Close job workspace"]`);
+    const reopenButtonClicked = await page.evaluate(jobId => {
+      const row = document.querySelector<HTMLElement>(`[data-testid="compact-job-row-${jobId}"]`);
+      const button = Array.from(row?.parentElement?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+        .find(candidate => candidate.textContent?.includes("Reopen Job"));
+      button?.click();
+      return !!button;
+    }, markAllPaidFixture.jobId);
+    record("Closed job exposes its Reopen Job action", reopenButtonClicked);
+    await page.waitForFunction(
+      () => {
+        const text = document.body.innerText;
+        return text.includes("Job reopened")
+          || text.includes("Failed to reopen job")
+          || text.includes("Cannot reopen job");
+      },
+      { timeout: 30_000 },
+    );
+    const reopenUiResult = await page.evaluate(async jobId => {
+      const response = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+      const body = await response.json() as { status?: string; closedAt?: string | null };
+      const pageText = document.body.innerText;
+      return {
+        httpStatus: response.status,
+        status: body.status,
+        closedAt: body.closedAt,
+        successMessageShown: pageText.includes("Job reopened"),
+        errorMessageShown: pageText.includes("Failed to reopen job") || pageText.includes("Cannot reopen job"),
+      };
+    }, markAllPaidFixture.jobId);
+    record(
+      "Reopen action confirms the job left Closed Jobs",
+      reopenUiResult.httpStatus === 200
+        && reopenUiResult.status === "completed"
+        && reopenUiResult.closedAt == null
+        && reopenUiResult.successMessageShown
+        && !reopenUiResult.errorMessageShown,
+      JSON.stringify(reopenUiResult),
+    );
     const jobsPageSource = fs.readFileSync(new URL("../../contractor-app/src/pages/Jobs.tsx", import.meta.url), "utf8");
     record(
       "Completion dialog routes unpaid work to payroll without recording payments",

@@ -6328,6 +6328,7 @@ function JobCard({
   const jobWorkflow = getJobWorkflow(job);
   const propertyDisplay = getJobPropertyDisplay(job);
   const isCompleted = displayStatus(job.status) === "completed";
+  const isClosed = job.status === "closed" || job.closedAt != null;
   const today = localDateString();
   const hasJobBusinessContext = job.businessId != null;
   const workdayQuery = useQuery<WorkdaySnapshot>({
@@ -7314,12 +7315,12 @@ function JobCard({
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setFinancialsPanelOpen(true)} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">Open financial details</button>
           {invoiceSummaryStatus === "ready" && currentInvoiceSummary && onGoToInvoices && <button type="button" onClick={onGoToInvoices} className="min-h-11 rounded-xl border border-border px-4 text-xs font-bold text-foreground hover:bg-muted/50">View invoice</button>}
-          {isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
+          {!isClosed && isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
             <button type="button" onClick={() => onArchiveJob(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-bold text-slate-700 hover:bg-slate-100">
               <Archive className="h-4 w-4" /> Close Job
             </button>
           )}
-          {isCompleted && inv?.status === "paid" && canEdit("jobs") && subsSettled !== true && (
+          {!isClosed && isCompleted && inv?.status === "paid" && canEdit("jobs") && subsSettled !== true && (
             <p className="text-xs text-amber-800" role="status">
               {subsSettlementCheckFailed
                 ? "Cannot verify subcontractor balances. Try again before closing."
@@ -7328,7 +7329,7 @@ function JobCard({
                   : "Checking subcontractor balances before close…"}
             </p>
           )}
-          {!isCompleted && canEdit("jobs") && (
+          {!isClosed && !isCompleted && canEdit("jobs") && (
             <button type="button" onClick={() => onMarkCompleted(job)} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700">
               <CheckCircle className="h-4 w-4" /> FINISH JOB
             </button>
@@ -8241,7 +8242,7 @@ function JobCard({
         })()}
 
         {/* Mark Completed — for scheduled jobs with no invoice yet */}
-        {!isCompleted && canEdit("jobs") && (
+        {!isClosed && !isCompleted && canEdit("jobs") && (
           <button
             onClick={() => onMarkCompleted(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors">
@@ -8255,14 +8256,14 @@ function JobCard({
           </div>
         )}
         {/* Close Job — all three criteria must be met: completed + invoice paid + subs settled (live-verified by parent) */}
-        {isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
+        {!isClosed && isCompleted && inv?.status === "paid" && subsSettled === true && canEdit("jobs") && onArchiveJob && (
           <button
             onClick={() => onArchiveJob(job)}
             className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-colors">
             <Archive className="w-3.5 h-3.5" /> Close Job
           </button>
         )}
-        {isCompleted && inv?.status === "paid" && canEdit("jobs") && subsSettled !== true && (
+        {!isClosed && isCompleted && inv?.status === "paid" && canEdit("jobs") && subsSettled !== true && (
           <p className="mt-1 text-xs text-amber-800" role="status">
             {subsSettlementCheckFailed
               ? "Cannot verify subcontractor balances. Try again before closing."
@@ -10288,8 +10289,16 @@ export default function Jobs() {
 
   async function handleReopenJob(job: Job) {
     try {
-      await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
-      queryClient.invalidateQueries();
+      const reopenedJob = await updateJob.mutateAsync({ id: job.id, data: { status: "completed" } });
+      if (reopenedJob.status !== "completed" || reopenedJob.closedAt != null) {
+        throw new Error("The server did not confirm that this job was reopened.");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      const refreshedJobs = await refetchJobs();
+      const refreshedJob = refreshedJobs.data?.find(current => current.id === job.id);
+      if (!refreshedJob || refreshedJob.status === "closed" || refreshedJob.closedAt != null) {
+        throw new Error("The jobs list still reports this job as closed. Please try reopening it again.");
+      }
       toast({ title: "Job reopened", description: `"${job.title}" moved back to active jobs.` });
     } catch (err) {
       const serverMessage = err && typeof err === "object" && "data" in err
@@ -10297,7 +10306,7 @@ export default function Jobs() {
         : undefined;
       toast({
         title: serverMessage ? "Cannot reopen job" : "Failed to reopen job",
-        description: serverMessage ?? "Please try again.",
+        description: serverMessage ?? (err instanceof Error ? err.message : "Please try again."),
         variant: "destructive",
       });
     }
