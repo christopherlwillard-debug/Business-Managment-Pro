@@ -5,7 +5,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { getJobOwningBusinessDisplay } from "@/lib/jobBusinessDisplay";
 import { getJobPropertyDisplay } from "@/lib/jobPropertyDisplay";
-import { getJobCreationSteps, getJobWorkspaceSections, isJobCreationStepVisible } from "@/lib/jobBuilderNavigation";
+import { getJobWorkspaceSections, isJobCreationStepVisible } from "@/lib/jobBuilderNavigation";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -8614,7 +8614,6 @@ function JobFormDialog({
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
     editJob?.workflow ?? null
   );
-  const [activeCreationStep, setActiveCreationStep] = useState<string>("details");
 
   // MFH structured fields (separate from form string state)
   const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as unknown as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
@@ -8781,7 +8780,6 @@ function JobFormDialog({
   useEffect(() => {
     setClearHoursForSubIds([]);
     setRemoveSubPrompt(null);
-    setActiveCreationStep("details");
     setSubIds(editJob?.subcontractorIds ?? []);
     setSelectedWorkflow(editJob?.workflow ?? null);
     const existing = (editJob as unknown as Record<string, unknown>)?.manHours;
@@ -8911,12 +8909,10 @@ function JobFormDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!editJob && (!form.businessId || !Number.isSafeInteger(Number(form.businessId)) || Number(form.businessId) <= 0)) {
-      setActiveCreationStep("details");
       showFormError("Choose the owning business before creating this job.");
       return;
     }
     if (!form.title.trim()) {
-      if (isCreate) setActiveCreationStep("details");
       showFormError("Title is required");
       requestAnimationFrame(() => titleInputRef.current?.focus());
       return;
@@ -8937,22 +8933,18 @@ function JobFormDialog({
         : {};
 
       if (builderText && !mfhMfgId) {
-        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the builder from the list or use the Add option before saving.");
         return;
       }
       if (builderText && selectedBuilder && selectedBuilder.name.trim().toLowerCase() !== builderText.toLowerCase()) {
-        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the builder from the list or use the Add option before saving.");
         return;
       }
       if (modelText && !mfhModelId) {
-        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the model from the list or use the Add option before saving.");
         return;
       }
       if (modelText && selectedModel && selectedModel.name.trim().toLowerCase() !== modelText.toLowerCase()) {
-        if (isCreate) setActiveCreationStep("details");
         showFormError("Select the model from the list or use the Add option before saving.");
         return;
       }
@@ -9049,21 +9041,7 @@ function JobFormDialog({
   const isCreate = !editJob;
   const isAsphalt = form.businessLine === "asphalt_sealing" || activeBusiness?.slug === "asphalt_sealing";
   const showWorkflowPicker = isCreate && !isAsphalt && !selectedWorkflow;
-  const creationSteps = getJobCreationSteps(selectedWorkflow, form.businessLine);
-  const activeCreationStepIndex = Math.max(0, creationSteps.findIndex(step => step.id === activeCreationStep));
-
-  function goToCreationStep(stepId: string) {
-    setActiveCreationStep(stepId);
-    formScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function moveCreationStep(offset: number) {
-    const nextStep = creationSteps[Math.min(
-      creationSteps.length - 1,
-      Math.max(0, activeCreationStepIndex + offset),
-    )];
-    if (nextStep) goToCreationStep(nextStep.id);
-  }
+  const activeCreationStep = "all";
 
   if (showWorkflowPicker) {
     return (
@@ -9088,7 +9066,7 @@ function JobFormDialog({
               { key: "general_contracting", emoji: "🏡", label: "General Contracting", desc: "Kitchen, deck, siding, roofing, remodel, addition" },
             ].map(w => (
               <button key={w.key} type="button"
-                onClick={() => { setActiveCreationStep("details"); setSelectedWorkflow(w.key); }}
+                onClick={() => { setSelectedWorkflow(w.key); }}
                 className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-border hover:border-amber-400 hover:bg-amber-50/60 transition-all text-left group">
                 <span className="text-2xl leading-none">{w.emoji}</span>
                 <div className="flex-1">
@@ -9118,7 +9096,7 @@ function JobFormDialog({
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].color}`}>
                   {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].emoji} {JOB_WORKFLOWS[selectedWorkflow as WorkflowKey].label}
                   {!editJob && (
-                    <button type="button" onClick={() => { setActiveCreationStep("details"); setSelectedWorkflow(null); }}
+                    <button type="button" onClick={() => { setSelectedWorkflow(null); }}
                       className="ml-0.5 opacity-60 hover:opacity-100 transition-opacity">
                       <X className="w-2.5 h-2.5" />
                     </button>
@@ -9140,53 +9118,10 @@ function JobFormDialog({
             </div>
           )}
 
-          {isCreate && (
-            <section aria-label="Job creation guide" className="sticky top-0 z-10 rounded-xl border border-amber-200 bg-background/95 p-3 shadow-sm backdrop-blur">
-              <p className="text-sm font-semibold text-foreground">Create this job in a few steps</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Choose any section. Optional details can be skipped; your entries stay saved as you move between steps.</p>
-              <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                {creationSteps.map((step, index) => (
-                  <button
-                    key={step.id}
-                    type="button"
-                    onClick={() => goToCreationStep(step.id)}
-                    aria-current={activeCreationStep === step.id ? "step" : undefined}
-                    data-testid={`job-create-step-${step.id}`}
-                    className={`min-h-10 rounded-lg border px-2 py-1.5 text-left text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400 ${
-                      activeCreationStep === step.id
-                        ? "border-amber-500 bg-amber-50 text-amber-900"
-                        : "border-border bg-background text-foreground hover:bg-muted/40"
-                    }`}
-                  >
-                    <span className="block">{index + 1}. {step.label}</span>
-                    {step.optional && <span className="text-[10px] font-normal text-muted-foreground">Optional</span>}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 flex justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={() => moveCreationStep(-1)}
-                  disabled={activeCreationStepIndex === 0}
-                  data-testid="job-create-previous-section"
-                  className="min-h-9 rounded-lg px-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 disabled:opacity-40"
-                >
-                  Previous section
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveCreationStep(1)}
-                  disabled={activeCreationStepIndex === creationSteps.length - 1}
-                  data-testid="job-create-next-section"
-                  className="min-h-9 rounded-lg bg-amber-500 px-3 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-40"
-                >
-                  {activeCreationStepIndex === creationSteps.length - 1
-                    ? "Review complete"
-                    : `Next: ${creationSteps[activeCreationStepIndex + 1]?.label ?? "Continue"}`}
-                </button>
-              </div>
-            </section>
-          )}
+          <section aria-labelledby="job-form-information-title" className="border-b border-border pb-2 pt-1">
+            <h3 id="job-form-information-title" className="text-sm font-bold text-foreground">Job information</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Choose the business and enter the basic job details. Optional fields can be left blank.</p>
+          </section>
 
           <div data-job-form-step="details" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Owning business{isCreate ? " *" : ""}</label>
@@ -9233,6 +9168,10 @@ function JobFormDialog({
               value={form.title} onChange={e => setField("title", e.target.value)} />
           </div>
 
+          <section aria-labelledby="job-form-customer-title" className="border-b border-border pb-2 pt-2">
+            <h3 id="job-form-customer-title" className="text-sm font-bold text-foreground">Customer & location</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Link a customer or property when available.</p>
+          </section>
           <div data-job-form-step="customer" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "customer")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Client <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
             <select
@@ -9322,6 +9261,11 @@ function JobFormDialog({
           )}
 
           {selectedWorkflow === "mh_production" && (
+          <>
+          <section aria-labelledby="job-form-work-title" className="border-b border-border pb-2 pt-2">
+            <h3 id="job-form-work-title" className="text-sm font-bold text-foreground">Work & services</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Choose services and add the work details that apply to this job type.</p>
+          </section>
           <div hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "details")}>
             <label className="block text-sm font-medium text-foreground mb-2">
               <ListChecks className="w-3.5 h-3.5 inline mr-1 text-amber-500" />Services Included
@@ -9436,6 +9380,7 @@ function JobFormDialog({
               )}
             </div>
           </div>
+          </>
           )}
 
           {/* ── Config-driven service add-on prompt ── */}
@@ -9796,6 +9741,10 @@ function JobFormDialog({
             </div>
           </div>
 
+          <section aria-labelledby="job-form-subcontractor-title" className="border-b border-border pb-2 pt-2">
+            <h3 id="job-form-subcontractor-title" className="text-sm font-bold text-foreground">Subcontractors</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">Assignment is optional; you can add people now or later.</p>
+          </section>
           <div data-job-form-step="subcontractors" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "subcontractors")} className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
@@ -9968,8 +9917,7 @@ function JobFormDialog({
 
           {isCreate && (
             <section data-job-form-step="review" hidden={!isJobCreationStepVisible(isCreate, activeCreationStep, "review")} aria-labelledby="job-create-review-title" className="scroll-mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Final step</p>
-              <h3 id="job-create-review-title" className="mt-1 text-base font-bold text-foreground">Review before creating</h3>
+              <h3 id="job-create-review-title" className="text-base font-bold text-foreground">Before you save</h3>
               <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                 <div><dt className="text-xs text-muted-foreground">Business</dt><dd className="font-semibold text-foreground">{selectedBusiness?.name || "Choose a business above"}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Job</dt><dd className="font-semibold text-foreground">{form.title || "Add a job title above"}</dd></div>
@@ -9989,7 +9937,7 @@ function JobFormDialog({
                 <div><dt className="text-xs text-muted-foreground">Subcontractors</dt><dd className="font-semibold text-foreground">{subIds.length ? `${subIds.length} assigned` : "None assigned"}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Planned labor hours</dt><dd className="font-semibold text-foreground">{manHoursTotal ? `${manHoursTotal} hrs` : "Not entered"}</dd></div>
               </dl>
-              <p className="mt-3 text-xs text-muted-foreground">You can return to any section above. Subcontractor assignment is optional.</p>
+              <p className="mt-3 text-xs text-muted-foreground">Check these details before saving. Subcontractor assignment is optional.</p>
             </section>
           )}
 
@@ -10001,11 +9949,10 @@ function JobFormDialog({
               Cancel
             </button>
             <button
-              type={isCreate && activeCreationStep !== "review" ? "button" : "submit"}
-              onClick={isCreate && activeCreationStep !== "review" ? () => moveCreationStep(1) : undefined}
+              type="submit"
               disabled={submitting}
               className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold hover:bg-amber-600 transition-colors shadow disabled:opacity-60">
-              {submitting ? "Saving…" : editJob ? "Save Changes" : activeCreationStep === "review" ? "Create Job" : "Next"}
+              {submitting ? "Saving…" : editJob ? "Save Changes" : "Create Job"}
             </button>
           </div>
         </form>

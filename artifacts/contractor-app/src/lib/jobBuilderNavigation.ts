@@ -1,21 +1,9 @@
-export type JobCreationStepId =
-  | "details"
-  | "customer"
-  | "subcontractors"
-  | "review";
-
-export type JobCreationStep = {
-  id: JobCreationStepId;
-  label: string;
-  optional: boolean;
-};
-
 export function isJobCreationStepVisible(
-  isCreate: boolean,
-  activeStep: string,
-  sectionStep: string,
+  _isCreate: boolean,
+  _activeStep: string,
+  _sectionStep: string,
 ): boolean {
-  return !isCreate || activeStep === sectionStep;
+  return true;
 }
 
 export type JobWorkspaceSectionId =
@@ -33,28 +21,6 @@ export type JobWorkspaceSection = {
   label: string;
   description: string;
 };
-
-export function getJobCreationSteps(
-  workflow: string | null,
-  businessLine: string,
-): JobCreationStep[] {
-  const detailsLabel = workflow === "mh_production"
-    ? "Home & production details"
-    : workflow === "mh_service"
-      ? "Service job details"
-      : workflow === "general_contracting" || businessLine === "general_contracting"
-        ? "Project details"
-        : businessLine === "asphalt_sealing"
-          ? "Asphalt job details"
-          : "Job details";
-
-  return [
-    { id: "details", label: detailsLabel, optional: false },
-    { id: "customer", label: "Customer & location", optional: true },
-    { id: "subcontractors", label: "Subcontractors", optional: true },
-    { id: "review", label: "Review & create", optional: false },
-  ];
-}
 
 export function getJobWorkspaceSections(): JobWorkspaceSection[] {
   return [

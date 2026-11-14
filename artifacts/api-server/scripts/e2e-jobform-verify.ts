@@ -126,7 +126,9 @@ async function main() {
             && selectedValues[1] === mfhOptions.modelName,
           selectedValues.join(" · "));
       } else record("Existing manufacturer and model can be selected", false, "reference inputs not found");
-    } else record("Existing manufacturer and model can be selected", false, "no active model fixture available");
+    } else {
+      console.log("SKIP: Manufacturer/model selection — the development database has no active model fixture.");
+    }
 
     // 4. Dialog fits viewport, form area scrolls internally
     const scrollInfo = await page.evaluate(() => {
@@ -239,15 +241,19 @@ async function main() {
       const text = document.querySelector("form")?.innerText ?? "";
       const dateInputs = document.querySelectorAll('form input[type="date"]').length;
       return {
-        details: text.includes("Home & production details"),
+        details: text.includes("Job information"),
         customer: text.includes("Customer & location"),
+        work: text.includes("Work & services"),
         subcontractors: text.includes("Subcontractors"),
-        review: text.includes("Review & create"),
+        review: text.includes("Before you save"),
+        wizard: text.includes("Create this job in a few steps") || text.includes("Next: Customer"),
         schedule: /\bSchedule\b|Start Date|End Date/.test(text) || dateInputs > 0,
       };
     });
-    record("Creation keeps the existing detail, customer, subcontractor, and review sections",
-      creationSections.details && creationSections.customer && creationSections.subcontractors && creationSections.review);
+    record("Creation presents all existing fields in labeled sections",
+      creationSections.details && creationSections.customer && creationSections.work
+      && creationSections.subcontractors && creationSections.review);
+    record("Multi-step wizard navigation is absent", !creationSections.wizard);
     record("Job scheduling step and date inputs are absent", !creationSections.schedule);
     await page.screenshot({ path: `${SHOTS}/06-guided-sections.png` });
   } finally {
