@@ -5,6 +5,7 @@ import { useUserPermissions } from "@/contexts/UserPermissions";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { getJobOwningBusinessDisplay } from "@/lib/jobBusinessDisplay";
 import { getJobPropertyDisplay } from "@/lib/jobPropertyDisplay";
+import { getJobCreationSteps, getJobWorkspaceSections } from "@/lib/jobBuilderNavigation";
 import {
   useListJobs, useCreateJob, useUpdateJob, useDeleteJob,
   useListClients, useListSubcontractors, getJobInvoiceDraft,
@@ -6290,6 +6291,7 @@ function JobCard({
   const [financialsPanelOpen, setFinancialsPanelOpen] = useState(false);
   const [financialsInitialTab, setFinancialsInitialTab] = useState<"breakdown" | "hours">("breakdown");
   const [jobExpenseOpen, setJobExpenseOpen] = useState(false);
+  const [dailyLogOpen, setDailyLogOpen] = useState(false);
   const [displayProfit, setDisplayProfit] = useState<JobProfitClientData | null>(null);
   const [phasesPanelOpen, setPhasesPanelOpen] = useState(false);
   const [checklistPanelOpen, setChecklistPanelOpen] = useState(false);
@@ -6632,6 +6634,9 @@ function JobCard({
             }}
           />
         )}
+        {dailyLogOpen && (
+          <JobDailyLogPanel job={job} onClose={() => setDailyLogOpen(false)} />
+        )}
         <JobAllocationDialog
           job={job}
           open={jobExpenseOpen}
@@ -6832,10 +6837,10 @@ function JobCard({
           visible: true,
         },
         {
-          label: "Photos and notes",
-          description: job.notes ? "View saved job notes" : "Review job activity",
+          label: "Photos & Documents",
+          description: job.notes ? "View job activity and photos" : "Open daily logs and photos",
           icon: <ImageIcon className="h-4 w-4" />,
-          onClick: () => setJobExpenseOpen(true),
+          onClick: () => setDailyLogOpen(true),
           visible: true,
         },
         {
@@ -7071,6 +7076,36 @@ function JobCard({
       );
     }
 
+    function openWorkspaceSection(sectionId: string) {
+      switch (sectionId) {
+        case "details":
+          onEdit(job);
+          break;
+        case "schedule":
+          onViewSchedule?.();
+          break;
+        case "work":
+          setChecklistPanelOpen(true);
+          break;
+        case "subcontractors":
+          navigate(`/jobs/${job.id}/payroll`);
+          break;
+        case "materials":
+          setMaterialsPanelOpen(true);
+          break;
+        case "financials":
+          setFinancialsInitialTab("breakdown");
+          setFinancialsPanelOpen(true);
+          break;
+        case "photos":
+          setDailyLogOpen(true);
+          break;
+        case "closeout":
+          document.getElementById(`job-closeout-${job.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+          break;
+      }
+    }
+
     return (
       <div className="space-y-5" data-testid={`job-workspace-job-${job.id}`}>
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
@@ -7122,6 +7157,32 @@ function JobCard({
           status={paymentSummaryStatus}
           onAction={openPaymentIssue}
         />
+
+        <section aria-labelledby={`job-sections-title-${job.id}`} className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <div className="mb-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Job sections</p>
+            <h3 id={`job-sections-title-${job.id}`} className="mt-1 text-base font-bold text-foreground">Go straight to what you need</h3>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {getJobWorkspaceSections().map(section => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => openWorkspaceSection(section.id)}
+                data-testid={`job-section-${section.id}-${job.id}`}
+                className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-border/80 bg-background px-3 py-2.5 text-left hover:border-amber-300 hover:bg-amber-50/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">{section.label}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{section.description}</span>
+                </span>
+                {section.id === "subcontractors"
+                  ? <span className="shrink-0 rounded-lg bg-amber-500 px-2.5 py-1.5 text-[11px] font-bold text-white">Manage &amp; pay</span>
+                  : <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+              </button>
+            ))}
+          </div>
+        </section>
 
         {jobWorkflow === "mh_service" && (
           <section
@@ -7309,6 +7370,41 @@ function JobCard({
                 </div>
               )}
             </div>
+          )}
+        </section>
+
+        <section id={`job-closeout-${job.id}`} aria-labelledby={`job-closeout-title-${job.id}`} className="scroll-mt-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Closeout</p>
+              <h3 id={`job-closeout-title-${job.id}`} className="mt-1 text-base font-bold text-foreground">
+                {isClosed ? "This job is closed" : isCompleted ? "Review before closing" : "Finish the job before closing"}
+              </h3>
+            </div>
+            <div className="space-y-1 text-xs text-foreground">
+              <p>{checklistSummary
+                ? `${checklistSummary.completedItems} of ${checklistSummary.totalItems} checklist items complete`
+                : "Checklist status is not available"}</p>
+              <p>Invoice: {invoiceSummaryStatus === "loading"
+                ? "Checking status"
+                : invoiceSummaryStatus !== "ready"
+                  ? "Status unavailable"
+                  : currentInvoiceSummary?.status
+                    ? currentInvoiceSummary.status.replace(/([A-Z])/g, " $1").replace(/^./, value => value.toUpperCase())
+                    : "No invoice found"}</p>
+              <p>Subcontractor pay: {subsSettlementCheckFailed
+                ? "Could not verify balances"
+                : subsSettled === true
+                  ? "Settled"
+                  : subsSettled === false
+                    ? "Unpaid or unknown balances need review"
+                    : "Checking balances"}</p>
+            </div>
+          </div>
+          {!isClosed && isCompleted && subsSettled !== true && (
+            <p className="mt-3 text-xs font-medium text-amber-900">
+              Closing stays blocked until the existing invoice and subcontractor balance checks pass.
+            </p>
           )}
         </section>
 
@@ -8314,6 +8410,9 @@ function JobCard({
           }}
         />
       )}
+      {dailyLogOpen && (
+        <JobDailyLogPanel job={job} onClose={() => setDailyLogOpen(false)} />
+      )}
       <JobAllocationDialog
         job={job}
         open={jobExpenseOpen}
@@ -8630,6 +8729,7 @@ function JobFormDialog({
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(
     editJob?.workflow ?? null
   );
+  const [activeCreationStep, setActiveCreationStep] = useState<string>("details");
 
   // MFH structured fields (separate from form string state)
   const [mfhMfgId, setMfhMfgId] = useState<number | null>((editJob as unknown as Record<string, unknown>)?.mfhManufacturerId as number | null ?? null);
@@ -9063,6 +9163,22 @@ function JobFormDialog({
   const isCreate = !editJob;
   const isAsphalt = form.businessLine === "asphalt_sealing" || activeBusiness?.slug === "asphalt_sealing";
   const showWorkflowPicker = isCreate && !isAsphalt && !selectedWorkflow;
+  const creationSteps = getJobCreationSteps(selectedWorkflow, form.businessLine);
+  const activeCreationStepIndex = Math.max(0, creationSteps.findIndex(step => step.id === activeCreationStep));
+
+  function goToCreationStep(stepId: string) {
+    setActiveCreationStep(stepId);
+    const target = formScrollRef.current?.querySelector<HTMLElement>(`[data-job-form-step="${stepId}"]`);
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function moveCreationStep(offset: number) {
+    const nextStep = creationSteps[Math.min(
+      creationSteps.length - 1,
+      Math.max(0, activeCreationStepIndex + offset),
+    )];
+    if (nextStep) goToCreationStep(nextStep.id);
+  }
 
   if (showWorkflowPicker) {
     return (
@@ -9139,7 +9255,55 @@ function JobFormDialog({
             </div>
           )}
 
-          <div>
+          {isCreate && (
+            <section aria-label="Job creation guide" className="sticky top-0 z-10 rounded-xl border border-amber-200 bg-background/95 p-3 shadow-sm backdrop-blur">
+              <p className="text-sm font-semibold text-foreground">Create this job in a few steps</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Choose any section. Optional details can be skipped, and all job options stay available below.</p>
+              <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {creationSteps.map((step, index) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    onClick={() => goToCreationStep(step.id)}
+                    aria-current={activeCreationStep === step.id ? "step" : undefined}
+                    data-testid={`job-create-step-${step.id}`}
+                    className={`min-h-10 rounded-lg border px-2 py-1.5 text-left text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                      activeCreationStep === step.id
+                        ? "border-amber-500 bg-amber-50 text-amber-900"
+                        : "border-border bg-background text-foreground hover:bg-muted/40"
+                    }`}
+                  >
+                    <span className="block">{index + 1}. {step.label}</span>
+                    {step.optional && <span className="text-[10px] font-normal text-muted-foreground">Optional</span>}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => moveCreationStep(-1)}
+                  disabled={activeCreationStepIndex === 0}
+                  data-testid="job-create-previous-section"
+                  className="min-h-9 rounded-lg px-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 disabled:opacity-40"
+                >
+                  Previous section
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveCreationStep(1)}
+                  disabled={activeCreationStepIndex === creationSteps.length - 1}
+                  data-testid="job-create-next-section"
+                  className="min-h-9 rounded-lg bg-amber-500 px-3 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-40"
+                >
+                  {activeCreationStepIndex === creationSteps.length - 1
+                    ? "Review complete"
+                    : `Next: ${creationSteps[activeCreationStepIndex + 1]?.label ?? "Continue"}`}
+                </button>
+              </div>
+            </section>
+          )}
+
+          <div data-job-form-step="details" className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Owning business{isCreate ? " *" : ""}</label>
             {isCreate ? (
               <>
@@ -9184,7 +9348,7 @@ function JobFormDialog({
               value={form.title} onChange={e => setField("title", e.target.value)} />
           </div>
 
-          <div>
+          <div data-job-form-step="customer" className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">Client <span className="text-xs font-normal text-muted-foreground">(optional)</span></label>
             <select
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -9769,7 +9933,7 @@ function JobFormDialog({
             </div>
           </div>
 
-          <div>
+          <div data-job-form-step="subcontractors" className="scroll-mt-4">
             <label className="block text-sm font-medium text-foreground mb-1">
               <HardHat className="w-3 h-3 inline mr-1" />Subcontractors
             </label>
@@ -9867,7 +10031,7 @@ function JobFormDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div data-job-form-step="schedule" className="grid grid-cols-2 gap-2 scroll-mt-4">
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Start Date</label>
               <input type="date"
@@ -9955,6 +10119,22 @@ function JobFormDialog({
               className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
               value={form.notes} onChange={e => setField("notes", e.target.value)} />
           </div>
+
+          {isCreate && (
+            <section data-job-form-step="review" aria-labelledby="job-create-review-title" className="scroll-mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">Final step</p>
+              <h3 id="job-create-review-title" className="mt-1 text-base font-bold text-foreground">Review before creating</h3>
+              <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                <div><dt className="text-xs text-muted-foreground">Business</dt><dd className="font-semibold text-foreground">{selectedBusiness?.name || "Choose a business above"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Job</dt><dd className="font-semibold text-foreground">{form.title || "Add a job title above"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Client</dt><dd className="font-semibold text-foreground">{availableClients.find(client => String(client.id) === form.clientId)?.name ?? "No client selected"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Work type</dt><dd className="font-semibold text-foreground">{form.jobType || (selectedWorkflow ? JOB_WORKFLOWS[selectedWorkflow as WorkflowKey]?.label : null) || form.businessLine || "Not selected"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Schedule</dt><dd className="font-semibold text-foreground">{form.startDate || "No date set"}{form.endDate ? ` – ${form.endDate}` : ""}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Subcontractors</dt><dd className="font-semibold text-foreground">{subIds.length ? `${subIds.length} assigned` : "None assigned"}</dd></div>
+              </dl>
+              <p className="mt-3 text-xs text-muted-foreground">You can return to any section above. Schedule and subcontractor details are optional.</p>
+            </section>
+          )}
 
           </div>
 
