@@ -12,6 +12,7 @@
     "verify:close-job": "flock -s /tmp/contractor-app-validation.lock tsx ./scripts/e2e-close-job-verify.ts",
     "verify:job-workspace-supplemental": "tsx ./scripts/.verify-job-workspace-supplemental-readonly.ts",
     "verify:job-workspace-financials": "flock -s /tmp/contractor-app-validation.lock tsx ./scripts/e2e-job-workspace-financials-verify.ts",
+    "verify:start-job-workspace": "flock -s /tmp/contractor-app-validation.lock tsx ./scripts/e2e-start-job-workspace-verify.ts",
     "verify:invoice-contract-reference": "flock -x /tmp/contractor-app-validation.lock tsx ./scripts/e2e-invoice-contract-reference-verify.ts",
     "verify:dashboard-business-scope": "flock -x /tmp/contractor-app-validation.lock tsx ./scripts/e2e-dashboard-business-scope-verify.ts",
     "verify:paid-subs-close": "tsx ./scripts/e2e-paid-subs-close-verify.ts",
