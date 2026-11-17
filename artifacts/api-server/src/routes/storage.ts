@@ -110,19 +110,24 @@ async function canDownloadObject(req: Request, wildcardPath: string): Promise<bo
     if (!scope) return false;
     const objectPath = `/objects/${wildcardPath}`;
     const isItemEvidence = wildcardPath.startsWith("uploads/checklist-photos/");
-    const table = isItemEvidence ? jobChecklistItemPhotosTable
-      : wildcardPath.startsWith("uploads/start-photos/") ? jobStartPhotosTable : jobFinishedPhotosTable;
-    let query = db.select({ job: jobsTable }).from(table);
+    let evidence: { job: typeof jobsTable.$inferSelect } | undefined;
     if (isItemEvidence) {
-      query = query
+      [evidence] = await db.select({ job: jobsTable }).from(jobChecklistItemPhotosTable)
         .innerJoin(jobChecklistItemsTable, eq(jobChecklistItemPhotosTable.jobChecklistItemId, jobChecklistItemsTable.id))
-        .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id));
+        .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id))
+        .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+        .where(eq(jobChecklistItemPhotosTable.objectPath, objectPath)).limit(1);
+    } else if (wildcardPath.startsWith("uploads/start-photos/")) {
+      [evidence] = await db.select({ job: jobsTable }).from(jobStartPhotosTable)
+        .innerJoin(jobChecklistsTable, eq(jobStartPhotosTable.jobChecklistId, jobChecklistsTable.id))
+        .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+        .where(eq(jobStartPhotosTable.objectPath, objectPath)).limit(1);
     } else {
-      query = query.innerJoin(jobChecklistsTable, eq(table.jobChecklistId, jobChecklistsTable.id));
+      [evidence] = await db.select({ job: jobsTable }).from(jobFinishedPhotosTable)
+        .innerJoin(jobChecklistsTable, eq(jobFinishedPhotosTable.jobChecklistId, jobChecklistsTable.id))
+        .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+        .where(eq(jobFinishedPhotosTable.objectPath, objectPath)).limit(1);
     }
-    const [evidence] = await query
-      .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
-      .where(eq(table.objectPath, objectPath)).limit(1);
     if (!evidence || !belongsToBusiness(evidence.job, scope)) return false;
   }
   if (ownerId === userId) return true;

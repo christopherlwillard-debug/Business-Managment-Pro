@@ -10013,14 +10013,14 @@ export default function Jobs() {
   // Batch-fetch checklist summaries for all jobs (single query, not N+1)
   const jobIds = jobs.map(j => j.id);
   const { data: checklistSummaries = {} } = useQuery<Record<number, ChecklistSummary>>({
-    queryKey: ["checklist-summaries", jobIds.join(",")],
+    queryKey: ["checklist-summaries", activeBusiness?.id, jobIds.join(",")],
     queryFn: async () => {
-      if (jobIds.length === 0) return {};
-      const res = await fetch(`${BASE}/api/jobs/checklist-summaries?jobIds=${jobIds.join(",")}`, { credentials: "include" });
+      if (jobIds.length === 0 || activeBusiness?.id == null) return {};
+      const res = await fetch(`${BASE}/api/jobs/checklist-summaries?businessId=${activeBusiness.id}&jobIds=${jobIds.join(",")}`, { credentials: "include" });
       if (!res.ok) return {};
       return res.json();
     },
-    enabled: jobIds.length > 0,
+    enabled: jobIds.length > 0 && activeBusiness?.id != null,
     staleTime: 30 * 1000,
   });
 

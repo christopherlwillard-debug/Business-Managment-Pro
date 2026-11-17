@@ -2318,6 +2318,11 @@ router.get("/:id/trip-packet", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "A business selection is required" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const { buildTripPacketData } = await import("../lib/tripPacket.js");
     const packet = await buildTripPacketData(id);
     if (!packet) return res.status(404).json({ error: "Job not found" });
@@ -2333,6 +2338,11 @@ router.get("/:id/trip-packet/pdf", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid job id" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "A business selection is required" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
     const { generateTripPacketPdfBuffer } = await import("../lib/generateTripPacketPdf.js");
     const result = await generateTripPacketPdfBuffer(id);
     if (!result) return res.status(404).json({ error: "Job not found" });

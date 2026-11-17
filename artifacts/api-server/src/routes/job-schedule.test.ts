@@ -654,6 +654,26 @@ describe("PATCH /jobs/:jobId/checklist/items/:itemId", () => {
     expect(h.updatePayloads).toHaveLength(0);
   });
 
+  it("requires before/after photos only after additional work is marked applicable", async () => {
+    h.selectQueue.push(
+      [{ id: 1, businessId: 1, businessLine: "general_contracting", status: "scheduled", closedAt: null }],
+      [{ id: 10, jobId: 1, additionalWorkOccurred: true }],
+      [{
+        id: 100, jobChecklistId: 10, jobChecklistSectionId: 20,
+        title: "Conditional additional-work: before photo (complete only when extra work occurs)",
+        requiredEvidenceType: null, completed: false, skipped: false,
+      }],
+      [],
+      [],
+    );
+    const response = await request(app)
+      .patch("/jobs/1/checklist/items/100?businessId=1")
+      .send({ completed: true });
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("CHECKLIST_EVIDENCE_REQUIRED");
+    expect(response.body.error).toContain("installation photo");
+  });
+
   it("does not allow required contract evidence items to be skipped", async () => {
     h.selectQueue.push(
       [{ id: 1, businessId: 1, businessLine: "general_contracting" }],

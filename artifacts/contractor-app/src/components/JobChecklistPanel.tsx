@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
+import { getSageHomeDocumentationReadiness } from "@/lib/sagehomeDocumentation";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1066,22 +1067,15 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
     job.subcontractorIds?.includes(sub.id)
   );
   const sageHomeDocumentation = checklist?.templateName === "SageHome Installation Documentation";
-  const documentationItems = sageHomeDocumentation
-    ? checklist.sections.flatMap(section => section.items).filter(item =>
-      !item.title.includes("highly recommended; optional") &&
-      (!item.title.startsWith("Conditional additional-work:") || checklist.additionalWorkOccurred))
-    : [];
-  const documentationMissing = documentationItems.filter(item => !item.completed && !item.skipped);
-  const invoiceSubmissionItem = documentationItems.find(item => /Submit invoice to/i.test(item.title));
-  const readinessMissing = documentationItems.filter(item =>
-    !/Submit invoice to/i.test(item.title) && !item.completed && !item.skipped
+  const readiness = getSageHomeDocumentationReadiness(
+    sageHomeDocumentation ? checklist!.sections.flatMap(section => section.items) : [],
+    checklist?.additionalWorkOccurred ?? false,
   );
-  const homeownerPaperworkPending = documentationItems.filter(item =>
-    /homeowner paperwork|referral form/i.test(item.title) && !item.completed && !item.skipped
-  ).length;
-  const externalSubmissionPending = documentationItems.filter(item =>
-    /Lead Perfection|Submit invoice to/i.test(item.title) && !item.completed && !item.skipped
-  ).length;
+  const {
+    missingItems: documentationMissing, readinessMissing, invoiceItem: invoiceSubmissionItem,
+    homeownerPaperworkPending, externalSubmissionPending, invoiceSubmitted, invoiceDueAt,
+    invoiceWasLate, invoiceIsOverdue,
+  } = readiness;
 
   async function setAdditionalWorkOccurred(value: boolean) {
     if (!checklist) return;
@@ -1195,7 +1189,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                     <div>
                       <p className="font-semibold">SageHome documentation readiness</p>
                       <p className="mt-1 text-muted-foreground">
-                        {invoiceSubmissionItem?.completed
+                        {invoiceSubmitted
                           ? "Invoice submission recorded"
                           : readinessMissing.length === 0
                             ? "Ready for invoice submission"
@@ -1209,6 +1203,19 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                   <p className="mt-2 text-xs text-muted-foreground">
                     Homeowner paperwork pending: {homeownerPaperworkPending} · External submissions pending: {externalSubmissionPending}
                   </p>
+                  {documentationMissing.length > 0 && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Missing: {documentationMissing.slice(0, 4).map(item => item.title).join("; ")}
+                      {documentationMissing.length > 4 ? `; and ${documentationMissing.length - 4} more` : ""}
+                    </p>
+                  )}
+                  {invoiceDueAt && (
+                    <p className={`mt-2 text-xs ${invoiceIsOverdue || invoiceWasLate ? "font-semibold text-destructive" : "text-muted-foreground"}`}>
+                      {invoiceSubmitted
+                        ? `Invoice submission recorded ${invoiceWasLate ? "after the 24-hour deadline" : "within 24 hours"}`
+                        : `Invoice due by ${invoiceDueAt.toLocaleString()}`}
+                    </p>
+                  )}
                   <label className="mt-3 flex items-center gap-2 text-xs">
                     <input type="checkbox" checked={checklist.additionalWorkOccurred} disabled={!canEdit("jobs")}
                       onChange={event => void setAdditionalWorkOccurred(event.target.checked)} />

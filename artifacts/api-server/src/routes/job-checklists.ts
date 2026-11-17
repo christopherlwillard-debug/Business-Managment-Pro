@@ -252,6 +252,9 @@ export async function buildChecklistResponse(checklistId: number) {
       noteEntries: sectionNoteRows.filter((n: any) => n.jobChecklistSectionId === s.id),
       items: items.filter((i: any) => i.jobChecklistSectionId === s.id).map(i => ({
         ...i,
+        requiredEvidenceType: i.requiredEvidenceType ?? (
+          checklist.additionalWorkOccurred && i.title.startsWith("Conditional additional-work:") ? "image" : null
+        ),
         photos: photosByItemId.get(i.id) ?? [],
         parts: partsByItemId.get(i.id) ?? [],
       })),
@@ -263,14 +266,20 @@ export async function buildChecklistResponse(checklistId: number) {
 // Returns { [jobId]: { completedItems, totalItems, overallPercent } } for jobs that have checklists.
 router.get("/checklist-summaries", async (req, res) => {
   try {
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "A business selection is required" });
     const raw = typeof req.query.jobIds === "string" ? req.query.jobIds : "";
     const jobIds = raw.split(",").map(Number).filter(n => !isNaN(n) && n > 0);
     if (jobIds.length === 0) return res.json({});
+    const scopedRows = await db.select().from(jobsTable).where(inArray(jobsTable.id, jobIds));
+    const scopedJobIds = scopedRows.filter(job => belongsToBusiness(job, scope)).map(job => job.id);
+    if (scopedJobIds.length === 0) return res.json({});
 
     const checklists = await db
       .select({ id: jobChecklistsTable.id, jobId: jobChecklistsTable.jobId })
       .from(jobChecklistsTable)
-      .where(inArray(jobChecklistsTable.jobId, jobIds));
+      .where(inArray(jobChecklistsTable.jobId, scopedJobIds));
 
     if (checklists.length === 0) return res.json({});
 

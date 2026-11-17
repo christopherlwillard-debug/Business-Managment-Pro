@@ -4,6 +4,7 @@ import {
   ArrowLeft, Download, Printer, MapPin, Calendar, Users, Briefcase,
   Receipt, ImageIcon, ClipboardCheck, FileText, CheckCircle2, Phone, Mail,
 } from "lucide-react";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -54,10 +55,13 @@ function fmtDate(raw: string | null | undefined): string {
   if (isNaN(d.getTime())) return raw;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-function servingUrl(u: string | null): string | null {
+function servingUrl(u: string | null, businessId?: number | null): string | null {
   if (!u) return null;
   if (u.startsWith("http")) return u;
-  return `${BASE}${u}`;
+  const url = `${BASE}${u}`;
+  return businessId != null && u.includes("/api/storage/objects/")
+    ? `${url}${url.includes("?") ? "&" : "?"}businessId=${businessId}`
+    : url;
 }
 
 function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
@@ -73,14 +77,15 @@ function Section({ icon: Icon, title, children }: { icon: any; title: string; ch
 }
 
 export default function TripPacket() {
+  const { activeBusiness } = useBusiness();
   const [, params] = useRoute("/trip-packet/:jobId");
   const jobId = params?.jobId;
 
   const { data, isLoading, error } = useQuery<TripPacketData>({
-    queryKey: ["trip-packet", jobId],
-    enabled: !!jobId,
+    queryKey: ["trip-packet", jobId, activeBusiness?.id],
+    enabled: !!jobId && activeBusiness?.id != null,
     queryFn: async () => {
-      const res = await fetch(`${BASE}/api/jobs/${jobId}/trip-packet`, { credentials: "include" });
+      const res = await fetch(`${BASE}/api/jobs/${jobId}/trip-packet?businessId=${activeBusiness!.id}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load trip packet");
       return res.json();
     },
@@ -134,7 +139,7 @@ export default function TripPacket() {
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
             <Printer className="w-4 h-4" /> Print
           </button>
-          <a href={`${BASE}/api/jobs/${job.id}/trip-packet/pdf`}
+          <a href={`${BASE}/api/jobs/${job.id}/trip-packet/pdf?businessId=${activeBusiness?.id}`}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
             <Download className="w-4 h-4" /> Download PDF
           </a>
@@ -237,7 +242,7 @@ export default function TripPacket() {
                             <p className="text-xs text-gray-500 italic mt-0.5">Business purpose: {e.businessPurpose}</p>
                           )}
                           {e.receiptUrl ? (
-                            <a href={servingUrl(e.receiptUrl)!} target="_blank" rel="noopener noreferrer"
+                            <a href={servingUrl(e.receiptUrl, activeBusiness?.id)!} target="_blank" rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-[11px] text-blue-600 font-semibold hover:underline mt-0.5">
                               <ImageIcon className="w-3 h-3" /> View receipt
                             </a>
@@ -273,8 +278,8 @@ export default function TripPacket() {
         <Section icon={ImageIcon} title="Finished Work Photos">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {data.finishedPhotos.map((p, i) => (
-              <a key={i} href={servingUrl(p.url)!} target="_blank" rel="noopener noreferrer" className="block">
-                <img src={servingUrl(p.url)!} alt={`Finished work ${i + 1}`} loading="lazy"
+              <a key={i} href={servingUrl(p.url, activeBusiness?.id)!} target="_blank" rel="noopener noreferrer" className="block">
+                <img src={servingUrl(p.url, activeBusiness?.id)!} alt={`Finished work ${i + 1}`} loading="lazy"
                   className="w-full h-28 object-cover rounded-xl border border-gray-200 hover:opacity-90 transition-opacity" />
               </a>
             ))}
@@ -302,8 +307,8 @@ export default function TripPacket() {
                 {log.photos.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {log.photos.map((p, i) => (
-                      <a key={i} href={servingUrl(p.url)!} target="_blank" rel="noopener noreferrer">
-                        <img src={servingUrl(p.url)!} alt={`Log photo ${i + 1}`} loading="lazy"
+                      <a key={i} href={servingUrl(p.url, activeBusiness?.id)!} target="_blank" rel="noopener noreferrer">
+                        <img src={servingUrl(p.url, activeBusiness?.id)!} alt={`Log photo ${i + 1}`} loading="lazy"
                           className="w-20 h-20 object-cover rounded-lg border border-gray-200 hover:opacity-90 transition-opacity" />
                       </a>
                     ))}
@@ -328,7 +333,7 @@ export default function TripPacket() {
             </div>
           </div>
           {data.checklist.percent === 100 && (
-            <a href={`${BASE}/api/jobs/${job.id}/checklist/pdf`}
+            <a href={`${BASE}/api/jobs/${job.id}/checklist/pdf?businessId=${activeBusiness?.id}`}
               className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold hover:underline mt-2 print:hidden">
               <CheckCircle2 className="w-3.5 h-3.5" /> Download signed completion document (PDF)
             </a>
