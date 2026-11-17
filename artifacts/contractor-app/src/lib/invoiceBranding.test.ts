@@ -21,6 +21,29 @@ const invoice = {
 };
 
 describe("invoice brand rendering", () => {
+  it("renders a linked external work-order number in print and client email, but omits it for ordinary invoices", () => {
+    const contractInvoice = {
+      ...invoice,
+      clientName: "Contract Payer",
+      contractExternalOrderNumber: "SAGE-TEST-1042",
+    };
+    const ordinaryInvoice = { ...invoice, clientName: "Residential Customer" };
+
+    const contractPrintHtml = buildInvoiceBodyHtml(contractInvoice, {});
+    const contractEmailHtml = buildInvoiceEmailHtml(contractInvoice);
+    const ordinaryPrintHtml = buildInvoiceBodyHtml(ordinaryInvoice, {});
+    const ordinaryEmailHtml = buildInvoiceEmailHtml(ordinaryInvoice);
+
+    for (const html of [contractPrintHtml, contractEmailHtml]) {
+      expect(html).toContain("SAGE-TEST-1042");
+      expect(html).toContain("Contract Payer");
+    }
+    for (const html of [ordinaryPrintHtml, ordinaryEmailHtml]) {
+      expect(html).not.toContain("External work order:");
+      expect(html).not.toContain("SAGE-TEST-1042");
+    }
+  });
+
   it("converts legacy shared placement into a safe initial business layout", () => {
     expect(normalizeInvoiceLogoLayout(null, "top-right", "small")).toEqual({
       x: 1,

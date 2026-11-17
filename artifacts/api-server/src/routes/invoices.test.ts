@@ -30,6 +30,10 @@ const h = vi.hoisted(() => ({
   // Controls whether isSquareConfigured() returns true in a given test.
   squareConfigured: false,
   gmailProxy: vi.fn(),
+  sendContext: undefined as any,
+  allowBareSelect: false,
+  skipInvoiceReconcile: false,
+  mockSendAndRecord: false,
   scenario: "no request",
 }));
 
@@ -41,6 +45,9 @@ vi.mock("@workspace/db", () => {
     leftJoin:  () => chain,
     orderBy:   () => chain,
     inArray:   () => chain,
+    then:      (resolve: any, reject: any) => Promise.resolve(
+      h.allowBareSelect ? h.selectQueue.take(h.scenario) : undefined,
+    ).then(resolve, reject),
     where:     () => {
       return Promise.resolve(h.selectQueue.take(h.scenario));
     },
@@ -93,6 +100,30 @@ vi.mock("../lib/square.js", () => ({
 vi.mock("../lib/invoiceEmail", () => ({
   sendInvoiceEmail: vi.fn(),
 }));
+vi.mock("../lib/invoiceBranding.js", () => ({
+  findInvoiceBusiness: () => ({ id: 1, slug: "general_contracting" }),
+  invoiceEmailSettingsFromBrand: (settings: any) => settings,
+  loadInvoiceBrand: async () => ({}),
+}));
+vi.mock("../lib/invoiceCommunication", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/invoiceCommunication")>();
+  return {
+    ...actual,
+    reconcileConfirmedGmailInvoiceDelivery: (...args: any[]) => h.skipInvoiceReconcile
+      ? Promise.resolve(null)
+      : actual.reconcileConfirmedGmailInvoiceDelivery(...args),
+    sendAndRecordInvoiceCommunication: async (context: any, send: () => Promise<any>) => {
+      if (!h.mockSendAndRecord) return actual.sendAndRecordInvoiceCommunication(context, send);
+      h.sendContext = context;
+      const delivery = await send();
+      return {
+        event: { id: 9901, completedAt: new Date("2026-11-17T12:00:00.000Z") },
+        delivery,
+        finalized: true,
+      };
+    },
+  };
+});
 vi.mock("@replit/connectors-sdk", () => ({
   ReplitConnectors: class {
     proxy = h.gmailProxy;
@@ -209,6 +240,10 @@ beforeEach(() => {
   h.canonicalOwner = { state: "blank" };
   h.squareConfigured = false;
   h.gmailProxy.mockReset();
+  h.sendContext = undefined;
+  h.allowBareSelect = false;
+  h.skipInvoiceReconcile = false;
+  h.mockSendAndRecord = false;
   deleteSquarePaymentLink.mockClear();
   sendInvoiceEmail.mockReset();
   h.scenario = "no request";
@@ -584,6 +619,65 @@ describe("POST /:id/mark-sent", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/disabled/i);
     expect(h.updates).toHaveLength(0);
+  });
+});
+
+describe("POST /:id/send — contract work-order reference", () => {
+  it("uses the linked reference and payer recipient when resending an invoice", async () => {
+    const invoice = fakeInvoice({
+      id: 42,
+      invoiceNumber: "INV-SAGE-RESEND",
+      status: "sent",
+      sentAt: new Date("2026-11-10T12:00:00.000Z"),
+      businessId: 1,
+      businessLine: "general_contracting",
+      jobId: 77,
+      clientId: 123,
+      clientName: "Contract Payer",
+      clientEmail: "payer@example.invalid",
+      contractExternalOrderNumber: "SAGE-RESEND-42",
+    });
+    h.allowBareSelect = true;
+    h.skipInvoiceReconcile = true;
+    h.mockSendAndRecord = true;
+    h.selectQueue.push(
+      [invoice], // initial linked invoice query
+      [{ companyName: "BuildPro Test" }], // settings
+      [{ invoiceNumber: invoice.invoiceNumber }], // existing invoice number
+      [invoice], // fresh invoice query used by email
+      [{ id: 1, slug: "general_contracting" }], // business lookup
+      [invoice], // response invoice after send
+    );
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({
+      provider: "smtp",
+      messageId: "test-message",
+      threadId: null,
+    } as any);
+
+    const res = await request(app).post("/42/send").send({
+      to: "payer@example.invalid",
+      subject: "Invoice resend test",
+      message: "",
+      attachChecklist: false,
+    });
+
+    expect(res.status).toBe(200);
+    expect(h.sendContext).toMatchObject({
+      invoiceId: 42,
+      eventType: "resend_invoice",
+      recipient: "payer@example.invalid",
+    });
+    expect(sendInvoiceEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contractExternalOrderNumber: "SAGE-RESEND-42",
+        clientName: "Contract Payer",
+      }),
+      expect.any(Object),
+      "payer@example.invalid",
+      "Invoice resend test",
+      "",
+      undefined,
+    );
   });
 });
 

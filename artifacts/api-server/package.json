@@ -10,6 +10,7 @@
     "pretest": "tsx ./scripts/check-development-schema.ts",
     "test": "flock -x /tmp/contractor-app-validation.lock vitest run",
     "verify:close-job": "flock -s /tmp/contractor-app-validation.lock tsx ./scripts/e2e-close-job-verify.ts",
+    "verify:invoice-contract-reference": "flock -x /tmp/contractor-app-validation.lock tsx ./scripts/e2e-invoice-contract-reference-verify.ts",
     "verify:dashboard-business-scope": "flock -x /tmp/contractor-app-validation.lock tsx ./scripts/e2e-dashboard-business-scope-verify.ts",
     "verify:paid-subs-close": "tsx ./scripts/e2e-paid-subs-close-verify.ts",
     "verify:invoice-delivery": "tsx ./scripts/e2e-invoice-delivery-verify.ts",
