@@ -887,3 +887,15 @@ Created the four-document architecture governance system:
   recurring-expense sources without moving or rewriting child records.
 - Added route coverage for every protected record type and safe reassignment
   cases; no schema or production change was made.
+
+### Contract client work-order foundation
+
+- Added business-scoped payer programs and pre-job work orders with separate
+  payer, homeowner, and property references.
+- Accepting a pending work order creates one ordinary BuildPro job in the same
+  transaction; decline creates no job, and cancellation keeps the accepted job.
+- Added the intake/review panel to Jobs and exposed contract context in the
+  existing Job Workspace. Existing invoices and reports continue to treat the
+  job client as the payer.
+- Applied the additive migration to the development database only; no
+  production deployment or production data/schema change was performed.

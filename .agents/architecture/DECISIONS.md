@@ -642,6 +642,31 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
+## ADR-035
+
+**Title:** Contract work orders create ordinary jobs only after acceptance
+
+**Decision:** Keep contract-client programs and pre-job work orders as a minimal
+operational intake layer. The program identifies the provider business and
+payer client; the work order separately records the homeowner contact and site
+property. Acceptance atomically creates a normal job with the payer as its
+client, while decline creates no job and cancellation preserves the accepted
+job. Existing invoices and financial reports continue to use the normal job
+client and ledgers.
+
+**Reason:** BuildPro needs to manage incoming contract work without replacing
+existing job, client, property, invoice, or accounting systems or implying
+unverified contract pricing and billing rules.
+
+**Rejected Alternatives:**
+
+- Creating a second contract-management or billing platform
+- Treating the homeowner as the payer
+- Creating a job before the provider accepts the work order
+
+**Status:** Accepted
+**Date:** 2026-11-16
+
 ## ADR-037
 
 **Title:** Jobs may link to an accessible client property

@@ -100,6 +100,7 @@ import { ApplyProductionPricingDialog } from "@/components/ApplyProductionPricin
 import { KbTrainingModal } from "@/components/KbTrainingModal";
 import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
+import { ContractWorkOrdersPanel } from "@/components/ContractWorkOrdersPanel";
 import { calculateSurchargeDays, isMileageSurchargeLine, mergeMileageSurchargeLine } from "@/lib/mileageSurcharge";
 import { isMaterialInvoiceLine } from "@/lib/invoiceLineItems";
 
@@ -6145,7 +6146,9 @@ function CompactJobRow({
             </span>
           </div>
           <div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3 sm:gap-3">
-            <span className="truncate">{job.clientName ?? "No customer assigned"}</span>
+            <span className="truncate">
+              {job.contractExternalOrderNumber ? `Payer: ${job.clientName ?? "Not assigned"} · Homeowner: ${job.contractHomeownerName ?? "Not linked"}` : job.clientName ?? "No customer assigned"}
+            </span>
             <span className="truncate">{location || "No location recorded"}</span>
             <span>
               {job.startDate
@@ -6775,11 +6778,24 @@ function JobCard({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl bg-muted/35 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Client / builder</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{job.contractExternalOrderNumber ? "Payer" : "Client / builder"}</p>
                   <p className="mt-1 text-sm font-bold text-foreground">{job.clientName ?? "Not assigned"}</p>
                 </div>
+                {job.contractExternalOrderNumber && (
+                  <>
+                    <div className="rounded-xl bg-muted/35 p-3" data-testid={`job-homeowner-${job.id}`}>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Homeowner / site contact</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">{job.contractHomeownerName ?? "Not linked"}</p>
+                    </div>
+                    <div className="rounded-xl bg-muted/35 p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">External work order</p>
+                      <p className="mt-1 text-sm font-bold text-foreground">{job.contractExternalOrderNumber}</p>
+                      {job.contractProgramName && <p className="mt-0.5 text-xs text-muted-foreground">{job.contractProgramName}</p>}
+                    </div>
+                  </>
+                )}
                 <div className="rounded-xl bg-muted/35 p-3" data-testid={`job-property-${job.id}`}>
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Customer property</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{job.contractExternalOrderNumber ? "Job-site property" : "Customer property"}</p>
                   <p className="mt-1 text-sm font-bold text-foreground">{propertyDisplay.label}</p>
                   {job.propertyLabel && (
                     <p className="mt-0.5 text-xs text-muted-foreground">
@@ -11092,6 +11108,8 @@ export default function Jobs() {
           )}
         </div>
       </div>
+
+      <ContractWorkOrdersPanel />
 
        <>
        <div className="flex items-center justify-between gap-3 pt-1" data-testid="job-records-heading">

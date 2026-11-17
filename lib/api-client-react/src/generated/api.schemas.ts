@@ -265,6 +265,9 @@ export interface Job {
   propertyState?: string | null;
   propertyZip?: string | null;
   clientName?: string | null;
+  contractProgramName?: string | null;
+  contractExternalOrderNumber?: string | null;
+  contractHomeownerName?: string | null;
   subcontractorIds?: number[];
   subcontractorNames?: string[];
   status: JobStatus;
@@ -786,6 +789,116 @@ export interface JobBusinessOption {
   name: string;
   slug: string;
   legalBusinessId?: number | null;
+}
+
+export interface ContractClientProgram {
+  id: number;
+  businessId: number;
+  payerClientId: number;
+  payerName?: string;
+  name: string;
+  active: boolean;
+  [key: string]: unknown;
+}
+
+export interface ContractClientProgramInput {
+  businessId: number;
+  payerClientId: number;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  name: string;
+}
+
+export type ContractWorkOrderStatus =
+  (typeof ContractWorkOrderStatus)[keyof typeof ContractWorkOrderStatus];
+
+export const ContractWorkOrderStatus = {
+  pending_review: "pending_review",
+  accepted: "accepted",
+  declined: "declined",
+  cancelled: "cancelled",
+} as const;
+
+export interface ContractWorkOrder {
+  id: number;
+  businessId: number;
+  programId: number;
+  programName: string;
+  payerClientId: number;
+  payerName: string;
+  externalOrderNumber: string;
+  title: string;
+  scope?: string | null;
+  homeownerContactId?: number | null;
+  homeownerName?: string | null;
+  propertyId?: number | null;
+  propertyLabel?: string | null;
+  propertyAddress?: string | null;
+  agreedPrice?: number | null;
+  status: ContractWorkOrderStatus;
+  jobId?: number | null;
+  acceptedAt?: string | null;
+  declineReason?: string | null;
+  cancellationReason?: string | null;
+  [key: string]: unknown;
+}
+
+export type ContractWorkOrderOptionsPayerClientsItem = {
+  id: number;
+  name: string;
+};
+
+export type ContractWorkOrderOptionsContactsItem = {
+  id: number;
+  name: string;
+};
+
+export type ContractWorkOrderOptionsPropertiesItem = {
+  id: number;
+  label: string;
+  address?: string | null;
+};
+
+export interface ContractWorkOrderOptions {
+  payerClients: ContractWorkOrderOptionsPayerClientsItem[];
+  contacts: ContractWorkOrderOptionsContactsItem[];
+  properties: ContractWorkOrderOptionsPropertiesItem[];
+}
+
+export interface ContractWorkOrderInput {
+  businessId: number;
+  programId: number;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  externalOrderNumber: string;
+  /**
+   * @minLength 1
+   * @maxLength 240
+   */
+  title: string;
+  scope?: string | null;
+  homeownerContactId?: number | null;
+  propertyId?: number | null;
+  /** @minimum 0 */
+  agreedPrice?: number | null;
+}
+
+export type ContractWorkOrderDecisionInputDecision =
+  (typeof ContractWorkOrderDecisionInputDecision)[keyof typeof ContractWorkOrderDecisionInputDecision];
+
+export const ContractWorkOrderDecisionInputDecision = {
+  accept: "accept",
+  decline: "decline",
+  cancel: "cancel",
+} as const;
+
+export interface ContractWorkOrderDecisionInput {
+  decision: ContractWorkOrderDecisionInputDecision;
+  reason?: string | null;
 }
 
 export type JobReadinessConditionInputReason =
@@ -2679,6 +2792,22 @@ export type ListClientsParams = {
    * Explicit operating division; takes precedence over legal-owner rollup
    */
   businessLine?: string;
+};
+
+export type ListContractClientProgramsParams = {
+  businessId: number;
+};
+
+export type GetContractWorkOrderOptionsParams = {
+  businessId: number;
+};
+
+export type ListContractWorkOrdersParams = {
+  businessId: number;
+};
+
+export type DecideContractWorkOrderParams = {
+  businessId: number;
 };
 
 export type ListJobsParams = {

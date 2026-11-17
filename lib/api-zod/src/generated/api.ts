@@ -244,6 +244,163 @@ export const DeleteClientParams = zod.object({
 });
 
 /**
+ * @summary List contract client programs for a business
+ */
+export const ListContractClientProgramsQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const ListContractClientProgramsResponseItem = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  payerClientId: zod.number(),
+  payerName: zod.string().optional(),
+  name: zod.string(),
+  active: zod.boolean(),
+});
+export const ListContractClientProgramsResponse = zod.array(
+  ListContractClientProgramsResponseItem,
+);
+
+/**
+ * @summary Create a contract client program
+ */
+export const createContractClientProgramBodyNameMax = 160;
+
+export const CreateContractClientProgramBody = zod.object({
+  businessId: zod.number(),
+  payerClientId: zod.number(),
+  name: zod.string().min(1).max(createContractClientProgramBodyNameMax),
+});
+
+/**
+ * @summary List contacts and properties available for contract work orders
+ */
+export const GetContractWorkOrderOptionsQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const GetContractWorkOrderOptionsResponse = zod.object({
+  payerClients: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+    }),
+  ),
+  contacts: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+    }),
+  ),
+  properties: zod.array(
+    zod.object({
+      id: zod.number(),
+      label: zod.string(),
+      address: zod.string().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List contract work orders for a business
+ */
+export const ListContractWorkOrdersQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const ListContractWorkOrdersResponseItem = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  programId: zod.number(),
+  programName: zod.string(),
+  payerClientId: zod.number(),
+  payerName: zod.string(),
+  externalOrderNumber: zod.string(),
+  title: zod.string(),
+  scope: zod.string().nullish(),
+  homeownerContactId: zod.number().nullish(),
+  homeownerName: zod.string().nullish(),
+  propertyId: zod.number().nullish(),
+  propertyLabel: zod.string().nullish(),
+  propertyAddress: zod.string().nullish(),
+  agreedPrice: zod.number().nullish(),
+  status: zod.enum(["pending_review", "accepted", "declined", "cancelled"]),
+  jobId: zod.number().nullish(),
+  acceptedAt: zod.string().nullish(),
+  declineReason: zod.string().nullish(),
+  cancellationReason: zod.string().nullish(),
+});
+export const ListContractWorkOrdersResponse = zod.array(
+  ListContractWorkOrdersResponseItem,
+);
+
+/**
+ * @summary Record an incoming contract work order
+ */
+export const createContractWorkOrderBodyExternalOrderNumberMax = 160;
+
+export const createContractWorkOrderBodyTitleMax = 240;
+
+export const createContractWorkOrderBodyAgreedPriceMin = 0;
+
+export const CreateContractWorkOrderBody = zod.object({
+  businessId: zod.number(),
+  programId: zod.number(),
+  externalOrderNumber: zod
+    .string()
+    .min(1)
+    .max(createContractWorkOrderBodyExternalOrderNumberMax),
+  title: zod.string().min(1).max(createContractWorkOrderBodyTitleMax),
+  scope: zod.string().nullish(),
+  homeownerContactId: zod.number().nullish(),
+  propertyId: zod.number().nullish(),
+  agreedPrice: zod
+    .number()
+    .min(createContractWorkOrderBodyAgreedPriceMin)
+    .nullish(),
+});
+
+/**
+ * @summary Accept, decline, or cancel a contract work order
+ */
+export const DecideContractWorkOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DecideContractWorkOrderQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const DecideContractWorkOrderBody = zod.object({
+  decision: zod.enum(["accept", "decline", "cancel"]),
+  reason: zod.string().nullish(),
+});
+
+export const DecideContractWorkOrderResponse = zod.object({
+  id: zod.number(),
+  businessId: zod.number(),
+  programId: zod.number(),
+  programName: zod.string(),
+  payerClientId: zod.number(),
+  payerName: zod.string(),
+  externalOrderNumber: zod.string(),
+  title: zod.string(),
+  scope: zod.string().nullish(),
+  homeownerContactId: zod.number().nullish(),
+  homeownerName: zod.string().nullish(),
+  propertyId: zod.number().nullish(),
+  propertyLabel: zod.string().nullish(),
+  propertyAddress: zod.string().nullish(),
+  agreedPrice: zod.number().nullish(),
+  status: zod.enum(["pending_review", "accepted", "declined", "cancelled"]),
+  jobId: zod.number().nullish(),
+  acceptedAt: zod.string().nullish(),
+  declineReason: zod.string().nullish(),
+  cancellationReason: zod.string().nullish(),
+});
+
+/**
  * @summary List all jobs
  */
 export const ListJobsQueryParams = zod.object({
@@ -271,6 +428,9 @@ export const ListJobsResponseItem = zod.object({
   propertyState: zod.string().nullish(),
   propertyZip: zod.string().nullish(),
   clientName: zod.string().nullish(),
+  contractProgramName: zod.string().nullish(),
+  contractExternalOrderNumber: zod.string().nullish(),
+  contractHomeownerName: zod.string().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
   subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
@@ -532,6 +692,9 @@ export const GetReadyToStartJobsResponse = zod.object({
         propertyState: zod.string().nullish(),
         propertyZip: zod.string().nullish(),
         clientName: zod.string().nullish(),
+        contractProgramName: zod.string().nullish(),
+        contractExternalOrderNumber: zod.string().nullish(),
+        contractHomeownerName: zod.string().nullish(),
         subcontractorIds: zod.array(zod.number()).optional(),
         subcontractorNames: zod.array(zod.string()).optional(),
         status: zod.enum([
@@ -776,6 +939,9 @@ export const GetReadyToStartJobsResponse = zod.object({
         propertyState: zod.string().nullish(),
         propertyZip: zod.string().nullish(),
         clientName: zod.string().nullish(),
+        contractProgramName: zod.string().nullish(),
+        contractExternalOrderNumber: zod.string().nullish(),
+        contractHomeownerName: zod.string().nullish(),
         subcontractorIds: zod.array(zod.number()).optional(),
         subcontractorNames: zod.array(zod.string()).optional(),
         status: zod.enum([
@@ -1031,6 +1197,9 @@ export const StartJobResponse = zod.object({
   propertyState: zod.string().nullish(),
   propertyZip: zod.string().nullish(),
   clientName: zod.string().nullish(),
+  contractProgramName: zod.string().nullish(),
+  contractExternalOrderNumber: zod.string().nullish(),
+  contractHomeownerName: zod.string().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
   subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
@@ -1923,6 +2092,9 @@ export const GetJobResponse = zod.object({
   propertyState: zod.string().nullish(),
   propertyZip: zod.string().nullish(),
   clientName: zod.string().nullish(),
+  contractProgramName: zod.string().nullish(),
+  contractExternalOrderNumber: zod.string().nullish(),
+  contractHomeownerName: zod.string().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
   subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
@@ -2164,6 +2336,9 @@ export const UpdateJobResponse = zod.object({
   propertyState: zod.string().nullish(),
   propertyZip: zod.string().nullish(),
   clientName: zod.string().nullish(),
+  contractProgramName: zod.string().nullish(),
+  contractExternalOrderNumber: zod.string().nullish(),
+  contractHomeownerName: zod.string().nullish(),
   subcontractorIds: zod.array(zod.number()).optional(),
   subcontractorNames: zod.array(zod.string()).optional(),
   status: zod.enum([
@@ -4885,6 +5060,9 @@ export const GetDashboardStatsResponse = zod.object({
       propertyState: zod.string().nullish(),
       propertyZip: zod.string().nullish(),
       clientName: zod.string().nullish(),
+      contractProgramName: zod.string().nullish(),
+      contractExternalOrderNumber: zod.string().nullish(),
+      contractHomeownerName: zod.string().nullish(),
       subcontractorIds: zod.array(zod.number()).optional(),
       subcontractorNames: zod.array(zod.string()).optional(),
       status: zod.enum([

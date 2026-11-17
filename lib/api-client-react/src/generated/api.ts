@@ -30,6 +30,12 @@ import type {
   ComplianceReport,
   ComponentWorkSession,
   ComponentWorkSessionsResponse,
+  ContractClientProgram,
+  ContractClientProgramInput,
+  ContractWorkOrder,
+  ContractWorkOrderDecisionInput,
+  ContractWorkOrderInput,
+  ContractWorkOrderOptions,
   CreateClientBillingProfileRequest,
   CreateClientRequest,
   CreateComponentWorkSessionRequest,
@@ -44,6 +50,7 @@ import type {
   CreateSubcontractorRequest,
   DailyLog,
   DashboardStats,
+  DecideContractWorkOrderParams,
   ErrorEnvelope,
   Estimate,
   EstimateQuoteBusinessScopeInput,
@@ -55,6 +62,7 @@ import type {
   FinalizeInvoiceCommunicationRequest,
   Get1099ReportParams,
   GetAccountingReportParams,
+  GetContractWorkOrderOptionsParams,
   GetDashboardStatsParams,
   GetEstimateQuoteCenterParams,
   GetInvoiceTaxReportParams,
@@ -78,6 +86,8 @@ import type {
   ListAerialQuotePropertiesParams,
   ListClientBillingProfilesParams,
   ListClientsParams,
+  ListContractClientProgramsParams,
+  ListContractWorkOrdersParams,
   ListDailyLogsParams,
   ListEstimatesParams,
   ListExpensesParams,
@@ -1185,6 +1195,634 @@ export const useDeleteClient = <
   TContext
 > => {
   return useMutation(getDeleteClientMutationOptions(options));
+};
+
+/**
+ * @summary List contract client programs for a business
+ */
+export const getListContractClientProgramsUrl = (
+  params: ListContractClientProgramsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/contract-client-programs?${stringifiedParams}`
+    : `/api/jobs/contract-client-programs`;
+};
+
+export const listContractClientPrograms = async (
+  params: ListContractClientProgramsParams,
+  options?: RequestInit,
+): Promise<ContractClientProgram[]> => {
+  return customFetch<ContractClientProgram[]>(
+    getListContractClientProgramsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListContractClientProgramsQueryKey = (
+  params?: ListContractClientProgramsParams,
+) => {
+  return [
+    `/api/jobs/contract-client-programs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListContractClientProgramsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listContractClientPrograms>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListContractClientProgramsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractClientPrograms>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListContractClientProgramsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listContractClientPrograms>>
+  > = ({ signal }) =>
+    listContractClientPrograms(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listContractClientPrograms>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListContractClientProgramsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listContractClientPrograms>>
+>;
+export type ListContractClientProgramsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List contract client programs for a business
+ */
+
+export function useListContractClientPrograms<
+  TData = Awaited<ReturnType<typeof listContractClientPrograms>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListContractClientProgramsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractClientPrograms>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListContractClientProgramsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a contract client program
+ */
+export const getCreateContractClientProgramUrl = () => {
+  return `/api/jobs/contract-client-programs`;
+};
+
+export const createContractClientProgram = async (
+  contractClientProgramInput: ContractClientProgramInput,
+  options?: RequestInit,
+): Promise<ContractClientProgram> => {
+  return customFetch<ContractClientProgram>(
+    getCreateContractClientProgramUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(contractClientProgramInput),
+    },
+  );
+};
+
+export const getCreateContractClientProgramMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractClientProgram>>,
+    TError,
+    { data: BodyType<ContractClientProgramInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createContractClientProgram>>,
+  TError,
+  { data: BodyType<ContractClientProgramInput> },
+  TContext
+> => {
+  const mutationKey = ["createContractClientProgram"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createContractClientProgram>>,
+    { data: BodyType<ContractClientProgramInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createContractClientProgram(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateContractClientProgramMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createContractClientProgram>>
+>;
+export type CreateContractClientProgramMutationBody =
+  BodyType<ContractClientProgramInput>;
+export type CreateContractClientProgramMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a contract client program
+ */
+export const useCreateContractClientProgram = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractClientProgram>>,
+    TError,
+    { data: BodyType<ContractClientProgramInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createContractClientProgram>>,
+  TError,
+  { data: BodyType<ContractClientProgramInput> },
+  TContext
+> => {
+  return useMutation(getCreateContractClientProgramMutationOptions(options));
+};
+
+/**
+ * @summary List contacts and properties available for contract work orders
+ */
+export const getGetContractWorkOrderOptionsUrl = (
+  params: GetContractWorkOrderOptionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/contract-work-orders/options?${stringifiedParams}`
+    : `/api/jobs/contract-work-orders/options`;
+};
+
+export const getContractWorkOrderOptions = async (
+  params: GetContractWorkOrderOptionsParams,
+  options?: RequestInit,
+): Promise<ContractWorkOrderOptions> => {
+  return customFetch<ContractWorkOrderOptions>(
+    getGetContractWorkOrderOptionsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetContractWorkOrderOptionsQueryKey = (
+  params?: GetContractWorkOrderOptionsParams,
+) => {
+  return [
+    `/api/jobs/contract-work-orders/options`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetContractWorkOrderOptionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getContractWorkOrderOptions>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetContractWorkOrderOptionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getContractWorkOrderOptions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetContractWorkOrderOptionsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getContractWorkOrderOptions>>
+  > = ({ signal }) =>
+    getContractWorkOrderOptions(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getContractWorkOrderOptions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetContractWorkOrderOptionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getContractWorkOrderOptions>>
+>;
+export type GetContractWorkOrderOptionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List contacts and properties available for contract work orders
+ */
+
+export function useGetContractWorkOrderOptions<
+  TData = Awaited<ReturnType<typeof getContractWorkOrderOptions>>,
+  TError = ErrorType<unknown>,
+>(
+  params: GetContractWorkOrderOptionsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getContractWorkOrderOptions>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetContractWorkOrderOptionsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List contract work orders for a business
+ */
+export const getListContractWorkOrdersUrl = (
+  params: ListContractWorkOrdersParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/contract-work-orders?${stringifiedParams}`
+    : `/api/jobs/contract-work-orders`;
+};
+
+export const listContractWorkOrders = async (
+  params: ListContractWorkOrdersParams,
+  options?: RequestInit,
+): Promise<ContractWorkOrder[]> => {
+  return customFetch<ContractWorkOrder[]>(
+    getListContractWorkOrdersUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListContractWorkOrdersQueryKey = (
+  params?: ListContractWorkOrdersParams,
+) => {
+  return [
+    `/api/jobs/contract-work-orders`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListContractWorkOrdersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listContractWorkOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListContractWorkOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractWorkOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListContractWorkOrdersQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listContractWorkOrders>>
+  > = ({ signal }) =>
+    listContractWorkOrders(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listContractWorkOrders>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListContractWorkOrdersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listContractWorkOrders>>
+>;
+export type ListContractWorkOrdersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List contract work orders for a business
+ */
+
+export function useListContractWorkOrders<
+  TData = Awaited<ReturnType<typeof listContractWorkOrders>>,
+  TError = ErrorType<unknown>,
+>(
+  params: ListContractWorkOrdersParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractWorkOrders>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListContractWorkOrdersQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Record an incoming contract work order
+ */
+export const getCreateContractWorkOrderUrl = () => {
+  return `/api/jobs/contract-work-orders`;
+};
+
+export const createContractWorkOrder = async (
+  contractWorkOrderInput: ContractWorkOrderInput,
+  options?: RequestInit,
+): Promise<ContractWorkOrder> => {
+  return customFetch<ContractWorkOrder>(getCreateContractWorkOrderUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(contractWorkOrderInput),
+  });
+};
+
+export const getCreateContractWorkOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractWorkOrder>>,
+    TError,
+    { data: BodyType<ContractWorkOrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createContractWorkOrder>>,
+  TError,
+  { data: BodyType<ContractWorkOrderInput> },
+  TContext
+> => {
+  const mutationKey = ["createContractWorkOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createContractWorkOrder>>,
+    { data: BodyType<ContractWorkOrderInput> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createContractWorkOrder(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateContractWorkOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createContractWorkOrder>>
+>;
+export type CreateContractWorkOrderMutationBody =
+  BodyType<ContractWorkOrderInput>;
+export type CreateContractWorkOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record an incoming contract work order
+ */
+export const useCreateContractWorkOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractWorkOrder>>,
+    TError,
+    { data: BodyType<ContractWorkOrderInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createContractWorkOrder>>,
+  TError,
+  { data: BodyType<ContractWorkOrderInput> },
+  TContext
+> => {
+  return useMutation(getCreateContractWorkOrderMutationOptions(options));
+};
+
+/**
+ * @summary Accept, decline, or cancel a contract work order
+ */
+export const getDecideContractWorkOrderUrl = (
+  id: number,
+  params: DecideContractWorkOrderParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/contract-work-orders/${id}/decision?${stringifiedParams}`
+    : `/api/jobs/contract-work-orders/${id}/decision`;
+};
+
+export const decideContractWorkOrder = async (
+  id: number,
+  contractWorkOrderDecisionInput: ContractWorkOrderDecisionInput,
+  params: DecideContractWorkOrderParams,
+  options?: RequestInit,
+): Promise<ContractWorkOrder> => {
+  return customFetch<ContractWorkOrder>(
+    getDecideContractWorkOrderUrl(id, params),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(contractWorkOrderDecisionInput),
+    },
+  );
+};
+
+export const getDecideContractWorkOrderMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideContractWorkOrder>>,
+    TError,
+    {
+      id: number;
+      data: BodyType<ContractWorkOrderDecisionInput>;
+      params: DecideContractWorkOrderParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof decideContractWorkOrder>>,
+  TError,
+  {
+    id: number;
+    data: BodyType<ContractWorkOrderDecisionInput>;
+    params: DecideContractWorkOrderParams;
+  },
+  TContext
+> => {
+  const mutationKey = ["decideContractWorkOrder"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof decideContractWorkOrder>>,
+    {
+      id: number;
+      data: BodyType<ContractWorkOrderDecisionInput>;
+      params: DecideContractWorkOrderParams;
+    }
+  > = (props) => {
+    const { id, data, params } = props ?? {};
+
+    return decideContractWorkOrder(id, data, params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DecideContractWorkOrderMutationResult = NonNullable<
+  Awaited<ReturnType<typeof decideContractWorkOrder>>
+>;
+export type DecideContractWorkOrderMutationBody =
+  BodyType<ContractWorkOrderDecisionInput>;
+export type DecideContractWorkOrderMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Accept, decline, or cancel a contract work order
+ */
+export const useDecideContractWorkOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof decideContractWorkOrder>>,
+    TError,
+    {
+      id: number;
+      data: BodyType<ContractWorkOrderDecisionInput>;
+      params: DecideContractWorkOrderParams;
+    },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof decideContractWorkOrder>>,
+  TError,
+  {
+    id: number;
+    data: BodyType<ContractWorkOrderDecisionInput>;
+    params: DecideContractWorkOrderParams;
+  },
+  TContext
+> => {
+  return useMutation(getDecideContractWorkOrderMutationOptions(options));
 };
 
 /**

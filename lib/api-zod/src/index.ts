@@ -11,6 +11,7 @@ export type {
   ListPropertyBusinessAccessParams,
   ListPropertyMeasurementRevisionsParams,
   RevokePropertyBusinessAccessParams,
+  DecideContractWorkOrderParams,
 } from "./generated/types";
 export {
   PortalCheckSessionBody,

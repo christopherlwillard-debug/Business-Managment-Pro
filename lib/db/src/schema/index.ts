@@ -72,3 +72,4 @@ export * from "./properties";
 export * from "./property-business-access";
 export * from "./property-measurement-revisions";
 export * from "./service-pricing-profile-versions";
+export * from "./contract-work-orders";

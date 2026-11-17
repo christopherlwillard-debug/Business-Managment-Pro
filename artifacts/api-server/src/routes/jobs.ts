@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, propertiesTable, propertyBusinessAccessTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, type ServiceBilling } from "@workspace/db/schema";
+import { jobsTable, clientsTable, jobSubcontractorsTable, subcontractorsTable, dailyLogsTable, expensesTable, jobExpenseAllocationsTable, jobMileageReimbursementsTable, mileageLogsTable, recurringExpensesTable, estimatesTable, materialListsTable, materialListItemsTable, invoicesTable, otherIncomeTable, jobSubHoursTable, jobDailyPresenceTable, phaseItemSchema, permitChecklistItemSchema, serviceBillingSchema, subPaymentRecordsTable, subAdvancesTable, settingsTable, vehiclesTable, ownerCapitalEntriesTable, mfhManufacturersTable, mfhModelsTable, businessesTable, propertiesTable, propertyBusinessAccessTable, jobReadinessConditionsTable, jobComponentWorkSessionsTable, jobProductionComponentsTable, contractWorkOrdersTable, contractClientProgramsTable, contactsTable, type ServiceBilling } from "@workspace/db/schema";
 import { eq, and, count, countDistinct, inArray, sql, isNull, desc, or, ne } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { RoutingEngine } from "../lib/routing-engine.js";
@@ -71,6 +71,34 @@ export async function canLinkPropertyToJob(propertyId: number, clientId: number 
   const [grant] = await db.select({ permission: propertyBusinessAccessTable.permission })
     .from(propertyBusinessAccessTable)
     .where(and(
+      eq(propertyBusinessAccessTable.propertyId, propertyId),
+      eq(propertyBusinessAccessTable.businessId, jobBusinessId),
+      isNull(propertyBusinessAccessTable.revokedAt),
+    )).limit(1);
+  return hasPropertyPermission(grant?.permission, "view");
+}
+
+async function canLinkPropertyToContractJob(
+  propertyId: number | null,
+  clientId: number | null,
+  jobBusinessId: number,
+  contractOrderProgramId: number | null,
+  contractOrderBusinessId: number | null,
+  contractOrderPropertyId: number | null,
+): Promise<boolean> {
+  const [program] = await db.select({
+    payerClientId: contractClientProgramsTable.payerClientId,
+    businessId: contractClientProgramsTable.businessId,
+  }).from(contractClientProgramsTable).where(eq(contractClientProgramsTable.id, contractOrderProgramId ?? -1)).limit(1);
+  if (!program || contractOrderBusinessId !== jobBusinessId || program.businessId !== contractOrderBusinessId ||
+      program.payerClientId !== clientId || contractOrderPropertyId !== propertyId) return false;
+  if (propertyId == null) return true;
+  const [property] = await db.select({ businessId: propertiesTable.businessId })
+    .from(propertiesTable).where(eq(propertiesTable.id, propertyId)).limit(1);
+  if (!property || !await sameLegalBusiness(property.businessId, jobBusinessId)) return false;
+  if (property.businessId === jobBusinessId) return true;
+  const [grant] = await db.select({ permission: propertyBusinessAccessTable.permission })
+    .from(propertyBusinessAccessTable).where(and(
       eq(propertyBusinessAccessTable.propertyId, propertyId),
       eq(propertyBusinessAccessTable.businessId, jobBusinessId),
       isNull(propertyBusinessAccessTable.revokedAt),
@@ -493,6 +521,9 @@ type JobRow = {
   propertyZip: string | null;
   clientName: string | null;
   clientEmail: string | null;
+  contractProgramName: string | null;
+  contractExternalOrderNumber: string | null;
+  contractHomeownerName: string | null;
   status: string;
   jobType: string | null;
   homeModel: string | null;
@@ -562,6 +593,14 @@ async function getJobWithSubs(jobId: number) {
       propertyZip: visibleJobPropertyField(propertiesTable.zip),
       clientName: clientsTable.name,
       clientEmail: clientsTable.email,
+      contractProgramName: contractClientProgramsTable.name,
+      contractExternalOrderNumber: contractWorkOrdersTable.externalOrderNumber,
+      contractHomeownerName: sql<string | null>`CASE WHEN EXISTS (
+        SELECT 1 FROM contact_business_links cbl
+        JOIN businesses b ON b.id = ${contractWorkOrdersTable.businessId}
+        WHERE cbl.contact_id = ${contractWorkOrdersTable.homeownerContactId}
+          AND cbl.legal_business_id = COALESCE(b.legal_business_id, b.id)
+      ) THEN ${contactsTable.name} ELSE NULL END`,
       status: jobsTable.status,
       jobType: jobsTable.jobType,
       homeModel: jobsTable.homeModel,
@@ -600,11 +639,14 @@ async function getJobWithSubs(jobId: number) {
     })
     .from(jobsTable)
     .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+    .leftJoin(contractWorkOrdersTable, eq(contractWorkOrdersTable.jobId, jobsTable.id))
+    .leftJoin(contractClientProgramsTable, eq(contractWorkOrdersTable.programId, contractClientProgramsTable.id))
+    .leftJoin(contactsTable, eq(contractWorkOrdersTable.homeownerContactId, contactsTable.id))
     // Aerial Quote's properties table is the source of truth. Join only
     // active sharing grants and project property fields only when visible.
     .leftJoin(propertiesTable, and(
       eq(jobsTable.propertyId, propertiesTable.id),
-      eq(jobsTable.clientId, propertiesTable.clientId),
+      or(eq(jobsTable.clientId, propertiesTable.clientId), eq(contractWorkOrdersTable.propertyId, propertiesTable.id)),
     ))
     .leftJoin(propertyBusinessAccessTable, and(
       eq(propertyBusinessAccessTable.propertyId, propertiesTable.id),
@@ -850,6 +892,14 @@ router.get("/", async (req, res) => {
         propertyZip: visibleJobPropertyField(propertiesTable.zip),
         clientName: clientsTable.name,
         clientEmail: clientsTable.email,
+        contractProgramName: contractClientProgramsTable.name,
+        contractExternalOrderNumber: contractWorkOrdersTable.externalOrderNumber,
+        contractHomeownerName: sql<string | null>`CASE WHEN EXISTS (
+          SELECT 1 FROM contact_business_links cbl
+          JOIN businesses b ON b.id = ${contractWorkOrdersTable.businessId}
+          WHERE cbl.contact_id = ${contractWorkOrdersTable.homeownerContactId}
+            AND cbl.legal_business_id = COALESCE(b.legal_business_id, b.id)
+        ) THEN ${contactsTable.name} ELSE NULL END`,
         status: jobsTable.status,
         jobType: jobsTable.jobType,
         address: jobsTable.address,
@@ -888,9 +938,12 @@ router.get("/", async (req, res) => {
       })
       .from(jobsTable)
       .leftJoin(clientsTable, eq(jobsTable.clientId, clientsTable.id))
+      .leftJoin(contractWorkOrdersTable, eq(contractWorkOrdersTable.jobId, jobsTable.id))
+      .leftJoin(contractClientProgramsTable, eq(contractWorkOrdersTable.programId, contractClientProgramsTable.id))
+      .leftJoin(contactsTable, eq(contractWorkOrdersTable.homeownerContactId, contactsTable.id))
       .leftJoin(propertiesTable, and(
         eq(jobsTable.propertyId, propertiesTable.id),
-        eq(jobsTable.clientId, propertiesTable.clientId),
+        or(eq(jobsTable.clientId, propertiesTable.clientId), eq(contractWorkOrdersTable.propertyId, propertiesTable.id)),
       ))
       .leftJoin(propertyBusinessAccessTable, and(
         eq(propertyBusinessAccessTable.propertyId, propertiesTable.id),
@@ -2901,9 +2954,15 @@ router.put("/:id", async (req, res) => {
       businessLine: jobsTable.businessLine,
       clientId: jobsTable.clientId,
       propertyId: jobsTable.propertyId,
+      contractOrderId: contractWorkOrdersTable.id,
+      contractOrderProgramId: contractWorkOrdersTable.programId,
+      contractOrderBusinessId: contractWorkOrdersTable.businessId,
+      contractOrderPropertyId: contractWorkOrdersTable.propertyId,
       status: jobsTable.status,
       closedAt: jobsTable.closedAt,
-    }).from(jobsTable).where(eq(jobsTable.id, id)).limit(1);
+    }).from(jobsTable)
+      .leftJoin(contractWorkOrdersTable, eq(contractWorkOrdersTable.jobId, jobsTable.id))
+      .where(eq(jobsTable.id, id)).limit(1);
     if (!currentOwnership) return res.status(404).json({ error: "Job not found" });
     if ("businessId" in req.body
       && (!Number.isSafeInteger(Number(businessId)) || Number(businessId) <= 0)) {
@@ -2949,8 +3008,14 @@ router.put("/:id", async (req, res) => {
       && !await clientSharesLegalBusiness(Number(effectiveClientId), owner.id)) {
       return res.status(400).json({ error: "Client must belong to the same legal business as the job" });
     }
-    if (effectivePropertyId != null
-      && !await canLinkPropertyToJob(effectivePropertyId, effectiveClientId, owner.id)) {
+    const propertyLinkValid = currentOwnership.contractOrderId != null
+      ? await canLinkPropertyToContractJob(
+        effectivePropertyId, effectiveClientId, owner.id,
+        currentOwnership.contractOrderProgramId,
+        currentOwnership.contractOrderBusinessId, currentOwnership.contractOrderPropertyId,
+      )
+      : effectivePropertyId == null || await canLinkPropertyToJob(effectivePropertyId, effectiveClientId, owner.id);
+    if (!propertyLinkValid) {
       return res.status(400).json({ error: "Property must belong to the selected client and be available to this legal business" });
     }
     if (clientId !== undefined && clientId != null && Number(clientId) !== Number(currentOwnership.clientId)) {

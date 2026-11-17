@@ -26,6 +26,9 @@ export interface Job {
   propertyState?: string | null;
   propertyZip?: string | null;
   clientName?: string | null;
+  contractProgramName?: string | null;
+  contractExternalOrderNumber?: string | null;
+  contractHomeownerName?: string | null;
   subcontractorIds?: number[];
   subcontractorNames?: string[];
   status: JobStatus;

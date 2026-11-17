@@ -16,6 +16,7 @@ import {
 } from "./guards";
 import clientsRouter from "./clients";
 import jobsRouter from "./jobs";
+import contractWorkOrdersRouter from "./contract-work-orders";
 import invoicesRouter from "./invoices";
 import expensesRouter from "./expenses";
 import mileageRouter from "./mileage";
@@ -280,6 +281,7 @@ router.use("/clients", sectionGuard("clients"), clientsRouter);
 // /jobs/schedule-overview and /jobs/checklist-summaries are not parsed as IDs.
 router.use("/jobs", sectionGuard("jobs"), jobChecklistsRouter);
 router.use("/jobs", sectionGuard("jobs"), jobPresenceRouter);
+router.use("/jobs", sectionGuard("jobs"), contractWorkOrdersRouter);
 router.use("/jobs", sectionGuard("jobs"), jobsRouter);
 router.use("/invoices", sectionGuard("invoices"), invoicesRouter);
 router.use("/expenses", sectionGuard("expenses"), expensesRouter);
