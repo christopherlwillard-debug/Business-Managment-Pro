@@ -43,9 +43,16 @@ async function main() {
     await page.waitForFunction(() => document.body.innerText.includes("Jobs"), { timeout: 20_000 });
     const sidebar = await page.evaluate(() => Array.from(document.querySelectorAll("nav a, aside a"))
       .map(anchor => ({ text: anchor.textContent?.trim() ?? "", href: anchor.getAttribute("href") ?? "" })));
-    record("Home Knowledge Base is absent from the sidebar",
-      !sidebar.some(item => /Home Knowledge Base/i.test(item.text)),
+    record("Retired Knowledge Base is absent from navigation",
+      !sidebar.some(item => /Home Knowledge Base|Knowledge Base/i.test(item.text)),
       sidebar.map(item => item.text).filter(Boolean).join(" | "));
+    const desktopGroups = await page.evaluate(() => Array.from(
+      document.querySelectorAll("div.fixed.inset-y-0.left-0 p"),
+    ).map(node => node.textContent?.trim() ?? ""));
+    const expectedGroups = ["Home", "Work", "People", "Money", "Tools", "Manage"];
+    record("Desktop navigation shows the six approved groups in order",
+      expectedGroups.every((group, index) => desktopGroups[index] === group),
+      desktopGroups.join(" | "));
 
     const trimOutLink = sidebar.find(item => item.href === "/trim-out-catalog");
     if (trimOutLink) {
@@ -57,8 +64,42 @@ async function main() {
 
     await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
     const knowledgeText = await page.evaluate(() => document.body.innerText);
-    record("Owner-only Home Knowledge Base route remains accessible",
-      knowledgeText.includes("Home Knowledge Base"), knowledgeText.slice(0, 180).replace(/\n/g, " | "));
+    record("Retired Knowledge Base route no longer exposes its interface",
+      !/Home Knowledge Base|Observed Production History|Knowledge Center/i.test(knowledgeText),
+      knowledgeText.slice(0, 180).replace(/\n/g, " | "));
+
+    await page.setViewport({ width: 390, height: 844 });
+    await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
+    const mobileItems = await page.evaluate(() => {
+      const nav = document.querySelector("nav.fixed.bottom-0");
+      return Array.from(nav?.querySelectorAll("a, button") ?? [])
+        .map(node => node.textContent?.trim() ?? "");
+    });
+    const expectedMobileItems = ["Home", "Jobs", "Routes", "Accounting", "More"];
+    record("Owner mobile navigation remains exactly five items",
+      JSON.stringify(mobileItems) === JSON.stringify(expectedMobileItems),
+      mobileItems.join(" | "));
+    await page.evaluate(() => {
+      const nav = document.querySelector("nav.fixed.bottom-0");
+      const more = Array.from(nav?.querySelectorAll("button") ?? [])
+        .find(button => button.textContent?.trim() === "More") as HTMLButtonElement | undefined;
+      more?.click();
+    });
+    await page.waitForFunction(() => {
+      const drawer = Array.from(document.querySelectorAll("div.fixed.inset-y-0.left-0"))
+        .find(node => node.className.includes("bg-primary"));
+      return Boolean(drawer?.className.includes("translate-x-0"));
+    }, { timeout: 20_000 });
+    const drawer = await page.evaluate(() => {
+      const node = Array.from(document.querySelectorAll("div.fixed.inset-y-0.left-0"))
+        .find(element => element.className.includes("bg-primary"));
+      return { isOpen: Boolean(node?.className.includes("translate-x-0")), text: node?.textContent ?? "" };
+    });
+    record("Mobile More drawer shows all approved groups",
+      drawer.isOpen && expectedGroups.every(group => drawer.text.includes(group)),
+      drawer.isOpen
+        ? expectedGroups.filter(group => !drawer.text.includes(group)).join(", ") || "all groups present"
+        : "drawer did not open");
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     const jobsText = await page.evaluate(() => document.body.innerText);

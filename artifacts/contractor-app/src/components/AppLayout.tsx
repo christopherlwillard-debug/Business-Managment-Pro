@@ -89,35 +89,35 @@ export function AppLayout({ children }: AppLayoutProps) {
     section: SectionKey | null;
     altSection?: SectionKey;
     ownerOnly?: boolean;
-    group?: "operations" | "business_tools" | "finance" | "find_a_job" | "equipment_crew";
+    group?: "home" | "work" | "people" | "money" | "tools" | "manage";
     /** When true, only highlight as active on an exact path match (not prefix). */
     exactMatch?: boolean;
   }
 
   const allNavItems: NavItem[] = [
-    { name: "Dashboard",            href: "/",                     icon: LayoutDashboard, feature: null,           section: null,       ownerOnly: true  },
-    { name: "Jobs",                  href: "/jobs",                 icon: Briefcase,       feature: "jobs",         section: "jobs",     group: "operations" },
-    { name: "Expenses",              href: "/expenses",             icon: Receipt,         feature: "expenses",     section: "expenses", group: "operations" },
-    { name: "Mileage",               href: "/mileage",              icon: Navigation,      feature: "mileage",      section: "mileage",  group: "operations" },
-    { name: "People",                href: "/people",               icon: UsersRound,      feature: null,           anyFeatures: ["clients", "subcontractors"], section: "clients", altSection: "subcontractors", ownerOnly: false, group: "operations" },
-    { name: "Trim-Out Catalog",      href: "/trim-out-catalog",     icon: Image,           feature: null,           section: null,       ownerOnly: true,  group: "operations" },
-    { name: "Materials",             href: "/materials",            icon: Package,         feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
-    { name: "Route Planner",         href: "/route-planner",        icon: Route,           feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
-    { name: "Assets",                href: "/assets",               icon: Wrench,          feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
-    { name: "Aerial Quote",          href: "/aerial-quote",         icon: Crosshair,       feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
-    { name: "Website",               href: "/website",              icon: Globe,           feature: null,           section: null,       ownerOnly: true,  group: "business_tools" },
-    { name: "Quote Center",          href: "/estimates",            icon: FilePen,         feature: "estimates",    section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Invoices",              href: "/invoices",             icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Square Transactions",   href: "/square-transactions",  icon: CreditCard,      feature: null,           section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Banking",               href: "/banking",              icon: Landmark,        feature: null,           section: null,       ownerOnly: true,  group: "finance" },
-    { name: "Accounting & Tax",      href: "/accounting",           icon: BookOpen,        feature: "invoices",     section: "invoices", group: "finance" },
-    { name: "Bids & Contracts",        href: "/bids",                 icon: ScrollText,      feature: null,           section: null,       ownerOnly: true,  group: "find_a_job" },
-    { name: "Grants",                 href: "/grants",               icon: Award,           feature: null,           section: null,       ownerOnly: true,  group: "find_a_job" },
-    { name: "Find Equipment",         href: "/equipment",            icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew", exactMatch: true },
-    { name: "My Equipment",           href: "/equipment/inventory",  icon: Warehouse,       feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew" },
-    { name: "Field Crew",             href: "/crew",                 icon: HardHat,         feature: null,           section: null,       ownerOnly: true,  group: "equipment_crew" },
-    { name: "Integrations & APIs",   href: "/integrations",         icon: KeyRound,        feature: null,           section: null,       ownerOnly: true  },
-    { name: "Settings",              href: "/settings",             icon: Settings,        feature: null,           section: null,       ownerOnly: true  },
+    { name: "Dashboard",           href: "/",                     icon: LayoutDashboard, feature: null,           section: null,       ownerOnly: true, group: "home" },
+    { name: "Jobs",                href: "/jobs",                 icon: Briefcase,       feature: "jobs",         section: "jobs",     group: "work" },
+    { name: "Materials",           href: "/materials",            icon: Package,         feature: null,           section: null,       ownerOnly: true, group: "work" },
+    { name: "People",              href: "/people",               icon: UsersRound,      feature: null,           anyFeatures: ["clients", "subcontractors"], section: "clients", altSection: "subcontractors", ownerOnly: false, group: "people" },
+    { name: "Field Crew",          href: "/crew",                 icon: HardHat,         feature: null,           section: null,       ownerOnly: true, group: "people" },
+    { name: "Quote Center",        href: "/estimates",             icon: FilePen,         feature: "estimates",    section: null,       ownerOnly: true, group: "money" },
+    { name: "Invoices",            href: "/invoices",              icon: FileText,        feature: "invoices",     section: null,       ownerOnly: true, group: "money" },
+    { name: "Expenses",            href: "/expenses",              icon: Receipt,         feature: "expenses",     section: "expenses", group: "money" },
+    { name: "Mileage",             href: "/mileage",               icon: Navigation,      feature: "mileage",      section: "mileage",  group: "money" },
+    { name: "Banking",             href: "/banking",               icon: Landmark,        feature: null,           section: null,       ownerOnly: true, group: "money" },
+    { name: "Square Transactions", href: "/square-transactions",   icon: CreditCard,      feature: null,           section: null,       ownerOnly: true, group: "money" },
+    { name: "Accounting & Tax",    href: "/accounting",            icon: BookOpen,        feature: "invoices",     section: "invoices", group: "money" },
+    { name: "Route Planner",       href: "/route-planner",         icon: Route,           feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Aerial Quote",        href: "/aerial-quote",          icon: Crosshair,       feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Assets",              href: "/assets",                icon: Wrench,          feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Trim-Out Catalog",    href: "/trim-out-catalog",      icon: Image,           feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Bids & Contracts",    href: "/bids",                  icon: ScrollText,      feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Grants",              href: "/grants",                icon: Award,           feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Find Equipment",      href: "/equipment",             icon: PackageSearch,   feature: null,           section: null,       ownerOnly: true, group: "tools", exactMatch: true },
+    { name: "My Equipment",       href: "/equipment/inventory",   icon: Warehouse,       feature: null,           section: null,       ownerOnly: true, group: "tools" },
+    { name: "Settings",            href: "/settings",              icon: Settings,        feature: null,           section: null,       ownerOnly: true, group: "manage" },
+    { name: "Integrations & APIs", href: "/integrations",          icon: KeyRound,        feature: null,           section: null,       ownerOnly: true, group: "manage" },
+    { name: "Website",             href: "/website",               icon: Globe,           feature: null,           section: null,       ownerOnly: true, group: "manage" },
   ];
 
   const navigation = allNavItems.filter((item) => {
@@ -197,11 +197,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   const GROUP_LABELS: Record<string, string> = {
-    operations:     "Operations",
-    business_tools: "Business Tools",
-    finance:        "Finance",
-    find_a_job:     "Find a Job",
-    equipment_crew: "Equipment & Crew",
+    home: "Home",
+    work: "Work",
+    people: "People",
+    money: "Money",
+    tools: "Tools",
+    manage: "Manage",
   };
 
   function renderNavItems(items: NavItem[]) {

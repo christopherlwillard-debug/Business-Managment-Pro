@@ -97,7 +97,6 @@ import { JobChecklistPanel } from "@/components/JobChecklistPanel";
 import { MaterialListsQueryState } from "@/components/MaterialListsQueryState";
 import { MfhPanel } from "@/components/MfhPanel";
 import { ApplyProductionPricingDialog } from "@/components/ApplyProductionPricingDialog";
-import { KbTrainingModal } from "@/components/KbTrainingModal";
 import { LaborSummaryPanel } from "@/components/LaborSummaryPanel";
 import { ServiceBillingPanel } from "@/components/ServiceBillingPanel";
 import { ContractWorkOrdersPanel } from "@/components/ContractWorkOrdersPanel";
@@ -10080,7 +10079,6 @@ export default function Jobs() {
 
   type CloseJobDialogSub = { subcontractorId: number; subName: string; remainingAmount?: number | null; balanceReason?: string | null };
   const [closeJobDialog, setCloseJobDialog] = useState<{ job: Job; subs: CloseJobDialogSub[] } | null>(null);
-  const [kbTrainingJob, setKbTrainingJob] = useState<Job | null>(null);
   type IncompleteWorkItem = {
     componentInstanceKey: string;
     componentLabel: string;
@@ -10748,12 +10746,6 @@ export default function Jobs() {
   }
 
   async function handleMarkCompleted(job: Job) {
-    // MFH jobs → show KB training review before completing
-    if ((job as unknown as Record<string, unknown>).mfhModelId) {
-      setKbTrainingJob(job);
-      return;
-    }
-
     await proceedWithJobCompletion(job);
   }
 
@@ -11773,19 +11765,6 @@ export default function Jobs() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* KB Training Modal — shown when marking an MFH job complete */}
-      {kbTrainingJob && (
-        <KbTrainingModal
-          job={kbTrainingJob as unknown as Parameters<typeof KbTrainingModal>[0]["job"]}
-          onClose={() => setKbTrainingJob(null)}
-          onComplete={async () => {
-            const job = kbTrainingJob;
-            setKbTrainingJob(null);
-            await proceedWithJobCompletion(job);
-          }}
-        />
       )}
 
       {incompleteCompletion && (

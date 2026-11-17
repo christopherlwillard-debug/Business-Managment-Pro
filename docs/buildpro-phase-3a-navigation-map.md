@@ -1,6 +1,6 @@
 # BuildPro Phase 3A — Navigation Map & Owner Navigation Plan
 
-**Status:** Source-based investigation and proposal only. No application, permission, data, or route changes were made.
+**Status:** Phase 3A navigation implementation completed; current behavior and verification notes are recorded below. No permissions, schemas, data, or canonical URLs were changed.
 
 ## 1. Executive summary
 
@@ -93,7 +93,6 @@ These routes are not separate sidebar destinations. Preserve them as redirects o
 | `/trip-packet/:jobId` | Job trip packet | Work contextual; jobs permission section | Linked from Jobs, Expenses, and Banking. It should remain contextual rather than a primary nav item. |
 | `/checklist-templates` | Checklist Templates | Manage secondary; owner-only | Linked from Settings. Do not create another checklist destination. |
 | `/admin/errors` | Admin Error Log | Manage secondary; owner-only | Linked from Settings. |
-| `/mfh-homes` | Manufactured-home knowledge base | Tools secondary; owner-only | Direct route only in the reviewed route list; confirm whether it still needs a discoverable internal link before any implementation. |
 | `/quick-charge` | Quick Charge | Not proposed for primary navigation; owner-only | Direct route retained for compatibility; see section 6. |
 | `/pay/:payToken` | Public payment page | Outside authenticated app navigation | Public customer-facing payment route; preserve generated links and tokens. |
 
@@ -148,26 +147,25 @@ Do not surface the page under Money unless the owner explicitly confirms a stand
 - “Quote Center” and “Aerial Quote” can be confused; retain both labels and their distinct purposes.
 - “Banking,” “Square Transactions,” “Expenses,” and “Accounting & Tax” are related but not interchangeable systems. Grouping them under Money is organizational only.
 - Quick Charge has no sidebar link, intentionally, while its route remains. The route and public tokens must not be removed as part of this map.
-- `/mfh-homes` has no obvious internal navigation link in the reviewed route/search results; owner should confirm whether direct access is sufficient.
+- `/mfh-homes` was retired as an active user-facing feature in this phase; direct access no longer opens the Knowledge Base.
 - Do not add `/pay/:payToken`, trip packets, payroll detail, or error logs to the primary owner bar.
 
 ## 9. Risks and unresolved owner decisions
 
 1. Confirm the proposed placement of Field Crew under People and Bids/Grants under Tools.
 2. Confirm that Quick Charge should remain route-only, consistent with the existing nav-cleanup decision.
-3. Confirm whether the manufactured-home knowledge base needs a visible internal link.
-4. Decide whether the desktop groups should all remain expanded or allow collapse. The initial implementation should avoid hiding destinations until tested.
-5. Keep staff navigation out of this owner-focused phase unless the owner expands scope.
-6. No usage analytics or authenticated navigation study was run, so rankings and expected discoverability gains are unmeasured.
+3. Decide whether the desktop groups should all remain expanded or allow collapse. The implementation keeps all groups visible.
+4. Keep staff navigation out of this owner-focused phase unless the owner expands scope.
+5. No usage analytics or authenticated navigation study was run, so expected discoverability gains are unmeasured.
 
-## 10. Recommended implementation sequence
+## 10. Implemented Phase 3A behavior
 
-1. Approve or adjust the six desktop group assignments and the owner’s five pinned mobile items.
-2. Implement only group and label mapping in the existing navigation component. Preserve all paths and canonical destinations.
-3. Keep More opening the existing drawer; use the same group headings there.
-4. Verify role, feature, selected-business, and all-business visibility without changing those rules.
-5. Run route/alias checks and owner/staff navigation tests. Include Quick Charge as a route-retention check, not a newly surfaced menu item.
-6. Visually verify desktop and mobile, including the five-item owner bar, mobile drawer, business switcher, website editor, and navigation-blocker behavior.
+- The sidebar now uses Home, Work, People, Money, Tools, and Manage, with all 23 existing navigation destinations retained.
+- The owner’s five-item mobile bar and More drawer remain the same surfaces; More uses the same six group headings.
+- Existing route aliases, feature gates, permissions, business switching, and navigation blocking remain in place.
+- The Manufactured Home Knowledge Base page and `/mfh-homes` route are retired; manufacturer/model references and job pricing remain in Job Builder and the existing Home Library.
+- Quick Charge remains route-only and owner-only; its behavior and records are unchanged.
+- No database migrations, record changes, production changes, or deployment occurred.
 
 ## Regression checks required before any implementation is considered complete
 
@@ -175,6 +173,8 @@ Do not surface the page under Money unless the owner explicitly confirms a stand
 - Each destination maps to one canonical page; People aliases still land on the correct People tab.
 - Owner and staff menus continue to respect existing roles, section permissions, feature gates, and selected-business feature visibility.
 - The owner mobile bar remains exactly five items; More opens the existing drawer and exposes all permitted destinations.
+- `/mfh-homes` no longer exposes the retired page.
+- Manufactured-home job completion no longer opens the retired Knowledge Base training modal; the standard job completion and closeout safeguards still apply.
 - Settings and Integrations continue to open the same pages and settings; the header Settings link remains functional.
 - Quick Charge remains absent from the proposed menu, remains owner-only, and existing quick-charge/public payment links are not broken.
 - Route Planner remains Route Planner and does not reintroduce retired scheduling/workday interfaces.
@@ -183,4 +183,4 @@ Do not surface the page under Money unless the owner explicitly confirms a stand
 
 ## Source basis
 
-Reviewed current navigation and route source in `AppLayout.tsx`, `App.tsx`, Settings, Quick Charge, the Quick Charge API route, its database schema, Square webhook handling, and the public payment route. Existing project task notes were used to confirm the prior Quick Charge navigation decision. This document records source findings and recommendations; it does not claim that usability outcomes have been measured.
+Reviewed current navigation and route source in `AppLayout.tsx`, `App.tsx`, Settings, Quick Charge, the Quick Charge API route, its database schema, Square webhook handling, and the public payment route. Existing project task notes were used to confirm the prior Quick Charge navigation decision. The navigation grouping is source-verified; usability outcomes have not been measured.

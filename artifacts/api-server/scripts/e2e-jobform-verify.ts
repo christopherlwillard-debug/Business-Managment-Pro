@@ -6,6 +6,9 @@ import { launchBrowser } from "../src/lib/launchBrowser";
 import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import fs from "node:fs";
 import type { HTTPRequest, Page } from "puppeteer";
+import { db } from "@workspace/db";
+import { mfhConstructionTypesTable, mfhManufacturersTable, mfhModelsTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
 const SHOTS = "/tmp/e2e-shots";
@@ -21,6 +24,11 @@ const createdJobIds = new Set<number>();
 const allowedDeleteJobIds = new Set<number>();
 const allowedWrites: string[] = [];
 let allowTestJobCreate = false;
+let testConstructionTypeId: number | undefined;
+let testManufacturerId: number | undefined;
+let testModelId: number | undefined;
+let testManufacturerName: string | undefined;
+let testModelName: string | undefined;
 function record(name: string, pass: boolean, detail = "") {
   results.push({ name, pass, detail });
   console.log(`${pass ? "PASS" : "FAIL"}: ${name}${detail ? " — " + detail : ""}`);
@@ -60,6 +68,29 @@ async function main() {
   const blockedWrites: string[] = [];
   let page: Page | undefined;
   try {
+    const fixtureSuffix = `${Date.now()}-${process.pid}`;
+    const [constructionType] = await db.insert(mfhConstructionTypesTable)
+      .values({ name: `E2E Navigation ${fixtureSuffix}` })
+      .returning({ id: mfhConstructionTypesTable.id });
+    testConstructionTypeId = constructionType.id;
+    testManufacturerName = `E2E Navigation Builder ${fixtureSuffix}`;
+    const [manufacturer] = await db.insert(mfhManufacturersTable)
+      .values({ name: testManufacturerName, active: true })
+      .returning({ id: mfhManufacturersTable.id });
+    testManufacturerId = manufacturer.id;
+    testModelName = `E2E Navigation Model ${fixtureSuffix}`;
+    const [model] = await db.insert(mfhModelsTable)
+      .values({
+        manufacturerId: manufacturer.id,
+        name: testModelName,
+        constructionTypeId: constructionType.id,
+        basePrice: "12345.67",
+        active: true,
+      })
+      .returning({ id: mfhModelsTable.id });
+    testModelId = model.id;
+    record("Temporary manufacturer/model fixture created", true, `${testManufacturerName} / ${testModelName}`);
+
     page = await browser.newPage();
     await page.setViewport({ width: 400, height: 720, isMobile: true, hasTouch: true });
     await page.setRequestInterception(true);
@@ -123,14 +154,16 @@ async function main() {
     await sleep(1200);
     await page.screenshot({ path: `${SHOTS}/03-create-dialog.png` });
 
-    const mfhOptions = await page.evaluate(async () => {
+    const mfhOptions = await page.evaluate(async (manufacturerName: string) => {
       const manufacturers = await fetch("/api/mfh/manufacturers").then(response => response.json());
-      const manufacturer = Array.isArray(manufacturers) ? manufacturers.find(row => row.active) : null;
+      const manufacturer = Array.isArray(manufacturers)
+        ? manufacturers.find(row => row.active && row.name === manufacturerName)
+        : null;
       if (!manufacturer) return null;
       const models = await fetch(`/api/mfh/models?manufacturerId=${manufacturer.id}`).then(response => response.json());
       const model = Array.isArray(models) ? models.find(row => row.active !== false) : null;
       return model ? { manufacturerName: manufacturer.name, modelName: model.name } : null;
-    });
+    }, testManufacturerName!);
     if (mfhOptions) {
       const referenceInputs = await page.$$('form input[placeholder="Search or type to add…"]');
       if (referenceInputs.length >= 2) {
@@ -402,6 +435,15 @@ async function main() {
       }
       allowedDeleteJobIds.delete(id);
     }
+    if (testModelId) await db.delete(mfhModelsTable).where(eq(mfhModelsTable.id, testModelId));
+    if (testManufacturerId) await db.delete(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, testManufacturerId));
+    if (testConstructionTypeId) await db.delete(mfhConstructionTypesTable).where(eq(mfhConstructionTypesTable.id, testConstructionTypeId));
+    const remainingFixtureRows = await Promise.all([
+      testModelId ? db.select({ id: mfhModelsTable.id }).from(mfhModelsTable).where(eq(mfhModelsTable.id, testModelId)) : [],
+      testManufacturerId ? db.select({ id: mfhManufacturersTable.id }).from(mfhManufacturersTable).where(eq(mfhManufacturersTable.id, testManufacturerId)) : [],
+      testConstructionTypeId ? db.select({ id: mfhConstructionTypesTable.id }).from(mfhConstructionTypesTable).where(eq(mfhConstructionTypesTable.id, testConstructionTypeId)) : [],
+    ]);
+    record("Temporary manufacturer/model fixture cleanup", remainingFixtureRows.every(rows => rows.length === 0));
     if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await browser.close();
   }

@@ -44,7 +44,6 @@ const PublicSite = lazy(() => import("./pages/website/PublicSite"));
 const AdminErrorLog = lazy(() => import("./pages/AdminErrorLog"));
 const ChecklistTemplates = lazy(() => import("./pages/ChecklistTemplates"));
 const JobStatusPage = lazy(() => import("./pages/JobStatusPage"));
-const MfhKnowledgeBase = lazy(() => import("./pages/MfhKnowledgeBase"));
 const TripPacket = lazy(() => import("./pages/TripPacket"));
 const JobPayroll = lazy(() => import("./pages/JobPayroll"));
 const IntegrationsPage = lazy(() => import("./pages/IntegrationsPage"));
@@ -337,9 +336,6 @@ function AdminApp() {
           </Route>
           <Route path="/checklist-templates">
             <PermissionGuard ownerOnly><ChecklistTemplates /></PermissionGuard>
-          </Route>
-          <Route path="/mfh-homes">
-            <PermissionGuard ownerOnly><MfhKnowledgeBase /></PermissionGuard>
           </Route>
           <Route path="/trip-packet/:jobId">
             <PermissionGuard section="jobs"><TripPacket /></PermissionGuard>
