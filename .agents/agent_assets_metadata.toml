@@ -187,3 +187,17 @@ mtime_ms = 1794625881123
 storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/255fd3b6-6df9-40ab-90d9-53cfe6427d57/932f4e79-ce58-4571-bf61-9b6e374094b5"
 storage_version_token = "1794625895016282"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "7SIL1qgYzyldCGA86wSNe"
+uri = "file://docs/buildpro-phase-3a-navigation-map.md"
+type = "text"
+title = "BuildPro Phase 3A navigation map"
+description = "Complete current-to-proposed navigation inventory, owner mobile layout, Quick Charge findings, access considerations, and verification plan."
+logical_id = "81f35e3d-75d7-4f69-aef2-5c45d8b55d48"
+content_hash = "sha256:c6d91d95087d9d75752c19de239a47f3ae0b999d0540b59dfdac254b3668a665"
+size = 18989
+mtime_ms = 1794956069177
+storage_uri = "gcs://replit-rams-assets-janeway/rams/assets/repl:41df5f58-73d1-407a-b282-b6c732849e82/81f35e3d-75d7-4f69-aef2-5c45d8b55d48/a004b149-5680-4f48-b6ea-bfefca3a18ee"
+storage_version_token = "1794956088030647"
+content_type = "text/markdown"
