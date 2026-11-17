@@ -642,6 +642,24 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
+## ADR-037
+
+**Title:** Contract work types reuse existing clients and checklist snapshots
+
+**Decision:** Keep contract programs linked to existing payer clients. Configure work types, checklist templates, evidence rules, and invoice-submission settings within the program. On acceptance, copy the selected requirements and submission settings into the existing job checklist tables. Preserve ordinary job and client-profile flows. Keep legacy SageHome behavior until parity is verified against the configured requirements.
+
+**Reason:** Contract-specific evidence and submission rules must be reusable and business-scoped without duplicating client management or changing financial behavior. Snapshotting protects accepted jobs from later template or program edits.
+
+**Rejected Alternatives:**
+
+- Creating a second client/profile or contract dashboard
+- Replacing job status with documentation status
+- Recalculating requirements for already accepted jobs when templates change
+- Changing invoice generation, accounting, pricing, or payments
+
+**Status:** Accepted
+**Date:** 2026-11-17
+
 ## ADR-035
 
 **Title:** Contract work orders create ordinary jobs only after acceptance

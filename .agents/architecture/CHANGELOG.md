@@ -914,3 +914,19 @@ Created the four-document architecture governance system:
   checklist views continue to expose images only.
 - Applied additive migrations to the development database only; no production
   deployment or production data/schema change was performed.
+
+## 2026-11-17
+
+### Reusable contract work types and checklist snapshots
+
+- Added program-owned work types linked to business-owned checklist templates,
+  with stable requirement keys, evidence types, and required, recommended, or
+  conditional rules.
+- Accepted work orders copy the chosen requirements and program invoice
+  submission email, deadline, and instructions into the existing job checklist.
+- Kept the existing Clients system and invoice, accounting, payment, and job
+  status behavior unchanged. The SageHome compatibility path remains in place.
+- Verified the legacy and configured paths against temporary SageHome fixtures
+  for all four work types. No persistent SageHome client or program was created.
+- Applied the additive schema migration to development only; no production data
+  changes or deployment occurred.

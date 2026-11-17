@@ -177,13 +177,14 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ## Contract Client Programs and Work Orders
 
-- **Tables:** `contract_client_programs` (provider-business program and payer client); `contract_work_orders` (pre-job external order, separate homeowner/property, decision history, and linked job)
+- **Tables:** `contract_client_programs` (provider-business program and payer client, plus invoice submission settings); `contract_client_work_types` (program-owned work type and checklist template); `contract_work_orders` (pre-job external order, selected work type, separate homeowner/property, decision history, and linked job)
 - **Schema:** `lib/db/src/schema/contract-work-orders.ts`
-- **API:** `artifacts/api-server/src/routes/contract-work-orders.ts`, mounted under the Jobs section
-- **UI:** `artifacts/contractor-app/src/components/ContractWorkOrdersPanel.tsx` on the Jobs page; accepted work orders appear in the normal Job Workspace
+- **Checklist schema:** `lib/db/src/schema/job-checklists.ts`; template requirements carry stable keys, evidence type, and required/recommended/conditional metadata; accepted jobs store immutable requirement and invoice-setting snapshots in the existing checklist tables
+- **API:** `artifacts/api-server/src/routes/contract-work-orders.ts`, `checklist-templates.ts`, and `job-checklists.ts`, mounted under the Jobs/checklist APIs
+- **UI:** `artifacts/contractor-app/src/components/ContractWorkOrdersPanel.tsx` on the Jobs page and the existing `ChecklistTemplates` editor; accepted work orders appear in the normal Job Workspace
 - **Reports:** No direct report use. Accepted jobs use the existing job, invoice, and financial sources.
-- **Source of truth:** The program records the provider's business relationship with a payer. The work order is the pre-job intake and decision record. Only acceptance creates a normal `jobs` row, with the payer in `jobs.client_id`; homeowner contact and job-site property remain separate.
-- **Rule:** Acceptance is transactional and retry-safe. Decline creates no job. Cancellation preserves the accepted job and records a reason. The work-order property exception is limited to the exact accepted order property; ordinary job/property client validation remains unchanged. No pricing rules or contract billing logic are introduced.
+- **Source of truth:** The existing client record remains the payer. The program owns invoice submission settings and configured work types; the selected work type/template owns current requirements; acceptance copies requirements/settings into the ordinary job's existing checklist rows. Homeowner contact and job-site property remain separate.
+- **Rule:** Acceptance is transactional and retry-safe. Decline creates no job. Cancellation preserves the accepted job and records a reason. The work-order property exception is limited to the exact accepted order property; ordinary job/property client validation remains unchanged. No client/profile system, pricing rules, invoice generation, accounting, or payment logic is replaced. The SageHome compatibility branch remains until the actual program configuration is available and validated.
 
 ## Production Intelligence / Daily Presence
 

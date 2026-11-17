@@ -5,7 +5,7 @@ const item = (title: string, completed = false, completedAt: string | null = nul
   title, completed, completedAt, skipped: false,
 });
 
-describe("SageHome documentation readiness", () => {
+describe("contract documentation readiness", () => {
   it("shows missing required work and paperwork while excluding recommended and inapplicable items", () => {
     const result = getContractDocumentationReadiness([
       item("Install photo", false),
@@ -52,5 +52,32 @@ describe("SageHome documentation readiness", () => {
       items[0], { ...items[1], completed: false, completedAt: null },
     ], false, Date.parse("2026-11-17T09:00:01.000Z"));
     expect(overdue.invoiceIsOverdue).toBe(true);
+  });
+
+  it("applies requirement metadata, conditional photos, paperwork, and configured deadlines", () => {
+    const fixture: ContractRequirementItem[] = [
+      { ...item("Pre-existing damage photo"), requirementKey: "damage", requirementStatus: "recommended" },
+      { ...item("Required installation photo"), requirementKey: "photo", requirementStatus: "required" },
+      { ...item("Extra-work before photo"), requirementKey: "extra_before", requirementStatus: "conditional", conditionKey: "additional_work" },
+      { ...item("Signed homeowner paperwork"), requirementKey: "homeowner_signed_paperwork", requirementStatus: "required" },
+      { ...item("Referral form"), requirementKey: "referral_form", requirementStatus: "required" },
+      { ...item("Lead Perfection upload"), requirementKey: "lead_perfection_upload", requirementStatus: "required" },
+      { ...item("Installation complete", true, "2026-11-16T09:00:00.000Z"), requirementKey: "installation_cleanup_complete", requirementStatus: "required" },
+      { ...item("Invoice submission"), requirementKey: "invoice_submission", requirementStatus: "required" },
+    ];
+    const beforeExtraWork = getContractDocumentationReadiness(fixture, false, Date.parse("2026-11-16T20:00:00Z"), 12);
+    expect(beforeExtraWork.missingItems.map(row => row.requirementKey)).not.toContain("damage");
+    expect(beforeExtraWork.missingItems.map(row => row.requirementKey)).not.toContain("extra_before");
+    expect(beforeExtraWork.homeownerPaperworkPending).toBe(2);
+    expect(beforeExtraWork.externalSubmissionPending).toBe(2);
+    expect(beforeExtraWork.invoiceDueAt?.toISOString()).toBe("2026-11-16T21:00:00.000Z");
+    expect(getContractDocumentationReadiness(fixture, true).missingItems.map(row => row.requirementKey))
+      .toContain("extra_before");
+  });
+
+  it("keeps unannotated checklist items required for ordinary jobs", () => {
+    const result = getContractDocumentationReadiness([item("Ordinary job checklist item")], false);
+    expect(result.missingItems.map(row => row.title)).toEqual(["Ordinary job checklist item"]);
+    expect(result.invoiceDueAt).toBeNull();
   });
 });
