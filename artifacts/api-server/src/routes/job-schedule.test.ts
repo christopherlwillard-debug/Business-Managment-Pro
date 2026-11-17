@@ -607,4 +607,52 @@ describe("PATCH /jobs/:jobId/checklist/items/:itemId", () => {
     expect(response.body.sections[0].items[0].completed).toBe(true);
     expect(h.updatePayloads.every(payload => !("status" in payload) && !("closedAt" in payload))).toBe(true);
   });
+
+  it("requires the matching evidence before a contract item can be completed", async () => {
+    h.selectQueue.push(
+      [{ id: 1, businessId: 1, businessLine: "general_contracting", status: "scheduled", closedAt: null }],
+      [{ id: 10, jobId: 1 }],
+      [{
+        id: 100,
+        jobChecklistId: 10,
+        jobChecklistSectionId: 20,
+        requiredEvidenceType: "image",
+        completed: false,
+        skipped: false,
+      }],
+      [],
+      [],
+    );
+
+    const response = await request(app)
+      .patch("/jobs/1/checklist/items/100?businessId=1")
+      .send({ completed: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("CHECKLIST_EVIDENCE_REQUIRED");
+    expect(response.body.error).toContain("installation photo");
+    expect(h.updatePayloads).toHaveLength(0);
+  });
+
+  it("does not allow required contract evidence items to be skipped", async () => {
+    h.selectQueue.push(
+      [{ id: 10, jobId: 1 }],
+      [{
+        id: 100,
+        jobChecklistId: 10,
+        jobChecklistSectionId: 20,
+        requiredEvidenceType: "document",
+        completed: false,
+        skipped: false,
+      }],
+    );
+
+    const response = await request(app)
+      .patch("/jobs/1/checklist/items/100/skip")
+      .send({ skipped: true });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("CHECKLIST_EVIDENCE_REQUIRED");
+    expect(h.updatePayloads).toHaveLength(0);
+  });
 });

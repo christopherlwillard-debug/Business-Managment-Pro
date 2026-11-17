@@ -9,6 +9,12 @@ import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { resolveMutationBusiness, requestedBusiness, sameLegalBusiness } from "../lib/business-scope.js";
 import { hasPropertyPermission } from "../lib/property-access.js";
 import { getRequestUserId } from "./guards";
+import crypto from "crypto";
+import {
+  jobChecklistsTable,
+  jobChecklistSectionsTable,
+  jobChecklistItemsTable,
+} from "@workspace/db/schema";
 
 const router = Router();
 
@@ -19,6 +25,8 @@ async function getProgram(id: number) {
     payerClientId: contractClientProgramsTable.payerClientId,
     payerName: clientsTable.name,
     name: contractClientProgramsTable.name,
+    requiresInstallationPhotos: contractClientProgramsTable.requiresInstallationPhotos,
+    requiresCompletionDocumentation: contractClientProgramsTable.requiresCompletionDocumentation,
     active: contractClientProgramsTable.active,
   }).from(contractClientProgramsTable)
     .innerJoin(clientsTable, eq(contractClientProgramsTable.payerClientId, clientsTable.id))
@@ -87,6 +95,67 @@ async function validateProperty(propertyId: number | null, businessId: number): 
   return hasPropertyPermission(grant?.permission, "view");
 }
 
+async function addContractCompletionChecklist(
+  tx: any,
+  jobId: number,
+  externalOrderNumber: string,
+  requirements: { requiresInstallationPhotos: boolean; requiresCompletionDocumentation: boolean },
+): Promise<void> {
+  const items = [
+    ...(requirements.requiresInstallationPhotos
+      ? [{ title: "Capture installation photos", requiredEvidenceType: "image" }]
+      : []),
+    ...(requirements.requiresCompletionDocumentation
+      ? [{ title: "Upload required completion documentation", requiredEvidenceType: "document" }]
+      : []),
+  ];
+  if (items.length === 0) return;
+
+  let [checklist] = await tx.select({ id: jobChecklistsTable.id })
+    .from(jobChecklistsTable)
+    .where(eq(jobChecklistsTable.jobId, jobId))
+    .for("update")
+    .limit(1);
+
+  if (!checklist) {
+    [checklist] = await tx.insert(jobChecklistsTable).values({
+      jobId,
+      templateId: null,
+      templateName: "Contract Work Order Completion",
+      shareToken: crypto.randomUUID(),
+      shareEnabled: false,
+    }).returning({ id: jobChecklistsTable.id });
+  }
+
+  const sectionName = `Contract completion — ${externalOrderNumber}`;
+  const [existingSection] = await tx.select({ id: jobChecklistSectionsTable.id })
+    .from(jobChecklistSectionsTable)
+    .where(and(
+      eq(jobChecklistSectionsTable.jobChecklistId, checklist.id),
+      eq(jobChecklistSectionsTable.name, sectionName),
+    ))
+    .limit(1);
+  if (existingSection) return;
+
+  const [section] = await tx.insert(jobChecklistSectionsTable).values({
+    jobChecklistId: checklist.id,
+    templateSectionId: null,
+    name: sectionName,
+    active: true,
+    sortOrder: 1000,
+  }).returning({ id: jobChecklistSectionsTable.id });
+
+  for (const [index, item] of items.entries()) {
+    await tx.insert(jobChecklistItemsTable).values({
+      jobChecklistId: checklist.id,
+      jobChecklistSectionId: section.id,
+      title: item.title,
+      requiredEvidenceType: item.requiredEvidenceType,
+      sortOrder: index + 1,
+    }).returning({ id: jobChecklistItemsTable.id });
+  }
+}
+
 router.get("/contract-client-programs", async (req, res): Promise<void> => {
   const businessId = Number(req.query.businessId);
   const scope = await requestedBusiness(req);
@@ -99,6 +168,8 @@ router.get("/contract-client-programs", async (req, res): Promise<void> => {
     payerClientId: contractClientProgramsTable.payerClientId,
     payerName: clientsTable.name,
     name: contractClientProgramsTable.name,
+    requiresInstallationPhotos: contractClientProgramsTable.requiresInstallationPhotos,
+    requiresCompletionDocumentation: contractClientProgramsTable.requiresCompletionDocumentation,
     active: contractClientProgramsTable.active,
   }).from(contractClientProgramsTable)
     .innerJoin(clientsTable, eq(contractClientProgramsTable.payerClientId, clientsTable.id))
@@ -132,10 +203,17 @@ router.post("/contract-client-programs", async (req, res): Promise<void> => {
   }
   const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
   if (!name || name.length > 160) { res.status(400).json({ error: "Program name is required (160 characters maximum)" }); return; }
+  for (const field of ["requiresInstallationPhotos", "requiresCompletionDocumentation"] as const) {
+    if (req.body[field] !== undefined && typeof req.body[field] !== "boolean") {
+      res.status(400).json({ error: `${field} must be a boolean` }); return;
+    }
+  }
   const [created] = await db.insert(contractClientProgramsTable).values({
     businessId: ownership.business.id,
     payerClientId: Number(req.body.payerClientId),
     name,
+    requiresInstallationPhotos: req.body.requiresInstallationPhotos === true,
+    requiresCompletionDocumentation: req.body.requiresCompletionDocumentation === true,
     createdByUserId: getRequestUserId(req) ?? null,
   }).returning({ id: contractClientProgramsTable.id });
   res.status(201).json(await getProgram(created.id));
@@ -295,6 +373,10 @@ router.post("/contract-work-orders/:id/decision", async (req, res): Promise<void
           address: null,
           workflow: null,
         }).returning({ id: jobsTable.id });
+        await addContractCompletionChecklist(tx, job.id, order.externalOrderNumber, {
+          requiresInstallationPhotos: program.requiresInstallationPhotos,
+          requiresCompletionDocumentation: program.requiresCompletionDocumentation,
+        });
         await tx.update(contractWorkOrdersTable).set({
           status: "accepted", jobId: job.id, acceptedAt: new Date(), acceptedByUserId: userId,
         }).where(eq(contractWorkOrdersTable.id, id));

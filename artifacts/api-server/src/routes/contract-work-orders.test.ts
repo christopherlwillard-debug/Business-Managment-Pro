@@ -5,7 +5,7 @@ import request from "supertest";
 const f = vi.hoisted(() => ({
   dbSelect: [] as unknown[][],
   txSelect: [] as unknown[][],
-  insertedJobs: [] as Record<string, unknown>[],
+  insertedRows: [] as Record<string, unknown>[],
   updatedOrders: [] as Record<string, unknown>[],
   txCount: 0,
 }));
@@ -33,8 +33,8 @@ vi.mock("@workspace/db", () => {
           select: () => chain(f.txSelect),
           insert: () => ({
             values: (value: Record<string, unknown>) => {
-              f.insertedJobs.push(value);
-              return { returning: async () => [{ id: 901 }] };
+              f.insertedRows.push(value);
+              return { returning: async () => [{ id: 900 + f.insertedRows.length }] };
             },
           }),
           update: () => ({
@@ -70,7 +70,7 @@ const orderBase = {
 beforeEach(() => {
   f.dbSelect.length = 0;
   f.txSelect.length = 0;
-  f.insertedJobs.length = 0;
+  f.insertedRows.length = 0;
   f.updatedOrders.length = 0;
   f.txCount = 0;
 });
@@ -84,8 +84,13 @@ describe("contract work-order acceptance", () => {
     const acceptedOrder = { ...orderBase, status: "accepted", jobId: 901 };
     f.txSelect.push(
       [orderBase],
-      [{ id: 6, businessId: 7, payerClientId: 12, active: true }],
+      [{
+        id: 6, businessId: 7, payerClientId: 12, active: true,
+        requiresInstallationPhotos: true, requiresCompletionDocumentation: true,
+      }],
       [{ maxNum: 510 }],
+      [],
+      [],
     );
     f.dbSelect.push([{
       id: 44, businessId: 7, programId: 6, programName: "SageHome install",
@@ -99,16 +104,84 @@ describe("contract work-order acceptance", () => {
       .send({ decision: "accept" }).expect(200);
     expect(first.body.jobId).toBe(901);
     expect(first.body.payerName).toBe("SageHome Brands");
-    expect(f.insertedJobs).toHaveLength(1);
-    expect(f.insertedJobs[0]).toMatchObject({ clientId: 12, businessId: 7, title: "Install entry door" });
+    expect(f.insertedRows).toHaveLength(5);
+    expect(f.insertedRows[0]).toMatchObject({ clientId: 12, businessId: 7, title: "Install entry door" });
+    expect(f.insertedRows[1]).toMatchObject({
+      templateName: "Contract Work Order Completion",
+      shareEnabled: false,
+    });
+    expect(f.insertedRows[2]).toMatchObject({ name: "Contract completion — SH-100" });
+    expect(f.insertedRows.slice(3).map(row => row.title)).toEqual([
+      "Capture installation photos",
+      "Upload required completion documentation",
+    ]);
 
     f.txSelect.push([acceptedOrder]);
     f.dbSelect.push([{ ...first.body, status: "accepted", jobId: 901 }]);
     const retry = await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
       .send({ decision: "accept" }).expect(200);
     expect(retry.body.jobId).toBe(901);
-    expect(f.insertedJobs).toHaveLength(1);
+    expect(f.insertedRows).toHaveLength(5);
     expect(f.txCount).toBe(2);
+  });
+
+  it("adds the contract completion section without replacing an existing job checklist", async () => {
+    f.txSelect.push(
+      [orderBase],
+      [{
+        id: 6, businessId: 7, payerClientId: 12, active: true,
+        requiresInstallationPhotos: true, requiresCompletionDocumentation: true,
+      }],
+      [{ maxNum: 510 }],
+      [{ id: 733 }],
+      [],
+    );
+    f.dbSelect.push([{
+      id: 44, businessId: 7, programId: 6, programName: "SageHome install",
+      payerClientId: 12, payerName: "SageHome Brands", externalOrderNumber: "SH-100",
+      title: "Install entry door", scope: null, homeownerContactId: null,
+      homeownerName: null, propertyId: null, propertyLabel: null, propertyAddress: null,
+      agreedPrice: null, status: "accepted", jobId: 901, acceptedAt: new Date().toISOString(),
+      declineReason: null, cancellationReason: null,
+    }]);
+
+    await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
+      .send({ decision: "accept" }).expect(200);
+
+    expect(f.insertedRows).toHaveLength(4);
+    expect(f.insertedRows[1]).toMatchObject({
+      jobChecklistId: 733,
+      name: "Contract completion — SH-100",
+    });
+    expect(f.insertedRows.slice(2).map(row => row.title)).toEqual([
+      "Capture installation photos",
+      "Upload required completion documentation",
+    ]);
+  });
+
+  it("does not infer completion requirements for an unconfigured client program", async () => {
+    f.txSelect.push(
+      [orderBase],
+      [{
+        id: 6, businessId: 7, payerClientId: 12, active: true,
+        requiresInstallationPhotos: false, requiresCompletionDocumentation: false,
+      }],
+      [{ maxNum: 510 }],
+    );
+    f.dbSelect.push([{
+      id: 44, businessId: 7, programId: 6, programName: "Other client",
+      payerClientId: 12, payerName: "Other client", externalOrderNumber: "OC-200",
+      title: "Install entry door", scope: null, homeownerContactId: null,
+      homeownerName: null, propertyId: null, propertyLabel: null, propertyAddress: null,
+      agreedPrice: null, status: "accepted", jobId: 901, acceptedAt: new Date().toISOString(),
+      declineReason: null, cancellationReason: null,
+    }]);
+
+    await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
+      .send({ decision: "accept" }).expect(200);
+
+    expect(f.insertedRows).toHaveLength(1);
+    expect(f.insertedRows[0]).toMatchObject({ title: "Install entry door", clientId: 12 });
   });
 
   it("declines without creating a job", async () => {
@@ -124,7 +197,7 @@ describe("contract work-order acceptance", () => {
     const response = await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
       .send({ decision: "decline", reason: "Outside area" }).expect(200);
     expect(response.body.status).toBe("declined");
-    expect(f.insertedJobs).toHaveLength(0);
+    expect(f.insertedRows).toHaveLength(0);
     expect(f.updatedOrders[0]).toMatchObject({ status: "declined", declineReason: "Outside area" });
   });
 
@@ -145,7 +218,7 @@ describe("contract work-order acceptance", () => {
       .send({ decision: "cancel", reason: "Customer rescheduled" }).expect(200);
     expect(response.body.status).toBe("cancelled");
     expect(response.body.jobId).toBe(901);
-    expect(f.insertedJobs).toHaveLength(0);
+    expect(f.insertedRows).toHaveLength(0);
     expect(f.updatedOrders[0]).toMatchObject({ status: "cancelled", cancellationReason: "Customer rescheduled" });
   });
 
@@ -153,7 +226,7 @@ describe("contract work-order acceptance", () => {
     f.txSelect.push([]);
     await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
       .send({ decision: "accept" }).expect(404);
-    expect(f.insertedJobs).toHaveLength(0);
+    expect(f.insertedRows).toHaveLength(0);
     expect(f.dbSelect).toHaveLength(0);
   });
 });

@@ -33,6 +33,11 @@ import {
   unavailableJobProductionPlan,
 } from "../lib/job-production-schedule.js";
 import { isChecklistPdfAssetError } from "../lib/generateChecklistPdf.js";
+import {
+  hasRequiredChecklistEvidence,
+  hasValidPdfEvidenceHeader,
+  isSupportedChecklistEvidenceType,
+} from "../lib/checklist-evidence.js";
 
 const photoUpload = multer({
   storage: multer.memoryStorage(),
@@ -40,6 +45,15 @@ const photoUpload = multer({
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpeg|png|gif|webp|heic|heif)$/.test(file.mimetype)) cb(null, true);
     else cb(new Error("Only image files are allowed"));
+  },
+});
+
+const checklistEvidenceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (isSupportedChecklistEvidenceType(file.mimetype)) cb(null, true);
+    else cb(new Error("Only supported image files and PDFs are allowed"));
   },
 });
 
@@ -192,13 +206,22 @@ export async function buildChecklistResponse(checklistId: number) {
       : Promise.resolve([]),
   ]);
 
-  const photosByItemId = new Map<number, Array<{ id: number; url: string; caption: string | null; createdAt: Date }>>();
+  const photosByItemId = new Map<number, Array<{
+    id: number;
+    url: string;
+    caption: string | null;
+    mediaType: string;
+    fileName: string | null;
+    createdAt: Date;
+  }>>();
   for (const p of photos) {
     if (!photosByItemId.has(p.jobChecklistItemId)) photosByItemId.set(p.jobChecklistItemId, []);
     photosByItemId.get(p.jobChecklistItemId)!.push({
       id: p.id,
       url: toServingUrl(p.objectPath),
       caption: p.caption ?? null,
+      mediaType: p.mediaType ?? "image",
+      fileName: p.fileName ?? null,
       createdAt: p.createdAt,
     });
   }
@@ -794,6 +817,20 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       }
     }
 
+    if (completed === true && item.requiredEvidenceType) {
+      const evidence = await db
+        .select({ mediaType: jobChecklistItemPhotosTable.mediaType })
+        .from(jobChecklistItemPhotosTable)
+        .where(eq(jobChecklistItemPhotosTable.jobChecklistItemId, itemId));
+      if (!hasRequiredChecklistEvidence(item.requiredEvidenceType, evidence)) {
+        const label = item.requiredEvidenceType === "image" ? "installation photo" : "completion documentation";
+        return res.status(409).json({
+          code: "CHECKLIST_EVIDENCE_REQUIRED",
+          error: `Upload the required ${label} before completing this item`,
+        });
+      }
+    }
+
     if (completed !== undefined) {
       updates.completed = completed;
       if (completed) {
@@ -845,6 +882,12 @@ router.patch("/:jobId/checklist/items/:itemId/skip", async (req, res) => {
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { skipped } = req.body;
+    if (skipped && item.requiredEvidenceType) {
+      return res.status(409).json({
+        code: "CHECKLIST_EVIDENCE_REQUIRED",
+        error: "Required contract evidence items cannot be skipped",
+      });
+    }
     await db
       .update(jobChecklistItemsTable)
       .set({
@@ -1069,13 +1112,16 @@ router.delete("/:jobId/checklist/items/:itemId/parts/:partId", async (req, res) 
 });
 
 // ── POST /:jobId/checklist/items/:itemId/photos ───────────────────────────────
-router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos", 10), async (req, res) => {
+router.post("/:jobId/checklist/items/:itemId/photos", checklistEvidenceUpload.array("photos", 10), async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId as string, 10);
     const itemId = parseInt(req.params.itemId as string, 10);
     if (isNaN(jobId) || isNaN(itemId)) return res.status(400).json({ error: "Invalid parameters" });
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) return res.status(400).json({ error: "No files uploaded" });
+    if (files.some(file => !hasValidPdfEvidenceHeader(file.mimetype, file.buffer))) {
+      return res.status(400).json({ error: "Uploaded PDF is not a valid PDF file" });
+    }
 
     // Verify item belongs to this job's checklist (ownership check)
     const [item] = await db
@@ -1100,14 +1146,19 @@ router.post("/:jobId/checklist/items/:itemId/photos", photoUpload.array("photos"
       );
       await db
         .insert(jobChecklistItemPhotosTable)
-        .values({ jobChecklistItemId: itemId, objectPath });
+        .values({
+          jobChecklistItemId: itemId,
+          objectPath,
+          mediaType: file.mimetype === "application/pdf" ? "pdf" : "image",
+          fileName: file.originalname || null,
+        });
     }));
 
     const data = await buildChecklistResponse(checklist.id);
     res.json(data);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Failed to upload photo" });
+    res.status(500).json({ error: "Failed to upload checklist evidence" });
   }
 });
 

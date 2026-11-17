@@ -899,3 +899,18 @@ Created the four-document architecture governance system:
   job client as the payer.
 - Applied the additive migration to the development database only; no
   production deployment or production data/schema change was performed.
+
+## 2026-11-16
+
+### Program-scoped contract completion evidence
+
+- Added opt-in installation-photo and completion-document requirements to
+  individual contract programs; unconfigured programs do not receive inferred
+  requirements.
+- Accepted work orders add only the selected evidence items to the linked
+  job's existing checklist. Required items cannot be completed without matching
+  evidence or skipped through the checklist.
+- Extended existing checklist item evidence to accept PDFs and images. Public
+  checklist views continue to expose images only.
+- Applied additive migrations to the development database only; no production
+  deployment or production data/schema change was performed.

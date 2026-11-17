@@ -14,6 +14,8 @@ interface ChecklistItemPhoto {
   id: number;
   url: string;
   caption: string | null;
+  mediaType: "image" | "pdf";
+  fileName: string | null;
 }
 
 interface ChecklistFinishedPhoto {
@@ -34,6 +36,7 @@ interface ChecklistItemPart {
 interface ChecklistItem {
   id: number;
   title: string;
+  requiredEvidenceType: "image" | "document" | null;
   completed: boolean;
   completedAt: string | null;
   completedByName: string | null;
@@ -154,6 +157,7 @@ const STATUS_BUTTONS = [
 ];
 
 const MAX_RAW_FILE_MB = 20;
+const MAX_CHECKLIST_EVIDENCE_MB = 15;
 const MAX_WIDTH_PX = 1200;
 const JPEG_QUALITY = 0.8;
 
@@ -331,11 +335,18 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: !item.completed }),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const failure = await r.json().catch(() => null);
+        throw new Error(typeof failure?.error === "string" ? failure.error : "Could not update this checklist item");
+      }
       const updated = await r.json();
       setChecklist(updated);
-    } catch {
-      toast({ title: "Failed to update item", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Failed to update item",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setUpdatingItem(null);
     }
@@ -351,14 +362,21 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ skipped: !item.skipped }),
       });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const failure = await r.json().catch(() => null);
+        throw new Error(typeof failure?.error === "string" ? failure.error : "Could not update this checklist item");
+      }
       const updated = await r.json();
       setChecklist(updated);
       setFlashedSectionId(sectionId);
       setFlashOverall(true);
       setTimeout(() => { setFlashedSectionId(null); setFlashOverall(false); }, 1400);
-    } catch {
-      toast({ title: "Failed to update item", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Failed to update item",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setUpdatingItem(null);
     }
@@ -711,11 +729,11 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
     const fileArr = Array.from(files);
     if (fileArr.length === 0) return;
 
-    const oversized = fileArr.filter(f => f.size > MAX_RAW_FILE_MB * 1024 * 1024);
+    const oversized = fileArr.filter(f => f.size > MAX_CHECKLIST_EVIDENCE_MB * 1024 * 1024);
     if (oversized.length > 0) {
       toast({
-        title: "Photo too large",
-        description: `Each photo must be under ${MAX_RAW_FILE_MB} MB. Please choose a smaller file.`,
+        title: "Evidence file too large",
+        description: `Each checklist evidence file must be under ${MAX_CHECKLIST_EVIDENCE_MB} MB.`,
         variant: "destructive",
       });
       return;
@@ -723,9 +741,11 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
 
     setUploadingPhotoFor(prev => ({ ...prev, [itemId]: fileArr.length }));
     try {
-      const compressed = await Promise.all(fileArr.map(f => compressImage(f)));
+      const prepared = await Promise.all(fileArr.map(file =>
+        file.type === "application/pdf" ? Promise.resolve(file) : compressImage(file)
+      ));
       const form = new FormData();
-      for (const file of compressed) {
+      for (const file of prepared) {
         form.append("photos", file);
       }
       const r = await fetch(`${BASE}/api/jobs/${job.id}/checklist/items/${itemId}/photos`, {
@@ -738,7 +758,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
       setChecklist(updated);
       setPhotoOpen(prev => { const s = new Set(prev); s.add(itemId); return s; });
     } catch {
-      toast({ title: "Failed to upload photo", variant: "destructive" });
+      toast({ title: "Failed to upload checklist evidence", variant: "destructive" });
     } finally {
       setUploadingPhotoFor(prev => { const next = { ...prev }; delete next[itemId]; return next; });
     }
@@ -1394,12 +1414,29 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                         {item.photos.map(photo => (
                                           <div key={photo.id} className="w-24 space-y-1">
                                             <div className="relative group w-16">
-                                              <img
-                                                src={`${BASE}${photo.url}`}
-                                                alt={photo.caption || "Checklist photo"}
-                                                className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
-                                                onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
-                                              />
+                                              {photo.mediaType === "pdf" ? (
+                                                <>
+                                                  <a
+                                                    href={`${BASE}${photo.url}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    aria-label={`Open ${photo.fileName || "checklist document"}`}
+                                                    className="flex h-12 w-16 items-center justify-center rounded-lg border border-border bg-muted/40 text-[10px] font-bold text-foreground"
+                                                  >
+                                                    PDF
+                                                  </a>
+                                                  <p className="w-24 truncate text-[9px] text-muted-foreground" title={photo.fileName || undefined}>
+                                                    {photo.fileName || "Document"}
+                                                  </p>
+                                                </>
+                                              ) : (
+                                                <img
+                                                  src={`${BASE}${photo.url}`}
+                                                  alt={photo.caption || "Checklist photo"}
+                                                  className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
+                                                  onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                                                />
+                                              )}
                                               {canEdit("jobs") && (
                                                 <button
                                                   onClick={() => handlePhotoDelete(item.id, photo.id)}
@@ -1421,7 +1458,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                                 onBlur={() => { void savePhotoCaption(item.id, photo); }}
                                                 onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
                                                 placeholder="Add caption…"
-                                                aria-label={`Caption for photo on ${item.title}`}
+                                                aria-label={`Caption for evidence on ${item.title}`}
                                                 className="w-24 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] text-foreground placeholder:text-muted-foreground/60 focus:border-emerald-400/60 focus:bg-background focus:outline-none"
                                               />
                                             ) : photo.caption ? (
@@ -1438,7 +1475,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                       <label className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
                                         <input
                                           type="file"
-                                          accept="image/*"
+                                          accept="image/*,application/pdf"
                                           multiple
                                           className="hidden"
                                           onChange={e => {
@@ -1449,7 +1486,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                         />
                                         {(uploadingPhotoFor[item.id] ?? 0) > 0
                                           ? <><Loader2 className="w-3 h-3 animate-spin" /> Uploading {uploadingPhotoFor[item.id]}…</>
-                                          : <><Camera className="w-3 h-3" /> Add photos</>}
+                                          : <><Camera className="w-3 h-3" /> Add photos or PDFs</>}
                                       </label>
                                     )}
                                   </div>
@@ -1537,7 +1574,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                       if (s.has(item.id)) s.delete(item.id); else s.add(item.id);
                                       return s;
                                     })}
-                                    title="Add photo"
+                                    title="Add photos or PDFs"
                                     className={`w-6 h-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted/50 transition-colors mt-0.5 ${item.photos.length > 0 ? "text-emerald-500" : ""}`}
                                   >
                                     {(uploadingPhotoFor[item.id] ?? 0) > 0

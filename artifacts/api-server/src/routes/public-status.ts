@@ -234,7 +234,10 @@ router.get("/status/:token", async (req, res) => {
             createdAt: jobChecklistItemPhotosTable.createdAt,
           })
           .from(jobChecklistItemPhotosTable)
-          .where(inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds))
+          .where(and(
+            inArray(jobChecklistItemPhotosTable.jobChecklistItemId, allItemIds),
+            eq(jobChecklistItemPhotosTable.mediaType, "image"),
+          ))
         : Promise.resolve([]),
       db.select({ id: jobStartPhotosTable.id, createdAt: jobStartPhotosTable.createdAt })
         .from(jobStartPhotosTable)
@@ -364,6 +367,7 @@ router.get("/checklist-photos/:photoId", async (req, res) => {
     const [photo] = await db
       .select({
         objectPath: jobChecklistItemPhotosTable.objectPath,
+        mediaType: jobChecklistItemPhotosTable.mediaType,
         checklistShareEnabled: jobChecklistsTable.shareEnabled,
       })
       .from(jobChecklistItemPhotosTable)
@@ -371,7 +375,7 @@ router.get("/checklist-photos/:photoId", async (req, res) => {
       .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id))
       .where(eq(jobChecklistItemPhotosTable.id, photoId));
 
-    if (!photo) return res.status(404).json({ error: "Photo not found" });
+    if (!photo || photo.mediaType !== "image") return res.status(404).json({ error: "Photo not found" });
     if (!photo.checklistShareEnabled) return res.status(403).json({ error: "Checklist not publicly shared" });
 
     const objectFile = await objStorage.getObjectEntityFile(photo.objectPath);

@@ -12,6 +12,8 @@ export interface ContractClientProgram {
   payerClientId: number;
   payerName?: string;
   name: string;
+  requiresInstallationPhotos: boolean;
+  requiresCompletionDocumentation: boolean;
   active: boolean;
   [key: string]: unknown;
 }

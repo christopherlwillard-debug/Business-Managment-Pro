@@ -22,6 +22,8 @@ export function ContractWorkOrdersPanel() {
   const [expanded, setExpanded] = useState(false);
   const [payerClientId, setPayerClientId] = useState("");
   const [programName, setProgramName] = useState("");
+  const [requiresInstallationPhotos, setRequiresInstallationPhotos] = useState(false);
+  const [requiresCompletionDocumentation, setRequiresCompletionDocumentation] = useState(false);
   const [programId, setProgramId] = useState("");
   const [externalOrderNumber, setExternalOrderNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -57,10 +59,18 @@ export function ContractWorkOrdersPanel() {
     if (businessId == null || !payerClientId || !programName.trim()) return;
     try {
       const created = await createProgram.mutateAsync({
-        data: { businessId, payerClientId: Number(payerClientId), name: programName.trim() },
+        data: {
+          businessId,
+          payerClientId: Number(payerClientId),
+          name: programName.trim(),
+          requiresInstallationPhotos,
+          requiresCompletionDocumentation,
+        },
       });
       setProgramId(String(created.id));
       setProgramName("");
+      setRequiresInstallationPhotos(false);
+      setRequiresCompletionDocumentation(false);
       toast({ title: "Contract program added" });
       await refresh();
     } catch (error) {
@@ -140,6 +150,17 @@ export function ContractWorkOrdersPanel() {
                 </select>
                 <input aria-label="Program name" value={programName} onChange={event => setProgramName(event.target.value)} placeholder="Program name" maxLength={160} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
                 <button disabled={createProgram.isPending || !payerClientId || !programName.trim()} className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">Add program</button>
+                <div className="grid gap-2 text-sm sm:col-span-3 sm:grid-cols-2">
+                  <label className="flex min-h-10 items-center gap-2">
+                    <input type="checkbox" checked={requiresInstallationPhotos} onChange={event => setRequiresInstallationPhotos(event.target.checked)} />
+                    Require installation photos
+                  </label>
+                  <label className="flex min-h-10 items-center gap-2">
+                    <input type="checkbox" checked={requiresCompletionDocumentation} onChange={event => setRequiresCompletionDocumentation(event.target.checked)} />
+                    Require completion documentation
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-3">Only select requirements confirmed for this client program. Required evidence must be uploaded before the checklist item can be completed.</p>
               </form>
 
               <form onSubmit={saveOrder} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-2">

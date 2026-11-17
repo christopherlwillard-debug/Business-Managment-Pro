@@ -256,6 +256,8 @@ export const ListContractClientProgramsResponseItem = zod.object({
   payerClientId: zod.number(),
   payerName: zod.string().optional(),
   name: zod.string(),
+  requiresInstallationPhotos: zod.boolean(),
+  requiresCompletionDocumentation: zod.boolean(),
   active: zod.boolean(),
 });
 export const ListContractClientProgramsResponse = zod.array(
@@ -267,10 +269,21 @@ export const ListContractClientProgramsResponse = zod.array(
  */
 export const createContractClientProgramBodyNameMax = 160;
 
+export const createContractClientProgramBodyRequiresInstallationPhotosDefault = false;
+export const createContractClientProgramBodyRequiresCompletionDocumentationDefault = false;
+
 export const CreateContractClientProgramBody = zod.object({
   businessId: zod.number(),
   payerClientId: zod.number(),
   name: zod.string().min(1).max(createContractClientProgramBodyNameMax),
+  requiresInstallationPhotos: zod
+    .boolean()
+    .default(createContractClientProgramBodyRequiresInstallationPhotosDefault),
+  requiresCompletionDocumentation: zod
+    .boolean()
+    .default(
+      createContractClientProgramBodyRequiresCompletionDocumentationDefault,
+    ),
 });
 
 /**

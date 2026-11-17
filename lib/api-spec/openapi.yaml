@@ -3815,8 +3815,10 @@ components:
         payerClientId: { type: integer }
         payerName: { type: string }
         name: { type: string }
+        requiresInstallationPhotos: { type: boolean }
+        requiresCompletionDocumentation: { type: boolean }
         active: { type: boolean }
-      required: [id, businessId, payerClientId, name, active]
+      required: [id, businessId, payerClientId, name, requiresInstallationPhotos, requiresCompletionDocumentation, active]
 
     ContractClientProgramInput:
       type: object
@@ -3825,6 +3827,8 @@ components:
         businessId: { type: integer }
         payerClientId: { type: integer }
         name: { type: string, minLength: 1, maxLength: 160 }
+        requiresInstallationPhotos: { type: boolean, default: false }
+        requiresCompletionDocumentation: { type: boolean, default: false }
 
     ContractWorkOrder:
       type: object

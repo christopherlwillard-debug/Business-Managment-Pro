@@ -797,6 +797,8 @@ export interface ContractClientProgram {
   payerClientId: number;
   payerName?: string;
   name: string;
+  requiresInstallationPhotos: boolean;
+  requiresCompletionDocumentation: boolean;
   active: boolean;
   [key: string]: unknown;
 }
@@ -809,6 +811,8 @@ export interface ContractClientProgramInput {
    * @maxLength 160
    */
   name: string;
+  requiresInstallationPhotos?: boolean;
+  requiresCompletionDocumentation?: boolean;
 }
 
 export type ContractWorkOrderStatus =

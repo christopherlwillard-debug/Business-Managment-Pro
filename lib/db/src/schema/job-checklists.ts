@@ -60,6 +60,7 @@ export const jobChecklistItemsTable = pgTable("job_checklist_items", {
   completedAt: timestamp("completed_at"),
   completedByUserId: text("completed_by_user_id"),
   completedByName: text("completed_by_name"),
+  requiredEvidenceType: text("required_evidence_type"),
   skipped: boolean("skipped").notNull().default(false),
   skippedAt: timestamp("skipped_at"),
   notes: text("notes"),
@@ -73,6 +74,8 @@ export const jobChecklistItemPhotosTable = pgTable("job_checklist_item_photos", 
   jobChecklistItemId: integer("job_checklist_item_id").notNull().references(() => jobChecklistItemsTable.id, { onDelete: "cascade" }),
   objectPath: text("object_path").notNull(),
   caption: text("caption"),
+  mediaType: text("media_type").notNull().default("image"),
+  fileName: text("file_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

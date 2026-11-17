@@ -14,4 +14,6 @@ export interface ContractClientProgramInput {
    * @maxLength 160
    */
   name: string;
+  requiresInstallationPhotos?: boolean;
+  requiresCompletionDocumentation?: boolean;
 }

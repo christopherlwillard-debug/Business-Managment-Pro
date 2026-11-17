@@ -24,6 +24,8 @@ export const contractClientProgramsTable = pgTable("contract_client_programs", {
   businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "restrict" }),
   payerClientId: integer("payer_client_id").notNull().references(() => clientsTable.id, { onDelete: "restrict" }),
   name: text("name").notNull(),
+  requiresInstallationPhotos: boolean("requires_installation_photos").notNull().default(false),
+  requiresCompletionDocumentation: boolean("requires_completion_documentation").notNull().default(false),
   active: boolean("active").notNull().default(true),
   createdByUserId: text("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
