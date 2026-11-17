@@ -495,12 +495,18 @@ async function main() {
       const response = await fetch(`/api/jobs/${jobId}?businessId=${businessId}`, { credentials: "include" });
       const body = await response.json() as { status?: string; closedAt?: string | null };
       const pageText = document.body.innerText;
+      const errorMessage = pageText.split("\n").find(line =>
+        line.includes("Failed to reopen job") || line.includes("Cannot reopen job"),
+      ) ?? null;
       return {
         httpStatus: response.status,
         status: body.status,
         closedAt: body.closedAt,
         successMessageShown: pageText.includes("Job reopened"),
         errorMessageShown: pageText.includes("Failed to reopen job") || pageText.includes("Cannot reopen job"),
+        errorMessage: errorMessage
+          ? pageText.slice(pageText.indexOf(errorMessage), pageText.indexOf(errorMessage) + 240)
+          : null,
       };
     }, { jobId: markAllPaidFixture.jobId, businessId: business.id });
     record(

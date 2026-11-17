@@ -543,7 +543,7 @@ router.get("/schedule-history", async (req, res) => {
 // ── GET /:jobId/checklist ─────────────────────────────────────────────────────
 // Scope every job-specific checklist/evidence read and mutation to the selected
 // business before any handler resolves checklist, item, or media identifiers.
-router.use("/:jobId", async (req, res, next) => {
+router.use("/:jobId/checklist", async (req, res, next) => {
   try {
     const jobId = Number(req.params.jobId);
     if (!Number.isSafeInteger(jobId)) return res.status(400).json({ error: "Invalid jobId" });
