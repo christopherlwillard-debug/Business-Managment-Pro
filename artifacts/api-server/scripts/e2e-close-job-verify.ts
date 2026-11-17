@@ -271,7 +271,7 @@ async function main() {
         const body = await response.json();
         responses.push({ status: response.status, code: body.code });
       }
-      const jobResponse = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+      const jobResponse = await fetch(`/api/jobs/${jobId}?businessId=${businessId}`, { credentials: "include" });
       const job = await jobResponse.json() as { status?: string };
       return { responses, jobStatus: job.status };
     }, {
@@ -299,7 +299,7 @@ async function main() {
         const body = await response.json();
         responses.push({ httpStatus: response.status, code: body.code, outstanding: body.outstanding });
       }
-      const jobResponse = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+      const jobResponse = await fetch(`/api/jobs/${jobId}?businessId=${businessId}`, { credentials: "include" });
       const job = await jobResponse.json() as { status?: string };
       return { responses, jobStatus: job.status };
     }, {
@@ -491,8 +491,8 @@ async function main() {
       },
       { timeout: 30_000 },
     );
-    const reopenUiResult = await page.evaluate(async jobId => {
-      const response = await fetch(`/api/jobs/${jobId}`, { credentials: "include" });
+    const reopenUiResult = await page.evaluate(async ({ jobId, businessId }) => {
+      const response = await fetch(`/api/jobs/${jobId}?businessId=${businessId}`, { credentials: "include" });
       const body = await response.json() as { status?: string; closedAt?: string | null };
       const pageText = document.body.innerText;
       return {
@@ -502,7 +502,7 @@ async function main() {
         successMessageShown: pageText.includes("Job reopened"),
         errorMessageShown: pageText.includes("Failed to reopen job") || pageText.includes("Cannot reopen job"),
       };
-    }, markAllPaidFixture.jobId);
+    }, { jobId: markAllPaidFixture.jobId, businessId: business.id });
     record(
       "Reopen action confirms the job left Closed Jobs",
       reopenUiResult.httpStatus === 200
