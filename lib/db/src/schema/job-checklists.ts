@@ -32,6 +32,7 @@ export const jobChecklistsTable = pgTable("job_checklists", {
   shareToken: text("share_token").notNull().unique(),
   shareEnabled: boolean("share_enabled").notNull().default(true),
   statusOverride: text("status_override"),
+  additionalWorkOccurred: boolean("additional_work_occurred").notNull().default(false),
   publicNotes: text("public_notes"),
   finishedNotes: text("finished_notes"),
   startNotes: text("start_notes"),

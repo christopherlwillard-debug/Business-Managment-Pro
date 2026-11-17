@@ -530,6 +530,24 @@ router.get("/schedule-history", async (req, res) => {
 });
 
 // ── GET /:jobId/checklist ─────────────────────────────────────────────────────
+// Scope every job-specific checklist/evidence read and mutation to the selected
+// business before any handler resolves checklist, item, or media identifiers.
+router.use("/:jobId", async (req, res, next) => {
+  try {
+    const jobId = Number(req.params.jobId);
+    if (!Number.isSafeInteger(jobId)) return res.status(400).json({ error: "Invalid jobId" });
+    const scope = await requestedBusiness(req);
+    if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
+    if (!scope) return res.status(400).json({ error: "A business selection is required" });
+    const [job] = await db.select().from(jobsTable).where(eq(jobsTable.id, jobId)).limit(1);
+    if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
+    (req as any).scopedJob = job;
+    next();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to authorize job checklist access" });
+  }
+});
 router.get("/:jobId/checklist/exists", async (req, res) => {
   try {
     const jobId = parseInt(req.params.jobId);
@@ -635,18 +653,33 @@ router.patch("/:jobId/checklist", async (req, res) => {
       .where(eq(jobChecklistsTable.jobId, jobId));
     if (!checklist) return res.status(404).json({ error: "Checklist not found" });
 
-    const { publicNotes, statusOverride, shareEnabled, finishedNotes, startNotes } = req.body;
+    const { publicNotes, statusOverride, shareEnabled, finishedNotes, startNotes, additionalWorkOccurred } = req.body;
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (publicNotes !== undefined) updates.publicNotes = publicNotes;
     if (statusOverride !== undefined) updates.statusOverride = statusOverride;
     if (shareEnabled !== undefined) updates.shareEnabled = shareEnabled;
     if (finishedNotes !== undefined) updates.finishedNotes = finishedNotes;
     if (startNotes !== undefined) updates.startNotes = startNotes;
+    if (additionalWorkOccurred !== undefined) {
+      if (typeof additionalWorkOccurred !== "boolean") return res.status(400).json({ error: "additionalWorkOccurred must be a boolean" });
+      updates.additionalWorkOccurred = additionalWorkOccurred;
+    }
 
     await db
       .update(jobChecklistsTable)
       .set(updates)
       .where(eq(jobChecklistsTable.id, checklist.id));
+    if (additionalWorkOccurred === true && !checklist.additionalWorkOccurred) {
+      const conditionalItems = await db.select({
+        id: jobChecklistItemsTable.id,
+        title: jobChecklistItemsTable.title,
+      }).from(jobChecklistItemsTable).where(eq(jobChecklistItemsTable.jobChecklistId, checklist.id));
+      for (const item of conditionalItems.filter(row => row.title.startsWith("Conditional additional-work:"))) {
+        await db.update(jobChecklistItemsTable).set({
+          completed: false, completedAt: null, completedByUserId: null,
+        }).where(eq(jobChecklistItemsTable.id, item.id));
+      }
+    }
 
     const data = await buildChecklistResponse(checklist.id);
     res.json(data);
@@ -764,11 +797,11 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
 
     // Verify item belongs to this job's checklist
-    const [job] = await db
+    const job = (req as any).scopedJob ?? (await db
       .select()
       .from(jobsTable)
       .where(eq(jobsTable.id, jobId))
-      .limit(1);
+      .limit(1))[0];
     if (!job || !belongsToBusiness(job, scope)) return res.status(404).json({ error: "Job not found" });
 
     const [checklist] = await db
@@ -817,13 +850,15 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       }
     }
 
-    if (completed === true && item.requiredEvidenceType) {
+    const conditionalPhoto = checklist.additionalWorkOccurred && item.title.startsWith("Conditional additional-work:");
+    const evidenceType = item.requiredEvidenceType ?? (conditionalPhoto ? "image" : null);
+    if (completed === true && evidenceType) {
       const evidence = await db
         .select({ mediaType: jobChecklistItemPhotosTable.mediaType })
         .from(jobChecklistItemPhotosTable)
         .where(eq(jobChecklistItemPhotosTable.jobChecklistItemId, itemId));
-      if (!hasRequiredChecklistEvidence(item.requiredEvidenceType, evidence)) {
-        const label = item.requiredEvidenceType === "image" ? "installation photo" : "completion documentation";
+      if (!hasRequiredChecklistEvidence(evidenceType, evidence)) {
+        const label = evidenceType === "image" ? "installation photo" : "completion documentation";
         return res.status(409).json({
           code: "CHECKLIST_EVIDENCE_REQUIRED",
           error: `Upload the required ${label} before completing this item`,

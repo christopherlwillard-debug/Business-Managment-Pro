@@ -80,6 +80,43 @@ afterEach(() => {
 });
 
 describe("contract work-order acceptance", () => {
+  it.each([
+    ["shower", "Valve installed / mounted properly", false],
+    ["standard_tub", "Electrical panel completed and labeled", false],
+    ["walk_in_tub", "Electrical panel completed and labeled", true],
+    ["tub_to_shower_conversion", "Valve installed / mounted properly", false],
+  ])("snapshots SageHome %s-specific evidence requirements", async (installationType, expectedPhoto, isWalkIn) => {
+    const order = { ...orderBase, installationType };
+    f.txSelect.push(
+      [order],
+      [{
+        id: 6, businessId: 7, payerClientId: 12, name: "SageHome Brands",
+        active: true, requiresInstallationPhotos: true, requiresCompletionDocumentation: true,
+      }],
+      [{ maxNum: 510 }],
+      [],
+      ...Array.from({ length: 5 }, () => []),
+    );
+    f.dbSelect.push([{
+      ...orderBase, programName: "SageHome Brands", payerClientId: 12, payerName: "SageHome Brands",
+      homeownerName: null, propertyLabel: null, propertyAddress: null, status: "accepted", jobId: 901,
+      acceptedAt: new Date().toISOString(), declineReason: null, cancellationReason: null,
+    }]);
+
+    await request(app).post("/jobs/contract-work-orders/44/decision?businessId=7")
+      .send({ decision: "accept" }).expect(200);
+
+    const items = f.insertedRows.filter(row => Object.hasOwn(row, "requiredEvidenceType"));
+    const titles = items.map(row => row.title);
+    expect(titles).toContain(expectedPhoto);
+    expect(titles).toContain("Upload signed-off homeowner paperwork");
+    expect(titles).toContain("Staff-confirm all job photos uploaded to Lead Perfection before invoice submission");
+    expect(items.find(row => String(row.title).includes("highly recommended; optional"))?.requiredEvidenceType).toBeNull();
+    expect(items.filter(row => String(row.title).startsWith("Conditional additional-work:"))
+      .every(row => row.requiredEvidenceType === null)).toBe(true);
+    expect(titles.some(title => String(title).startsWith("Walk-in tub:"))).toBe(isWalkIn);
+  });
+
   it("creates one payer-linked job and returns the same job on retry", async () => {
     const acceptedOrder = { ...orderBase, status: "accepted", jobId: 901 };
     f.txSelect.push(

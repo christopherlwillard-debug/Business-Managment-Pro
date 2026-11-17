@@ -40,6 +40,8 @@ export type InsertContractClientProgram = z.infer<typeof insertContractClientPro
 export type ContractClientProgram = typeof contractClientProgramsTable.$inferSelect;
 
 export const CONTRACT_WORK_ORDER_STATUSES = ["pending_review", "accepted", "declined", "cancelled"] as const;
+export const CONTRACT_INSTALLATION_TYPES = ["shower", "standard_tub", "walk_in_tub", "tub_to_shower_conversion"] as const;
+export type ContractInstallationType = typeof CONTRACT_INSTALLATION_TYPES[number];
 
 export const contractWorkOrdersTable = pgTable("contract_work_orders", {
   id: serial("id").primaryKey(),
@@ -48,6 +50,7 @@ export const contractWorkOrdersTable = pgTable("contract_work_orders", {
   externalOrderNumber: text("external_order_number").notNull(),
   title: text("title").notNull(),
   scope: text("scope"),
+  installationType: text("installation_type"),
   homeownerContactId: integer("homeowner_contact_id").references(() => contactsTable.id, { onDelete: "set null" }),
   propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
   agreedPrice: numeric("agreed_price", { precision: 12, scale: 2 }),

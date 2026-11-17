@@ -85,6 +85,7 @@ interface JobChecklist {
   shareToken: string;
   shareEnabled: boolean;
   statusOverride: string | null;
+  additionalWorkOccurred: boolean;
   publicNotes: string | null;
   startNotes: string | null;
   overallPercent: number;
@@ -148,6 +149,13 @@ function checklistScopeQuery(job: JobChecklistPanelProps["job"]): string {
   return query ? `?${query}` : "";
 }
 
+function checklistMediaUrl(path: string, job: JobChecklistPanelProps["job"]): string {
+  const scope = checklistScopeQuery(job).replace(/^\?/, "");
+  const url = `${BASE}${path}`;
+  if (!scope) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}${scope}`;
+}
+
 const STATUS_BUTTONS = [
   "Weather Delay",
   "Waiting on Parts",
@@ -194,6 +202,16 @@ async function compressImage(file: File): Promise<File> {
 export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChecklistPanelProps) {
   const { toast } = useToast();
   const { canEdit } = useUserPermissions();
+  const fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const rawUrl = input instanceof Request ? input.url : String(input);
+    if (!rawUrl.includes(`/api/jobs/${job.id}/`)) return window.fetch(input, init);
+    const url = new URL(rawUrl, window.location.href);
+    if (!url.searchParams.has("businessId") && !url.searchParams.has("businessLine")) {
+      const scope = new URLSearchParams(checklistScopeQuery(job).replace(/^\?/, ""));
+      scope.forEach((value, key) => url.searchParams.set(key, value));
+    }
+    return window.fetch(url.toString(), init);
+  };
 
   const [checklist, setChecklist] = useState<JobChecklist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1047,6 +1065,36 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
   const linkedSubcontractors = subcontractors.filter(sub =>
     job.subcontractorIds?.includes(sub.id)
   );
+  const sageHomeDocumentation = checklist?.templateName === "SageHome Installation Documentation";
+  const documentationItems = sageHomeDocumentation
+    ? checklist.sections.flatMap(section => section.items).filter(item =>
+      !item.title.includes("highly recommended; optional") &&
+      (!item.title.startsWith("Conditional additional-work:") || checklist.additionalWorkOccurred))
+    : [];
+  const documentationMissing = documentationItems.filter(item => !item.completed && !item.skipped);
+  const invoiceSubmissionItem = documentationItems.find(item => /Submit invoice to/i.test(item.title));
+  const readinessMissing = documentationItems.filter(item =>
+    !/Submit invoice to/i.test(item.title) && !item.completed && !item.skipped
+  );
+  const homeownerPaperworkPending = documentationItems.filter(item =>
+    /homeowner paperwork|referral form/i.test(item.title) && !item.completed && !item.skipped
+  ).length;
+  const externalSubmissionPending = documentationItems.filter(item =>
+    /Lead Perfection|Submit invoice to/i.test(item.title) && !item.completed && !item.skipped
+  ).length;
+
+  async function setAdditionalWorkOccurred(value: boolean) {
+    if (!checklist) return;
+    const response = await fetch(`${BASE}/api/jobs/${job.id}/checklist`, {
+      method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ additionalWorkOccurred: value }),
+    });
+    if (!response.ok) {
+      toast({ title: "Could not update additional-work status", variant: "destructive" });
+      return;
+    }
+    setChecklist(await response.json());
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -1140,6 +1188,37 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                   </p>
                 )}
               </div>
+
+              {sageHomeDocumentation && (
+                <div className="mx-5 my-4 rounded-xl border border-border bg-card p-4 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">SageHome documentation readiness</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {invoiceSubmissionItem?.completed
+                          ? "Invoice submission recorded"
+                          : readinessMissing.length === 0
+                            ? "Ready for invoice submission"
+                            : `${readinessMissing.length} required items remain`}
+                      </p>
+                    </div>
+                    <span className={readinessMissing.length === 0 ? "font-semibold text-emerald-600" : "font-semibold text-amber-600"}>
+                      {readinessMissing.length === 0 ? "Ready" : "In progress"}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Homeowner paperwork pending: {homeownerPaperworkPending} · External submissions pending: {externalSubmissionPending}
+                  </p>
+                  <label className="mt-3 flex items-center gap-2 text-xs">
+                    <input type="checkbox" checked={checklist.additionalWorkOccurred} disabled={!canEdit("jobs")}
+                      onChange={event => void setAdditionalWorkOccurred(event.target.checked)} />
+                    Additional-scope work occurred; before/after photos are required
+                  </label>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Pre-existing damage photos are recommended, not required. This documentation status does not change job status or block job completion.
+                  </p>
+                </div>
+              )}
 
               {/* Share Progress Link */}
               {canEdit("jobs") && (
@@ -1417,7 +1496,7 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                               {photo.mediaType === "pdf" ? (
                                                 <>
                                                   <a
-                                                    href={`${BASE}${photo.url}`}
+                                                    href={checklistMediaUrl(photo.url, job)}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     aria-label={`Open ${photo.fileName || "checklist document"}`}
@@ -1431,10 +1510,10 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                                                 </>
                                               ) : (
                                                 <img
-                                                  src={`${BASE}${photo.url}`}
+                                                  src={checklistMediaUrl(photo.url, job)}
                                                   alt={photo.caption || "Checklist photo"}
                                                   className="w-16 h-12 object-cover rounded-lg border border-border cursor-pointer"
-                                                  onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                                                  onClick={() => setLightboxPhoto(checklistMediaUrl(photo.url, job))}
                                                 />
                                               )}
                                               {canEdit("jobs") && (
@@ -1679,10 +1758,10 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                     {(checklist.startPhotos ?? []).map(photo => (
                       <div key={photo.id} className="relative group flex flex-col items-center gap-0.5">
                         <img
-                          src={`${BASE}${photo.url}`}
+                          src={checklistMediaUrl(photo.url, job)}
                           alt="Start photo"
                           className="w-20 h-16 object-cover rounded-lg border border-border cursor-pointer"
-                          onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                          onClick={() => setLightboxPhoto(checklistMediaUrl(photo.url, job))}
                         />
                         {photo.createdAt && (
                           <span className="text-[9px] text-muted-foreground text-center w-20">{formatDateTime(photo.createdAt)}</span>
@@ -1753,10 +1832,10 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                     {(checklist.finishedPhotos ?? []).map(photo => (
                       <div key={photo.id} className="relative group">
                         <img
-                          src={`${BASE}${photo.url}`}
+                          src={checklistMediaUrl(photo.url, job)}
                           alt="Finished work photo"
                           className="w-20 h-16 object-cover rounded-lg border border-border cursor-pointer"
-                          onClick={() => setLightboxPhoto(`${BASE}${photo.url}`)}
+                          onClick={() => setLightboxPhoto(checklistMediaUrl(photo.url, job))}
                         />
                         {canEdit("jobs") && (
                           <button

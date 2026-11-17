@@ -537,6 +537,26 @@ describe("GET /jobs/schedule-history", () => {
 });
 
 describe("PATCH /jobs/:jobId/checklist/items/:itemId", () => {
+  it.each([
+    ["GET", "/jobs/1/checklist"],
+    ["GET", "/jobs/1/checklist/exists"],
+    ["PATCH", "/jobs/1/checklist"],
+    ["PATCH", "/jobs/1/checklist/items/100"],
+    ["POST", "/jobs/1/checklist/items/100/photos"],
+    ["DELETE", "/jobs/1/checklist/items/100/photos/2"],
+    ["GET", "/jobs/1/checklist/pdf"],
+    ["POST", "/jobs/1/checklist/email"],
+  ])("denies cross-business access to %s %s before touching checklist data", async (method, path) => {
+    h.selectQueue.push([{ id: 1, businessId: 2, businessLine: "asphalt_sealing" }]);
+    const call = method === "GET" ? request(app).get(path)
+      : method === "PATCH" ? request(app).patch(path).send({})
+      : method === "POST" ? request(app).post(path).send({})
+      : request(app).delete(path);
+    const response = await call.query({ businessId: 1 });
+    expect(response.status).toBe(404);
+    expect(h.selectQueue).toHaveLength(0);
+  });
+
   it("rejects a subcontractor who is not assigned to the job", async () => {
     h.selectQueue.push(
       [{ id: 1, businessId: 1, businessLine: "general_contracting" }],
@@ -636,6 +656,7 @@ describe("PATCH /jobs/:jobId/checklist/items/:itemId", () => {
 
   it("does not allow required contract evidence items to be skipped", async () => {
     h.selectQueue.push(
+      [{ id: 1, businessId: 1, businessLine: "general_contracting" }],
       [{ id: 10, jobId: 1 }],
       [{
         id: 100,

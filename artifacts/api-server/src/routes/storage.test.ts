@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   ownerId: "owner",
   getObjectEntityUploadURL: vi.fn(),
   normalizeObjectEntityPath: vi.fn(),
+  selectRows: [] as any[],
 }));
 
 vi.mock("../lib/objectStorage", () => ({
@@ -27,13 +28,35 @@ vi.mock("./guards", () => ({
 }));
 
 vi.mock("@workspace/db", () => ({
-  db: { select: vi.fn() },
+  db: {
+    select: () => {
+      const chain: any = {
+        from: () => chain, innerJoin: () => chain, where: () => chain, limit: () => chain,
+        then(resolve: (value: unknown) => unknown) {
+          return Promise.resolve(h.selectRows.shift() ?? []).then(resolve);
+        },
+      };
+      return chain;
+    },
+  },
   accessRequestsTable: { userId: {}, status: {}, permissions: {} },
+  jobsTable: { id: {}, businessId: {}, businessLine: {} },
+  jobChecklistsTable: { jobId: {}, id: {} },
+  jobChecklistItemsTable: { id: {}, jobChecklistId: {} },
+  jobChecklistItemPhotosTable: { objectPath: {}, jobChecklistItemId: {}, mediaType: {} },
+  jobStartPhotosTable: { objectPath: {}, jobChecklistId: {} },
+  jobFinishedPhotosTable: { objectPath: {}, jobChecklistId: {} },
+}));
+
+vi.mock("../lib/business-scope.js", () => ({
+  requestedBusiness: async (req: any) => ({ id: Number(req.query.businessId), slug: "general_contracting" }),
+  belongsToBusiness: (job: any, scope: any) => job.businessId === scope.id,
 }));
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn(),
   and: vi.fn(),
+  sql: Object.assign(() => ({}), { raw: () => ({}) }),
 }));
 
 const { default: storageRouter } = await import("./storage");
@@ -52,9 +75,22 @@ beforeEach(() => {
   h.normalizeObjectEntityPath.mockReset();
   h.getObjectEntityUploadURL.mockResolvedValue("https://storage.googleapis.com/signed-upload");
   h.normalizeObjectEntityPath.mockReturnValue("/objects/uploads/unique-id");
+  h.selectRows.length = 0;
 });
 
 describe("generic presigned upload authorization", () => {
+  it.each([
+    "uploads/checklist-photos/photo.jpg",
+    "uploads/start-photos/photo.jpg",
+    "uploads/finished-photos/photo.jpg",
+  ])("denies checklist media %s from a different business even to the owner", async (path) => {
+    h.selectRows.push([{ job: { id: 22, businessId: 2 } }]);
+    const response = await request(createApp())
+      .get(`/storage/objects/${path}?businessId=1`);
+    expect(response.status).toBe(403);
+    expect(h.selectRows).toHaveLength(0);
+  });
+
   it("rejects an approved non-owner before creating an upload URL", async () => {
     h.userId = "approved-admin";
 

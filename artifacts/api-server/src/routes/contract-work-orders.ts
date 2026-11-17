@@ -4,6 +4,7 @@ import {
   businessesTable, clientsTable, contactsTable, contactBusinessLinksTable,
   contractClientProgramsTable, contractWorkOrdersTable, jobsTable,
   propertiesTable, propertyBusinessAccessTable,
+  CONTRACT_INSTALLATION_TYPES,
 } from "@workspace/db/schema";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { resolveMutationBusiness, requestedBusiness, sameLegalBusiness } from "../lib/business-scope.js";
@@ -45,6 +46,7 @@ async function getOrder(id: number) {
     externalOrderNumber: contractWorkOrdersTable.externalOrderNumber,
     title: contractWorkOrdersTable.title,
     scope: contractWorkOrdersTable.scope,
+    installationType: contractWorkOrdersTable.installationType,
     homeownerContactId: contractWorkOrdersTable.homeownerContactId,
     homeownerName: sql<string | null>`CASE WHEN EXISTS (
       SELECT 1 FROM contact_business_links cbl
@@ -99,17 +101,121 @@ async function addContractCompletionChecklist(
   tx: any,
   jobId: number,
   externalOrderNumber: string,
-  requirements: { requiresInstallationPhotos: boolean; requiresCompletionDocumentation: boolean },
+  installationType: string | null,
+  requirements: { requiresInstallationPhotos: boolean; requiresCompletionDocumentation: boolean; sageHome: boolean },
 ): Promise<void> {
-  const items = [
-    ...(requirements.requiresInstallationPhotos
-      ? [{ title: "Capture installation photos", requiredEvidenceType: "image" }]
-      : []),
-    ...(requirements.requiresCompletionDocumentation
-      ? [{ title: "Upload required completion documentation", requiredEvidenceType: "document" }]
-      : []),
+  if (!requirements.requiresInstallationPhotos && !requirements.requiresCompletionDocumentation) return;
+  if (!installationType || !requirements.sageHome) {
+    const legacyItems = [
+      ...(requirements.requiresInstallationPhotos ? [{ title: "Capture installation photos", requiredEvidenceType: "image" }] : []),
+      ...(requirements.requiresCompletionDocumentation ? [{ title: "Upload required completion documentation", requiredEvidenceType: "document" }] : []),
+    ];
+    if (!legacyItems.length) return;
+    let [legacyChecklist] = await tx.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable)
+      .where(eq(jobChecklistsTable.jobId, jobId)).for("update").limit(1);
+    if (!legacyChecklist) {
+      [legacyChecklist] = await tx.insert(jobChecklistsTable).values({
+        jobId, templateId: null, templateName: "Contract Work Order Completion",
+        shareToken: crypto.randomUUID(), shareEnabled: false,
+      }).returning({ id: jobChecklistsTable.id });
+    }
+    const sectionName = `Contract completion — ${externalOrderNumber}`;
+    const [existing] = await tx.select({ id: jobChecklistSectionsTable.id }).from(jobChecklistSectionsTable)
+      .where(and(eq(jobChecklistSectionsTable.jobChecklistId, legacyChecklist.id), eq(jobChecklistSectionsTable.name, sectionName))).limit(1);
+    if (existing) return;
+    const [section] = await tx.insert(jobChecklistSectionsTable).values({
+      jobChecklistId: legacyChecklist.id, templateSectionId: null, name: sectionName, active: true, sortOrder: 1000,
+    }).returning({ id: jobChecklistSectionsTable.id });
+    for (const [index, item] of legacyItems.entries()) {
+      await tx.insert(jobChecklistItemsTable).values({
+        jobChecklistId: legacyChecklist.id, jobChecklistSectionId: section.id,
+        title: item.title, requiredEvidenceType: item.requiredEvidenceType, sortOrder: index + 1,
+      });
+    }
+    return;
+  }
+  const photo = (title: string) => ({ title, requiredEvidenceType: "image" });
+  const task = (title: string) => ({ title, requiredEvidenceType: null });
+  const evidence = (title: string) => ({ title, requiredEvidenceType: "document" });
+  const showerPhotos = [
+    "Before shot of entire bathroom",
+    "Tear out area — wide view",
+    "Valve installed / mounted properly",
+    "P-trap installed",
+    "Drain hook up",
+    "Mortar bed",
+    "Pan secured, screwed / shimmed",
+    "Backerboard / bracing",
+    "All three walls where they meet the shower base / caulk joint",
+    "Accessories (Hydrorail / window trim, etc.)",
+    "Before & After Photos of any additional",
+    "Both walls where it meets customer's wall",
+    "Shower pan where it meets customer's floor",
+    "After shot of entire bathroom",
   ];
-  if (items.length === 0) return;
+  const tubPhotos = [
+    "Before shot of entire bathroom",
+    "Before & after of additional work / doorways / toilets / vanity, etc.",
+    "Electrical panel completed and labeled",
+    "Outlets properly mounted under tub",
+    "Screws mounting the tub to floor",
+    "Drain hook up / P-trap installed",
+    "Proper mounting for gap panel",
+    "All three walls where tub meets the wall",
+    "Both walls where panels meet customer's",
+    "After shot of entire bathroom work / doorways / toilets / vanity, etc.",
+  ];
+  const sections: Array<{ name: string; items: Array<{ title: string; requiredEvidenceType: string | null }> }> = [
+    { name: "Pre-installation", items: [
+      task("Review the job, products, and accessory locations with the homeowner"),
+      photo("Photograph the entry-to-work-area path and work area before work starts"),
+      { title: "Photograph pre-existing damage (highly recommended; optional)", requiredEvidenceType: null },
+      task("Test plumbing and electrical function, including water flow and drain times; record issues in notes"),
+      task("Review the inspection and photographs with the homeowner"),
+    ] },
+    { name: "Installation procedures", items: [
+      task("Protect floors from entrance to work area; close doors or cover openings to control dust"),
+      task("Notify homeowner and provide return ETA when leaving; call homeowner and notify coordinator/manager of delays"),
+      photo("Take installation-stage photos for verification and invoicing"),
+      task("Submit a list of all job photos at completion (photo policy reference)"),
+      task("At each day's end, clean debris, review progress with homeowner, and agree next-day ETA"),
+      task("If extra-scope work occurs, photograph the issue and obtain Company approval"),
+      task("Conditional additional-work: before photo (complete only when extra work occurs)"),
+      task("Conditional additional-work: after photo (complete only when extra work occurs)"),
+    ] },
+    { name: "Installation photo requirements", items: [
+      ...(installationType === "shower" || installationType === "tub_to_shower_conversion"
+        ? showerPhotos.map(photo)
+        : tubPhotos.map(photo)),
+    ] },
+    { name: "Completion and homeowner paperwork", items: [
+      task("Review completed work with homeowner before putting tools away and address requested adjustments"),
+      task("Demonstrate product features and confirm homeowner is comfortable operating the shower or tub"),
+      task("Remove tools and debris and thoroughly clean the home"),
+      evidence("Upload signed-off homeowner paperwork"),
+      evidence("Collect and upload completed referral form"),
+      task("Collect any balance due as indicated on the paperwork; contact coordinator/manager if unable to collect"),
+      ...(installationType === "standard_tub" || installationType === "walk_in_tub"
+        ? [task("Record serial number on all tub paperwork in the proper location")]
+        : []),
+      ...(installationType === "walk_in_tub" ? [
+        task("Walk-in tub: verify faucet does not drip"),
+        task("Walk-in tub: verify shower wand does not leak while filling"),
+        task("Walk-in tub: verify efficient drainage"),
+        task("Walk-in tub: verify jets operate where applicable"),
+        task("Walk-in tub: verify controls operate properly before leaving"),
+      ] : []),
+      evidence("Upload reimbursable or Company-payable receipts, when applicable"),
+      task("Confirm homeowner name appears on receipts and paperwork"),
+    ] },
+    { name: "Lead Perfection and invoice submission", items: [
+      task("Staff-confirm all job photos uploaded to Lead Perfection before invoice submission"),
+      task("Submit invoice to installers@sagehome.com within 24 hours after completion"),
+      task("Include job name and job number in email subject and on invoice"),
+      task("Include signed homeowner paperwork and applicable receipts with invoice submission"),
+    ] },
+  ];
+  if (sections.every(section => section.items.length === 0)) return;
 
   let [checklist] = await tx.select({ id: jobChecklistsTable.id })
     .from(jobChecklistsTable)
@@ -121,38 +227,29 @@ async function addContractCompletionChecklist(
     [checklist] = await tx.insert(jobChecklistsTable).values({
       jobId,
       templateId: null,
-      templateName: "Contract Work Order Completion",
+      templateName: "SageHome Installation Documentation",
       shareToken: crypto.randomUUID(),
       shareEnabled: false,
     }).returning({ id: jobChecklistsTable.id });
   }
 
-  const sectionName = `Contract completion — ${externalOrderNumber}`;
-  const [existingSection] = await tx.select({ id: jobChecklistSectionsTable.id })
-    .from(jobChecklistSectionsTable)
-    .where(and(
-      eq(jobChecklistSectionsTable.jobChecklistId, checklist.id),
-      eq(jobChecklistSectionsTable.name, sectionName),
-    ))
-    .limit(1);
-  if (existingSection) return;
-
-  const [section] = await tx.insert(jobChecklistSectionsTable).values({
-    jobChecklistId: checklist.id,
-    templateSectionId: null,
-    name: sectionName,
-    active: true,
-    sortOrder: 1000,
-  }).returning({ id: jobChecklistSectionsTable.id });
-
-  for (const [index, item] of items.entries()) {
-    await tx.insert(jobChecklistItemsTable).values({
-      jobChecklistId: checklist.id,
-      jobChecklistSectionId: section.id,
-      title: item.title,
-      requiredEvidenceType: item.requiredEvidenceType,
-      sortOrder: index + 1,
-    }).returning({ id: jobChecklistItemsTable.id });
+  for (const [sectionIndex, sectionDef] of sections.entries()) {
+    const sectionName = `${sectionDef.name} — ${externalOrderNumber}`;
+    const [existingSection] = await tx.select({ id: jobChecklistSectionsTable.id })
+      .from(jobChecklistSectionsTable)
+      .where(and(eq(jobChecklistSectionsTable.jobChecklistId, checklist.id), eq(jobChecklistSectionsTable.name, sectionName)))
+      .limit(1);
+    if (existingSection) continue;
+    const [section] = await tx.insert(jobChecklistSectionsTable).values({
+      jobChecklistId: checklist.id, templateSectionId: null, name: sectionName, active: true,
+      sortOrder: 1000 + sectionIndex,
+    }).returning({ id: jobChecklistSectionsTable.id });
+    for (const [index, item] of sectionDef.items.entries()) {
+      await tx.insert(jobChecklistItemsTable).values({
+        jobChecklistId: checklist.id, jobChecklistSectionId: section.id, title: item.title,
+        requiredEvidenceType: item.requiredEvidenceType, sortOrder: index + 1,
+      }).returning({ id: jobChecklistItemsTable.id });
+    }
   }
 }
 
@@ -305,6 +402,13 @@ router.post("/contract-work-orders", async (req, res): Promise<void> => {
   if (!externalOrderNumber || externalOrderNumber.length > 160 || !title || title.length > 240) {
     res.status(400).json({ error: "External order number and title are required" }); return;
   }
+  const installationType = req.body.installationType == null ? null : String(req.body.installationType);
+  if (installationType != null && !CONTRACT_INSTALLATION_TYPES.includes(installationType as any)) {
+    res.status(400).json({ error: "Unsupported installation type" }); return;
+  }
+  if ((program.requiresInstallationPhotos || program.requiresCompletionDocumentation) && !installationType) {
+    res.status(400).json({ error: "Choose an installation type for required contract documentation" }); return;
+  }
   const propertyId = req.body.propertyId == null ? null : Number(req.body.propertyId);
   const contactId = req.body.homeownerContactId == null ? null : Number(req.body.homeownerContactId);
   if ((propertyId != null && !Number.isSafeInteger(propertyId)) ||
@@ -329,6 +433,7 @@ router.post("/contract-work-orders", async (req, res): Promise<void> => {
     externalOrderNumber,
     title,
     scope: typeof req.body.scope === "string" ? req.body.scope.trim() || null : null,
+    installationType,
     homeownerContactId: contactId,
     propertyId,
     agreedPrice: price == null ? null : price.toFixed(2),
@@ -373,9 +478,10 @@ router.post("/contract-work-orders/:id/decision", async (req, res): Promise<void
           address: null,
           workflow: null,
         }).returning({ id: jobsTable.id });
-        await addContractCompletionChecklist(tx, job.id, order.externalOrderNumber, {
+        await addContractCompletionChecklist(tx, job.id, order.externalOrderNumber, order.installationType, {
           requiresInstallationPhotos: program.requiresInstallationPhotos,
           requiresCompletionDocumentation: program.requiresCompletionDocumentation,
+          sageHome: /sagehome/i.test(program.name ?? ""),
         });
         await tx.update(contractWorkOrdersTable).set({
           status: "accepted", jobId: job.id, acceptedAt: new Date(), acceptedByUserId: userId,

@@ -3,8 +3,12 @@ import { Readable } from "stream";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getOwnerId, getRequestUserId } from "./guards";
 import type { Permissions, SectionKey } from "./guards";
-import { db, accessRequestsTable } from "@workspace/db";
+import {
+  db, accessRequestsTable, jobsTable, jobChecklistsTable, jobChecklistItemsTable,
+  jobChecklistItemPhotosTable, jobStartPhotosTable, jobFinishedPhotosTable,
+} from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { requestedBusiness, belongsToBusiness } from "../lib/business-scope.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -98,9 +102,30 @@ async function canDownloadObject(req: Request, wildcardPath: string): Promise<bo
   if (!userId) return false;
 
   const ownerId = await getOwnerId();
-  if (ownerId === userId) return true;
-
   const policy = resolveObjectPolicy(wildcardPath);
+  if (wildcardPath.startsWith("uploads/checklist-photos/") ||
+      wildcardPath.startsWith("uploads/start-photos/") ||
+      wildcardPath.startsWith("uploads/finished-photos/")) {
+    const scope = await requestedBusiness(req);
+    if (!scope) return false;
+    const objectPath = `/objects/${wildcardPath}`;
+    const isItemEvidence = wildcardPath.startsWith("uploads/checklist-photos/");
+    const table = isItemEvidence ? jobChecklistItemPhotosTable
+      : wildcardPath.startsWith("uploads/start-photos/") ? jobStartPhotosTable : jobFinishedPhotosTable;
+    let query = db.select({ job: jobsTable }).from(table);
+    if (isItemEvidence) {
+      query = query
+        .innerJoin(jobChecklistItemsTable, eq(jobChecklistItemPhotosTable.jobChecklistItemId, jobChecklistItemsTable.id))
+        .innerJoin(jobChecklistsTable, eq(jobChecklistItemsTable.jobChecklistId, jobChecklistsTable.id));
+    } else {
+      query = query.innerJoin(jobChecklistsTable, eq(table.jobChecklistId, jobChecklistsTable.id));
+    }
+    const [evidence] = await query
+      .innerJoin(jobsTable, eq(jobChecklistsTable.jobId, jobsTable.id))
+      .where(eq(table.objectPath, objectPath)).limit(1);
+    if (!evidence || !belongsToBusiness(evidence.job, scope)) return false;
+  }
+  if (ownerId === userId) return true;
 
   if (policy.kind === "approved") {
     return true;

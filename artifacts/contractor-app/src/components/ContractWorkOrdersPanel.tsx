@@ -27,6 +27,7 @@ export function ContractWorkOrdersPanel() {
   const [programId, setProgramId] = useState("");
   const [externalOrderNumber, setExternalOrderNumber] = useState("");
   const [title, setTitle] = useState("");
+  const [installationType, setInstallationType] = useState("");
   const [scope, setScope] = useState("");
   const [propertyId, setPropertyId] = useState("");
   const [homeownerContactId, setHomeownerContactId] = useState("");
@@ -81,6 +82,12 @@ export function ContractWorkOrdersPanel() {
   async function saveOrder(event: React.FormEvent) {
     event.preventDefault();
     if (businessId == null || !programId || !externalOrderNumber.trim() || !title.trim()) return;
+    const selectedProgram = programsQuery.data?.find(program => program.id === Number(programId));
+    const needsInstallationType = !!(selectedProgram?.requiresInstallationPhotos || selectedProgram?.requiresCompletionDocumentation);
+    if (needsInstallationType && !installationType) {
+      toast({ title: "Choose an installation type", description: "This program requires a type-specific completion checklist.", variant: "destructive" });
+      return;
+    }
     try {
       await createOrder.mutateAsync({
         data: {
@@ -92,10 +99,12 @@ export function ContractWorkOrdersPanel() {
           propertyId: propertyId ? Number(propertyId) : null,
           homeownerContactId: homeownerContactId ? Number(homeownerContactId) : null,
           agreedPrice: agreedPrice ? Number(agreedPrice) : null,
-        },
+          installationType: installationType || null,
+        } as any,
       });
       setExternalOrderNumber("");
       setTitle("");
+      setInstallationType("");
       setScope("");
       setPropertyId("");
       setHomeownerContactId("");
@@ -170,6 +179,13 @@ export function ContractWorkOrdersPanel() {
                 </select>
                 <input aria-label="External work-order number" required value={externalOrderNumber} onChange={event => setExternalOrderNumber(event.target.value)} placeholder="External work-order number" maxLength={160} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
                 <input aria-label="Work-order title" required value={title} onChange={event => setTitle(event.target.value)} placeholder="Installation title" maxLength={240} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
+                <select aria-label="Installation type" required={!!programsQuery.data?.find(program => program.id === Number(programId))?.requiresInstallationPhotos || !!programsQuery.data?.find(program => program.id === Number(programId))?.requiresCompletionDocumentation} value={installationType} onChange={event => setInstallationType(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="">Choose installation type</option>
+                  <option value="shower">Shower installation</option>
+                  <option value="standard_tub">Standard tub installation</option>
+                  <option value="walk_in_tub">Walk-in tub installation</option>
+                  <option value="tub_to_shower_conversion">Tub-to-shower conversion</option>
+                </select>
                 <select aria-label="Property" value={propertyId} onChange={event => setPropertyId(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
                   <option value="">Property not linked yet</option>
                   {(optionsQuery.data?.properties ?? []).map(property => <option key={property.id} value={property.id}>{property.label}{property.address ? ` · ${property.address}` : ""}</option>)}
