@@ -3969,6 +3969,9 @@ components:
           type: integer
         jobTitle:
           type: string
+        contractExternalOrderNumber:
+          type: string
+          nullable: true
         locationName:
           type: string
           nullable: true
@@ -4003,6 +4006,9 @@ components:
           type: integer
           nullable: true
         jobTitle:
+          type: string
+          nullable: true
+        contractExternalOrderNumber:
           type: string
           nullable: true
         jobCity:

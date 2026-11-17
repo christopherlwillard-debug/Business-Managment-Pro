@@ -294,6 +294,7 @@ export interface BuildInvoiceEmailHtmlOpts {
   clientZip?: string | null;
   clientNotes?: string | null;
   jobTitle?: string | null;
+  contractExternalOrderNumber?: string | null;
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
@@ -352,6 +353,7 @@ export function buildInvoiceEmailHtml(opts: BuildInvoiceEmailHtmlOpts): string {
   if (clientAddrLine)    billToRows.push(`<tr><td style="font-size:11px;color:#4b5563;padding-bottom:3px;">${esc(clientAddrLine)}</td></tr>`);
   if (opts.clientNotes)  billToRows.push(`<tr><td style="font-size:10px;color:#6b7280;padding-top:4px;border-top:1px solid #e5e7eb;">${esc(opts.clientNotes)}</td></tr>`);
   if (opts.jobTitle)     billToRows.push(`<tr><td style="font-size:11px;color:#6b7280;padding-top:3px;">Re: ${esc(opts.jobTitle)}</td></tr>`);
+  if (opts.contractExternalOrderNumber) billToRows.push(`<tr><td style="font-size:11px;color:#6b7280;padding-top:3px;">External work order: ${esc(opts.contractExternalOrderNumber)}</td></tr>`);
 
   const workLocation = opts.locationName || opts.city || opts.state;
   const locationHtml = workLocation ? `

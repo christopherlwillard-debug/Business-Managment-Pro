@@ -834,6 +834,9 @@ export default function Invoices() {
                       <td className="px-6 py-4">
                         <div className="font-medium text-foreground">{inv.clientName || "—"}</div>
                         <div className="text-xs text-muted-foreground">{inv.jobTitle || "—"}</div>
+                        {inv.contractExternalOrderNumber && (
+                          <div className="text-xs text-muted-foreground">External work order: {inv.contractExternalOrderNumber}</div>
+                        )}
                       </td>
                       <td className={`px-6 py-4 text-right font-display font-semibold ${isVoided ? "text-muted-foreground line-through" : "text-foreground"}`}>{formatCurrency(inv.total)}</td>
                       <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>

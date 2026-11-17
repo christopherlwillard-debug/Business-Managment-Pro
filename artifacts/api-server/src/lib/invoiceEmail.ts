@@ -13,6 +13,7 @@ export interface InvoiceEmailInv {
   issueDate: string;
   dueDate?: string | null;
   clientName?: string | null;
+  contractExternalOrderNumber?: string | null;
   clientEmail?: string | null;
   squarePaymentLinkUrl?: string | null;
   stripePaymentLinkUrl?: string | null;
@@ -49,6 +50,11 @@ export interface InvoiceEmailSettings {
 
 function fmtCurrency(n: number): string {
   return `$${n.toFixed(2)}`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 export interface InlineImage {
@@ -120,7 +126,7 @@ export function buildInvoiceEmailHtml(
             </tr>
           </table>
         </td></tr>
-        ${inv.clientName ? `<tr><td style="padding:0 40px 20px;"><p style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">Bill To</p><p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#111;">${inv.clientName}</p></td></tr>` : ""}
+        ${inv.clientName || inv.contractExternalOrderNumber ? `<tr><td style="padding:0 40px 20px;"><p style="margin:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#aaa;">Bill To</p>${inv.clientName ? `<p style="margin:4px 0 0;font-size:14px;font-weight:600;color:#111;">${inv.clientName}</p>` : ""}${inv.contractExternalOrderNumber ? `<p style="margin:5px 0 0;font-size:11px;color:#555;">External work order: ${escapeHtml(inv.contractExternalOrderNumber)}</p>` : ""}</td></tr>` : ""}
         ${message ? `<tr><td style="padding:0 40px 20px;"><p style="margin:0;font-size:14px;color:#555;line-height:1.6;">${message.replace(/\n/g, "<br>")}</p></td></tr>` : ""}
         <tr><td style="padding:0 40px 32px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #f0f0f0;border-radius:8px;overflow:hidden;">

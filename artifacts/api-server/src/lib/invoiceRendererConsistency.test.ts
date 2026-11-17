@@ -19,6 +19,40 @@ const invoice = {
 };
 
 describe("invoice logo renderer consistency", () => {
+  it("shows contract order references in browser print, Gmail, and server email/PDF HTML only when present", () => {
+    const contractInvoice = { ...invoice, contractExternalOrderNumber: "SH-100 <A>" };
+    const browserEmail = buildBrowserInvoiceEmailHtml({
+      ...contractInvoice,
+      clientName: "SageHome Brands",
+      companyName: "BuildPro",
+    });
+    const browserPrint = buildInvoiceBodyHtml({
+      ...contractInvoice,
+      clientName: "SageHome Brands",
+    }, { companyName: "BuildPro" });
+    const serverEmail = buildServerInvoiceEmailHtml({
+      ...contractInvoice,
+      subtotal: String(invoice.subtotal),
+      total: String(invoice.total),
+      clientName: "SageHome Brands",
+    }, { companyName: "BuildPro" });
+
+    for (const html of [browserEmail, browserPrint, serverEmail]) {
+      expect(html).toContain("SageHome Brands");
+      expect(html).toContain("External work order: SH-100");
+      expect(html).toContain("&lt;A&gt;");
+    }
+
+    const ordinaryBrowserEmail = buildBrowserInvoiceEmailHtml({ ...invoice, companyName: "BuildPro" });
+    const ordinaryBrowserPrint = buildInvoiceBodyHtml(invoice, { companyName: "BuildPro" });
+    const ordinaryServerEmail = buildServerInvoiceEmailHtml({
+      ...invoice, subtotal: String(invoice.subtotal), total: String(invoice.total),
+    }, { companyName: "BuildPro" });
+    for (const html of [ordinaryBrowserEmail, ordinaryBrowserPrint, ordinaryServerEmail]) {
+      expect(html).not.toContain("External work order:");
+    }
+  });
+
   it.each([
     ["top-left", "small", 120, 50],
     ["top-center", "large", 300, 120],

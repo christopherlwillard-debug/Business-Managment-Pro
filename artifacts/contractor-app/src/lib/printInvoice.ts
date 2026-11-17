@@ -20,6 +20,7 @@ export interface PrintableInvoice {
   clientZip?: string | null;
   clientNotes?: string | null;
   jobTitle?: string | null;
+  contractExternalOrderNumber?: string | null;
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
@@ -127,14 +128,15 @@ export function buildInvoiceBodyHtml(inv: PrintableInvoice, settings: PrintableS
     </div>`;
 
   const workLocation = inv.locationName || inv.city || inv.state;
-  const billToContent = inv.clientName
+  const billToContent = `${inv.clientName
     ? `<div style="font-weight:700;font-size:13px;color:#111827;margin-bottom:8px;">${esc(inv.clientName)}</div>
        ${inv.clientEmail ? `<div style="font-size:11px;color:#4b5563;margin-bottom:4px;word-break:break-all;">${esc(inv.clientEmail)}</div>` : ""}
        ${inv.clientPhone ? `<div style="font-size:11px;color:#4b5563;margin-bottom:4px;">${esc(inv.clientPhone)}</div>` : ""}
        ${(inv.clientAddress || inv.clientCity || inv.clientState || inv.clientZip) ? `<div style="font-size:11px;color:#4b5563;margin-bottom:4px;">${esc([inv.clientAddress, inv.clientCity, inv.clientState, inv.clientZip].filter(Boolean).join(", "))}</div>` : ""}
        ${inv.clientNotes ? `<div style="font-size:10px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:6px;margin-top:6px;">${esc(inv.clientNotes)}</div>` : ""}
-       ${inv.jobTitle ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;">Re: ${esc(inv.jobTitle)}</div>` : ""}`
-    : `<div style="font-size:11px;color:#9ca3af;font-style:italic;">No client specified</div>`;
+        ${inv.jobTitle ? `<div style="font-size:11px;color:#6b7280;margin-top:6px;">Re: ${esc(inv.jobTitle)}</div>` : ""}
+        `
+    : `<div style="font-size:11px;color:#9ca3af;font-style:italic;">No client specified</div>`}${inv.contractExternalOrderNumber ? `<div style="font-size:11px;color:#6b7280;margin-top:4px;">External work order: ${esc(inv.contractExternalOrderNumber)}</div>` : ""}`;
 
   const locationHtml = workLocation ? `
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:16px;flex:1;">

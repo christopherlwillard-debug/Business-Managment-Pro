@@ -941,6 +941,7 @@ export interface InvoiceDraft {
   clientZip?: string | null;
   jobId: number;
   jobTitle: string;
+  contractExternalOrderNumber?: string | null;
   locationName?: string | null;
   city?: string | null;
   state?: string | null;
@@ -993,6 +994,7 @@ export interface Invoice {
   clientName?: string | null;
   jobId?: number | null;
   jobTitle?: string | null;
+  contractExternalOrderNumber?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
   city?: string | null;

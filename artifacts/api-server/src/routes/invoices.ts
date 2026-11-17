@@ -16,6 +16,7 @@ import {
   settingsTable,
   businessesTable,
   invoiceCommunicationEventsTable,
+  contractWorkOrdersTable,
 } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, inArray, ne, getTableColumns, sql } from "drizzle-orm";
 import { deleteSquarePaymentLink, isSquareConfigured } from "../lib/square.js";
@@ -176,13 +177,15 @@ const invoiceSelect = {
   jobTitle: jobsTable.title,
   jobCity: jobsTable.city,
   jobState: jobsTable.state,
+  contractExternalOrderNumber: contractWorkOrdersTable.externalOrderNumber,
 };
 
 export function buildInvoiceQuery() {
   return db.select(invoiceSelect)
     .from(invoicesTable)
     .leftJoin(clientsTable, eq(invoicesTable.clientId, clientsTable.id))
-    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id));
+    .leftJoin(jobsTable, eq(invoicesTable.jobId, jobsTable.id))
+    .leftJoin(contractWorkOrdersTable, eq(contractWorkOrdersTable.jobId, jobsTable.id));
 }
 
 export function fmt(inv: any) {

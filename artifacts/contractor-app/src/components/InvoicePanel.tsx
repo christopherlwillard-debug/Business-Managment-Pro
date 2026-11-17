@@ -100,6 +100,9 @@ export function InvoicePanel({
 
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const effectiveExistingInvoice = existingInvoice ?? savedInvoice ?? null;
+  const contractExternalOrderNumber = effectiveExistingInvoice?.contractExternalOrderNumber
+    ?? initialData?.contractExternalOrderNumber
+    ?? null;
   const communicationHistory = useListInvoiceCommunications(effectiveExistingInvoice?.id ?? 0, {
     query: {
       queryKey: [`/api/invoices/${effectiveExistingInvoice?.id ?? 0}/communications`],
@@ -747,6 +750,7 @@ export function InvoicePanel({
         clientState: form.clientState || null,
         clientZip: form.clientZip || null,
         clientNotes: form.clientNotes || null,
+        contractExternalOrderNumber,
         locationName: form.locationName || null,
         city: form.city || null,
         state: form.state || null,
@@ -894,6 +898,7 @@ export function InvoicePanel({
         clientZip: form.clientZip || undefined,
         clientNotes: form.clientNotes || undefined,
         jobTitle: effectiveExistingInvoice.jobTitle ?? undefined,
+        contractExternalOrderNumber: effectiveExistingInvoice.contractExternalOrderNumber ?? undefined,
         locationName: form.locationName || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
@@ -923,6 +928,7 @@ export function InvoicePanel({
           clientState: form.clientState || null,
           clientZip: form.clientZip || null,
           clientNotes: form.clientNotes || null,
+          contractExternalOrderNumber,
           locationName: form.locationName || null,
           city: form.city || null,
           state: form.state || null,
@@ -1912,6 +1918,7 @@ export function InvoicePanel({
                         clientState: form.clientState || undefined,
                         clientZip: form.clientZip || undefined,
                         clientNotes: form.clientNotes || undefined,
+                        contractExternalOrderNumber: effectiveExistingInvoice.contractExternalOrderNumber ?? undefined,
                         locationName: form.locationName || undefined,
                         city: form.city || undefined,
                         state: form.state || undefined,
@@ -2184,7 +2191,9 @@ export function InvoicePanel({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Bill To */}
                   <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-100">
-                    <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">Bill To</p>
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-gray-400 mb-2">
+                      {contractExternalOrderNumber ? "Payer / Bill To" : "Bill To"}
+                    </p>
                     <div className="relative mb-2">
                       <input ref={clientRef} type="text" placeholder="Client name…"
                         value={clientInput}
@@ -2235,6 +2244,11 @@ export function InvoicePanel({
                       <input type="text" placeholder="Phone…" value={form.clientPhone} onChange={e => setField("clientPhone", e.target.value)}
                         className="w-full text-xs text-gray-500 bg-transparent border-b border-dashed border-gray-200 focus:outline-none focus:border-amber-300 placeholder-gray-300 pb-0.5" />
                     </div>
+                    {contractExternalOrderNumber && (
+                      <p className="mt-2 text-xs text-gray-600">
+                        External work order: <span className="font-semibold text-gray-800">{contractExternalOrderNumber}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Work Location */}

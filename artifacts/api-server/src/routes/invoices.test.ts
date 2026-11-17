@@ -478,6 +478,7 @@ describe("calcInvoice", () => {
 
   it("reopens a saved invoice with the same rounded live totals", () => {
     const reopened = fmt(fakeInvoice({
+      contractExternalOrderNumber: "SH-100",
       lineItems: [
         { description: "Precision line", quantity: 1, unitPrice: 1.005 },
         { description: "Fractional quantity", quantity: 3, unitPrice: 0.333 },
@@ -496,6 +497,7 @@ describe("calcInvoice", () => {
     });
     expect(reopened.calculationStatus.storedTotalsMatch).toBe(true);
     expect(reopened.lineItems.map((line: any) => line.total)).toEqual([1.01, 1]);
+    expect(reopened.contractExternalOrderNumber).toBe("SH-100");
   });
 
   it("returns zeros for empty line items", () => {

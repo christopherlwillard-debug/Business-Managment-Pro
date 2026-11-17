@@ -18,6 +18,7 @@ export interface InvoiceDraft {
   clientZip?: string | null;
   jobId: number;
   jobTitle: string;
+  contractExternalOrderNumber?: string | null;
   locationName?: string | null;
   city?: string | null;
   state?: string | null;

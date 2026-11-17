@@ -16,6 +16,7 @@ export interface Invoice {
   clientName?: string | null;
   jobId?: number | null;
   jobTitle?: string | null;
+  contractExternalOrderNumber?: string | null;
   jobCity?: string | null;
   jobState?: string | null;
   city?: string | null;
