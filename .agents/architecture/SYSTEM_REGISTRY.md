@@ -201,7 +201,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Tables:** `job_type_benchmarks` (active benchmark), `job_type_benchmark_revisions` (append-only review history), `mfh_custom_production_profiles` and `mfh_custom_production_profile_services` (business-scoped custom-service learning names)
 - **Schemas:** `lib/db/src/schema/job-type-benchmarks.ts`, `lib/db/src/schema/job-type-benchmark-revisions.ts`, `lib/db/src/schema/mfh.ts`
 - **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/production-observations`, `/production-reviews`, and `/custom-production-profiles`)
-- **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → Observed Production History
+- **UI:** The Knowledge Base review page was retired in Phase 3A. Historical observations and review APIs/data remain; no active user-facing review page is registered.
 - **Reports:** None; approved hours remain the existing benchmark input for future consumers.
 - **Source of truth:** `job_type_benchmarks.estimated_hours` remains the active benchmark. Revision rows preserve the proposed change, observed evidence, reviewer, and decision history.
 - **Rule:** Reviews require a sufficient all-business observation, never convert production days to hours automatically, and approval must compare the captured prior value before updating the existing benchmark. Business-scoped observations cannot update a shared global benchmark. Custom services are excluded unless explicitly mapped to an active business-scoped named profile; free-text names never infer learning categories. Component production-day observations remain separate from this model-level benchmark and never update it.
@@ -211,7 +211,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Table:** `mfh_component_baseline_revisions`
 - **Schema:** `lib/db/src/schema/mfh-component-baseline-revisions.ts`
 - **API:** `artifacts/api-server/src/routes/mfh.ts` (`/knowledge-base/:modelId/component-baseline-reviews`)
-- **UI:** `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx` → component production-day learning
+- **UI:** The Knowledge Base review page was retired in Phase 3A. Component-baseline history and APIs/data remain without an active user-facing review page.
 - **Reports:** None; approved component baselines are Knowledge Center production-intelligence inputs only.
 - **Source of truth:** `mfh_component_baseline_revisions` owns business-scoped, model/component-learning-key review history. Its approved row is the current reviewed baseline; source evidence is an immutable review-time reference, not a recalculated cache.
 - **Rule:** Proposals require five distinct eligible jobs, while Phase 6 observation visibility remains three jobs. Approval re-reads the Phase 6 engine, verifies the source-evidence fingerprint and prior approved revision, then transactionally supersedes the prior approved row. No client, manufacturer, cross-business, labor-hour, pricing, payroll, scheduling, checklist, or financial baseline is created.
@@ -434,7 +434,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Tables:** `mfh_manufacturers`, `mfh_models`, `mfh_construction_types`, `mfh_pricing_guides`, `mfh_guide_items`, `mfh_guide_addons`, `mfh_client_pricing`, `job_knowledge_records`, `job_knowledge_record_versions`, `job_labor_entries`, `production_service_types`, `production_price_overrides`, `service_addon_prompts`
 - **Schemas:** `lib/db/src/schema/mfh.ts`, `jobs.ts`
 - **API:** `artifacts/api-server/src/routes/mfh.ts`, `mfh-labor.ts`, `production-service-types.ts`, `service-addon-prompts.ts`
-- **UI:** `MfhKnowledgeBase.tsx`, `MfhPanel.tsx`, job pricing and labor panels
+- **UI:** `MfhPanel.tsx`, Job Builder manufacturer/model selection, job pricing and labor panels; `MfhKnowledgeBase.tsx` and `/mfh-homes` were retired in Phase 3A. Production-learning records and APIs remain historical/backend capabilities.
 - **Reports:** MFH pricing and labor influence job estimates/profit; historical knowledge records are not the accounting ledger.
 - **Source of truth:** guide/catalog tables own manufacturer pricing; job records and invoices/expenses own posted job financials; knowledge records own intentionally preserved learning snapshots and versions.
 - **Rule:** Do not treat stored MFH gross/net profit as current accounting truth. Use live source-derived calculations and retain snapshot timestamps/drift metadata.

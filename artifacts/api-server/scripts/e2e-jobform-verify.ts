@@ -7,7 +7,7 @@ import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/
 import fs from "node:fs";
 import type { HTTPRequest, Page } from "puppeteer";
 import { db } from "@workspace/db";
-import { mfhConstructionTypesTable, mfhManufacturersTable, mfhModelsTable } from "@workspace/db/schema";
+import { jobsTable, mfhConstructionTypesTable, mfhManufacturersTable, mfhModelsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
@@ -23,6 +23,7 @@ const results: { name: string; pass: boolean; detail: string }[] = [];
 const createdJobIds = new Set<number>();
 const allowedDeleteJobIds = new Set<number>();
 const allowedWrites: string[] = [];
+let lastJobCreatePayload: Record<string, unknown> = {};
 let allowTestJobCreate = false;
 let testConstructionTypeId: number | undefined;
 let testManufacturerId: number | undefined;
@@ -59,6 +60,20 @@ async function clickWorkflowChoice(page: Page, text: string): Promise<boolean> {
   }, text);
 }
 
+async function clickPointerOption(page: Page, text: string): Promise<boolean> {
+  const point = await page.evaluate((label) => {
+    const option = Array.from(document.querySelectorAll<HTMLElement>("form .absolute button"))
+      .find(element => (element.querySelector("span")?.textContent ?? element.textContent ?? "").trim() === label);
+    if (!option) return null;
+    option.scrollIntoView({ block: "center" });
+    const rect = option.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, text);
+  if (!point) return false;
+  await page.mouse.click(point.x, point.y);
+  return true;
+}
+
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 async function main() {
@@ -84,7 +99,6 @@ async function main() {
         manufacturerId: manufacturer.id,
         name: testModelName,
         constructionTypeId: constructionType.id,
-        basePrice: "12345.67",
         active: true,
       })
       .returning({ id: mfhModelsTable.id });
@@ -103,6 +117,11 @@ async function main() {
       const requestPath = requestUrl.pathname.replace(/\/$/, "");
       if (allowTestJobCreate && request.method() === "POST" && requestPath === "/api/jobs") {
         allowedWrites.push(`${request.method()} ${requestPath}`);
+        try {
+          lastJobCreatePayload = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
+        } catch {
+          lastJobCreatePayload = {};
+        }
         void request.continue();
         return;
       }
@@ -165,35 +184,42 @@ async function main() {
       return model ? { manufacturerName: manufacturer.name, modelName: model.name } : null;
     }, testManufacturerName!);
     if (mfhOptions) {
-      const referenceInputs = await page.$$('form input[placeholder="Search or type to add…"]');
-      if (referenceInputs.length >= 2) {
-        await referenceInputs[0].type(mfhOptions.manufacturerName);
+      const builderInput = await page.$('form input[placeholder*="Search or type to add"]');
+      if (builderInput) {
+        await builderInput.type(mfhOptions.manufacturerName);
         await sleep(250);
-        const selectedManufacturer = await page.evaluate((name) => {
-          const option = Array.from(document.querySelectorAll<HTMLElement>("form .absolute button"))
-            .find(element => (element.textContent ?? "").trim() === name);
-          option?.click();
-          return Boolean(option);
-        }, mfhOptions.manufacturerName);
+        const selectedManufacturer = await clickPointerOption(page, mfhOptions.manufacturerName);
         await sleep(500);
-        await referenceInputs[1].type(mfhOptions.modelName);
-        await sleep(250);
-        const selectedModel = await page.evaluate((name) => {
-          const option = Array.from(document.querySelectorAll<HTMLElement>("form .absolute button"))
-            .find(element => (element.textContent ?? "").trim() === name);
-          option?.click();
-          return Boolean(option);
-        }, mfhOptions.modelName);
-        await sleep(250);
-        const selectedValues = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLInputElement>(
-          'form input[placeholder="Search or type to add…"]',
-        )).map(input => input.value));
-        record("Existing manufacturer and model can be selected",
-          selectedManufacturer && selectedModel
-            && selectedValues[0] === mfhOptions.manufacturerName
-            && selectedValues[1] === mfhOptions.modelName,
-          selectedValues.join(" · "));
-      } else record("Existing manufacturer and model can be selected", false, "reference inputs not found");
+        await page.waitForFunction(
+          () => document.querySelectorAll('form input[placeholder*="Search or type to add"]').length >= 2,
+          { timeout: 8_000 },
+        ).catch(() => undefined);
+        const referenceInputs = await page.$$('form input[placeholder*="Search or type to add"]');
+        const modelInput = referenceInputs[1];
+        if (modelInput) {
+          await modelInput.type(mfhOptions.modelName);
+          await sleep(250);
+          const selectedModel = await clickPointerOption(page, mfhOptions.modelName);
+          await sleep(250);
+          const selectedValues = await page.evaluate(() => Array.from(document.querySelectorAll<HTMLInputElement>(
+            'form input[placeholder*="Search or type to add"]',
+          )).map(input => input.value));
+          record("Existing manufacturer and model can be selected",
+            selectedManufacturer && selectedModel
+              && selectedValues[0] === mfhOptions.manufacturerName
+              && selectedValues[1] === mfhOptions.modelName,
+            `manufacturerSelected=${selectedManufacturer}; modelSelected=${selectedModel}; values=${selectedValues.join(" · ")}`);
+        } else {
+          record("Existing manufacturer and model can be selected", false, "model field did not activate after selecting builder");
+        }
+      } else {
+        const diagnostic = await page.evaluate(() => ({
+          mfhSectionVisible: document.body.innerText.includes("Manufactured Home"),
+          placeholders: Array.from(document.querySelectorAll<HTMLInputElement>("form input")).map(input => input.placeholder).filter(Boolean),
+        }));
+        record("Existing manufacturer and model can be selected", false,
+          `reference inputs not found; section=${diagnostic.mfhSectionVisible}; placeholders=${diagnostic.placeholders.join(" | ")}`);
+      }
     } else {
       console.log("SKIP: Manufacturer/model selection — the development database has no active model fixture.");
     }
@@ -324,6 +350,52 @@ async function main() {
     record("Multi-step wizard navigation is absent", !creationSections.wizard);
     record("Job scheduling step and date inputs are absent", !creationSections.schedule);
     await page.screenshot({ path: `${SHOTS}/06-guided-sections.png` });
+
+    // Save the same MH Production draft after selecting its temporary builder
+    // and model, then verify the relationship persisted before cleanup.
+    const selectedModelTitle = `E2E selected model ${Date.now()}`;
+    const selectedModelTitleInput = await page.$('form input[placeholder="e.g. Farm House Renovation"]');
+    if (selectedModelTitleInput) await selectedModelTitleInput.type(selectedModelTitle);
+    await page.evaluate(() => {
+      const select = document.querySelector<HTMLSelectElement>('form select');
+      if (!select || select.value) return;
+      const firstBusiness = Array.from(select.options).find(option => option.value);
+      if (!firstBusiness) return;
+      select.value = firstBusiness.value;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    allowTestJobCreate = true;
+    const selectedModelSubmit = await clickByText(page, "form button", "Create Job");
+    if (selectedModelSubmit) {
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-testid^="job-workspace-unified-"]'),
+        { timeout: 20_000 },
+      ).catch(() => undefined);
+    }
+    allowTestJobCreate = false;
+    await sleep(300);
+    const selectedModelJobId = [...createdJobIds].at(-1);
+    const [savedSelectedModelJob] = selectedModelJobId
+      ? await db.select({
+        manufacturerId: jobsTable.mfhManufacturerId,
+        modelId: jobsTable.mfhModelId,
+      }).from(jobsTable).where(eq(jobsTable.id, selectedModelJobId)).limit(1)
+      : [];
+    record("Selected manufacturer/model IDs persist on the new MH Production job",
+      !!selectedModelTitleInput && selectedModelSubmit && !!selectedModelJobId
+        && savedSelectedModelJob?.manufacturerId === testManufacturerId
+        && savedSelectedModelJob?.modelId === testModelId,
+      `request=${lastJobCreatePayload.mfhManufacturerId ?? "null"}/${lastJobCreatePayload.mfhModelId ?? "null"}; stored=${savedSelectedModelJob?.manufacturerId ?? "null"}/${savedSelectedModelJob?.modelId ?? "null"}`);
+    if (selectedModelJobId) {
+      allowedDeleteJobIds.add(selectedModelJobId);
+      const cleanup = await page.evaluate(async id => {
+        const response = await fetch(`/api/jobs/${id}`, { method: "DELETE", credentials: "include" });
+        return { ok: response.ok, status: response.status };
+      }, selectedModelJobId);
+      allowedDeleteJobIds.delete(selectedModelJobId);
+      createdJobIds.delete(selectedModelJobId);
+      record("MH Production manufacturer/model test job was removed", cleanup.ok, `HTTP ${cleanup.status}`);
+    }
 
     // 8. Open a real existing job without changing it and verify both former
     // workspace views now render together without tab navigation.

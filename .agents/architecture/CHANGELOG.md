@@ -930,3 +930,19 @@ Created the four-document architecture governance system:
   for all four work types. No persistent SageHome client or program was created.
 - Applied the additive schema migration to development only; no production data
   changes or deployment occurred.
+
+### Owner navigation regrouping and Knowledge Base interface retirement
+
+- Regrouped the existing owner sidebar into Home, Work, People, Money, Tools,
+  and Manage without changing destinations, permission checks, feature gates, or
+  the five-item owner mobile navigation.
+- Retired the Home Knowledge Base page, `/mfh-homes` route, and job-completion
+  training modal. The existing Home Library, Job Builder manufacturer/model
+  flow, job pricing, checklists, production components, Trim-Out Catalog, and
+  Production Billing remain in place.
+- Kept historical learning/review records, schemas, and APIs; no database or
+  production records were changed.
+- Verified app/API typechecks, 131 API test files (1,545 tests), authenticated
+  navigation (9/9), Job Builder/workspace (31/31), closeout safeguards (17/17),
+  and production components (4/4), including cleanup of disposable development
+  fixtures. No deployment occurred.

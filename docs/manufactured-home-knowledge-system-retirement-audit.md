@@ -3,6 +3,8 @@
 **Audit date:** 2026-11-13  
 **Scope:** Read-only code/schema review and aggregate production queries. No application code, schema, records, prices, or production jobs were changed.
 
+The later Phase 3A implementation record at the end of this document supersedes the earlier navigation-only implementation record below.
+
 ## Executive summary
 
 The current “Home Knowledge Base” is not one isolated pricing tool. It combines manufacturer/model reference data, optional guide-based pricing, a baseline/client-price workflow, job-linked production history, reviewed production benchmarks, and links to operational checklists. Separately, the Production Billing Catalog and its client price overrides generate invoice lines and are actively used.
@@ -166,3 +168,50 @@ No database migration, table or record deletion, production job edit, price chan
 - Optional manufacturer pricing guides/add-ons, model baseline prices, client/model overrides, manual job pricing, and historical job price snapshots.
 - Existing job-level checklists, production components, historical records, and Trim-Out Catalog access.
 - The Production Billing Catalog, client overrides, service prompts, invoice generation, and calculations remain completely separate and untouched.
+
+## Phase 3A — Six-group navigation and full Knowledge Base interface retirement
+
+**Implementation date:** 2026-11-17
+**Authorized scope:** Reorganize owner navigation into the approved six groups and retire the Manufactured Home Knowledge Base as an active user-facing feature. Preserve existing operations and historical records. No Phase 3B work was started.
+
+### Implemented
+
+- Grouped the existing 23 owner navigation destinations as Home, Work, People, Money, Tools, and Manage. Existing paths, permission checks, feature gates, business filtering, and navigation behavior remain unchanged.
+- Kept the owner mobile bar at Home, Jobs, Routes, Accounting, and More. More opens the existing drawer with the same six groups.
+- Removed the Knowledge Base page, its `/mfh-homes` route, and the completion-training modal that prompted users to teach or classify a job after completion. Manufactured-home completion now follows the existing job completion path and safeguards without that retired prompt.
+- Preserved the existing Clients system, Job Builder, manufacturer/model selection, Home Library, `MfhPanel` pricing/checklist workflows, Production Billing and its client overrides, checklists, production components/work sessions, Trim-Out Catalog, job history, and accepted/excluded learning records and versions.
+- Retained the existing manufactured-home and production-learning schemas and APIs. No schema or data migration was made.
+
+### Verification
+
+- Contractor-app TypeScript and test-project checks: **PASS**.
+- API TypeScript check: **PASS**.
+- Full API regression suite: **PASS** — 131 test files, 1,545 tests.
+- Authenticated navigation check: **PASS** — 9/9 checks, including all six group headings, five owner mobile items, More drawer, retired route content, and read-only existing-job workspace access.
+- Authenticated Job Builder/workspace check: **PASS** — 31/31 checks. It exercised MH Production, MH Service, General Contracting, manufacturer/model selection and saved IDs, the unified workspace, and existing job access.
+- Closeout safeguard browser check: **PASS** — 17/17 checks, including unpaid/unknown subcontractor blocks, incomplete-work confirmation, reopening, and temporary fixture/session cleanup.
+- Production-component browser check: **PASS** — 4/4 checks, including active component state, immutable snapshot history, business scoping, and read-only browser behavior. Its development fixture cleanup completed.
+- Disposable development fixture cleanup: **PASS** — the test jobs, temporary manufacturer/model, and temporary construction type were removed and checked absent. Browser writes stayed within the exact test-job allowlist.
+- Production Billing API regression tests ran in the full suite. The separate manufacturer/model baseline-price and client/model override workflow was not end-to-end exercised in this phase; its code and records were not changed.
+- Dedicated browser verifiers for Knowledge Base review controls were not run because those controls were intentionally retired. The retained review/observation APIs were covered by the full API suite.
+
+The first Job Builder browser attempts exposed stale verifier assumptions, not a product regression: the model search field becomes searchable only after selecting a builder, and its option label also contains construction-type text. The verifier now follows that sequence and checks the manufacturer/model IDs on the same disposable job it creates.
+
+### Changed files
+
+- `artifacts/contractor-app/src/components/AppLayout.tsx`
+- `artifacts/contractor-app/src/App.tsx`
+- `artifacts/contractor-app/src/pages/Jobs.tsx`
+- Deleted `artifacts/contractor-app/src/pages/MfhKnowledgeBase.tsx`
+- Deleted `artifacts/contractor-app/src/components/KbTrainingModal.tsx`
+- Deleted `artifacts/contractor-app/src/pages/MfhKnowledgeBase.production-observations.test.tsx` (the test was coupled to the retired page UI; API behavior remains covered)
+- `artifacts/api-server/scripts/e2e-mfh-app-navigation-verify.ts`
+- `artifacts/api-server/scripts/e2e-jobform-verify.ts`
+- `docs/buildpro-phase-3a-navigation-map.md`
+- `docs/manufactured-home-knowledge-system-retirement-audit.md`
+- `.agents/architecture/SYSTEM_REGISTRY.md`
+- `.agents/architecture/CHANGELOG.md`
+
+### Data and release boundary
+
+No production database was queried or modified, no production deployment occurred, and no historical clients, jobs, invoices, checklist snapshots, pricing, or learning records were changed. The temporary fixtures were development-only and cleaned up. No additional Jobs redesign or Phase 3B work was started.
