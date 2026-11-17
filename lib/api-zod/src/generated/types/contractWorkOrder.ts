@@ -17,6 +17,8 @@ export interface ContractWorkOrder {
   externalOrderNumber: string;
   title: string;
   scope?: string | null;
+  installationType?: string | null;
+  workTypeId?: number | null;
   homeownerContactId?: number | null;
   homeownerName?: string | null;
   propertyId?: number | null;

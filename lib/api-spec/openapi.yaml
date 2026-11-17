@@ -302,6 +302,48 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ContractClientProgram" }
+  /jobs/contract-client-programs/{programId}/work-types:
+    get:
+      operationId: listContractClientWorkTypes
+      tags: [jobs]
+      summary: List configured work types for a contract program
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: businessId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Program work types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ContractClientWorkType" }
+    post:
+      operationId: createContractClientWorkType
+      tags: [jobs]
+      summary: Configure a work type for a contract program
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ContractClientWorkTypeInput" }
+      responses:
+        "201":
+          description: Configured work type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContractClientWorkType" }
   /jobs/contract-work-orders/options:
     get:
       operationId: getContractWorkOrderOptions
@@ -3817,8 +3859,11 @@ components:
         name: { type: string }
         requiresInstallationPhotos: { type: boolean }
         requiresCompletionDocumentation: { type: boolean }
+        invoiceSubmissionEmail: { type: [string, 'null'], format: email }
+        invoiceSubmissionDeadlineHours: { type: [integer, 'null'], minimum: 1 }
+        invoiceSubmissionInstructions: { type: [string, 'null'] }
         active: { type: boolean }
-      required: [id, businessId, payerClientId, name, requiresInstallationPhotos, requiresCompletionDocumentation, active]
+      required: [id, businessId, payerClientId, name, requiresInstallationPhotos, requiresCompletionDocumentation, invoiceSubmissionEmail, invoiceSubmissionDeadlineHours, invoiceSubmissionInstructions, active]
 
     ContractClientProgramInput:
       type: object
@@ -3829,6 +3874,30 @@ components:
         name: { type: string, minLength: 1, maxLength: 160 }
         requiresInstallationPhotos: { type: boolean, default: false }
         requiresCompletionDocumentation: { type: boolean, default: false }
+        invoiceSubmissionEmail: { type: [string, 'null'], format: email }
+        invoiceSubmissionDeadlineHours: { type: [integer, 'null'], minimum: 1 }
+        invoiceSubmissionInstructions: { type: [string, 'null'], maxLength: 4000 }
+
+    ContractClientWorkType:
+      type: object
+      required: [id, programId, key, displayName, checklistTemplateId, active]
+      properties:
+        id: { type: integer }
+        programId: { type: integer }
+        key: { type: string }
+        displayName: { type: string }
+        checklistTemplateId: { type: integer }
+        active: { type: boolean }
+
+    ContractClientWorkTypeInput:
+      type: object
+      required: [businessId, key, displayName, checklistTemplateId]
+      properties:
+        businessId: { type: integer }
+        key: { type: string, minLength: 1, maxLength: 80 }
+        displayName: { type: string, minLength: 1, maxLength: 160 }
+        checklistTemplateId: { type: integer }
+        active: { type: boolean }
 
     ContractWorkOrder:
       type: object
@@ -3843,6 +3912,8 @@ components:
         externalOrderNumber: { type: string }
         title: { type: string }
         scope: { type: string, nullable: true }
+        installationType: { type: string, nullable: true }
+        workTypeId: { type: integer, nullable: true }
         homeownerContactId: { type: integer, nullable: true }
         homeownerName: { type: string, nullable: true }
         propertyId: { type: integer, nullable: true }

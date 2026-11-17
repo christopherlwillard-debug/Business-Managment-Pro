@@ -16,4 +16,16 @@ export interface ContractClientProgramInput {
   name: string;
   requiresInstallationPhotos?: boolean;
   requiresCompletionDocumentation?: boolean;
+  /** @nullable */
+  invoiceSubmissionEmail?: string | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  invoiceSubmissionDeadlineHours?: number | null;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  invoiceSubmissionInstructions?: string | null;
 }

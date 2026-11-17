@@ -5,6 +5,10 @@ import {
   contractClientProgramsTable, contractWorkOrdersTable, jobsTable,
   propertiesTable, propertyBusinessAccessTable,
   CONTRACT_INSTALLATION_TYPES,
+  contractClientWorkTypesTable,
+  checklistTemplatesTable,
+  checklistTemplateItemsTable,
+  checklistTemplateSectionsTable,
 } from "@workspace/db/schema";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { resolveMutationBusiness, requestedBusiness, sameLegalBusiness } from "../lib/business-scope.js";
@@ -28,6 +32,9 @@ async function getProgram(id: number) {
     name: contractClientProgramsTable.name,
     requiresInstallationPhotos: contractClientProgramsTable.requiresInstallationPhotos,
     requiresCompletionDocumentation: contractClientProgramsTable.requiresCompletionDocumentation,
+    invoiceSubmissionEmail: contractClientProgramsTable.invoiceSubmissionEmail,
+    invoiceSubmissionDeadlineHours: contractClientProgramsTable.invoiceSubmissionDeadlineHours,
+    invoiceSubmissionInstructions: contractClientProgramsTable.invoiceSubmissionInstructions,
     active: contractClientProgramsTable.active,
   }).from(contractClientProgramsTable)
     .innerJoin(clientsTable, eq(contractClientProgramsTable.payerClientId, clientsTable.id))
@@ -47,6 +54,7 @@ async function getOrder(id: number) {
     title: contractWorkOrdersTable.title,
     scope: contractWorkOrdersTable.scope,
     installationType: contractWorkOrdersTable.installationType,
+    workTypeId: contractWorkOrdersTable.workTypeId,
     homeownerContactId: contractWorkOrdersTable.homeownerContactId,
     homeownerName: sql<string | null>`CASE WHEN EXISTS (
       SELECT 1 FROM contact_business_links cbl
@@ -95,6 +103,41 @@ async function validateProperty(propertyId: number | null, businessId: number): 
       isNull(propertyBusinessAccessTable.revokedAt),
     )).limit(1);
   return hasPropertyPermission(grant?.permission, "view");
+}
+
+async function addConfiguredChecklist(tx: any, jobId: number, workTypeId: number, program: typeof contractClientProgramsTable.$inferSelect) {
+  const [workType] = await tx.select().from(contractClientWorkTypesTable)
+    .where(and(eq(contractClientWorkTypesTable.id, workTypeId), eq(contractClientWorkTypesTable.programId, program.id), eq(contractClientWorkTypesTable.active, true))).limit(1);
+  if (!workType) throw Object.assign(new Error("Configured work type is unavailable"), { status: 409 });
+  const [template] = await tx.select().from(checklistTemplatesTable)
+    .where(and(eq(checklistTemplatesTable.id, workType.checklistTemplateId), eq(checklistTemplatesTable.businessId, program.businessId), eq(checklistTemplatesTable.active, true))).limit(1);
+  if (!template) throw Object.assign(new Error("Configured checklist template is unavailable"), { status: 409 });
+  const sections = await tx.select().from(checklistTemplateSectionsTable)
+    .where(eq(checklistTemplateSectionsTable.templateId, template.id)).orderBy(checklistTemplateSectionsTable.sortOrder);
+  const templateItems = await tx.select().from(checklistTemplateItemsTable).orderBy(checklistTemplateItemsTable.sortOrder);
+  let [checklist] = await tx.select({ id: jobChecklistsTable.id }).from(jobChecklistsTable)
+    .where(eq(jobChecklistsTable.jobId, jobId)).for("update").limit(1);
+  if (!checklist) {
+    [checklist] = await tx.insert(jobChecklistsTable).values({
+      jobId, templateId: template.id, templateName: template.name, shareToken: crypto.randomUUID(), shareEnabled: false,
+      contractInvoiceSubmissionEmail: program.invoiceSubmissionEmail,
+      contractInvoiceSubmissionDeadlineHours: program.invoiceSubmissionDeadlineHours,
+      contractInvoiceSubmissionInstructions: program.invoiceSubmissionInstructions,
+    }).returning({ id: jobChecklistsTable.id });
+  }
+  for (const [sectionIndex, section] of sections.entries()) {
+    const [jobSection] = await tx.insert(jobChecklistSectionsTable).values({
+      jobChecklistId: checklist.id, templateSectionId: section.id, name: section.name, active: true, sortOrder: 1000 + sectionIndex,
+    }).returning({ id: jobChecklistSectionsTable.id });
+    const items = templateItems.filter((item: any) => item.sectionId === section.id);
+    for (const item of items) {
+      await tx.insert(jobChecklistItemsTable).values({
+        jobChecklistId: checklist.id, jobChecklistSectionId: jobSection.id, title: item.title, sortOrder: item.sortOrder,
+        requiredEvidenceType: item.evidenceType, requirementKey: item.requirementKey,
+        requirementStatus: item.requirementStatus, conditionKey: item.conditionKey,
+      });
+    }
+  }
 }
 
 async function addContractCompletionChecklist(
@@ -267,12 +310,56 @@ router.get("/contract-client-programs", async (req, res): Promise<void> => {
     name: contractClientProgramsTable.name,
     requiresInstallationPhotos: contractClientProgramsTable.requiresInstallationPhotos,
     requiresCompletionDocumentation: contractClientProgramsTable.requiresCompletionDocumentation,
+    invoiceSubmissionEmail: contractClientProgramsTable.invoiceSubmissionEmail,
+    invoiceSubmissionDeadlineHours: contractClientProgramsTable.invoiceSubmissionDeadlineHours,
+    invoiceSubmissionInstructions: contractClientProgramsTable.invoiceSubmissionInstructions,
     active: contractClientProgramsTable.active,
   }).from(contractClientProgramsTable)
     .innerJoin(clientsTable, eq(contractClientProgramsTable.payerClientId, clientsTable.id))
     .where(eq(contractClientProgramsTable.businessId, scope.id))
     .orderBy(contractClientProgramsTable.name);
   res.json(rows);
+});
+
+router.get("/contract-client-programs/:programId/work-types", async (req, res): Promise<void> => {
+  const programId = Number(req.params.programId);
+  const scope = await requestedBusiness(req);
+  if (!scope || !Number.isSafeInteger(programId)) { res.status(400).json({ error: "A valid business and program are required" }); return; }
+  const [program] = await db.select({ id: contractClientProgramsTable.id }).from(contractClientProgramsTable)
+    .where(and(eq(contractClientProgramsTable.id, programId), eq(contractClientProgramsTable.businessId, scope.id))).limit(1);
+  if (!program) { res.status(404).json({ error: "Contract program not found" }); return; }
+  const rows = await db.select().from(contractClientWorkTypesTable)
+    .where(eq(contractClientWorkTypesTable.programId, programId)).orderBy(contractClientWorkTypesTable.displayName);
+  res.json(rows);
+});
+
+router.post("/contract-client-programs/:programId/work-types", async (req, res): Promise<void> => {
+  const programId = Number(req.params.programId);
+  const scope = await requestedBusiness(req);
+  const key = typeof req.body?.key === "string" ? req.body.key.trim() : "";
+  const displayName = typeof req.body?.displayName === "string" ? req.body.displayName.trim() : "";
+  const checklistTemplateId = Number(req.body?.checklistTemplateId);
+  if (!scope || Number(req.body?.businessId) !== scope.id || !Number.isSafeInteger(programId) || !key || key.length > 80 || !displayName || displayName.length > 160 || !Number.isSafeInteger(checklistTemplateId)) {
+    res.status(400).json({ error: "A valid work type, template, and program are required" }); return;
+  }
+  const [program] = await db.select().from(contractClientProgramsTable)
+    .where(and(eq(contractClientProgramsTable.id, programId), eq(contractClientProgramsTable.businessId, scope.id), eq(contractClientProgramsTable.active, true))).limit(1);
+  const [template] = await db.select().from(checklistTemplatesTable)
+    .where(and(eq(checklistTemplatesTable.id, checklistTemplateId), eq(checklistTemplatesTable.businessId, scope.id), eq(checklistTemplatesTable.active, true))).limit(1);
+  if (!program || !template) { res.status(404).json({ error: "Program or business-owned checklist template not found" }); return; }
+  const sections = await db.select({ id: checklistTemplateSectionsTable.id }).from(checklistTemplateSectionsTable)
+    .where(eq(checklistTemplateSectionsTable.templateId, checklistTemplateId));
+  const items = sections.length ? await db.select().from(checklistTemplateItemsTable)
+    .where(inArray(checklistTemplateItemsTable.sectionId, sections.map(section => section.id))) : [];
+  const keys = items.map(item => item.requirementKey?.trim()).filter(Boolean);
+  if (!items.length || keys.length !== items.length || new Set(keys).size !== keys.length ||
+      items.some(item => item.requirementStatus === "conditional" && !item.conditionKey)) {
+    res.status(409).json({ error: "Template requirements need unique keys, valid status, and conditions before activation" }); return;
+  }
+  const [created] = await db.insert(contractClientWorkTypesTable).values({
+    programId, key, displayName, checklistTemplateId, active: req.body.active !== false,
+  }).returning();
+  res.status(201).json(created);
 });
 
 router.post("/contract-client-programs", async (req, res): Promise<void> => {
@@ -305,12 +392,23 @@ router.post("/contract-client-programs", async (req, res): Promise<void> => {
       res.status(400).json({ error: `${field} must be a boolean` }); return;
     }
   }
+  const email = req.body.invoiceSubmissionEmail == null ? null : String(req.body.invoiceSubmissionEmail).trim();
+  const deadline = req.body.invoiceSubmissionDeadlineHours == null ? null : Number(req.body.invoiceSubmissionDeadlineHours);
+  const instructions = req.body.invoiceSubmissionInstructions == null ? null : String(req.body.invoiceSubmissionInstructions).trim();
+  if ((email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
+      (deadline != null && (!Number.isSafeInteger(deadline) || deadline < 1)) ||
+      (instructions && instructions.length > 4000)) {
+    res.status(400).json({ error: "Invoice submission settings are invalid" }); return;
+  }
   const [created] = await db.insert(contractClientProgramsTable).values({
     businessId: ownership.business.id,
     payerClientId: Number(req.body.payerClientId),
     name,
     requiresInstallationPhotos: req.body.requiresInstallationPhotos === true,
     requiresCompletionDocumentation: req.body.requiresCompletionDocumentation === true,
+    invoiceSubmissionEmail: email,
+    invoiceSubmissionDeadlineHours: deadline,
+    invoiceSubmissionInstructions: instructions,
     createdByUserId: getRequestUserId(req) ?? null,
   }).returning({ id: contractClientProgramsTable.id });
   res.status(201).json(await getProgram(created.id));
@@ -403,7 +501,16 @@ router.post("/contract-work-orders", async (req, res): Promise<void> => {
     res.status(400).json({ error: "External order number and title are required" }); return;
   }
   const installationType = req.body.installationType == null ? null : String(req.body.installationType);
-  if (installationType != null && !CONTRACT_INSTALLATION_TYPES.includes(installationType as any)) {
+  const workTypeId = req.body.workTypeId == null ? null : Number(req.body.workTypeId);
+  if (workTypeId != null) {
+    if (!Number.isSafeInteger(workTypeId)) { res.status(400).json({ error: "Invalid work type" }); return; }
+    const [workType] = await db.select().from(contractClientWorkTypesTable)
+      .where(and(eq(contractClientWorkTypesTable.id, workTypeId), eq(contractClientWorkTypesTable.programId, program.id), eq(contractClientWorkTypesTable.active, true))).limit(1);
+    const [template] = workType ? await db.select().from(checklistTemplatesTable)
+      .where(and(eq(checklistTemplatesTable.id, workType.checklistTemplateId), eq(checklistTemplatesTable.businessId, program.businessId), eq(checklistTemplatesTable.active, true))).limit(1) : [];
+    if (!workType || !template) { res.status(400).json({ error: "Work type or its checklist template is not available to this program" }); return; }
+  }
+  if (workTypeId == null && installationType != null && !CONTRACT_INSTALLATION_TYPES.includes(installationType as any)) {
     res.status(400).json({ error: "Unsupported installation type" }); return;
   }
   if ((program.requiresInstallationPhotos || program.requiresCompletionDocumentation) && !installationType) {
@@ -434,6 +541,7 @@ router.post("/contract-work-orders", async (req, res): Promise<void> => {
     title,
     scope: typeof req.body.scope === "string" ? req.body.scope.trim() || null : null,
     installationType,
+    workTypeId,
     homeownerContactId: contactId,
     propertyId,
     agreedPrice: price == null ? null : price.toFixed(2),
@@ -478,7 +586,8 @@ router.post("/contract-work-orders/:id/decision", async (req, res): Promise<void
           address: null,
           workflow: null,
         }).returning({ id: jobsTable.id });
-        await addContractCompletionChecklist(tx, job.id, order.externalOrderNumber, order.installationType, {
+        if (order.workTypeId != null) await addConfiguredChecklist(tx, job.id, order.workTypeId, program);
+        else await addContractCompletionChecklist(tx, job.id, order.externalOrderNumber, order.installationType, {
           requiresInstallationPhotos: program.requiresInstallationPhotos,
           requiresCompletionDocumentation: program.requiresCompletionDocumentation,
           sageHome: /sagehome/i.test(program.name ?? ""),

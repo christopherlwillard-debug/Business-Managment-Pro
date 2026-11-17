@@ -1,4 +1,5 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, index } from "drizzle-orm/pg-core";
+import { businessesTable } from "./businesses";
 import { jobsTable } from "./jobs";
 import { subcontractorsTable } from "./subcontractors";
 
@@ -7,6 +8,7 @@ export const checklistTemplatesTable = pgTable("checklist_templates", {
   name: text("name").notNull(),
   category: text("category"),
   active: boolean("active").notNull().default(true),
+  businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -22,6 +24,10 @@ export const checklistTemplateItemsTable = pgTable("checklist_template_items", {
   sectionId: integer("section_id").notNull().references(() => checklistTemplateSectionsTable.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  requirementKey: text("requirement_key"),
+  evidenceType: text("evidence_type"),
+  requirementStatus: text("requirement_status").notNull().default("required"),
+  conditionKey: text("condition_key"),
 });
 
 export const jobChecklistsTable = pgTable("job_checklists", {
@@ -33,6 +39,9 @@ export const jobChecklistsTable = pgTable("job_checklists", {
   shareEnabled: boolean("share_enabled").notNull().default(true),
   statusOverride: text("status_override"),
   additionalWorkOccurred: boolean("additional_work_occurred").notNull().default(false),
+  contractInvoiceSubmissionEmail: text("contract_invoice_submission_email"),
+  contractInvoiceSubmissionDeadlineHours: integer("contract_invoice_submission_deadline_hours"),
+  contractInvoiceSubmissionInstructions: text("contract_invoice_submission_instructions"),
   publicNotes: text("public_notes"),
   finishedNotes: text("finished_notes"),
   startNotes: text("start_notes"),
@@ -62,6 +71,9 @@ export const jobChecklistItemsTable = pgTable("job_checklist_items", {
   completedByUserId: text("completed_by_user_id"),
   completedByName: text("completed_by_name"),
   requiredEvidenceType: text("required_evidence_type"),
+  requirementKey: text("requirement_key"),
+  requirementStatus: text("requirement_status").notNull().default("required"),
+  conditionKey: text("condition_key"),
   skipped: boolean("skipped").notNull().default(false),
   skippedAt: timestamp("skipped_at"),
   notes: text("notes"),

@@ -18,6 +18,7 @@ import { clientsTable } from "./clients";
 import { contactsTable } from "./contacts";
 import { jobsTable } from "./jobs";
 import { propertiesTable } from "./properties";
+import { checklistTemplatesTable } from "./job-checklists";
 
 export const contractClientProgramsTable = pgTable("contract_client_programs", {
   id: serial("id").primaryKey(),
@@ -26,6 +27,9 @@ export const contractClientProgramsTable = pgTable("contract_client_programs", {
   name: text("name").notNull(),
   requiresInstallationPhotos: boolean("requires_installation_photos").notNull().default(false),
   requiresCompletionDocumentation: boolean("requires_completion_documentation").notNull().default(false),
+  invoiceSubmissionEmail: text("invoice_submission_email"),
+  invoiceSubmissionDeadlineHours: integer("invoice_submission_deadline_hours"),
+  invoiceSubmissionInstructions: text("invoice_submission_instructions"),
   active: boolean("active").notNull().default(true),
   createdByUserId: text("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -39,6 +43,19 @@ export const insertContractClientProgramSchema = createInsertSchema(contractClie
 export type InsertContractClientProgram = z.infer<typeof insertContractClientProgramSchema>;
 export type ContractClientProgram = typeof contractClientProgramsTable.$inferSelect;
 
+export const contractClientWorkTypesTable = pgTable("contract_client_work_types", {
+  id: serial("id").primaryKey(),
+  programId: integer("program_id").notNull().references(() => contractClientProgramsTable.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  displayName: text("display_name").notNull(),
+  checklistTemplateId: integer("checklist_template_id").notNull().references(() => checklistTemplatesTable.id, { onDelete: "restrict" }),
+  active: boolean("active").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("contract_client_work_types_program_key_uq").on(table.programId, table.key),
+  index("contract_client_work_types_program_active_idx").on(table.programId, table.active),
+]);
+
 export const CONTRACT_WORK_ORDER_STATUSES = ["pending_review", "accepted", "declined", "cancelled"] as const;
 export const CONTRACT_INSTALLATION_TYPES = ["shower", "standard_tub", "walk_in_tub", "tub_to_shower_conversion"] as const;
 export type ContractInstallationType = typeof CONTRACT_INSTALLATION_TYPES[number];
@@ -51,6 +68,7 @@ export const contractWorkOrdersTable = pgTable("contract_work_orders", {
   title: text("title").notNull(),
   scope: text("scope"),
   installationType: text("installation_type"),
+  workTypeId: integer("work_type_id").references(() => contractClientWorkTypesTable.id, { onDelete: "restrict" }),
   homeownerContactId: integer("homeowner_contact_id").references(() => contactsTable.id, { onDelete: "set null" }),
   propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
   agreedPrice: numeric("agreed_price", { precision: 12, scale: 2 }),

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
+import { useBusiness } from "@/contexts/BusinessContext";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -13,6 +14,10 @@ interface TemplateItem {
   id: number;
   title: string;
   sortOrder: number;
+  requirementKey: string | null;
+  evidenceType: "image" | "document" | null;
+  requirementStatus: "required" | "recommended" | "conditional";
+  conditionKey: string | null;
 }
 
 interface TemplateSection {
@@ -27,6 +32,7 @@ interface Template {
   name: string;
   category: string | null;
   active: boolean;
+  businessId: number | null;
   sections: TemplateSection[];
 }
 
@@ -41,6 +47,7 @@ async function apiFetch(path: string, init?: RequestInit) {
 
 export default function ChecklistTemplates() {
   const { toast } = useToast();
+  const { activeBusiness } = useBusiness();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -54,14 +61,14 @@ export default function ChecklistTemplates() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch("/api/checklist-templates");
+      const data = await apiFetch(`/api/checklist-templates${activeBusiness?.id ? `?businessId=${activeBusiness.id}` : ""}`);
       setTemplates(data);
     } catch {
       toast({ title: "Failed to load templates", variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeBusiness?.id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -77,7 +84,7 @@ export default function ChecklistTemplates() {
       const data = await apiFetch("/api/checklist-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), category: newCategory.trim() || null }),
+        body: JSON.stringify({ name: newName.trim(), category: newCategory.trim() || null, businessId: activeBusiness?.id ?? null }),
       });
       setTemplates(prev => [...prev, data]);
       setNewName("");
@@ -326,6 +333,10 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
   const [addingSection, setAddingSection] = useState(false);
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set(t.sections.map(s => s.id)));
   const [newItemTitle, setNewItemTitle] = useState<Record<number, string>>({});
+  const [newItemKey, setNewItemKey] = useState<Record<number, string>>({});
+  const [newItemStatus, setNewItemStatus] = useState<Record<number, "required" | "recommended" | "conditional">>({});
+  const [newItemEvidence, setNewItemEvidence] = useState<Record<number, "image" | "document" | "">>({});
+  const [newItemCondition, setNewItemCondition] = useState<Record<number, string>>({});
   const [editingItem, setEditingItem] = useState<{ sectionId: number; itemId: number; draft: string } | null>(null);
   const [editingSection, setEditingSection] = useState<{ id: number; draft: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -433,13 +444,21 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
       const item = await apiFetch(`/api/checklist-templates/${t.id}/sections/${sectionId}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, sortOrder: section.items.length }),
+        body: JSON.stringify({
+          title, sortOrder: section.items.length,
+          requirementKey: (newItemKey[sectionId] || title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")).slice(0, 120),
+          requirementStatus: newItemStatus[sectionId] ?? "required",
+          evidenceType: newItemEvidence[sectionId] || null,
+          conditionKey: newItemCondition[sectionId]?.trim() || null,
+        }),
       });
       setT(prev => ({
         ...prev,
         sections: prev.sections.map(s => s.id === sectionId ? { ...s, items: [...s.items, item] } : s),
       }));
       setNewItemTitle(prev => ({ ...prev, [sectionId]: "" }));
+      setNewItemKey(prev => ({ ...prev, [sectionId]: "" }));
+      setNewItemCondition(prev => ({ ...prev, [sectionId]: "" }));
     } catch {
       toast({ title: "Failed to add item", variant: "destructive" });
     }
@@ -622,7 +641,7 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
                 ))}
 
                 {/* Add item */}
-                <div className="flex items-center gap-2 px-4 py-2">
+                <div className="flex flex-wrap items-center gap-2 px-4 py-2">
                   <input
                     type="text"
                     placeholder="Add item…"
@@ -631,9 +650,26 @@ function TemplateEditor({ template, onBack }: { template: Template; onBack: () =
                     onKeyDown={e => e.key === "Enter" && addItem(section.id)}
                     className="flex-1 text-xs px-2 py-1.5 border border-dashed border-border rounded-lg bg-muted/10 focus:outline-none focus:ring-2 focus:ring-emerald-400/20"
                   />
+                  <input aria-label="Stable requirement key" placeholder="Requirement key" value={newItemKey[section.id] ?? ""}
+                    onChange={e => setNewItemKey(prev => ({ ...prev, [section.id]: e.target.value }))}
+                    className="w-32 text-xs px-2 py-1.5 border border-border rounded-lg bg-background" />
+                  <select aria-label="Requirement status" value={newItemStatus[section.id] ?? "required"}
+                    onChange={e => setNewItemStatus(prev => ({ ...prev, [section.id]: e.target.value as "required" | "recommended" | "conditional" }))}
+                    className="text-xs px-2 py-1.5 border border-border rounded-lg bg-background">
+                    <option value="required">Required</option><option value="recommended">Recommended</option><option value="conditional">Conditional</option>
+                  </select>
+                  <select aria-label="Required evidence type" value={newItemEvidence[section.id] ?? ""}
+                    onChange={e => setNewItemEvidence(prev => ({ ...prev, [section.id]: e.target.value as "image" | "document" | "" }))}
+                    className="text-xs px-2 py-1.5 border border-border rounded-lg bg-background">
+                    <option value="">No evidence</option><option value="image">Photo</option><option value="document">PDF/document</option>
+                  </select>
+                  {newItemStatus[section.id] === "conditional" && <input aria-label="Requirement condition key" placeholder="Condition key"
+                    value={newItemCondition[section.id] ?? ""}
+                    onChange={e => setNewItemCondition(prev => ({ ...prev, [section.id]: e.target.value }))}
+                    className="w-32 text-xs px-2 py-1.5 border border-border rounded-lg bg-background" />}
                   <button
                     onClick={() => addItem(section.id)}
-                    disabled={!(newItemTitle[section.id] ?? "").trim()}
+                    disabled={!(newItemTitle[section.id] ?? "").trim() || (newItemStatus[section.id] === "conditional" && !(newItemCondition[section.id] ?? "").trim())}
                     className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-40 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />

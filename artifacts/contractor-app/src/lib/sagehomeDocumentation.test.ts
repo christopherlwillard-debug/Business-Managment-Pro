@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getSageHomeDocumentationReadiness, type SageHomeRequirementItem } from "./sagehomeDocumentation";
+import { getContractDocumentationReadiness, type ContractRequirementItem } from "./contractDocumentation";
 
-const item = (title: string, completed = false, completedAt: string | null = null): SageHomeRequirementItem => ({
+const item = (title: string, completed = false, completedAt: string | null = null): ContractRequirementItem => ({
   title, completed, completedAt, skipped: false,
 });
 
 describe("SageHome documentation readiness", () => {
   it("shows missing required work and paperwork while excluding recommended and inapplicable items", () => {
-    const result = getSageHomeDocumentationReadiness([
+    const result = getContractDocumentationReadiness([
       item("Install photo", false),
       item("Photograph pre-existing damage (highly recommended; optional)", false),
       item("Conditional additional-work: before photo", false),
@@ -30,8 +30,8 @@ describe("SageHome documentation readiness", () => {
 
   it("requires conditional before/after evidence only when additional work occurred", () => {
     const additionalBefore = item("Conditional additional-work: before photo");
-    expect(getSageHomeDocumentationReadiness([additionalBefore], false).missingItems).toHaveLength(0);
-    expect(getSageHomeDocumentationReadiness([additionalBefore], true).missingItems).toHaveLength(1);
+    expect(getContractDocumentationReadiness([additionalBefore], false).missingItems).toHaveLength(0);
+    expect(getContractDocumentationReadiness([additionalBefore], true).missingItems).toHaveLength(1);
   });
 
   it("tracks the 24-hour invoice deadline from installation completion", () => {
@@ -41,14 +41,14 @@ describe("SageHome documentation readiness", () => {
       item("Remove tools and debris and thoroughly clean the home", true, completedAt),
       item("Submit invoice to installers@sagehome.com within 24 hours after completion", true, dueAt),
     ];
-    const onTime = getSageHomeDocumentationReadiness(items, false, Date.parse(dueAt));
+    const onTime = getContractDocumentationReadiness(items, false, Date.parse(dueAt));
     expect(onTime.invoiceWasLate).toBe(false);
     expect(onTime.invoiceIsOverdue).toBe(false);
-    const late = getSageHomeDocumentationReadiness([
+    const late = getContractDocumentationReadiness([
       items[0], { ...items[1], completedAt: "2026-11-17T09:00:01.000Z" },
     ], false, Date.parse("2026-11-18T09:00:00.000Z"));
     expect(late.invoiceWasLate).toBe(true);
-    const overdue = getSageHomeDocumentationReadiness([
+    const overdue = getContractDocumentationReadiness([
       items[0], { ...items[1], completed: false, completedAt: null },
     ], false, Date.parse("2026-11-17T09:00:01.000Z"));
     expect(overdue.invoiceIsOverdue).toBe(true);

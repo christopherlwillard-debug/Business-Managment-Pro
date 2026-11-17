@@ -252,9 +252,11 @@ export async function buildChecklistResponse(checklistId: number) {
       noteEntries: sectionNoteRows.filter((n: any) => n.jobChecklistSectionId === s.id),
       items: items.filter((i: any) => i.jobChecklistSectionId === s.id).map(i => ({
         ...i,
-        requiredEvidenceType: i.requiredEvidenceType ?? (
-          checklist.additionalWorkOccurred && i.title.startsWith("Conditional additional-work:") ? "image" : null
-        ),
+        requiredEvidenceType: i.requirementStatus === "recommended"
+          ? null
+          : i.requirementStatus === "conditional"
+            ? (i.conditionKey === "additional_work" && checklist.additionalWorkOccurred ? i.requiredEvidenceType : null)
+            : i.requiredEvidenceType,
         photos: photosByItemId.get(i.id) ?? [],
         parts: partsByItemId.get(i.id) ?? [],
       })),
@@ -640,6 +642,10 @@ router.post("/:jobId/checklist", async (req, res) => {
           jobChecklistSectionId: newSection.id,
           title: item.title,
           sortOrder: item.sortOrder,
+          requiredEvidenceType: item.evidenceType,
+          requirementKey: item.requirementKey,
+          requirementStatus: item.requirementStatus,
+          conditionKey: item.conditionKey,
         });
       }
     }
@@ -682,8 +688,9 @@ router.patch("/:jobId/checklist", async (req, res) => {
       const conditionalItems = await db.select({
         id: jobChecklistItemsTable.id,
         title: jobChecklistItemsTable.title,
+        conditionKey: jobChecklistItemsTable.conditionKey,
       }).from(jobChecklistItemsTable).where(eq(jobChecklistItemsTable.jobChecklistId, checklist.id));
-      for (const item of conditionalItems.filter(row => row.title.startsWith("Conditional additional-work:"))) {
+      for (const item of conditionalItems.filter(row => row.conditionKey === "additional_work" || row.title.startsWith("Conditional additional-work:"))) {
         await db.update(jobChecklistItemsTable).set({
           completed: false, completedAt: null, completedByUserId: null,
         }).where(eq(jobChecklistItemsTable.id, item.id));
@@ -859,8 +866,14 @@ router.patch("/:jobId/checklist/items/:itemId", async (req, res) => {
       }
     }
 
-    const conditionalPhoto = checklist.additionalWorkOccurred && item.title.startsWith("Conditional additional-work:");
-    const evidenceType = item.requiredEvidenceType ?? (conditionalPhoto ? "image" : null);
+    const conditionApplies = item.conditionKey === "additional_work"
+      ? checklist.additionalWorkOccurred
+      : checklist.additionalWorkOccurred && item.title.startsWith("Conditional additional-work:");
+    const evidenceType = item.requirementStatus === "recommended"
+      ? null
+      : item.requirementStatus === "conditional"
+        ? (conditionApplies ? item.requiredEvidenceType : null)
+        : item.requiredEvidenceType ?? (conditionApplies ? "image" : null);
     if (completed === true && evidenceType) {
       const evidence = await db
         .select({ mediaType: jobChecklistItemPhotosTable.mediaType })
@@ -926,7 +939,15 @@ router.patch("/:jobId/checklist/items/:itemId/skip", async (req, res) => {
     if (!item) return res.status(404).json({ error: "Item not found" });
 
     const { skipped } = req.body;
-    if (skipped && item.requiredEvidenceType) {
+    const conditionalApplies = item.conditionKey === "additional_work"
+      ? checklist.additionalWorkOccurred
+      : checklist.additionalWorkOccurred && item.title.startsWith("Conditional additional-work:");
+    const evidenceRequired = item.requirementStatus === "recommended"
+      ? false
+      : item.requirementStatus === "conditional"
+        ? conditionalApplies && !!item.requiredEvidenceType
+        : !!item.requiredEvidenceType || conditionalApplies;
+    if (skipped && evidenceRequired) {
       return res.status(409).json({
         code: "CHECKLIST_EVIDENCE_REQUIRED",
         error: "Required contract evidence items cannot be skipped",

@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUserPermissions } from "@/contexts/UserPermissions";
-import { getSageHomeDocumentationReadiness } from "@/lib/sagehomeDocumentation";
+import { getContractDocumentationReadiness } from "@/lib/contractDocumentation";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -37,6 +37,9 @@ interface ChecklistItemPart {
 interface ChecklistItem {
   id: number;
   title: string;
+  requirementKey?: string | null;
+  requirementStatus?: "required" | "recommended" | "conditional" | null;
+  conditionKey?: string | null;
   requiredEvidenceType: "image" | "document" | null;
   completed: boolean;
   completedAt: string | null;
@@ -87,6 +90,9 @@ interface JobChecklist {
   shareEnabled: boolean;
   statusOverride: string | null;
   additionalWorkOccurred: boolean;
+  contractInvoiceSubmissionEmail: string | null;
+  contractInvoiceSubmissionDeadlineHours: number | null;
+  contractInvoiceSubmissionInstructions: string | null;
   publicNotes: string | null;
   startNotes: string | null;
   overallPercent: number;
@@ -1066,10 +1072,15 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
   const linkedSubcontractors = subcontractors.filter(sub =>
     job.subcontractorIds?.includes(sub.id)
   );
-  const sageHomeDocumentation = checklist?.templateName === "SageHome Installation Documentation";
-  const readiness = getSageHomeDocumentationReadiness(
-    sageHomeDocumentation ? checklist!.sections.flatMap(section => section.items) : [],
+  const contractItems = checklist?.sections.flatMap(section => section.items) ?? [];
+  const hasContractDocumentation = !!checklist?.contractInvoiceSubmissionEmail ||
+    !!checklist?.contractInvoiceSubmissionDeadlineHours ||
+    contractItems.some(item => !!item.requirementKey);
+  const readiness = getContractDocumentationReadiness(
+    hasContractDocumentation ? contractItems : [],
     checklist?.additionalWorkOccurred ?? false,
+    Date.now(),
+    checklist?.contractInvoiceSubmissionDeadlineHours ?? 24,
   );
   const {
     missingItems: documentationMissing, readinessMissing, invoiceItem: invoiceSubmissionItem,
@@ -1183,11 +1194,11 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                 )}
               </div>
 
-              {sageHomeDocumentation && (
+              {hasContractDocumentation && (
                 <div className="mx-5 my-4 rounded-xl border border-border bg-card p-4 text-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-semibold">SageHome documentation readiness</p>
+                      <p className="font-semibold">Contract documentation readiness</p>
                       <p className="mt-1 text-muted-foreground">
                         {invoiceSubmitted
                           ? "Invoice submission recorded"
@@ -1203,6 +1214,8 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                   <p className="mt-2 text-xs text-muted-foreground">
                     Homeowner paperwork pending: {homeownerPaperworkPending} · External submissions pending: {externalSubmissionPending}
                   </p>
+                  {checklist.contractInvoiceSubmissionEmail && <p className="mt-2 text-xs text-muted-foreground">Submit invoice to: {checklist.contractInvoiceSubmissionEmail}</p>}
+                  {checklist.contractInvoiceSubmissionInstructions && <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{checklist.contractInvoiceSubmissionInstructions}</p>}
                   {documentationMissing.length > 0 && (
                     <p className="mt-2 text-xs text-muted-foreground">
                       Missing: {documentationMissing.slice(0, 4).map(item => item.title).join("; ")}
@@ -1216,14 +1229,11 @@ export function JobChecklistPanel({ job, subcontractors = [], onClose }: JobChec
                         : `Invoice due by ${invoiceDueAt.toLocaleString()}`}
                     </p>
                   )}
-                  <label className="mt-3 flex items-center gap-2 text-xs">
+                  {contractItems.some(item => item.conditionKey === "additional_work") && <label className="mt-3 flex items-center gap-2 text-xs">
                     <input type="checkbox" checked={checklist.additionalWorkOccurred} disabled={!canEdit("jobs")}
                       onChange={event => void setAdditionalWorkOccurred(event.target.checked)} />
                     Additional-scope work occurred; before/after photos are required
-                  </label>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Pre-existing damage photos are recommended, not required. This documentation status does not change job status or block job completion.
-                  </p>
+                  </label>}
                 </div>
               )}
 

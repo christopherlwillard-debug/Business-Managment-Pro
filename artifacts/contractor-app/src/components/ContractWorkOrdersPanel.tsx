@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCreateContractClientProgram,
@@ -14,6 +14,8 @@ import {
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
 
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 export function ContractWorkOrdersPanel() {
   const { activeBusiness } = useBusiness();
   const businessId = activeBusiness?.id;
@@ -24,6 +26,15 @@ export function ContractWorkOrdersPanel() {
   const [programName, setProgramName] = useState("");
   const [requiresInstallationPhotos, setRequiresInstallationPhotos] = useState(false);
   const [requiresCompletionDocumentation, setRequiresCompletionDocumentation] = useState(false);
+  const [invoiceEmail, setInvoiceEmail] = useState("");
+  const [invoiceDeadlineHours, setInvoiceDeadlineHours] = useState("");
+  const [invoiceInstructions, setInvoiceInstructions] = useState("");
+  const [workTypeKey, setWorkTypeKey] = useState("");
+  const [workTypeName, setWorkTypeName] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [workTypeId, setWorkTypeId] = useState("");
+  const [workTypes, setWorkTypes] = useState<Array<{ id: number; key: string; displayName: string; checklistTemplateId: number; active: boolean }>>([]);
+  const [templates, setTemplates] = useState<Array<{ id: number; name: string; businessId: number | null; active: boolean }>>([]);
   const [programId, setProgramId] = useState("");
   const [externalOrderNumber, setExternalOrderNumber] = useState("");
   const [title, setTitle] = useState("");
@@ -47,6 +58,22 @@ export function ContractWorkOrdersPanel() {
   const createOrder = useCreateContractWorkOrder();
   const decideOrder = useDecideContractWorkOrder();
 
+  useEffect(() => {
+    if (!businessId) { setTemplates([]); return; }
+    fetch(`${BASE}/api/checklist-templates?businessId=${businessId}`, { credentials: "include" })
+      .then(response => response.ok ? response.json() : [])
+      .then((rows: typeof templates) => setTemplates(rows.filter(row => row.businessId === businessId && row.active)))
+      .catch(() => setTemplates([]));
+  }, [businessId]);
+
+  useEffect(() => {
+    if (!programId || !businessId) { setWorkTypes([]); return; }
+    fetch(`${BASE}/api/jobs/contract-client-programs/${programId}/work-types?businessId=${businessId}`, { credentials: "include" })
+      .then(response => response.ok ? response.json() : [])
+      .then((rows: typeof workTypes) => setWorkTypes(rows.filter(row => row.active)))
+      .catch(() => setWorkTypes([]));
+  }, [programId, businessId]);
+
   async function refresh() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getListContractClientProgramsQueryKey({ businessId: businessId ?? 0 }) }),
@@ -66,12 +93,18 @@ export function ContractWorkOrdersPanel() {
           name: programName.trim(),
           requiresInstallationPhotos,
           requiresCompletionDocumentation,
+          invoiceSubmissionEmail: invoiceEmail.trim() || null,
+          invoiceSubmissionDeadlineHours: invoiceDeadlineHours ? Number(invoiceDeadlineHours) : null,
+          invoiceSubmissionInstructions: invoiceInstructions.trim() || null,
         },
       });
       setProgramId(String(created.id));
       setProgramName("");
       setRequiresInstallationPhotos(false);
       setRequiresCompletionDocumentation(false);
+      setInvoiceEmail("");
+      setInvoiceDeadlineHours("");
+      setInvoiceInstructions("");
       toast({ title: "Contract program added" });
       await refresh();
     } catch (error) {
@@ -100,11 +133,13 @@ export function ContractWorkOrdersPanel() {
           homeownerContactId: homeownerContactId ? Number(homeownerContactId) : null,
           agreedPrice: agreedPrice ? Number(agreedPrice) : null,
           installationType: installationType || null,
+          workTypeId: workTypeId ? Number(workTypeId) : null,
         } as any,
       });
       setExternalOrderNumber("");
       setTitle("");
       setInstallationType("");
+      setWorkTypeId("");
       setScope("");
       setPropertyId("");
       setHomeownerContactId("");
@@ -168,24 +203,57 @@ export function ContractWorkOrdersPanel() {
                     <input type="checkbox" checked={requiresCompletionDocumentation} onChange={event => setRequiresCompletionDocumentation(event.target.checked)} />
                     Require completion documentation
                   </label>
+          <input aria-label="Invoice submission email" type="email" value={invoiceEmail} onChange={event => setInvoiceEmail(event.target.value)} placeholder="Invoice submission email" className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
+          <input aria-label="Invoice submission deadline hours" type="number" min="1" step="1" value={invoiceDeadlineHours} onChange={event => setInvoiceDeadlineHours(event.target.value)} placeholder="Submission deadline in hours" className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
+          <textarea aria-label="Invoice submission instructions" value={invoiceInstructions} onChange={event => setInvoiceInstructions(event.target.value)} placeholder="Client-specific invoice instructions" className="min-h-20 rounded-lg border border-border bg-background px-3 py-2 text-sm sm:col-span-3" />
                 </div>
                 <p className="text-xs text-muted-foreground sm:col-span-3">Only select requirements confirmed for this client program. Required evidence must be uploaded before the checklist item can be completed.</p>
               </form>
 
+              {programId && (
+                <form onSubmit={async event => {
+                  event.preventDefault();
+                  try {
+                    const response = await fetch(`${BASE}/api/jobs/contract-client-programs/${programId}/work-types`, {
+                      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ businessId, key: workTypeKey.trim(), displayName: workTypeName.trim(), checklistTemplateId: Number(templateId), active: true }),
+                    });
+                    const result = await response.json();
+                    if (!response.ok) throw new Error(result.error ?? "Could not configure work type");
+                    setWorkTypes(rows => [...rows, result]);
+                    setWorkTypeKey(""); setWorkTypeName(""); setTemplateId("");
+                    toast({ title: "Work type configured" });
+                  } catch (error) {
+                    toast({ title: "Could not configure work type", description: error instanceof Error ? error.message : "Try again.", variant: "destructive" });
+                  }
+                }} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-4">
+                  <input aria-label="Work type key" value={workTypeKey} onChange={event => setWorkTypeKey(event.target.value)} placeholder="Stable key, e.g. shower" maxLength={80} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
+                  <input aria-label="Work type name" value={workTypeName} onChange={event => setWorkTypeName(event.target.value)} placeholder="Work type name" maxLength={160} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
+                  <select aria-label="Checklist template" value={templateId} onChange={event => setTemplateId(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
+                    <option value="">Choose this business's checklist</option>
+                    {templates.map(template => <option key={template.id} value={template.id}>{template.name}</option>)}
+                  </select>
+                  <button disabled={!workTypeKey.trim() || !workTypeName.trim() || !templateId} className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">Add work type</button>
+                </form>
+              )}
+
               <form onSubmit={saveOrder} className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-2">
-                <select aria-label="Contract program" required value={programId} onChange={event => setProgramId(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
+                <select aria-label="Contract program" required value={programId} onChange={event => { setProgramId(event.target.value); setWorkTypeId(""); setInstallationType(""); }} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
                   <option value="">Choose program</option>
                   {(programsQuery.data ?? []).filter(program => program.active).map(program => <option key={program.id} value={program.id}>{program.name} · payer: {program.payerName}</option>)}
                 </select>
                 <input aria-label="External work-order number" required value={externalOrderNumber} onChange={event => setExternalOrderNumber(event.target.value)} placeholder="External work-order number" maxLength={160} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
                 <input aria-label="Work-order title" required value={title} onChange={event => setTitle(event.target.value)} placeholder="Installation title" maxLength={240} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm" />
-                <select aria-label="Installation type" required={!!programsQuery.data?.find(program => program.id === Number(programId))?.requiresInstallationPhotos || !!programsQuery.data?.find(program => program.id === Number(programId))?.requiresCompletionDocumentation} value={installationType} onChange={event => setInstallationType(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
+                {workTypes.length > 0 ? <select aria-label="Work type" required value={workTypeId} onChange={event => setWorkTypeId(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="">Choose work type</option>
+                  {workTypes.map(type => <option key={type.id} value={type.id}>{type.displayName}</option>)}
+                </select> : <select aria-label="Installation type" required={!!programsQuery.data?.find(program => program.id === Number(programId))?.requiresInstallationPhotos || !!programsQuery.data?.find(program => program.id === Number(programId))?.requiresCompletionDocumentation} value={installationType} onChange={event => setInstallationType(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
                   <option value="">Choose installation type</option>
                   <option value="shower">Shower installation</option>
                   <option value="standard_tub">Standard tub installation</option>
                   <option value="walk_in_tub">Walk-in tub installation</option>
                   <option value="tub_to_shower_conversion">Tub-to-shower conversion</option>
-                </select>
+                </select>}
                 <select aria-label="Property" value={propertyId} onChange={event => setPropertyId(event.target.value)} className="min-h-11 rounded-lg border border-border bg-background px-3 text-sm">
                   <option value="">Property not linked yet</option>
                   {(optionsQuery.data?.properties ?? []).map(property => <option key={property.id} value={property.id}>{property.label}{property.address ? ` · ${property.address}` : ""}</option>)}

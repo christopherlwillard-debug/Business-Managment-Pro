@@ -799,6 +799,15 @@ export interface ContractClientProgram {
   name: string;
   requiresInstallationPhotos: boolean;
   requiresCompletionDocumentation: boolean;
+  /** @nullable */
+  invoiceSubmissionEmail: string | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  invoiceSubmissionDeadlineHours: number | null;
+  /** @nullable */
+  invoiceSubmissionInstructions: string | null;
   active: boolean;
   [key: string]: unknown;
 }
@@ -813,6 +822,43 @@ export interface ContractClientProgramInput {
   name: string;
   requiresInstallationPhotos?: boolean;
   requiresCompletionDocumentation?: boolean;
+  /** @nullable */
+  invoiceSubmissionEmail?: string | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  invoiceSubmissionDeadlineHours?: number | null;
+  /**
+   * @maxLength 4000
+   * @nullable
+   */
+  invoiceSubmissionInstructions?: string | null;
+}
+
+export interface ContractClientWorkType {
+  id: number;
+  programId: number;
+  key: string;
+  displayName: string;
+  checklistTemplateId: number;
+  active: boolean;
+}
+
+export interface ContractClientWorkTypeInput {
+  businessId: number;
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  key: string;
+  /**
+   * @minLength 1
+   * @maxLength 160
+   */
+  displayName: string;
+  checklistTemplateId: number;
+  active?: boolean;
 }
 
 export type ContractWorkOrderStatus =
@@ -835,6 +881,8 @@ export interface ContractWorkOrder {
   externalOrderNumber: string;
   title: string;
   scope?: string | null;
+  installationType?: string | null;
+  workTypeId?: number | null;
   homeownerContactId?: number | null;
   homeownerName?: string | null;
   propertyId?: number | null;
@@ -2801,6 +2849,10 @@ export type ListClientsParams = {
 };
 
 export type ListContractClientProgramsParams = {
+  businessId: number;
+};
+
+export type ListContractClientWorkTypesParams = {
   businessId: number;
 };
 

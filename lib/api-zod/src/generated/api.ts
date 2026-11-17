@@ -258,6 +258,9 @@ export const ListContractClientProgramsResponseItem = zod.object({
   name: zod.string(),
   requiresInstallationPhotos: zod.boolean(),
   requiresCompletionDocumentation: zod.boolean(),
+  invoiceSubmissionEmail: zod.string().email().nullable(),
+  invoiceSubmissionDeadlineHours: zod.number().min(1).nullable(),
+  invoiceSubmissionInstructions: zod.string().nullable(),
   active: zod.boolean(),
 });
 export const ListContractClientProgramsResponse = zod.array(
@@ -271,6 +274,7 @@ export const createContractClientProgramBodyNameMax = 160;
 
 export const createContractClientProgramBodyRequiresInstallationPhotosDefault = false;
 export const createContractClientProgramBodyRequiresCompletionDocumentationDefault = false;
+export const createContractClientProgramBodyInvoiceSubmissionInstructionsMax = 4000;
 
 export const CreateContractClientProgramBody = zod.object({
   businessId: zod.number(),
@@ -284,6 +288,57 @@ export const CreateContractClientProgramBody = zod.object({
     .default(
       createContractClientProgramBodyRequiresCompletionDocumentationDefault,
     ),
+  invoiceSubmissionEmail: zod.string().email().nullish(),
+  invoiceSubmissionDeadlineHours: zod.number().min(1).nullish(),
+  invoiceSubmissionInstructions: zod
+    .string()
+    .max(createContractClientProgramBodyInvoiceSubmissionInstructionsMax)
+    .nullish(),
+});
+
+/**
+ * @summary List configured work types for a contract program
+ */
+export const ListContractClientWorkTypesParams = zod.object({
+  programId: zod.coerce.number(),
+});
+
+export const ListContractClientWorkTypesQueryParams = zod.object({
+  businessId: zod.coerce.number(),
+});
+
+export const ListContractClientWorkTypesResponseItem = zod.object({
+  id: zod.number(),
+  programId: zod.number(),
+  key: zod.string(),
+  displayName: zod.string(),
+  checklistTemplateId: zod.number(),
+  active: zod.boolean(),
+});
+export const ListContractClientWorkTypesResponse = zod.array(
+  ListContractClientWorkTypesResponseItem,
+);
+
+/**
+ * @summary Configure a work type for a contract program
+ */
+export const CreateContractClientWorkTypeParams = zod.object({
+  programId: zod.coerce.number(),
+});
+
+export const createContractClientWorkTypeBodyKeyMax = 80;
+
+export const createContractClientWorkTypeBodyDisplayNameMax = 160;
+
+export const CreateContractClientWorkTypeBody = zod.object({
+  businessId: zod.number(),
+  key: zod.string().min(1).max(createContractClientWorkTypeBodyKeyMax),
+  displayName: zod
+    .string()
+    .min(1)
+    .max(createContractClientWorkTypeBodyDisplayNameMax),
+  checklistTemplateId: zod.number(),
+  active: zod.boolean().optional(),
 });
 
 /**
@@ -332,6 +387,8 @@ export const ListContractWorkOrdersResponseItem = zod.object({
   externalOrderNumber: zod.string(),
   title: zod.string(),
   scope: zod.string().nullish(),
+  installationType: zod.string().nullish(),
+  workTypeId: zod.number().nullish(),
   homeownerContactId: zod.number().nullish(),
   homeownerName: zod.string().nullish(),
   propertyId: zod.number().nullish(),
@@ -400,6 +457,8 @@ export const DecideContractWorkOrderResponse = zod.object({
   externalOrderNumber: zod.string(),
   title: zod.string(),
   scope: zod.string().nullish(),
+  installationType: zod.string().nullish(),
+  workTypeId: zod.number().nullish(),
   homeownerContactId: zod.number().nullish(),
   homeownerName: zod.string().nullish(),
   propertyId: zod.number().nullish(),

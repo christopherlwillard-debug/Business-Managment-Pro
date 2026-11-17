@@ -14,6 +14,15 @@ export interface ContractClientProgram {
   name: string;
   requiresInstallationPhotos: boolean;
   requiresCompletionDocumentation: boolean;
+  /** @nullable */
+  invoiceSubmissionEmail: string | null;
+  /**
+   * @minimum 1
+   * @nullable
+   */
+  invoiceSubmissionDeadlineHours: number | null;
+  /** @nullable */
+  invoiceSubmissionInstructions: string | null;
   active: boolean;
   [key: string]: unknown;
 }

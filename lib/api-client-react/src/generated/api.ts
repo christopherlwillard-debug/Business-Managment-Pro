@@ -32,6 +32,8 @@ import type {
   ComponentWorkSessionsResponse,
   ContractClientProgram,
   ContractClientProgramInput,
+  ContractClientWorkType,
+  ContractClientWorkTypeInput,
   ContractWorkOrder,
   ContractWorkOrderDecisionInput,
   ContractWorkOrderInput,
@@ -87,6 +89,7 @@ import type {
   ListClientBillingProfilesParams,
   ListClientsParams,
   ListContractClientProgramsParams,
+  ListContractClientWorkTypesParams,
   ListContractWorkOrdersParams,
   ListDailyLogsParams,
   ListEstimatesParams,
@@ -1394,6 +1397,221 @@ export const useCreateContractClientProgram = <
   TContext
 > => {
   return useMutation(getCreateContractClientProgramMutationOptions(options));
+};
+
+/**
+ * @summary List configured work types for a contract program
+ */
+export const getListContractClientWorkTypesUrl = (
+  programId: number,
+  params: ListContractClientWorkTypesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/jobs/contract-client-programs/${programId}/work-types?${stringifiedParams}`
+    : `/api/jobs/contract-client-programs/${programId}/work-types`;
+};
+
+export const listContractClientWorkTypes = async (
+  programId: number,
+  params: ListContractClientWorkTypesParams,
+  options?: RequestInit,
+): Promise<ContractClientWorkType[]> => {
+  return customFetch<ContractClientWorkType[]>(
+    getListContractClientWorkTypesUrl(programId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListContractClientWorkTypesQueryKey = (
+  programId: number,
+  params?: ListContractClientWorkTypesParams,
+) => {
+  return [
+    `/api/jobs/contract-client-programs/${programId}/work-types`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListContractClientWorkTypesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listContractClientWorkTypes>>,
+  TError = ErrorType<unknown>,
+>(
+  programId: number,
+  params: ListContractClientWorkTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractClientWorkTypes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListContractClientWorkTypesQueryKey(programId, params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listContractClientWorkTypes>>
+  > = ({ signal }) =>
+    listContractClientWorkTypes(programId, params, {
+      signal,
+      ...requestOptions,
+    });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!programId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listContractClientWorkTypes>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListContractClientWorkTypesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listContractClientWorkTypes>>
+>;
+export type ListContractClientWorkTypesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List configured work types for a contract program
+ */
+
+export function useListContractClientWorkTypes<
+  TData = Awaited<ReturnType<typeof listContractClientWorkTypes>>,
+  TError = ErrorType<unknown>,
+>(
+  programId: number,
+  params: ListContractClientWorkTypesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listContractClientWorkTypes>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListContractClientWorkTypesQueryOptions(
+    programId,
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Configure a work type for a contract program
+ */
+export const getCreateContractClientWorkTypeUrl = (programId: number) => {
+  return `/api/jobs/contract-client-programs/${programId}/work-types`;
+};
+
+export const createContractClientWorkType = async (
+  programId: number,
+  contractClientWorkTypeInput: ContractClientWorkTypeInput,
+  options?: RequestInit,
+): Promise<ContractClientWorkType> => {
+  return customFetch<ContractClientWorkType>(
+    getCreateContractClientWorkTypeUrl(programId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(contractClientWorkTypeInput),
+    },
+  );
+};
+
+export const getCreateContractClientWorkTypeMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractClientWorkType>>,
+    TError,
+    { programId: number; data: BodyType<ContractClientWorkTypeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createContractClientWorkType>>,
+  TError,
+  { programId: number; data: BodyType<ContractClientWorkTypeInput> },
+  TContext
+> => {
+  const mutationKey = ["createContractClientWorkType"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createContractClientWorkType>>,
+    { programId: number; data: BodyType<ContractClientWorkTypeInput> }
+  > = (props) => {
+    const { programId, data } = props ?? {};
+
+    return createContractClientWorkType(programId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateContractClientWorkTypeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createContractClientWorkType>>
+>;
+export type CreateContractClientWorkTypeMutationBody =
+  BodyType<ContractClientWorkTypeInput>;
+export type CreateContractClientWorkTypeMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Configure a work type for a contract program
+ */
+export const useCreateContractClientWorkType = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createContractClientWorkType>>,
+    TError,
+    { programId: number; data: BodyType<ContractClientWorkTypeInput> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createContractClientWorkType>>,
+  TError,
+  { programId: number; data: BodyType<ContractClientWorkTypeInput> },
+  TContext
+> => {
+  return useMutation(getCreateContractClientWorkTypeMutationOptions(options));
 };
 
 /**

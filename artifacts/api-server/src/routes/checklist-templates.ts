@@ -7,16 +7,23 @@ import {
 } from "@workspace/db/schema";
 import { eq, asc } from "drizzle-orm";
 import crypto from "crypto";
+import { requestedBusiness } from "../lib/business-scope.js";
 
 const router = Router();
 
 // ── List all templates ────────────────────────────────────────────────────────
 router.get("/", async (_req, res) => {
   try {
-    const templates = await db
+    let templates = await db
       .select()
       .from(checklistTemplatesTable)
       .orderBy(asc(checklistTemplatesTable.createdAt));
+    const businessId = Number(_req.query.businessId);
+    if (Number.isSafeInteger(businessId) && businessId > 0) {
+      const scope = await requestedBusiness(_req);
+      if (!scope || scope.id !== businessId) { res.status(400).json({ error: "Invalid business selection" }); return; }
+      templates = templates.filter(template => template.businessId === businessId || template.businessId == null);
+    }
 
     const sections = await db
       .select()
@@ -94,10 +101,15 @@ router.post("/", async (req, res) => {
   try {
     const { name, category } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: "Name is required" });
+    const businessId = req.body.businessId == null ? null : Number(req.body.businessId);
+    if (businessId != null) {
+      const scope = await requestedBusiness(req);
+      if (!scope || scope.id !== businessId) return res.status(400).json({ error: "Invalid business selection" });
+    }
 
     const [template] = await db
       .insert(checklistTemplatesTable)
-      .values({ name: name.trim(), category: category ?? null })
+      .values({ name: name.trim(), category: category ?? null, businessId })
       .returning();
 
     res.status(201).json({ ...template, sections: [] });
@@ -166,7 +178,7 @@ router.post("/:id/duplicate", async (req, res) => {
 
     const [copy] = await db
       .insert(checklistTemplatesTable)
-      .values({ name: `${original.name} (Copy)`, category: original.category, active: original.active })
+      .values({ name: `${original.name} (Copy)`, category: original.category, active: original.active, businessId: original.businessId })
       .returning();
 
     for (const section of sections) {
@@ -181,6 +193,10 @@ router.post("/:id/duplicate", async (req, res) => {
           sectionId: newSection.id,
           title: item.title,
           sortOrder: item.sortOrder,
+          requirementKey: item.requirementKey,
+          evidenceType: item.evidenceType,
+          requirementStatus: item.requirementStatus,
+          conditionKey: item.conditionKey,
         });
       }
     }
@@ -263,12 +279,26 @@ router.delete("/:id/sections/:sectionId", async (req, res) => {
 router.post("/:id/sections/:sectionId/items", async (req, res) => {
   try {
     const sectionId = parseInt(req.params.sectionId);
-    const { title, sortOrder } = req.body;
+    const { title, sortOrder, requirementKey, evidenceType, requirementStatus, conditionKey } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: "Item title required" });
+    if (requirementStatus != null && !["required", "recommended", "conditional"].includes(requirementStatus)) {
+      return res.status(400).json({ error: "Invalid requirement status" });
+    }
+    if (evidenceType != null && !["image", "document"].includes(evidenceType)) {
+      return res.status(400).json({ error: "Invalid evidence type" });
+    }
+    if (requirementStatus === "conditional" && !String(conditionKey ?? "").trim()) {
+      return res.status(400).json({ error: "Conditional requirements need a condition key" });
+    }
 
     const [item] = await db
       .insert(checklistTemplateItemsTable)
-      .values({ sectionId, title: title.trim(), sortOrder: sortOrder ?? 0 })
+      .values({
+        sectionId, title: title.trim(), sortOrder: sortOrder ?? 0,
+        requirementKey: typeof requirementKey === "string" && requirementKey.trim() ? requirementKey.trim() : null,
+        evidenceType: evidenceType ?? null, requirementStatus: requirementStatus ?? "required",
+        conditionKey: conditionKey ?? null,
+      })
       .returning();
     res.status(201).json(item);
   } catch (err) {
@@ -280,10 +310,25 @@ router.post("/:id/sections/:sectionId/items", async (req, res) => {
 router.patch("/:id/sections/:sectionId/items/:itemId", async (req, res) => {
   try {
     const itemId = parseInt(req.params.itemId);
-    const { title, sortOrder } = req.body;
+    const { title, sortOrder, requirementKey, evidenceType, requirementStatus, conditionKey } = req.body;
     const updates: Record<string, unknown> = {};
     if (title !== undefined) updates.title = title.trim();
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+    if (requirementKey !== undefined) updates.requirementKey = requirementKey;
+    if (evidenceType !== undefined) updates.evidenceType = evidenceType;
+    if (requirementStatus !== undefined) updates.requirementStatus = requirementStatus;
+    if (conditionKey !== undefined) updates.conditionKey = conditionKey;
+    if (requirementStatus !== undefined && !["required", "recommended", "conditional"].includes(requirementStatus)) {
+      return res.status(400).json({ error: "Invalid requirement status" });
+    }
+    if (evidenceType !== undefined && evidenceType !== null && !["image", "document"].includes(evidenceType)) {
+      return res.status(400).json({ error: "Invalid evidence type" });
+    }
+    if ((requirementStatus ?? "required") === "conditional" && !(conditionKey ?? "").toString().trim()) {
+      const [existing] = await db.select({ conditionKey: checklistTemplateItemsTable.conditionKey })
+        .from(checklistTemplateItemsTable).where(eq(checklistTemplateItemsTable.id, itemId)).limit(1);
+      if (!existing?.conditionKey) return res.status(400).json({ error: "Conditional requirements need a condition key" });
+    }
 
     const [updated] = await db
       .update(checklistTemplateItemsTable)
