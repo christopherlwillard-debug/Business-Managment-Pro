@@ -71,7 +71,8 @@ async function createFixture(): Promise<Fixture> {
   if (!otherBusiness) throw new Error("A separate business is required for isolation verification");
   fixture.otherBusinessId = otherBusiness.id;
 
-  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+  const shortTime = Math.floor(Date.now() / 1000) % 1_000_000;
+  const suffix = `${shortTime}${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
   fixture.externalOrderNumber = `SAGE-TEST-${suffix}`;
   fixture.contractInvoiceNumber = `INV-TEST-CONTRACT-${suffix}`;
   fixture.ordinaryInvoiceNumber = `INV-TEST-ORDINARY-${suffix}`;
@@ -203,11 +204,7 @@ async function main() {
     login.searchParams.set("nonce", proof.nonce);
     login.searchParams.set("signature", proof.signature);
     await page.goto(login.toString(), { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForFunction(
-      (number: string) => document.body.innerText.includes(number),
-      { timeout: 60_000 },
-      fixture.contractInvoiceNumber!,
-    ).catch(() => undefined);
+    await page.waitForSelector('input[placeholder*="Search by client"]', { timeout: 60_000 });
 
     const ownDetail = await page.evaluate(async ({ id, businessId }) => {
       const response = await fetch(`/api/invoices/${id}?businessId=${businessId}`, { credentials: "include" });
@@ -264,12 +261,18 @@ async function main() {
       { timeout: 30_000 },
       fixture.externalOrderNumber!,
     );
-    const detailText = await page.evaluate(() => document.body.innerText);
+    const detail = await page.evaluate(() => ({
+      text: document.body.innerText,
+      billTo: (document.querySelector('input[placeholder*="Client name"]') as HTMLInputElement | null)?.value ?? "",
+    }));
     check("Invoice detail view shows the external number and payer",
-      detailText.includes(`External work order: ${fixture.externalOrderNumber}`)
-        && detailText.includes(fixture.payerName!)
-        && !detailText.includes(fixture.homeownerName!));
+      detail.text.toLowerCase().includes("payer / bill to")
+        && detail.text.includes(`External work order: ${fixture.externalOrderNumber}`)
+        && detail.billTo === fixture.payerName
+        && !detail.text.includes(fixture.homeownerName!),
+      detail.text.slice(-900));
 
+    await page.keyboard.press("Escape");
     await search.fill(fixture.ordinaryInvoiceNumber!);
     await page.waitForFunction(
       (number: string) => document.body.innerText.includes(number),
@@ -293,8 +296,10 @@ async function main() {
     );
     const ordinaryDetail = await page.evaluate(() => document.body.innerText);
     check("Ordinary invoice detail omits the external reference",
-      ordinaryDetail.includes(fixture.ordinaryInvoiceNumber!)
-        && !ordinaryDetail.includes("External work order:"));
+      ordinaryDetail.toLowerCase().includes("bill to")
+        && ordinaryDetail.includes(fixture.ordinaryInvoiceNumber!)
+        && !ordinaryDetail.includes("External work order:"),
+      ordinaryDetail.slice(-700));
 
     const cookies = await page.cookies(BASE);
     const session = cookies.find(cookie => cookie.name === SESSION_COOKIE);
@@ -332,6 +337,16 @@ async function main() {
     try { await browser?.close(); } catch {}
     if (sessionId) await deleteSession(sessionId).catch(() => undefined);
     await cleanupFixture(fixture);
+    const leftovers = await Promise.all([
+      fixture.contractInvoiceId == null ? Promise.resolve([]) : db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, fixture.contractInvoiceId)),
+      fixture.ordinaryInvoiceId == null ? Promise.resolve([]) : db.select({ id: invoicesTable.id }).from(invoicesTable).where(eq(invoicesTable.id, fixture.ordinaryInvoiceId)),
+      fixture.workOrderId == null ? Promise.resolve([]) : db.select({ id: contractWorkOrdersTable.id }).from(contractWorkOrdersTable).where(eq(contractWorkOrdersTable.id, fixture.workOrderId)),
+      fixture.jobId == null ? Promise.resolve([]) : db.select({ id: jobsTable.id }).from(jobsTable).where(eq(jobsTable.id, fixture.jobId)),
+      fixture.programId == null ? Promise.resolve([]) : db.select({ id: contractClientProgramsTable.id }).from(contractClientProgramsTable).where(eq(contractClientProgramsTable.id, fixture.programId)),
+      fixture.payerClientId == null ? Promise.resolve([]) : db.select({ id: clientsTable.id }).from(clientsTable).where(eq(clientsTable.id, fixture.payerClientId)),
+      fixture.homeownerContactId == null ? Promise.resolve([]) : db.select({ id: contactsTable.id }).from(contactsTable).where(eq(contactsTable.id, fixture.homeownerContactId)),
+    ]);
+    check("Temporary development fixtures were removed", leftovers.every(rows => rows.length === 0));
   }
 
   const passed = results.filter(result => result.pass).length;

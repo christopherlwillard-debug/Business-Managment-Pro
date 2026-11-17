@@ -111,7 +111,7 @@ vi.mock("../lib/invoiceCommunication", async (importOriginal) => {
     ...actual,
     reconcileConfirmedGmailInvoiceDelivery: (...args: any[]) => h.skipInvoiceReconcile
       ? Promise.resolve(null)
-      : actual.reconcileConfirmedGmailInvoiceDelivery(...args),
+      : (actual.reconcileConfirmedGmailInvoiceDelivery as any)(...args),
     sendAndRecordInvoiceCommunication: async (context: any, send: () => Promise<any>) => {
       if (!h.mockSendAndRecord) return actual.sendAndRecordInvoiceCommunication(context, send);
       h.sendContext = context;
