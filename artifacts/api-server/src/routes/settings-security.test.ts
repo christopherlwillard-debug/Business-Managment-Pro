@@ -105,8 +105,9 @@ function expectNoPasswordInResponse(response: request.Response) {
 }
 
 beforeEach(() => {
-  vi.stubEnv("SMTP_ENCRYPTION_KEYS", JSON.stringify({ test_key: smtpTestKey }));
-  vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID", "test_key");
+  vi.stubEnv("NODE_ENV", "test");
+  vi.stubEnv("SMTP_ENCRYPTION_KEYS_DEVELOPMENT", JSON.stringify({ test_key: smtpTestKey }));
+  vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT", "test_key");
   h.settings = makeSettings();
   h.writes.length = 0;
 });

@@ -13,8 +13,11 @@ type Keyring = { activeKeyId: string; keys: Map<string, Buffer> };
 
 function readKeyring(): Keyring {
   try {
-    const raw = process.env.SMTP_ENCRYPTION_KEYS;
-    const activeKeyId = process.env.SMTP_ENCRYPTION_ACTIVE_KEY_ID;
+    const envSuffix = process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT
+      ? "PRODUCTION"
+      : "DEVELOPMENT";
+    const raw = process.env[`SMTP_ENCRYPTION_KEYS_${envSuffix}`];
+    const activeKeyId = process.env[`SMTP_ENCRYPTION_ACTIVE_KEY_ID_${envSuffix}`];
     if (!raw || !activeKeyId || !/^[A-Za-z0-9_-]{1,64}$/.test(activeKeyId)) {
       throw new Error("invalid configuration");
     }

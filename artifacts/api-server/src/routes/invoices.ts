@@ -52,6 +52,7 @@ import {
   invoiceEmailSettingsFromBrand,
   loadInvoiceBrand,
 } from "../lib/invoiceBranding.js";
+import { ownerOnlyInvoiceHistory } from "../lib/invoiceHistoryAccess.js";
 
 const router = Router();
 
@@ -677,7 +678,12 @@ router.post("/:id/mark-sent", (_req, res) => {
   });
 });
 
-router.get("/:id/communications", async (req, res) => {
+router.get("/:id/communications", ownerOnlyInvoiceHistory(async () => {
+  const [settings] = await db.select({ ownerUserId: settingsTable.ownerUserId })
+    .from(settingsTable)
+    .limit(1);
+  return settings?.ownerUserId ?? null;
+}), async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid invoice id" });

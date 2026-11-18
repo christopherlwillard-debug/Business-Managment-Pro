@@ -12,8 +12,9 @@ describe("SMTP credential encryption", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   function configure(keys: Record<string, string> = { dev_test: testKey }, active = "dev_test") {
-    vi.stubEnv("SMTP_ENCRYPTION_KEYS", JSON.stringify(keys));
-    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID", active);
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("SMTP_ENCRYPTION_KEYS_DEVELOPMENT", JSON.stringify(keys));
+    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT", active);
   }
 
   it("encrypts with a version and key ID, then decrypts the value", () => {
@@ -29,10 +30,10 @@ describe("SMTP credential encryption", () => {
   it("uses a fresh nonce and retains old keys for decryption", () => {
     configure({ old_key: testKey, new_key: Buffer.alloc(32, 32).toString("base64") }, "new_key");
     const oldCiphertext = encryptSmtpCredential("before-rotation");
-    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID", "old_key");
+    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT", "old_key");
     const other = encryptSmtpCredential("before-rotation");
     expect(other).not.toBe(oldCiphertext);
-    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID", "new_key");
+    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT", "new_key");
     expect(decryptSmtpCredential(oldCiphertext)).toBe("before-rotation");
   });
 
@@ -40,9 +41,9 @@ describe("SMTP credential encryption", () => {
     configure();
     const encrypted = encryptSmtpCredential("synthetic");
     expect(() => decryptSmtpCredential(`${encrypted.slice(0, -2)}AA`)).toThrow(/SMTP encryption/);
-    vi.stubEnv("SMTP_ENCRYPTION_KEYS", JSON.stringify({ other: testKey }));
+    vi.stubEnv("SMTP_ENCRYPTION_KEYS_DEVELOPMENT", JSON.stringify({ other: testKey }));
     expect(() => decryptSmtpCredential(encrypted)).toThrow(/SMTP encryption/);
-    vi.stubEnv("SMTP_ENCRYPTION_KEYS", "");
+    vi.stubEnv("SMTP_ENCRYPTION_KEYS_DEVELOPMENT", "");
     expect(hasSmtpEncryptionKeyring()).toBe(false);
     expect(() => encryptSmtpCredential("new-secret")).toThrow(/SMTP encryption/);
   });
@@ -50,7 +51,20 @@ describe("SMTP credential encryption", () => {
   it("reads legacy plaintext only when the encryption keyring is configured", () => {
     configure();
     expect(decryptSmtpCredential("legacy-synthetic-secret")).toBe("legacy-synthetic-secret");
-    vi.stubEnv("SMTP_ENCRYPTION_KEYS", "");
+    vi.stubEnv("SMTP_ENCRYPTION_KEYS_DEVELOPMENT", "");
     expect(() => decryptSmtpCredential("legacy-synthetic-secret")).toThrow(/SMTP encryption/);
+  });
+
+  it("uses a separate production keyring", () => {
+    configure();
+    const developmentValue = encryptSmtpCredential("environment-specific");
+    vi.stubEnv("SMTP_ENCRYPTION_KEYS_PRODUCTION", JSON.stringify({
+      prod_key: Buffer.alloc(32, 87).toString("base64"),
+    }));
+    vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID_PRODUCTION", "prod_key");
+    vi.stubEnv("NODE_ENV", "production");
+    expect(() => decryptSmtpCredential(developmentValue)).toThrow(/SMTP encryption/);
+    const productionValue = encryptSmtpCredential("environment-specific");
+    expect(productionValue).toContain(":prod_key:");
   });
 });
