@@ -19,10 +19,16 @@ Phase 3A navigation and Phase 3B business-context clarity remain closed. This pl
 - `docs/staff-permissions-priority-decision-2026-11-12.md`
 - `docs/full-application-audit.md`
 - `artifacts/contractor-app/src/pages/Settings.tsx`
+- `artifacts/contractor-app/src/contexts/BusinessContext.tsx`
+- `artifacts/contractor-app/src/pages/BusinessSelector.tsx`
 - `artifacts/contractor-app/src/components/ProductionBillingSection.tsx`
 - `artifacts/contractor-app/src/pages/IntegrationsPage.tsx`
 - `artifacts/contractor-app/src/pages/integrations/IntegrationCard.tsx`
 - `artifacts/api-server/src/routes/settings.ts`
+- `artifacts/api-server/src/routes/index.ts`
+- `artifacts/api-server/src/routes/production-service-types.ts`
+- `artifacts/api-server/src/routes/service-addon-prompts.ts`
+- `artifacts/api-server/src/routes/vehicles.ts`
 - `artifacts/api-server/src/routes/integrations.ts`
 - `artifacts/api-server/src/lib/integrationCatalog.ts`
 - `lib/db/src/schema/settings.ts`
@@ -80,7 +86,42 @@ These scopes are not interchangeable:
 - **Platform-wide connections:** many API credentials and managed services in the integration catalog, including Plaid credentials, mapping/fuel keys, and procurement API keys. Individual data connections may still be per business.
 - **Owner/security scope:** team access and permissions, credential management, business deletion, and owner-only administration.
 
-**Open scope question:** All Businesses is a read-only reporting context. The Settings page includes shared account-level settings that are not tied to one selected business, while some visible cards are business-specific. Before implementation, confirm how those account-level controls should be described when the owner is in All Businesses. Do not treat the combined reporting scope as a writable business, change selection behavior, or infer that global settings are per-business.
+### All Businesses behavior — source-verified
+
+The selector stores All Businesses as `activeBusiness === null` with `hasSelection === true`, and labels the context “View combined information across businesses. Read-only.” The Settings page does not enforce that read-only description as a global lock:
+
+- The business-specific **Active Business** profile card is hidden when `activeBusiness` is null.
+- The remaining singleton `settings` form stays visible and can be submitted. Its values are account-wide, so changes affect every business that consumes those shared defaults.
+- The **Production Billing** panel also stays visible. With no selected business, the UI passes `businessId: null`; the service-type API then returns the unfiltered catalog, and create actions save a null business ID (global scope). Existing rows from multiple business scopes can therefore appear together. Owner-only server checks do not bind these writes to the selected business or restrict updates to rows in one business scope.
+- Team, Google, Wix, Payments, Notifications, and the other Settings panels also remain reachable in this context. Their effects are account, owner, platform, or environment scoped rather than edits to combined job/customer data.
+- The business selector is a frontend context, not an authorization boundary. Protected API routes use authentication/access checks and owner checks for writes; the `/api/settings` singleton has no business ID to scope against. Business-specific APIs perform their own route checks, but do not infer the selected frontend context.
+
+**Recommendation — minimal presentation and interaction policy:** Keep the All Businesses label for combined business records, but make Settings explicitly identify itself as account configuration. Show a clear notice such as: “All Businesses is read-only for business records. Account-wide settings below remain editable and affect all businesses. Select one business to change business-specific settings.” Keep account-wide settings editable because they have legitimate shared effects. In All Businesses, prevent edits to business-specific production catalog/pricing data and require selecting one business first; do not silently reinterpret a null business ID as permission to change a particular business. Keep owner-only access and existing server authorization unchanged for this UI-only phase. This recommendation is not implemented.
+
+The source review establishes the current behavior, but does not independently exercise the owner UI or make any requests. A separate owner decision is still needed to accept this wording and the proposed restriction of business-scoped Production Billing edits in the combined context before Phase 3C implementation is approved.
+
+### Per-tab scope and All Businesses matrix
+
+“Editable” below describes the current owner-facing Settings UI; it does not mean a staff member can write. Settings API writes are owner-only. `requireAuth` and `requireAccess` protect API routes, and `requireOwnerForWrites` allows reads through while rejecting non-owner writes.
+
+| Settings tab / control | Storage and effect | Current under All Businesses | Server authorization / scope evidence |
+|---|---|---|---|
+| **Business — Active Business card** | Selected `businesses` row; affects that business’s identity and invoice/estimate branding. | Hidden because no active business is selected. | `/api/businesses/:id` writes are owner-only; endpoint is ID-addressed and does not consume the frontend selection. |
+| **Business — company/legal identity, EIN, tax election/assumptions, registered agent, shared logo/signature** | Singleton `settings` row; shared across businesses. | Visible and editable. | `/api/settings` has no business ID; writes require owner. |
+| **Invoice Defaults** | Singleton `settings` row; defaults affect invoices across businesses, with per-invoice overrides where supported. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
+| **Financial** | Singleton `settings` row; tax, mileage-rate, and 1099 defaults used across the app. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
+| **P&L Layout** | Singleton `settings` row; affects shared job-profit/payroll calculations. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
+| **Production Billing** | Dedicated service-type, price-override, and add-on-prompt tables support global and business-specific rows. | Visible and editable. Null business context lists all service types; new service types/prompts can be created globally. | Routes are owner-write protected, but the UI’s null context is not an authorization boundary. The service-type update route addresses a row by ID without checking it belongs to a selected business. |
+| **Mileage — trip defaults** | Singleton `settings` row; applies across the account. | Visible and editable. | Owner-only settings writes; no business scope in the settings row. |
+| **Mileage — vehicle/fuel profiles** | `vehicles` table. The API currently lists all vehicles and its CRUD does not scope by business, despite a nullable `businessId` column. | Visible and editable; current route operates on the shared vehicle collection. | `/api/vehicles` is owner-only at mount; this route does not enforce active-business scope. |
+| **Modules** | `enabledFeatures` and bottom-navigation defaults in singleton `settings`; business overrides are stored on business records and managed separately from this page. | Global defaults are visible and editable; per-business overrides are not shown in this Settings panel. | Settings writes are owner-only; Business Selector business-record writes are separately owner-only. |
+| **Notifications** | Singleton `settings` fields; email destinations and reminder switches affect account-level notifications. | Visible and editable; test-email action can send an external message. | Settings writes require owner. Avoid sending test email during read-only verification. |
+| **Payments** | Square connection status depends on configured integration/environment state; the mobile Square App ID is a build-time environment value, not a business profile field. | Visible; status/instructions remain available. The placeholder deep-link test is an external app action. | Settings page is owner-only; no app setting is written by these instructions. |
+| **Team** | Account-wide access requests, members, and permission records. | Owner-only tab remains visible and its controls remain available. | Owner UI gate plus owner-only team API checks; no business-level team scope is shown. |
+| **Google** | Owner/account OAuth connection state and Drive/Gmail capabilities. | Visible; connection actions remain available. | Settings page is owner-only; OAuth actions are separate external side effects. |
+| **Wix Website** | Shared Wix webhook/configuration for website quote intake. | Visible; configuration controls remain available. | Owner-only page and configuration routes; no selected business ID is supplied by this tab. |
+
+**Other platform-level configuration:** Integrations & Credentials is a separate owner-only route, not one of the twelve Settings tabs. Its catalog contains both platform-wide credentials and business-scoped connections; a null business context is not proof that a credential is safely editable across all businesses. This Phase 3C plan does not redesign or move those controls.
 
 ## Verified clarity problems and boundaries
 
@@ -90,11 +131,21 @@ These scopes are not interchangeable:
 4. **Connection setup is split across destinations for different reasons.** Payments includes Square instructions, Google handles its OAuth account, Wix shows a webhook/token, and Integrations & Credentials provides catalog-wide credential health. These are not automatically duplicate systems. Verify ownership and provider behavior before moving any panel.
 5. **High-impact and low-impact controls are adjacent.** Financial calculations, permissions, integration secrets, and general navigation preferences sit in the same Settings surface. Clear category labels and scope explanations could help without combining their data or persistence.
 
-### Security prerequisite — do not fold into simplification work
+### Separate SMTP credential-response investigation — confirmed source-level exposure
 
-The November 12 SMTP review identified a high-severity source-level risk: the shared settings formatter spreads the stored row, and the review found that `smtpPass` may be included in owner and approved-staff settings responses. The current source still warrants separate security resolution/review. This Phase 3C proposal does not move, display, fetch, test, or modify SMTP credentials. Do not use authenticated Settings API responses for a read-only walkthrough until the credential-response boundary is confirmed safe.
+This security issue is independent of Phase 3C and is not remediated here.
 
-Additionally, the Settings GET route may create a default settings row if none exists and may encrypt legacy portal-link credentials for the owner. Source inspection was used here; no Settings API request was made. A future verification must account for those side effects rather than assume GET is always read-only.
+- **Confirmed in current source:** `format()` spreads the stored settings row (`...s`). Although a comment says `smtpPass` is omitted, it is not removed. The owner GET response returns the formatted object. The non-owner GET response removes several named fields but not `smtpPass`, so an approved authenticated non-owner can receive the field if one is configured.
+- **Access:** the API applies authentication and approved-access checks. `/settings` is mounted with `requireOwnerForWrites`, which allows GET and blocks non-owner write methods. Thus approved staff can read the response; only the owner can update it. The owner-only browser page does not protect direct API reads.
+- **Update response:** an owner PUT returns the formatted settings row too, so it also includes `smtpPass` if populated.
+- **Frontend need:** the Settings page initializes blank SMTP password state, but current source has no UI use of the saved password value; the response field is not needed by the browser. A shared `useGetSettings` query is used elsewhere, so the extra property can reach other app pages as well.
+- **Blank-password behavior:** PUT chooses the supplied password only when it is non-empty; an empty or omitted value preserves the stored password. No SMTP behavior was changed.
+- **Tests:** source search found no focused settings-route regression test asserting that owner GET, staff GET, and owner PUT responses omit `smtpPass`.
+- **Actual credential/deployment state:** not verified. No settings API call or database query was made, so this audit does not establish whether a non-null password exists, whether it was retrieved, or whether this source is deployed.
+
+**Recommended separate remediation:** explicitly construct safe settings response objects that never include `smtpPass` for any role or response path, retain only a non-secret configured/not-configured indicator if needed, and add owner/staff GET plus owner PUT regression tests. Assess credential rotation separately if SMTP is configured and the exposure window applies. Do not include this work in Phase 3C. No actual credential value was accessed, emitted, or logged.
+
+Additionally, the Settings GET route may create a default settings row if none exists and may encrypt legacy portal-link credentials for the owner. Source inspection was used here; no Settings API request was made. A future verification must account for those side effects rather than assume GET is always read-only. Given the confirmed SMTP response flaw, do not make an authenticated Settings request until the separate response boundary is fixed or a safe, non-sensitive test fixture is used.
 
 ## Three ranked simplification opportunities
 
