@@ -5,11 +5,15 @@
  * Contractor Management App API
  * OpenAPI spec version: 0.1.0
  */
+import type { Estimate } from "./estimate";
+import type { Property } from "./property";
 import type { Prospect } from "./prospect";
 import type { ProspectServiceVisit } from "./prospectServiceVisit";
 import type { ProspectStatusEvent } from "./prospectStatusEvent";
 
 export type ProspectDetail = Prospect & {
   statusHistory: ProspectStatusEvent[];
+  properties: Property[];
+  estimates: Estimate[];
   serviceVisits: ProspectServiceVisit[];
 };

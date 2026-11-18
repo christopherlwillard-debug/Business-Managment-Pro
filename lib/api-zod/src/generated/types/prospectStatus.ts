@@ -12,8 +12,11 @@ export type ProspectStatus =
 export const ProspectStatus = {
   cold: "cold",
   contacted: "contacted",
+  needs_measurements: "needs_measurements",
+  quote_in_progress: "quote_in_progress",
   quoted: "quoted",
   won: "won",
   serviced: "serviced",
   lost: "lost",
+  future_opportunity: "future_opportunity",
 } as const;

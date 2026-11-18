@@ -9,6 +9,7 @@
 export interface PropertyUpdateInput {
   businessId?: number;
   clientId?: number | null;
+  prospectId?: number | null;
   /**
    * @minLength 1
    * @maxLength 160

@@ -1,13 +1,23 @@
-import { pgTable, serial, text, timestamp, integer, numeric, check, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, check, date, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { estimatesTable } from "./estimates";
 import { clientsTable } from "./clients";
 import { businessesTable } from "./businesses";
+import { estimatesTable } from "./estimates";
 
 export const PROSPECT_PROPERTY_TYPES = ["Church", "Retail", "Apartment", "Industrial", "Other"] as const;
 export type ProspectPropertyType = typeof PROSPECT_PROPERTY_TYPES[number];
 
-export const PROSPECT_STATUSES = ["cold", "contacted", "quoted", "won", "serviced", "lost"] as const;
+export const PROSPECT_STATUSES = [
+  "cold",
+  "contacted",
+  "needs_measurements",
+  "quote_in_progress",
+  "quoted",
+  "won",
+  "serviced",
+  "lost",
+  "future_opportunity",
+] as const;
 export type ProspectStatus = typeof PROSPECT_STATUSES[number];
 
 export const prospectsTable = pgTable(
@@ -33,7 +43,7 @@ export const prospectsTable = pgTable(
     contactEmail: text("contact_email"),
     notes: text("notes"),
     status: text("status").notNull().default("cold"),
-    linkedEstimateId: integer("linked_estimate_id").references(() => estimatesTable.id),
+    linkedEstimateId: integer("linked_estimate_id").references((): AnyPgColumn => estimatesTable.id),
     linkedInvoiceId: integer("linked_invoice_id"),
     clientId: integer("client_id").references(() => clientsTable.id),
     stripePaymentLinkId: text("stripe_payment_link_id"),
@@ -54,7 +64,7 @@ export const prospectsTable = pgTable(
   (table) => [
     check(
       "prospects_status_check",
-      sql`${table.status} IN ('cold', 'contacted', 'quoted', 'won', 'serviced', 'lost')`,
+      sql`${table.status} IN ('cold', 'contacted', 'needs_measurements', 'quote_in_progress', 'quoted', 'won', 'serviced', 'lost', 'future_opportunity')`,
     ),
     check(
       "prospects_property_type_check",

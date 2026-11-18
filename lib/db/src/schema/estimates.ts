@@ -1,10 +1,11 @@
-import { pgTable, serial, text, timestamp, integer, numeric, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, numeric, jsonb, date, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { clientsTable } from "./clients";
 import { businessesTable } from "./businesses";
 import { jobsTable } from "./jobs";
 import { propertiesTable } from "./properties";
+import { prospectsTable } from "./prospects";
 
 export const estimatesTable = pgTable("estimates", {
   id: serial("id").primaryKey(),
@@ -26,6 +27,7 @@ export const estimatesTable = pgTable("estimates", {
   businessLine: text("business_line"),
   businessId: integer("business_id").references(() => businessesTable.id, { onDelete: "set null" }),
   propertyId: integer("property_id").references(() => propertiesTable.id, { onDelete: "set null" }),
+  prospectId: integer("prospect_id").references((): AnyPgColumn => prospectsTable.id, { onDelete: "set null" }),
   calculationSnapshot: jsonb("calculation_snapshot"),
   stripePaymentLinkId: text("stripe_payment_link_id"),
   stripePaymentLinkUrl: text("stripe_payment_link_url"),

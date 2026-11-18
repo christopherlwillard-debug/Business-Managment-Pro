@@ -3,11 +3,14 @@ import { index, integer, pgTable, serial, text, timestamp } from "drizzle-orm/pg
 import { z } from "zod/v4";
 import { businessesTable } from "./businesses";
 import { clientsTable } from "./clients";
+import { prospectsTable } from "./prospects";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const propertiesTable = pgTable("properties", {
   id: serial("id").primaryKey(),
   businessId: integer("business_id").notNull().references(() => businessesTable.id, { onDelete: "restrict" }),
   clientId: integer("client_id").references(() => clientsTable.id, { onDelete: "set null" }),
+  prospectId: integer("prospect_id").references((): AnyPgColumn => prospectsTable.id, { onDelete: "set null" }),
   label: text("label").notNull(),
   street: text("street"),
   city: text("city"),

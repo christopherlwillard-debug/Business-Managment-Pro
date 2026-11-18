@@ -1955,6 +1955,9 @@ paths:
         - name: clientId
           in: query
           schema: { type: integer }
+        - name: prospectId
+          in: query
+          schema: { type: integer }
       responses:
         "200":
           description: Saved properties
@@ -3072,6 +3075,9 @@ components:
         propertyId:
           type: integer
           nullable: true
+        prospectId:
+          type: integer
+          nullable: true
         propertyLabel:
           type: string
           nullable: true
@@ -3088,6 +3094,9 @@ components:
           type: string
           nullable: true
         clientName:
+          type: string
+          nullable: true
+        prospectName:
           type: string
           nullable: true
         contractProgramName: { type: string, nullable: true }
@@ -4933,6 +4942,7 @@ components:
         id: { type: integer }
         businessId: { type: integer }
         clientId: { type: integer, nullable: true }
+        prospectId: { type: integer, nullable: true }
         label: { type: string }
         street: { type: string, nullable: true }
         city: { type: string, nullable: true }
@@ -4949,6 +4959,7 @@ components:
       properties:
         businessId: { type: integer }
         clientId: { type: integer, nullable: true }
+        prospectId: { type: integer, nullable: true }
         label: { type: string, minLength: 1, maxLength: 160 }
         street: { type: string, nullable: true }
         city: { type: string, nullable: true }
@@ -4962,6 +4973,7 @@ components:
       properties:
         businessId: { type: integer }
         clientId: { type: integer, nullable: true }
+        prospectId: { type: integer, nullable: true }
         label: { type: string, minLength: 1, maxLength: 160 }
         street: { type: string, nullable: true }
         city: { type: string, nullable: true }
@@ -5080,6 +5092,7 @@ components:
           properties:
             title: { type: string, minLength: 1, maxLength: 180 }
             clientId: { type: integer, nullable: true }
+            prospectId: { type: integer, nullable: true }
             notes: { type: string, nullable: true }
           required: [title]
 
@@ -5850,7 +5863,7 @@ components:
 
     ProspectStatus:
       type: string
-      enum: [cold, contacted, quoted, won, serviced, lost]
+      enum: [cold, contacted, needs_measurements, quote_in_progress, quoted, won, serviced, lost, future_opportunity]
 
     ProspectPropertyType:
       type: string
@@ -6122,11 +6135,19 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/ProspectStatusEvent"
+            properties:
+              type: array
+              items:
+                $ref: "#/components/schemas/Property"
+            estimates:
+              type: array
+              items:
+                $ref: "#/components/schemas/Estimate"
             serviceVisits:
               type: array
               items:
                 $ref: "#/components/schemas/ProspectServiceVisit"
-          required: [statusHistory, serviceVisits]
+          required: [statusHistory, properties, estimates, serviceVisits]
 
     ProspectRevenueSummary:
       type: object

@@ -6,11 +6,12 @@ import {
   clientsTable,
   prospectEventsTable,
   prospectServiceVisitsTable,
+  propertiesTable,
   PROSPECT_PROPERTY_TYPES,
   PROSPECT_STATUSES,
   type Prospect as ProspectRow,
 } from "@workspace/db/schema";
-import { eq, asc, desc, and, ilike, or, max, sql, getTableColumns } from "drizzle-orm";
+import { eq, asc, desc, and, ilike, or, max, sql, getTableColumns, isNull } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { BUILDPRO_AI_MINI_MODEL } from "../ai-models";
 import { z } from "zod";
@@ -344,9 +345,11 @@ router.get("/:id", async (req, res) => {
 
     if (!p) return res.status(404).json({ error: "Prospect not found" });
 
-    const [events, visits] = await Promise.all([
+    const [events, visits, properties, estimates] = await Promise.all([
       db.select().from(prospectEventsTable).where(eq(prospectEventsTable.prospectId, id)).orderBy(desc(prospectEventsTable.createdAt)),
       db.select().from(prospectServiceVisitsTable).where(eq(prospectServiceVisitsTable.prospectId, id)).orderBy(desc(prospectServiceVisitsTable.servicedAt)),
+      db.select().from(propertiesTable).where(eq(propertiesTable.prospectId, id)).orderBy(desc(propertiesTable.updatedAt)),
+      db.select().from(estimatesTable).where(eq(estimatesTable.prospectId, id)).orderBy(desc(estimatesTable.createdAt)),
     ]);
 
     const formatted = {
@@ -358,6 +361,8 @@ router.get("/:id", async (req, res) => {
         newValue: e.newValue ?? null,
         createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
       })),
+      properties,
+      estimates,
       serviceVisits: visits.map((v) => ({
         id: v.id,
         servicedAt: v.servicedAt,
@@ -371,6 +376,37 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch prospect" });
+  }
+});
+
+router.post("/:id/events", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const type = typeof req.body?.type === "string" ? req.body.type : "contact_note";
+    const newValue = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+    const allowedTypes = new Set(["contact_note", "contact_attempt", "lost_reason", "follow_up_note"]);
+    if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid prospect ID" });
+    if (!allowedTypes.has(type) || !newValue || newValue.length > 2000) {
+      return res.status(400).json({ error: "Enter a valid contact note (up to 2,000 characters)." });
+    }
+    const [prospect] = await db.select({ id: prospectsTable.id }).from(prospectsTable)
+      .where(eq(prospectsTable.id, id)).limit(1);
+    if (!prospect) return res.status(404).json({ error: "Prospect not found" });
+    const [event] = await db.insert(prospectEventsTable).values({
+      prospectId: id,
+      type,
+      newValue,
+    }).returning();
+    res.status(201).json({
+      id: event.id,
+      type: event.type,
+      oldValue: event.oldValue ?? null,
+      newValue: event.newValue ?? null,
+      createdAt: event.createdAt.toISOString(),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to save prospect activity" });
   }
 });
 
@@ -890,31 +926,94 @@ router.post("/:id/convert-to-client", async (req, res) => {
       return res.status(400).json({ error: "Only won or serviced prospects can be converted to clients" });
     }
 
-    if (prospect.clientId) {
-      const [existing] = await db.select().from(clientsTable).where(eq(clientsTable.id, prospect.clientId));
-      if (existing) {
-        return res.status(409).json({ error: "Already converted", client: { ...existing, createdAt: existing.createdAt.toISOString() } });
+    const [linkedClient] = prospect.clientId
+      ? await db.select().from(clientsTable).where(eq(clientsTable.id, prospect.clientId)).limit(1)
+      : [];
+    if (linkedClient) {
+      return res.status(409).json({
+        error: "Already converted",
+        client: { ...linkedClient, createdAt: linkedClient.createdAt.toISOString() },
+      });
+    }
+
+    const [propertyConflict] = await db.select({ id: propertiesTable.id })
+      .from(propertiesTable)
+      .where(and(eq(propertiesTable.prospectId, id), sql`${propertiesTable.clientId} IS NOT NULL`))
+      .limit(1);
+    if (propertyConflict) {
+      return res.status(409).json({ error: "A prospect property is already linked to another client." });
+    }
+
+    const normalizedEmail = prospect.contactEmail?.trim().toLowerCase();
+    const normalizedPhone = prospect.contactPhone?.replace(/\D/g, "");
+    const contactMatches = [
+      normalizedEmail ? sql`lower(trim(${clientsTable.email})) = ${normalizedEmail}` : null,
+      normalizedPhone ? sql`regexp_replace(coalesce(${clientsTable.phone}, ''), '\\D', '', 'g') = ${normalizedPhone}` : null,
+    ].filter((condition): condition is NonNullable<typeof condition> => condition !== null);
+    const nameAddressMatch = prospect.contactName?.trim() && prospect.address?.trim()
+      ? and(
+          sql`lower(trim(${clientsTable.name})) = ${prospect.contactName.trim().toLowerCase()}`,
+          sql`lower(trim(${clientsTable.address})) = ${prospect.address.trim().toLowerCase()}`,
+        )
+      : sql`false`;
+    const possibleDuplicates = prospect.businessLine
+      ? await db.select().from(clientsTable).where(and(
+          eq(clientsTable.businessLine, prospect.businessLine),
+          contactMatches.length ? or(...contactMatches) : nameAddressMatch,
+        ))
+      : [];
+    if (possibleDuplicates.length > 1) {
+      return res.status(409).json({ error: "Multiple matching clients found. Resolve the duplicate before conversion." });
+    }
+    const candidateClientId = possibleDuplicates[0]?.id ?? null;
+    if (candidateClientId) {
+      const [estimateConflict] = await db.select({ id: estimatesTable.id })
+        .from(estimatesTable)
+        .where(and(
+          or(eq(estimatesTable.prospectId, id), prospect.linkedEstimateId ? eq(estimatesTable.id, prospect.linkedEstimateId) : undefined),
+          sql`${estimatesTable.clientId} IS NOT NULL`,
+          sql`${estimatesTable.clientId} <> ${candidateClientId}`,
+        )).limit(1);
+      if (estimateConflict) {
+        return res.status(409).json({ error: "A prospect quote is already linked to another client." });
       }
     }
 
-    const [client] = await db
-      .insert(clientsTable)
-      .values({
-        name: prospect.contactName ?? prospect.address,
-        email: prospect.contactEmail ?? null,
-        phone: prospect.contactPhone ?? null,
-        address: prospect.address,
-        city: prospect.city ?? null,
-        state: prospect.state ?? null,
-        zip: prospect.zip ?? null,
-        notes: prospect.notes ?? null,
-        businessLine: prospect.businessLine ?? null,
-      })
-      .returning();
-
-    await db.update(prospectsTable)
-      .set({ clientId: client.id })
-      .where(eq(prospectsTable.id, id));
+    const client = await db.transaction(async (tx) => {
+      let target = possibleDuplicates[0];
+      if (!target) {
+        const [created] = await tx.insert(clientsTable)
+          .values({
+            name: prospect.contactName ?? prospect.address,
+            email: prospect.contactEmail ?? null,
+            phone: prospect.contactPhone ?? null,
+            address: prospect.address,
+            city: prospect.city ?? null,
+            state: prospect.state ?? null,
+            zip: prospect.zip ?? null,
+            notes: prospect.notes ?? null,
+            businessLine: prospect.businessLine ?? null,
+            businessId: prospect.businessId ?? null,
+          })
+          .returning();
+        target = created;
+      }
+      await tx.update(prospectsTable).set({ clientId: target.id, updatedAt: new Date() })
+        .where(eq(prospectsTable.id, id));
+      await tx.update(propertiesTable).set({ clientId: target.id, updatedAt: new Date() })
+        .where(and(eq(propertiesTable.prospectId, id), or(isNull(propertiesTable.clientId), eq(propertiesTable.clientId, target.id))));
+      await tx.update(estimatesTable).set({ clientId: target.id })
+        .where(and(
+          or(eq(estimatesTable.prospectId, id), prospect.linkedEstimateId ? eq(estimatesTable.id, prospect.linkedEstimateId) : undefined),
+          or(isNull(estimatesTable.clientId), eq(estimatesTable.clientId, target.id)),
+        ));
+      await tx.insert(prospectEventsTable).values({
+        prospectId: id,
+        type: "client_converted",
+        newValue: String(target.id),
+      });
+      return target;
+    });
 
     res.status(201).json({ ...client, createdAt: client.createdAt.toISOString() });
   } catch (err) {

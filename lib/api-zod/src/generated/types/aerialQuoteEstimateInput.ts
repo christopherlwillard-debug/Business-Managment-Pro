@@ -14,5 +14,6 @@ export type AerialQuoteEstimateInput = AerialQuoteCalculationInput & {
    */
   title: string;
   clientId?: number | null;
+  prospectId?: number | null;
   notes?: string | null;
 };

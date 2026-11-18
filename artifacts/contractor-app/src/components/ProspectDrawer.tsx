@@ -60,21 +60,27 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 
 const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
-  { value: "cold", label: "Cold" },
+  { value: "cold", label: "New Lead" },
   { value: "contacted", label: "Contacted" },
-  { value: "quoted", label: "Quoted" },
+  { value: "needs_measurements", label: "Needs Measurements" },
+  { value: "quote_in_progress", label: "Quote in Progress" },
+  { value: "quoted", label: "Quote Sent" },
   { value: "won", label: "Won" },
   { value: "serviced", label: "Serviced" },
   { value: "lost", label: "Lost" },
+  { value: "future_opportunity", label: "Future Opportunity" },
 ];
 
 const STATUS_BADGE: Record<ProspectStatus, { label: string; className: string }> = {
-  cold: { label: "Cold", className: "bg-slate-100 text-slate-700 border-slate-200" },
+  cold: { label: "New Lead", className: "bg-slate-100 text-slate-700 border-slate-200" },
   contacted: { label: "Contacted", className: "bg-blue-100 text-blue-700 border-blue-200" },
-  quoted: { label: "Quoted", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  needs_measurements: { label: "Needs Measurements", className: "bg-violet-100 text-violet-700 border-violet-200" },
+  quote_in_progress: { label: "Quote in Progress", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+  quoted: { label: "Quote Sent", className: "bg-amber-100 text-amber-700 border-amber-200" },
   won: { label: "Won", className: "bg-green-100 text-green-700 border-green-200" },
   serviced: { label: "Serviced", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
   lost: { label: "Lost", className: "bg-red-100 text-red-700 border-red-200" },
+  future_opportunity: { label: "Future Opportunity", className: "bg-cyan-100 text-cyan-700 border-cyan-200" },
 };
 
 const PROPERTY_TYPE_COLORS: Record<string, string> = {
@@ -307,6 +313,9 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
   const [editVisitPrice, setEditVisitPrice] = useState("");
   const [isCreatingQuote, setIsCreatingQuote] = useState(false);
   const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+  const [activityDraft, setActivityDraft] = useState("");
+  const [activityType, setActivityType] = useState<"contact_note" | "contact_attempt" | "lost_reason">("contact_note");
+  const [savingActivity, setSavingActivity] = useState(false);
 
   const [showDepositEmail, setShowDepositEmail] = useState(false);
   const [depositEmailTo, setDepositEmailTo] = useState("");
@@ -417,6 +426,28 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
     if (field === "estimatedSqft") parsed = raw ? parseInt(raw) : null;
     if (field === "roughQuote") parsed = raw ? parseFloat(raw) : null;
     await save(field, parsed);
+  };
+
+  const saveActivity = async () => {
+    if (!prospect || !activityDraft.trim()) return;
+    setSavingActivity(true);
+    try {
+      const response = await fetch(`${BASE}/api/prospects/${prospect.id}/events`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: activityType, note: activityDraft.trim() }),
+      });
+      if (!response.ok) throw new Error("Failed to save prospect activity");
+      setActivityDraft("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/prospects", prospect.id] });
+      onUpdated();
+      toast({ title: "Prospect activity saved" });
+    } catch {
+      toast({ title: "Could not save activity", variant: "destructive" });
+    } finally {
+      setSavingActivity(false);
+    }
   };
 
   const handleStatusSave = async (value: string) => {
@@ -1032,6 +1063,38 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
               <FileText className="w-3.5 h-3.5" />
               Quote & Invoice
             </h3>
+            {(detailQuery.data?.estimates?.length ?? 0) > 0 && (
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-semibold">Quotation history</p>
+                <div className="mt-2 divide-y">
+                  {detailQuery.data?.estimates.map(estimate => (
+                    <div key={estimate.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{estimate.title}</p>
+                        <p className="text-xs text-muted-foreground">{estimate.status} · {formatCurrency(estimate.total)}</p>
+                      </div>
+                      <button type="button" onClick={() => setLocation(`/estimates?open=${estimate.id}`)} className="text-xs font-medium text-primary underline">Open in Quote Center</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(detailQuery.data?.properties?.length ?? 0) > 0 && (
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-semibold">Saved properties</p>
+                <div className="mt-2 divide-y">
+                  {detailQuery.data?.properties.map(property => (
+                    <div key={property.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{property.label}</p>
+                        <p className="text-xs text-muted-foreground">{[property.street, property.city, property.state, property.zip].filter(Boolean).join(", ")}</p>
+                      </div>
+                      <button type="button" onClick={() => setLocation(`/aerial-quote?prospectId=${prospect?.id}&propertyId=${property.id}`)} className="text-xs font-medium text-primary underline">Quote this property</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Inline linked estimate card */}
             {p.linkedEstimateId ? (
@@ -1235,7 +1298,7 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                   </div>
                 ) : null}
               </div>
-            ) : (p.status === "cold" || p.status === "contacted" || p.status === "quoted" || p.status === "won") && (
+            ) : (p.status === "cold" || p.status === "contacted" || p.status === "needs_measurements" || p.status === "quote_in_progress" || p.status === "quoted" || p.status === "won" || p.status === "future_opportunity") && (
               <div className="space-y-2">
                 <button
                   onClick={() => {
@@ -2057,6 +2120,21 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
           </section>
 
           {/* Activity Section */}
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <History className="w-3.5 h-3.5" />
+              Log contact activity
+            </h3>
+            <div className="space-y-2 rounded-lg border border-border p-3">
+              <select aria-label="Activity type" value={activityType} onChange={event => setActivityType(event.target.value as typeof activityType)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
+                <option value="contact_note">Contact note</option>
+                <option value="contact_attempt">Contact attempt</option>
+                <option value="lost_reason">Lost reason</option>
+              </select>
+              <textarea value={activityDraft} onChange={event => setActivityDraft(event.target.value)} maxLength={2000} placeholder="What happened, what they said, or why the quote was declined…" className="min-h-20 w-full rounded-md border bg-background p-3 text-sm" />
+              <button type="button" disabled={savingActivity || !activityDraft.trim()} onClick={() => void saveActivity()} className="min-h-10 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground disabled:opacity-50">{savingActivity ? "Saving…" : "Save activity"}</button>
+            </div>
+          </section>
           {statusHistory.length > 0 && (
             <section className="space-y-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -2126,6 +2204,29 @@ export function ProspectDrawer({ prospect, open, onClose, onUpdated, scheduledAd
                         <Link2Off className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-muted-foreground">Estimate unlinked</p>
+                          <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  if (event.type === "contact_note" || event.type === "contact_attempt" || event.type === "follow_up_note" || event.type === "lost_reason") {
+                    const label = event.type === "contact_attempt" ? "Contact attempt"
+                      : event.type === "lost_reason" ? "Lost reason"
+                        : event.type === "follow_up_note" ? "Follow-up note" : "Contact note";
+                    return (
+                      <div key={event.id} className="px-4 py-3">
+                        <p className="text-sm font-medium text-foreground">{label}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{event.newValue}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
+                      </div>
+                    );
+                  }
+                  if (event.type === "client_converted") {
+                    return (
+                      <div key={event.id} className="px-4 py-3 flex items-center gap-3">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">Linked to client #{event.newValue}</p>
                           <p className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</p>
                         </div>
                       </div>

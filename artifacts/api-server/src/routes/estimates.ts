@@ -5,6 +5,7 @@ import {
   estimatesTable,
   clientsTable,
   jobsTable,
+  prospectsTable,
   businessesTable,
   settingsTable,
 } from "@workspace/db/schema";
@@ -52,12 +53,13 @@ async function resolveLinkedJobOwner(jobId: number): Promise<
   return { ok: true, business };
 }
 
-function format(e: any, clientName?: string | null, jobTitle?: string | null) {
+function format(e: any, clientName?: string | null, jobTitle?: string | null, prospectName?: string | null) {
   const lineItems = Array.isArray(e.lineItems) ? e.lineItems : [];
   const { calculationSnapshot: _calculationSnapshot, ...safeEstimate } = e;
   return {
     ...safeEstimate,
     clientName: clientName ?? null,
+    prospectName: prospectName ?? null,
     jobTitle: jobTitle ?? null,
     subtotal: parseFloat(e.subtotal ?? "0"),
     markupPercent: e.markupPercent ? parseFloat(e.markupPercent) : null,
@@ -114,13 +116,19 @@ router.get("/", async (req, res) => {
     const scope = await requestedBusinessReadScope(req);
     if (invalidBusinessScope(res, scope, hasRequestedBusiness(req))) return;
     const estimates = await db
-      .select({ ...getTableColumns(estimatesTable), clientName: clientsTable.name, jobTitle: jobsTable.title })
+      .select({
+        ...getTableColumns(estimatesTable),
+        clientName: clientsTable.name,
+        jobTitle: jobsTable.title,
+        prospectName: prospectsTable.contactName,
+      })
       .from(estimatesTable)
       .leftJoin(clientsTable, eq(estimatesTable.clientId, clientsTable.id))
       .leftJoin(jobsTable, eq(estimatesTable.jobId, jobsTable.id))
+      .leftJoin(prospectsTable, eq(estimatesTable.prospectId, prospectsTable.id))
       .where(businessReadPredicate(estimatesTable, scope))
       .orderBy(estimatesTable.createdAt);
-    res.json(estimates.map(e => format(e as any, (e as any).clientName, (e as any).jobTitle)));
+    res.json(estimates.map(e => format(e as any, (e as any).clientName, (e as any).jobTitle, (e as any).prospectName)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch estimates" });

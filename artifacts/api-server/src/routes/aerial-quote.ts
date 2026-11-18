@@ -5,6 +5,8 @@ import {
   businessesTable,
   clientsTable,
   estimatesTable,
+  prospectsTable,
+  prospectEventsTable,
   propertiesTable,
   propertyBusinessAccessTable,
   propertyMeasurementRevisionsTable,
@@ -72,12 +74,30 @@ async function validateClient(clientId: number | null | undefined, businessId: n
   return owner.state === "resolved" && (owner.business.id === businessId || await sameLegalBusiness(owner.business.id, businessId));
 }
 
+async function validateProspect(prospectId: number | null | undefined, businessId: number) {
+  if (prospectId == null) return null;
+  const [prospect] = await db.select().from(prospectsTable)
+    .where(eq(prospectsTable.id, prospectId)).limit(1);
+  if (!prospect) return null;
+  const owner = await canonicalRecordBusiness(prospect);
+  if (owner.state !== "resolved"
+    || !(owner.business.id === businessId || await sameLegalBusiness(owner.business.id, businessId))) {
+    return null;
+  }
+  return prospect;
+}
+
 router.get("/properties", async (req, res): Promise<void> => {
   const business = await requestedBusiness(req);
   if (!business) { res.status(400).json({ error: "A valid businessId is required" }); return; }
   const clientId = req.query.clientId == null ? null : Number(req.query.clientId);
+  const prospectId = req.query.prospectId == null ? null : Number(req.query.prospectId);
   if (clientId != null && (!Number.isInteger(clientId) || clientId < 1)) {
     res.status(400).json({ error: "Invalid clientId" });
+    return;
+  }
+  if (prospectId != null && (!Number.isInteger(prospectId) || prospectId < 1)) {
+    res.status(400).json({ error: "Invalid prospectId" });
     return;
   }
   const grants = await db.select({
@@ -94,6 +114,7 @@ router.get("/properties", async (req, res): Promise<void> => {
     grants.length ? inArray(propertiesTable.id, grants.map(row => row.propertyId)) : undefined,
   )];
   if (clientId != null) filters.push(eq(propertiesTable.clientId, clientId));
+  if (prospectId != null) filters.push(eq(propertiesTable.prospectId, prospectId));
   const rows = await db.select().from(propertiesTable)
     .where(filters.length ? and(...filters) : undefined)
     .orderBy(desc(propertiesTable.updatedAt));
@@ -114,9 +135,19 @@ router.post("/properties", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Client is not owned by this legal business" });
     return;
   }
+  const prospect = await validateProspect(parsed.data.prospectId, owner.business.id);
+  if (parsed.data.prospectId != null && !prospect) {
+    res.status(409).json({ error: "Prospect is not owned by this legal business" });
+    return;
+  }
+  if (prospect?.clientId && parsed.data.clientId && prospect.clientId !== parsed.data.clientId) {
+    res.status(409).json({ error: "Property client does not match the converted prospect" });
+    return;
+  }
   const [property] = await db.insert(propertiesTable).values({
     businessId: owner.business.id,
-    clientId: parsed.data.clientId ?? null,
+    clientId: parsed.data.clientId ?? prospect?.clientId ?? null,
+    prospectId: parsed.data.prospectId ?? null,
     label: parsed.data.label.trim(),
     street: parsed.data.street?.trim() || null,
     city: parsed.data.city?.trim() || null,
@@ -158,8 +189,18 @@ router.put("/properties/:propertyId", async (req, res): Promise<void> => {
     res.status(409).json({ error: "Client is not owned by this legal business" });
     return;
   }
+  const prospect = await validateProspect(parsed.data.prospectId, result.property.businessId);
+  if (parsed.data.prospectId != null && !prospect) {
+    res.status(409).json({ error: "Prospect is not owned by this legal business" });
+    return;
+  }
+  if (prospect?.clientId && parsed.data.clientId && prospect.clientId !== parsed.data.clientId) {
+    res.status(409).json({ error: "Property client does not match the converted prospect" });
+    return;
+  }
   const [updated] = await db.update(propertiesTable).set({
     clientId: parsed.data.clientId ?? null,
+    prospectId: parsed.data.prospectId ?? null,
     label: parsed.data.label.trim(),
     street: parsed.data.street?.trim() || null,
     city: parsed.data.city?.trim() || null,
@@ -418,7 +459,17 @@ router.post("/estimates", async (req, res): Promise<void> => {
   if (!owner.ok) { res.status(400).json({ error: owner.error }); return; }
   try {
     const { property, result } = await calculateForRequest(parsed.data, owner.business.id);
-    const clientId = parsed.data.clientId ?? property.clientId;
+    const prospect = await validateProspect(parsed.data.prospectId, owner.business.id);
+    if (parsed.data.prospectId != null && !prospect) {
+      res.status(409).json({ error: "Prospect is not owned by this legal business" });
+      return;
+    }
+    if (property.prospectId && parsed.data.prospectId != null && parsed.data.prospectId !== property.prospectId) {
+      res.status(409).json({ error: "Property is linked to a different prospect" });
+      return;
+    }
+    const linkedProspectId = parsed.data.prospectId ?? property.prospectId ?? null;
+    const clientId = parsed.data.clientId ?? property.clientId ?? prospect?.clientId ?? null;
     if (!await validateClient(clientId, owner.business.id)) {
       res.status(409).json({ error: "Client is not owned by this legal business" });
       return;
@@ -429,6 +480,7 @@ router.post("/estimates", async (req, res): Promise<void> => {
       title: parsed.data.title.trim(),
       clientId: clientId ?? null,
       propertyId: property.id,
+      prospectId: linkedProspectId,
       template: "Aerial Quote",
       status: "draft",
       subtotal: subtotal.toString(),
@@ -446,11 +498,24 @@ router.post("/estimates", async (req, res): Promise<void> => {
       businessId: owner.business.id,
       businessLine: owner.business.slug,
     }).returning();
+    if (linkedProspectId) {
+      await db.update(prospectsTable).set({
+        linkedEstimateId: estimate.id,
+        status: "quote_in_progress",
+        updatedAt: new Date(),
+      }).where(eq(prospectsTable.id, linkedProspectId));
+      await db.insert(prospectEventsTable).values({
+        prospectId: linkedProspectId,
+        type: "estimate_linked",
+        newValue: estimate.title,
+      });
+    }
     res.status(201).json({
       id: estimate.id,
       title: estimate.title,
       clientId: estimate.clientId,
       propertyId: estimate.propertyId,
+      prospectId: estimate.prospectId,
       status: estimate.status,
       subtotal: Number(estimate.subtotal),
       total: Number(estimate.total),

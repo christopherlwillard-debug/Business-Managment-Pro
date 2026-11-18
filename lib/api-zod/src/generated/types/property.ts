@@ -11,6 +11,7 @@ export interface Property {
   id: number;
   businessId: number;
   clientId?: number | null;
+  prospectId?: number | null;
   label: string;
   street?: string | null;
   city?: string | null;

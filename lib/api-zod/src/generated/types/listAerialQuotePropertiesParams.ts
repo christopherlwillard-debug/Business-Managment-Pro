@@ -9,4 +9,5 @@
 export type ListAerialQuotePropertiesParams = {
   businessId?: number;
   clientId?: number;
+  prospectId?: number;
 };

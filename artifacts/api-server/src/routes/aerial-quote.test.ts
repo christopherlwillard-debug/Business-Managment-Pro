@@ -12,12 +12,20 @@ const h = vi.hoisted(() => ({
     id: 101,
     businessId: 11,
     clientId: null,
+    prospectId: null as number | null,
     label: "Permission Fixture",
     street: "100 Test Road",
     city: "Testville",
     state: "KY",
     zip: "40000",
     notes: null,
+  },
+  prospect: {
+    id: 601,
+    businessId: 11,
+    businessLine: "business-11",
+    clientId: null,
+    status: "needs_measurements",
   },
   grants: [] as Array<{ businessId: number; permission: string; revokedAt: Date | null }>,
   revision: {
@@ -62,6 +70,7 @@ vi.mock("@workspace/db", () => {
   const rowsFor = (table: unknown) => {
     if (table === h.tables.properties) return [h.property];
     if (table === h.tables.clients) return [h.client];
+    if (table === h.tables.prospects) return [h.prospect];
     if (table === h.tables.access) {
       return h.grants.filter(grant => grant.businessId === h.businessId && grant.revokedAt === null);
     }
@@ -156,6 +165,8 @@ vi.mock("./guards.js", () => ({
 import {
   clientsTable,
   estimatesTable,
+  prospectsTable,
+  prospectEventsTable,
   propertiesTable,
   propertyBusinessAccessTable,
   propertyMeasurementRevisionsTable,
@@ -176,6 +187,8 @@ beforeEach(() => {
   h.tables = {
     properties: propertiesTable,
     clients: clientsTable,
+    prospects: prospectsTable,
+    prospectEvents: prospectEventsTable,
     access: propertyBusinessAccessTable,
     revisions: propertyMeasurementRevisionsTable,
     pricingProfiles: servicePricingProfileVersionsTable,
@@ -188,6 +201,7 @@ beforeEach(() => {
     id: 101,
     businessId: 11,
     clientId: null,
+    prospectId: null,
     label: "Permission Fixture",
     street: "100 Test Road",
     city: "Testville",
@@ -410,5 +424,36 @@ describe("Aerial Quote property permission routes", () => {
       },
     });
     expectSelects(propertiesTable, propertyMeasurementRevisionsTable, servicePricingProfileVersionsTable);
+  });
+
+  it("keeps a prospect association and quote-stage history on a new estimate", async () => {
+    h.property.prospectId = 601;
+    const response = await request(app)
+      .post("/aerial-quote/estimates")
+      .send({
+        businessId: 11,
+        propertyId: 101,
+        prospectId: 601,
+        measurementRevisionId: 201,
+        serviceKey: "snow_removal",
+        profileVersion: 1,
+        title: "Prospect snow quote",
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.prospectId).toBe(601);
+    expect(h.inserts[0]).toMatchObject({
+      table: estimatesTable,
+      values: { prospectId: 601, propertyId: 101, clientId: null },
+    });
+    expect(h.updates[0]).toMatchObject({
+      table: prospectsTable,
+      values: { status: "quote_in_progress", linkedEstimateId: 701 },
+    });
+    expect(h.inserts[1]).toMatchObject({
+      table: prospectEventsTable,
+      values: { prospectId: 601, type: "estimate_linked", newValue: "Prospect snow quote" },
+    });
+    expectSelects(propertiesTable, propertyMeasurementRevisionsTable, servicePricingProfileVersionsTable, prospectsTable);
   });
 });

@@ -1112,8 +1112,8 @@ export default function Estimates() {
                 </div>
 
                 <h3 className="text-base font-bold text-foreground leading-snug mb-1">{est.title}</h3>
-                {est.clientName && (
-                  <p className="text-sm text-muted-foreground mb-1">{est.clientName}</p>
+                {(est.clientName || (est as Estimate & { prospectName?: string | null }).prospectName) && (
+                  <p className="text-sm text-muted-foreground mb-1">{est.clientName || (est as Estimate & { prospectName?: string | null }).prospectName}</p>
                 )}
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {est.jobType && (

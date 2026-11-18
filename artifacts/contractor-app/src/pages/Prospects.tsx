@@ -30,21 +30,27 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const PROPERTY_TYPES: ProspectPropertyType[] = ["Church", "Retail", "Apartment", "Industrial", "Other"];
 
 const STATUS_OPTIONS: { value: ProspectStatus; label: string }[] = [
-  { value: "cold", label: "Cold" },
+  { value: "cold", label: "New Lead" },
   { value: "contacted", label: "Contacted" },
-  { value: "quoted", label: "Quoted" },
+  { value: "needs_measurements", label: "Needs Measurements" },
+  { value: "quote_in_progress", label: "Quote in Progress" },
+  { value: "quoted", label: "Quote Sent" },
   { value: "won", label: "Won" },
   { value: "serviced", label: "Serviced" },
   { value: "lost", label: "Lost" },
+  { value: "future_opportunity", label: "Future Opportunity" },
 ];
 
 const STATUS_BADGE: Record<ProspectStatus, { label: string; className: string }> = {
-  cold: { label: "Cold", className: "bg-slate-100 text-slate-700 border-slate-200" },
+  cold: { label: "New Lead", className: "bg-slate-100 text-slate-700 border-slate-200" },
   contacted: { label: "Contacted", className: "bg-blue-100 text-blue-700 border-blue-200" },
-  quoted: { label: "Quoted", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  needs_measurements: { label: "Needs Measurements", className: "bg-violet-100 text-violet-700 border-violet-200" },
+  quote_in_progress: { label: "Quote in Progress", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
+  quoted: { label: "Quote Sent", className: "bg-amber-100 text-amber-700 border-amber-200" },
   won: { label: "Won", className: "bg-green-100 text-green-700 border-green-200" },
   serviced: { label: "Serviced", className: "bg-indigo-100 text-indigo-700 border-indigo-200" },
   lost: { label: "Lost", className: "bg-red-100 text-red-700 border-red-200" },
+  future_opportunity: { label: "Future Opportunity", className: "bg-cyan-100 text-cyan-700 border-cyan-200" },
 };
 
 const PROPERTY_TYPE_COLORS: Record<string, string> = {

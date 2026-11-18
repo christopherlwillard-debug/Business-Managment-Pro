@@ -259,12 +259,14 @@ export interface Job {
   description?: string | null;
   clientId?: number | null;
   propertyId?: number | null;
+  prospectId?: number | null;
   propertyLabel?: string | null;
   propertyStreet?: string | null;
   propertyCity?: string | null;
   propertyState?: string | null;
   propertyZip?: string | null;
   clientName?: string | null;
+  prospectName?: string | null;
   contractProgramName?: string | null;
   contractExternalOrderNumber?: string | null;
   contractHomeownerName?: string | null;
@@ -1615,6 +1617,7 @@ export interface Property {
   id: number;
   businessId: number;
   clientId?: number | null;
+  prospectId?: number | null;
   label: string;
   street?: string | null;
   city?: string | null;
@@ -1629,6 +1632,7 @@ export interface Property {
 export interface PropertyInput {
   businessId?: number;
   clientId?: number | null;
+  prospectId?: number | null;
   /**
    * @minLength 1
    * @maxLength 160
@@ -1644,6 +1648,7 @@ export interface PropertyInput {
 export interface PropertyUpdateInput {
   businessId?: number;
   clientId?: number | null;
+  prospectId?: number | null;
   /**
    * @minLength 1
    * @maxLength 160
@@ -1827,6 +1832,7 @@ export type AerialQuoteEstimateInput = AerialQuoteCalculationInput & {
    */
   title: string;
   clientId?: number | null;
+  prospectId?: number | null;
   notes?: string | null;
 };
 
@@ -2597,10 +2603,13 @@ export type ProspectStatus =
 export const ProspectStatus = {
   cold: "cold",
   contacted: "contacted",
+  needs_measurements: "needs_measurements",
+  quote_in_progress: "quote_in_progress",
   quoted: "quoted",
   won: "won",
   serviced: "serviced",
   lost: "lost",
+  future_opportunity: "future_opportunity",
 } as const;
 
 export type ProspectPropertyType =
@@ -2721,6 +2730,8 @@ export interface AddServiceVisitRequest {
 
 export type ProspectDetail = Prospect & {
   statusHistory: ProspectStatusEvent[];
+  properties: Property[];
+  estimates: Estimate[];
   serviceVisits: ProspectServiceVisit[];
 };
 
@@ -3042,6 +3053,7 @@ export type ListEstimatesParams = {
 export type ListAerialQuotePropertiesParams = {
   businessId?: number;
   clientId?: number;
+  prospectId?: number;
 };
 
 export type ListPropertyBusinessAccessParams = {
