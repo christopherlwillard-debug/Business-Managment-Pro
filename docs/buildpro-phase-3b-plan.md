@@ -1,6 +1,6 @@
 # BuildPro Simplification — Phase 3B Plan
 
-**Status:** Planning only. Phase 3A is closed per the owner’s direction. This document does not authorize implementation or create implementation tasks.
+**Status:** Planning only. Phase 3A is closed. The owner approved the proposed wording and unchanged selection behavior only; implementation is not authorized.
 **Planning date:** 2026-11-17
 
 ## Phase 3B objective
@@ -175,7 +175,7 @@ The existing selector labels All Businesses as combined data but does not tell t
 
 ## Unresolved questions and assumptions
 
-- **Owner confirmation needed:** Approve or revise the exact wording and unchanged selection behavior in this plan before implementation.
+- **Confirmed:** The owner approved the exact wording and unchanged selection behavior for planning. This approval does not authorize implementation.
 - **Not yet measured:** Whether business selection is a frequent source of confusion or mistakes.
 - **Requires implementation-time tracing:** Whether all existing write entry points consistently require a specific business; the plan does not assume uniform behavior across APIs.
 - **Assumption:** A presentation-focused change can improve clarity without changing business selection or mutation semantics. If that assumption proves false, stop and return for scope approval.
