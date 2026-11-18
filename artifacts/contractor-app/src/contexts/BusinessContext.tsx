@@ -19,6 +19,7 @@ export interface Business {
   licenseNumber: string | null;
   taxId: string | null;
   sortOrder: number;
+  isActive: boolean;
   enabledFeatures: string[] | null;
   parentBusinessId: number | null;
   legalBusinessId: number | null;

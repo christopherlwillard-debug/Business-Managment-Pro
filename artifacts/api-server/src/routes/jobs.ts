@@ -989,6 +989,7 @@ router.get("/business-options", async (_req, res) => {
       name: businessesTable.name,
       slug: businessesTable.slug,
       legalBusinessId: businessesTable.legalBusinessId,
+      isActive: businessesTable.isActive,
     }).from(businessesTable).orderBy(businessesTable.id);
     res.json(businesses);
   } catch (err) {
@@ -1008,6 +1009,11 @@ router.post("/", async (req, res) => {
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     if (ownership.business.id !== requestedBusinessId) {
       return res.status(400).json({ error: "businessId must identify the selected owning business" });
+    }
+    const [selectedBusiness] = await db.select({ isActive: businessesTable.isActive })
+      .from(businessesTable).where(eq(businessesTable.id, ownership.business.id)).limit(1);
+    if (!selectedBusiness?.isActive) {
+      return res.status(400).json({ error: "Jobs cannot be created in an inactive business" });
     }
     if (clientId != null) {
       const parsedClientId = Number(clientId);

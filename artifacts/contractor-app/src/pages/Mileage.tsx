@@ -133,9 +133,13 @@ function getApiErrorMessage(err: unknown, fallback: string): string {
 export default function Mileage() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness, businesses } = useBusiness();
+  const activeBusinesses = businesses.filter(business => business.isActive);
   // When no specific business is selected (first visit, "all" mode, or cleared selection),
   // fall back to the first available business so owner mileage always loads.
-  const businessId = activeBusiness?.id ?? businesses[0]?.id;
+  const businessId = activeBusiness?.id ?? businesses.find(business => business.isActive)?.id;
+  const entryBusinessId = activeBusiness?.isActive
+    ? activeBusiness.id
+    : businesses.find(business => business.isActive)?.id;
   const queryClient = useQueryClient();
   const { data: logs, isLoading } = useListMileageLogs(
     businessId ? { businessId } : undefined,
@@ -242,7 +246,7 @@ export default function Mileage() {
   const openImportModal = () => {
     setImportModalOpen(true);
     setImportStep("pick");
-    setImportTargetBizId(businessId ?? null);
+    setImportTargetBizId(entryBusinessId ?? null);
     setImportSkipPersonal(true);
     setImportValidTrips([]);
     setImportInvalidRows([]);
@@ -449,7 +453,7 @@ export default function Mileage() {
             endLocation: manual.endLocation || undefined,
             purpose: manual.purpose || undefined,
             jobId: manual.jobId ? parseInt(manual.jobId) : undefined,
-            businessId: businessId ?? undefined,
+            businessId: entryBusinessId ?? undefined,
             source: "manual",
           },
         });
@@ -500,7 +504,7 @@ export default function Mileage() {
             classification: "business",
             purpose: purposeNote,
             notes: monthlyForm.notes || undefined,
-            businessId: businessId ?? undefined,
+            businessId: entryBusinessId ?? undefined,
             source: "manual",
           },
         });
@@ -751,7 +755,7 @@ export default function Mileage() {
                         onChange={e => setImportTargetBizId(parseInt(e.target.value))}
                         className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                       >
-                        {businesses.map(b => (
+                        {activeBusinesses.map(b => (
                           <option key={b.id} value={b.id}>{b.name}</option>
                         ))}
                       </select>

@@ -475,7 +475,7 @@ export default function AerialQuoteManual() {
             <summary className="cursor-pointer text-sm font-semibold">Property access and sharing</summary>
             <div className="mt-2">
             <div className="mt-2 flex flex-wrap gap-2">
-              <select aria-label="Division to share with" className="h-10 rounded-md border bg-background px-3" value={shareBusinessId} onChange={e=>setShareBusinessId(e.target.value)}><option value="">Choose division</option>{businesses.filter(item=>item.id!==businessId).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
+              <select aria-label="Division to share with" className="h-10 rounded-md border bg-background px-3" value={shareBusinessId} onChange={e=>setShareBusinessId(e.target.value)}><option value="">Choose division</option>{businesses.filter(item=>item.isActive && item.id!==businessId).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
               <select aria-label="Access permission" className="h-10 rounded-md border bg-background px-3" value={sharePermission} onChange={e=>setSharePermission(e.target.value as typeof sharePermission)}><option value="view">View</option><option value="measure">Measure</option><option value="estimate">Estimate</option><option value="manage">Manage</option></select>
               <button type="button" disabled={busy||!shareBusinessId} onClick={()=>void shareProperty()} className="min-h-10 rounded-md border px-3 disabled:opacity-50">Share property</button>
             </div>

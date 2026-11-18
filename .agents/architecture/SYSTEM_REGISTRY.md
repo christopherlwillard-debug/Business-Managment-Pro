@@ -323,6 +323,7 @@ Before implementing any financial, schema, or business logic feature — consult
 - **Scope:** All Businesses is a read-only reporting scope. It is never an owner value for a mutation; update, void, rollback, receipt, reversal, and delete boundaries use the resolved owner predicate.
 - **Covered ledgers:** expenses, mileage, other income, recurring expenses, subcontractor payments/advances/hours, owner capital, estimated tax payments, assets, growth fund deployments, bank-filed rows, portal rows, Square mirrors, and legacy payments.
 - **Source of truth:** `businesses`. `legalBusinessId` identifies legal-entity ownership independently of the existing parent/child structure; `businessLine` continues to identify operating division.
+- **Availability:** `is_active` hides a division from new job and financial entry choices without removing it from historical selectors, linked records, or reports. Legal-owner roots remain active.
 
 ### Business ownership policy
 

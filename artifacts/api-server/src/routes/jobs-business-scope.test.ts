@@ -167,8 +167,8 @@ describe("GET /jobs business ownership scope", () => {
 describe("job business assignment", () => {
   it("returns account-wide business choices for job assignment", async () => {
     fixture.selectQueue.push([
-      { id: 1, name: "General Contracting", slug: "general_contracting", legalBusinessId: 1 },
-      { id: 2, name: "Asphalt Sealing", slug: "asphalt_sealing", legalBusinessId: 1 },
+      { id: 1, name: "General Contracting", slug: "general_contracting", legalBusinessId: 1, isActive: true },
+      { id: 2, name: "Asphalt Sealing", slug: "asphalt_sealing", legalBusinessId: 1, isActive: false },
     ]);
 
     const response = await request(app).get("/jobs/business-options");
@@ -176,6 +176,19 @@ describe("job business assignment", () => {
     expect(response.status).toBe(200);
     expect(response.body.map((business: { id: number }) => business.id)).toEqual([1, 2]);
     expect(response.body[1].legalBusinessId).toBe(1);
+    expect(response.body[1].isActive).toBe(false);
+  });
+
+  it("rejects creation when the requested business is inactive", async () => {
+    fixture.selectQueue.push([{ isActive: false }]);
+
+    const response = await request(app)
+      .post("/jobs")
+      .send({ title: "Inactive division job", businessId: 1 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/inactive business/i);
+    expect(fixture.insertedValues).toHaveLength(0);
   });
 
   it("rejects job creation without an explicit business ID", async () => {
@@ -240,6 +253,7 @@ describe("job property link eligibility", () => {
 describe("job routes preserve authorized property links", () => {
   const queueClientAndJobBusiness = () => {
     fixture.selectQueue.push(
+      [{ isActive: true }],
       [{ businessId: 1, businessLine: "general_contracting" }],
       [{ id: 1, legalBusinessId: 1 }],
       [{ id: 1, legalBusinessId: 1 }],

@@ -958,3 +958,14 @@ Created the four-document architecture governance system:
 - Combined legal-owner P&L and tax calculations continue to count only the
   original expense. Applied the additive schema to development only; no
   production schema or data was changed.
+
+### Deactivate operating divisions without losing their history
+
+- Added an active/inactive state for operating divisions while keeping inactive
+  records available to historical views, job editing, relationships, and reports.
+- Prevented deactivating legal-owner roots or creating new jobs and expenses
+  under an inactive business; filtered inactive divisions from new expense,
+  banking, mileage-import, quote, and property-sharing choices.
+- Added a confirmation before deactivation and a reactivation path. The additive
+  schema migration is included for normal development/publish schema sync; no
+  production data was changed.

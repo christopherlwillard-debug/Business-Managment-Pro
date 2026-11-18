@@ -275,6 +275,7 @@ function loadSetting<T extends string>(key: string, def: T): T {
 
 export default function Banking() {
   const { activeBusiness, businesses } = useBusiness();
+  const activeBusinesses = businesses.filter(business => business.isActive);
   const qc = useQueryClient();
   const { toast } = useToast();
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -1612,7 +1613,7 @@ export default function Banking() {
               <div className="flex gap-2">
                 {[
                   { val: "", label: "Untagged" },
-                  ...businesses.map(b => ({ val: b.slug, label: b.name })),
+                  ...activeBusinesses.map(b => ({ val: b.slug, label: b.name })),
                 ].map(({ val, label }) => (
                   <button
                     key={val}
@@ -2772,7 +2773,7 @@ export default function Banking() {
                     <div className="flex gap-2">
                       {[
                         { val: "", label: "Untagged" },
-                        ...businesses.map(b => ({ val: b.slug, label: b.name })),
+                        ...activeBusinesses.map(b => ({ val: b.slug, label: b.name })),
                       ].map(({ val, label }) => (
                         <button
                           key={val}

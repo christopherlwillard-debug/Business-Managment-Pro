@@ -95,8 +95,10 @@ router.post("/", async (req, res) => {
       const [parent] = await db.select({
         id: businessesTable.id,
         legalBusinessId: businessesTable.legalBusinessId,
+        isActive: businessesTable.isActive,
       }).from(businessesTable).where(eq(businessesTable.id, parentId)).limit(1);
       if (!parent) return res.status(400).json({ error: "Parent business not found" });
+      if (!parent.isActive) return res.status(400).json({ error: "An inactive legal business cannot receive new divisions" });
       if ((parent.legalBusinessId ?? parent.id) !== parent.id) {
         return res.status(400).json({ error: "Divisions must be added directly under a legal business" });
       }
@@ -125,8 +127,28 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, website, defaultQuoteTerms, defaultQuoteValidityDays, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
+    const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, website, defaultQuoteTerms, defaultQuoteValidityDays, licenseNumber, taxId, enabledFeatures, parentBusinessId, isActive } = req.body;
     const updates: Record<string, unknown> = {};
+    if (isActive !== undefined) {
+      if (typeof isActive !== "boolean") return res.status(400).json({ error: "isActive must be a boolean" });
+      const [business] = await db.select({
+        id: businessesTable.id,
+        legalBusinessId: businessesTable.legalBusinessId,
+      }).from(businessesTable).where(eq(businessesTable.id, id)).limit(1);
+      if (!business) return res.status(404).json({ error: "Business not found" });
+      const legalOwnerId = business.legalBusinessId ?? business.id;
+      if (isActive === false && legalOwnerId === business.id) {
+        return res.status(400).json({ error: "A legal-owner business cannot be deactivated. Deactivate its operating divisions instead." });
+      }
+      if (isActive === true && legalOwnerId !== business.id) {
+        const [legalOwner] = await db.select({ isActive: businessesTable.isActive })
+          .from(businessesTable).where(eq(businessesTable.id, legalOwnerId)).limit(1);
+        if (!legalOwner?.isActive) {
+          return res.status(400).json({ error: "Reactivate the legal-owner business before reactivating this division." });
+        }
+      }
+      updates.isActive = isActive;
+    }
     if (name !== undefined) updates.name = name;
     if (slug !== undefined) updates.slug = slug;
     if (type !== undefined) {

@@ -642,6 +642,20 @@ or CRM ledger.
 **Status:** Accepted
 **Date:** 2026-11-11
 
+## ADR-038: Inactive operating divisions retain history
+
+**Decision:** Add an `is_active` state to operating divisions. Inactive divisions
+remain readable in history, property and job relationships, and reports, but
+cannot be chosen for new jobs, expenses, bank-filed entries, mileage imports,
+or quotes. Legal-owner roots cannot be deactivated, and a division cannot be
+reactivated while its legal owner is inactive.
+
+**Reason:** Owners need to stop using a division without deleting the history
+that supports past work, reporting, and future customer follow-up.
+
+**Status:** Accepted
+**Date:** 2026-11-18
+
 ## ADR-037
 
 **Title:** Shared overhead allocations are division-only attribution

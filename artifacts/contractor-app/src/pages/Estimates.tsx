@@ -819,6 +819,7 @@ export default function Estimates() {
     ? activeBusiness?.slug ?? businesses[0]?.slug ?? ""
     : activeTab;
   const selectedBusiness = businesses.find(business => business.slug === activeBusinessLine);
+  const canCreateQuote = activeBusiness?.isActive !== false && selectedBusiness?.isActive !== false;
   const estimateParams = activeBusiness
     ? (hasWillardsDivisions && activeTab === "all"
       ? { businessId: activeBusiness.id }
@@ -973,7 +974,7 @@ export default function Estimates() {
           <h1 className="text-3xl font-display font-bold text-foreground">Quote Center</h1>
           <p className="text-muted-foreground mt-1">Create service, maintenance, and project quotes in one place.</p>
         </div>
-        {canEdit("estimates") && (
+        {canEdit("estimates") && canCreateQuote && (
           <button
             onClick={() => activeBusinessLine === "asphalt_sealing" ? setShowTemplatePicker(true) : setModal("create")}
             className="flex items-center justify-center px-4 py-2.5 rounded-xl font-semibold bg-amber-500 text-white hover:bg-amber-600 shadow-md transition-all hover:shadow-lg active:scale-95 text-sm"
@@ -982,6 +983,11 @@ export default function Estimates() {
           </button>
         )}
       </div>
+      {canEdit("estimates") && !canCreateQuote && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This division is inactive. Existing quotes remain available, but new quotes must use an active business.
+        </p>
+      )}
 
       {/* Business line tabs — only shown in All Businesses mode */}
       {(activeBusiness === null || hasWillardsDivisions) && (

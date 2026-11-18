@@ -2116,6 +2116,9 @@ function RecurringModal({
 }) {
   const isEdit = expense != null;
   const { activeBusiness, businesses } = useBusiness();
+  const entryBusiness = activeBusiness?.isActive
+    ? activeBusiness
+    : businesses.find(business => business.isActive) ?? null;
   const createRecurring = useCreateRecurring();
   const updateRecurring = useUpdateRecurring();
   const saveVendor      = useSaveVendor();
@@ -2169,7 +2172,7 @@ function RecurringModal({
           frequency:   fd.get("frequency") as string,
           startDate:   fd.get("startDate") as string,
           endDate:     (fd.get("endDate") as string) || undefined,
-          businessId:  activeBusiness?.id ?? businesses?.[0]?.id ?? undefined,
+          businessId:  entryBusiness?.id ?? undefined,
         });
       }
 
@@ -2601,17 +2604,21 @@ function RecurringSection({
 export default function Expenses() {
   const { canEdit } = useUserPermissions();
   const { activeBusiness, businesses } = useBusiness();
+  const activeBusinesses = businesses.filter(business => business.isActive);
+  const entryBusiness = activeBusiness?.isActive
+    ? activeBusiness
+    : activeBusinesses.find(business => business.isActive) ?? null;
   const isLegalOwnerSelection = !!activeBusiness
     && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
   const businessLineOptions = activeBusiness && isLegalOwnerSelection
-    ? businesses.filter(b => (b.legalBusinessId ?? b.id) === activeBusiness.id)
-    : businesses;
+    ? activeBusinesses.filter(b => (b.legalBusinessId ?? b.id) === activeBusiness.id)
+    : activeBusinesses;
   const allocationOwnerId = activeBusiness
     ? (activeBusiness.legalBusinessId ?? activeBusiness.id)
     : null;
   const allocationDivisionOptions = allocationOwnerId == null
     ? []
-    : businesses.filter(b => b.id !== allocationOwnerId && (b.legalBusinessId ?? b.id) === allocationOwnerId);
+    : activeBusinesses.filter(b => b.id !== allocationOwnerId && (b.legalBusinessId ?? b.id) === allocationOwnerId);
   const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
@@ -2700,11 +2707,11 @@ export default function Expenses() {
   const [divisionAllocationAmounts, setDivisionAllocationAmounts] = useState<Record<number, string>>({});
   const [formExpenseDate, setFormExpenseDate] = useState(localDateString());
   const [businessLine, setBusinessLine]               = useState<string | undefined>(
-    activeBusiness?.slug ?? undefined
+    entryBusiness?.slug ?? undefined
   );
   useEffect(() => {
-    setBusinessLine(activeBusiness?.slug ?? undefined);
-  }, [activeBusiness?.slug]);
+    setBusinessLine(entryBusiness?.slug ?? undefined);
+  }, [entryBusiness?.id]);
   const [prefillTripId, setPrefillTripId]             = useState<number | null>(null);
   const [paidBy,        setPaidBy]                    = useState("");
   const [receiptStatus, setReceiptStatus]             = useState<"uploaded" | "missing">("uploaded");
@@ -2905,7 +2912,7 @@ export default function Expenses() {
     setFormJobId("");
     setIsSharedOverhead(false);
     setDivisionAllocationAmounts({});
-    setBusinessLine(activeBusiness?.slug ?? undefined);
+    setBusinessLine(entryBusiness?.slug ?? undefined);
     setPrefillTripId(null);
     setPaidBy("");
     setReceiptStatus("uploaded");
@@ -2935,7 +2942,7 @@ export default function Expenses() {
       setCountsTowardJobProfit(true);
       setFormJobId("");
     setIsSharedOverhead(false);
-      setBusinessLine(activeBusiness?.slug ?? undefined);
+      setBusinessLine(entryBusiness?.slug ?? undefined);
       setPrefillTripId(null);
       setPaidBy("");
       setReceiptStatus("uploaded");
@@ -3011,7 +3018,7 @@ export default function Expenses() {
     setExcludeFromNetProfit(false);
     setCountsTowardJobProfit(false);
     setFormJobId(tripJobId ? String(tripJobId) : "");
-    setBusinessLine(activeBusiness?.slug ?? undefined);
+    setBusinessLine(entryBusiness?.slug ?? undefined);
     setPrefillTripId(tripId);
     setPaidBy("");
     setReceiptStatus("uploaded");
@@ -3098,8 +3105,8 @@ export default function Expenses() {
           divisionAllocations: requestedDivisionAllocations,
           businessLine: businessLine || null,
           businessId: businessLine
-            ? businesses.find(b => b.slug === businessLine)?.id ?? activeBusiness?.id ?? null
-            : activeBusiness?.id ?? null,
+            ? activeBusinesses.find(b => b.slug === businessLine)?.id ?? entryBusiness?.id ?? null
+            : entryBusiness?.id ?? null,
           tripId: prefillTripId ?? undefined,
           paidBy: paidBy || undefined,
           receiptStatus,
@@ -3151,7 +3158,7 @@ export default function Expenses() {
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
       setDivisionAllocationAmounts({});
-      setBusinessLine(activeBusiness?.slug ?? undefined);
+      setBusinessLine(entryBusiness?.slug ?? undefined);
       setPrefillTripId(null);
       setPaidBy("");
       setReceiptStatus("uploaded");
@@ -3950,6 +3957,11 @@ export default function Expenses() {
             </DialogTitle>
           </DialogHeader>
           <form key={prefillKey} id="expense-form" onSubmit={handleSubmit} className="space-y-4 mt-4 overflow-y-auto flex-1">
+            {activeBusiness && !activeBusiness.isActive && (
+              <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                {activeBusiness.name} is inactive. New expenses use an active business; this division’s existing records remain available.
+              </p>
+            )}
             {dialogMode === "scan" && (
               scanFailed ? (
                 <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">

@@ -78,6 +78,8 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [activeSavingId, setActiveSavingId] = useState<number | null>(null);
+  const [activeError, setActiveError] = useState("");
   const [editToolsCustomized, setEditToolsCustomized] = useState(false);
   const [editFeatures, setEditFeatures] = useState<string[]>([]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -96,6 +98,30 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
   function handleSelect(b: Business | null) {
     setActiveBusiness(b);
     onSelect(b);
+  }
+
+  async function toggleBusinessActive(business: Business) {
+    const nextActive = !business.isActive;
+    if (!nextActive && !window.confirm(
+      `Deactivate ${business.name}? Its records and history will remain, but it will no longer be available for new jobs or expenses.`,
+    )) return;
+    setActiveSavingId(business.id);
+    setActiveError("");
+    try {
+      const response = await fetch(`${BASE}/api/businesses/${business.id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: nextActive }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Could not update business status");
+      await refresh();
+    } catch (error) {
+      setActiveError(error instanceof Error ? error.message : "Could not update business status");
+    } finally {
+      setActiveSavingId(null);
+    }
   }
 
   async function handleMove(index: number, direction: "up" | "down") {
@@ -317,6 +343,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           </button>
 
           {/* Individual business cards */}
+          {activeError && <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{activeError}</p>}
           {businesses.map((b, index) => {
             const colors = BUSINESS_COLORS[b.type] ?? BUSINESS_COLORS.other;
             const isEditing = editingBusiness?.id === b.id;
@@ -372,9 +399,30 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                           ? "Operating division"
                           : BUSINESS_TYPE_LABELS[b.type] ?? b.type}
                       </p>
+                      {!b.isActive && (
+                        <span className="mt-1 inline-flex rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                          Inactive · history retained
+                        </span>
+                      )}
                       <BusinessCardStats business={b} />
                     </div>
                   </button>
+                  {(b.legalBusinessId ?? b.id) !== b.id ? (
+                    <button
+                      type="button"
+                      disabled={activeSavingId !== null}
+                      onClick={(e) => { e.stopPropagation(); void toggleBusinessActive(b); }}
+                      className={`rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                        b.isActive ? "text-destructive hover:bg-destructive/10" : "text-emerald-700 hover:bg-emerald-50"
+                      }`}
+                    >
+                      {activeSavingId === b.id ? "Saving…" : b.isActive ? "Deactivate" : "Reactivate"}
+                    </button>
+                  ) : (
+                    <span className="max-w-24 text-right text-[10px] leading-tight text-muted-foreground">
+                      Legal owner stays active
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => isEditing ? (e.stopPropagation(), setEditingBusiness(null)) : openEdit(b, e)}
@@ -385,7 +433,6 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                   </button>
                   <ChevronRight className={`w-5 h-5 ${colors.text} opacity-40 flex-shrink-0`} />
                 </div>
-
                 {isEditing && (
                   <form onSubmit={handleEditBusiness} className={`p-5 rounded-2xl rounded-t-none border-2 border-t-0 ${colors.border} bg-card space-y-3`}>
                     <h3 className="font-bold text-foreground text-sm">Edit Business</h3>

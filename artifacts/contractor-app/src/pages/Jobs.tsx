@@ -8413,6 +8413,7 @@ type JobBusinessOption = {
   name: string;
   slug: string;
   legalBusinessId: number | null;
+  isActive: boolean;
 };
 
 function JobFormDialog({
@@ -8442,7 +8443,11 @@ function JobFormDialog({
     },
     enabled: open,
   });
-  const businessOptions = businessOptionsQuery.data ?? businesses;
+  const allBusinessOptions = businessOptionsQuery.data ?? businesses;
+  const defaultBusiness = allBusinessOptions.find(business => business.id === initialBusinessId && business.isActive)
+    ?? (activeBusiness?.isActive ? activeBusiness : null)
+    ?? allBusinessOptions.find(business => business.isActive)
+    ?? null;
 
   function makeForm() {
     if (editJob) {
@@ -8468,9 +8473,7 @@ function JobFormDialog({
       };
     }
     return {
-      businessId: initialBusinessId != null
-        ? String(initialBusinessId)
-        : activeBusiness?.id != null ? String(activeBusiness.id) : "",
+      businessId: defaultBusiness ? String(defaultBusiness.id) : "",
       title: "", clientId: prelinkedClientId ? String(prelinkedClientId) : "", propertyId: prelinkedPropertyId ? String(prelinkedPropertyId) : "", status: "scheduled",
       jobType: "", homeModel: "", address: "",
       locationName: "", city: "", state: "KY",
@@ -8483,6 +8486,14 @@ function JobFormDialog({
   }
 
   const [form, setFormState] = useState(makeForm);
+  const legacyEditBusinessSlug = editJob?.businessLine ?? "";
+  const businessOptions = allBusinessOptions.filter(business =>
+    business.isActive
+    || (editJob != null && (
+      business.id === editJob.businessId
+      || (editJob.businessId == null && business.slug === legacyEditBusinessSlug)
+    ))
+  );
   const selectedBusiness = businessOptions.find(business => String(business.id) === form.businessId);
   const propertyBusinessId = form.businessId
     ? Number(form.businessId)
@@ -9048,7 +9059,9 @@ function JobFormDialog({
                 >
                   <option value="">Select a business…</option>
                   {businessOptions.map(business => (
-                    <option key={business.id} value={business.id}>{business.name}</option>
+                    <option key={business.id} value={business.id}>
+                      {business.name}{business.isActive ? "" : " (Inactive — existing job)"}
+                    </option>
                   ))}
                 </select>
                 {businessOptionsQuery.isError && (

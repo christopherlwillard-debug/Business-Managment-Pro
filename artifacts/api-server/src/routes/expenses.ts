@@ -479,6 +479,12 @@ router.post("/", async (req, res) => {
       }
     }
 
+    const [entryBusiness] = await db.select({ isActive: businessesTable.isActive })
+      .from(businessesTable).where(eq(businessesTable.id, resolvedBusinessId)).limit(1);
+    if (!entryBusiness?.isActive) {
+      return res.status(400).json({ error: "Expenses cannot be created in an inactive business" });
+    }
+
     if (isOwnerPayCategory(category)) {
       return res.status(400).json({
         error: "Owner withdrawals are not operating expenses. Record them through Owner Withdrawals.",
