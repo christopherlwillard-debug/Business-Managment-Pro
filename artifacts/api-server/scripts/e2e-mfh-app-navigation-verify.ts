@@ -119,6 +119,22 @@ async function main() {
       drawer.left >= -1 && drawer.right <= drawer.viewportWidth + 1,
       `left=${drawer.left}; right=${drawer.right}; viewport=${drawer.viewportWidth}; scrollX=${drawer.scrollX}`);
     await page.screenshot({ path: `${SHOTS}/mobile-more-drawer.png` });
+    await page.mouse.move(100, 600);
+    await page.mouse.wheel({ deltaY: 1_000 });
+    const lowerGroupsVisible = await page.waitForFunction(() => {
+      const node = Array.from(document.querySelectorAll("div.fixed.inset-y-0.left-0"))
+        .find(element => element.className.includes("bg-primary"));
+      const drawerRect = node?.getBoundingClientRect();
+      if (!node || !drawerRect) return false;
+      const labels = Array.from(node.querySelectorAll("p"))
+        .filter(element => ["Tools", "Manage"].includes(element.textContent?.trim() ?? ""));
+      return labels.length === 2 && labels.every(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.top >= drawerRect.top && rect.bottom <= drawerRect.bottom;
+      });
+    }, { timeout: 8_000 }).then(() => true).catch(() => false);
+    record("Mobile drawer scroll exposes Tools and Manage groups", lowerGroupsVisible);
+    await page.screenshot({ path: `${SHOTS}/mobile-more-drawer-lower.png` });
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     const jobsText = await page.evaluate(() => document.body.innerText);

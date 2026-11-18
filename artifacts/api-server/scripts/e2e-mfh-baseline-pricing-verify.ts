@@ -144,19 +144,18 @@ async function createFixture() {
 
 async function chooseOption(page: Page, index: number, value: number) {
   await page.waitForFunction(
-    expectedIndex => document.querySelectorAll("div.fixed.inset-0.z-40 select").length > expectedIndex,
+    ({ expectedIndex, optionValue }) => {
+      const select = document.querySelectorAll<HTMLSelectElement>("div.fixed.inset-0.z-40 select")[expectedIndex];
+      return Boolean(select && Array.from(select.options).some(option => option.value === String(optionValue)));
+    },
     { timeout: 15_000 },
-    index,
+    { expectedIndex: index, optionValue: value },
   );
-  await page.evaluate(({ expectedIndex, optionValue }) => {
-    const selects = document.querySelectorAll<HTMLSelectElement>("div.fixed.inset-0.z-40 select");
-    const select = selects[expectedIndex];
-    if (!select || !Array.from(select.options).some(option => option.value === String(optionValue))) {
-      throw new Error(`Expected MFH pricing option ${optionValue} was not available`);
-    }
-    select.value = String(optionValue);
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  }, { expectedIndex: index, optionValue: value });
+  const selects = await page.$$("div.fixed.inset-0.z-40 select");
+  const selectedValues = await selects[index]?.select(String(value));
+  if (!selectedValues?.includes(String(value))) {
+    throw new Error(`Expected MFH pricing option ${value} was not selected`);
+  }
 }
 
 async function verifyPricingCase(
@@ -190,20 +189,51 @@ async function verifyPricingCase(
     );
     throw new Error(`Manufactured Home panel action was not available for job ${jobId}: ${visibleButtons}`);
   }
-  await page.waitForSelector("div.fixed.inset-0.z-40 select", { timeout: 15_000 });
+  const panelReady = await page.waitForFunction(() => {
+    const panel = Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+      .find(element => element.textContent?.includes("Manufactured Home") && element.querySelector("select"));
+    return Boolean(panel
+      && panel.querySelector("select"));
+  }, { timeout: 15_000 }).then(() => true).catch(() => false);
+  if (!panelReady) {
+    const dialogs = await page.$$eval("div.fixed.inset-0", nodes =>
+      nodes.map(node => ({
+        classes: node.className,
+        text: node.textContent?.slice(0, 180),
+        selects: node.querySelectorAll("select").length,
+      })),
+    );
+    throw new Error(`MFH pricing panel did not open for job ${jobId}: ${JSON.stringify(dialogs)}`);
+  }
   await chooseOption(page, 0, fixture.manufacturerId!);
   await chooseOption(page, 1, fixture.modelId!);
 
   const expectedRateLabel = isClientOverride ? "Client-specific rate:" : "Clayton baseline:";
-  await page.waitForFunction(({ expectedRateLabel, expectedPrice }) => {
-    const panel = document.querySelector("div.fixed.inset-0.z-40");
+  const pricingVisible = await page.waitForFunction(({ expectedRateLabel, expectedPrice }) => {
+    const panel = Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+      .find(element => element.textContent?.includes("Manufactured Home"));
     if (!panel?.textContent?.includes(expectedRateLabel)) return false;
     return Array.from(panel.querySelectorAll<HTMLInputElement>('input[type="number"]'))
       .some(input => Number(input.value) === expectedPrice);
-  }, { timeout: 20_000 }, { expectedRateLabel, expectedPrice });
+  }, { timeout: 4_000 }, { expectedRateLabel, expectedPrice }).then(() => true).catch(() => false);
+  if (!pricingVisible) {
+    const debug = await page.evaluate(() => {
+      const panel = Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+        .find(element => element.textContent?.includes("Manufactured Home"));
+      return {
+        text: panel?.innerText ?? "",
+        selects: Array.from(panel?.querySelectorAll<HTMLSelectElement>("select") ?? [])
+          .map(select => ({ value: select.value, label: select.selectedOptions[0]?.textContent })),
+        numberInputs: Array.from(panel?.querySelectorAll<HTMLInputElement>('input[type="number"]') ?? [])
+          .map(input => ({ value: input.value, placeholder: input.placeholder })),
+      };
+    });
+    throw new Error(`Expected ${expectedRateLabel} at $${expectedPrice}; panel state: ${JSON.stringify(debug)}`);
+  }
 
   const beforeApply = await page.evaluate(() => {
-    const panel = document.querySelector("div.fixed.inset-0.z-40");
+    const panel = Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+      .find(element => element.textContent?.includes("Manufactured Home"));
     const text = panel?.innerText ?? "";
     const inputs = Array.from(panel?.querySelectorAll<HTMLInputElement>('input[type="number"]') ?? [])
       .map(input => input.value);
@@ -223,7 +253,8 @@ async function verifyPricingCase(
   );
 
   const clickedApply = await page.evaluate(() => {
-    const panel = document.querySelector("div.fixed.inset-0.z-40");
+    const panel = Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+      .find(element => element.textContent?.includes("Manufactured Home"));
     const button = Array.from(panel?.querySelectorAll<HTMLButtonElement>("button") ?? [])
       .find(element => element.textContent?.includes("Apply Pricing"));
     button?.click();
@@ -231,7 +262,8 @@ async function verifyPricingCase(
   });
   if (!clickedApply) throw new Error(`Apply Pricing was not enabled for job ${jobId}`);
   await page.waitForFunction(() =>
-    document.querySelector("div.fixed.inset-0.z-40")?.textContent?.includes("Applied ✓") ?? false,
+    Array.from(document.querySelectorAll("div.fixed.inset-0.z-40"))
+      .some(panel => panel.textContent?.includes("Manufactured Home") && panel.textContent.includes("Applied ✓")),
   { timeout: 20_000 });
 
   const [job] = await db.select({
