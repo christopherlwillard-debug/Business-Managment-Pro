@@ -1821,8 +1821,6 @@ export default function Settings() {
     growthReservePct: "5",
   });
   const [plStepOrder, setPlStepOrder] = useState<string[]>(["expenses", "growth", "labor"]);
-  const [smtpPass, setSmtpPass] = useState("");
-  const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);

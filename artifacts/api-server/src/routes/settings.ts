@@ -311,22 +311,33 @@ function parseJsonArray(v: string | null | undefined): string[] | null {
 
 function format(s: any) {
   return {
-    ...s,
+    id: s.id,
+    companyName: s.companyName,
+    companyAddress: s.companyAddress,
+    companyCity: s.companyCity,
+    companyState: s.companyState,
+    companyZip: s.companyZip,
+    companyPhone: s.companyPhone,
+    companyEmail: s.companyEmail,
     logoUrl: toServingUrl(s.logoUrl),
     dbaLogoUrl: toServingUrl(s.dbaLogoUrl),
-    signatureImage: toServingUrl(s.signatureImage),
     defaultTaxRate: s.defaultTaxRate ? parseFloat(s.defaultTaxRate) : null,
+    defaultPaymentTerms: s.defaultPaymentTerms,
     lateFeePercent: s.lateFeePercent ? parseFloat(s.lateFeePercent) : null,
+    invoicePrefix: s.invoicePrefix,
+    invoiceNextNumber: s.invoiceNextNumber,
     mileageRate: s.mileageRate ? parseFloat(s.mileageRate) : 0.725,
-    thresholdAmount1099: s.thresholdAmount1099 ? parseFloat(s.thresholdAmount1099) : 600,
+    currency: s.currency,
     enabledFeatures: Array.isArray(s.enabledFeatures) ? s.enabledFeatures : DEFAULT_SETTINGS.enabledFeatures,
+    thresholdAmount1099: s.thresholdAmount1099 ? parseFloat(s.thresholdAmount1099) : 600,
+    entityType: s.entityType,
+    ein: s.ein,
     invoiceLogoPosition: s.invoiceLogoPosition ?? "top-left",
     invoiceLogoSize: s.invoiceLogoSize ?? "medium",
     smtpHost: s.smtpHost ?? null,
     smtpPort: s.smtpPort ?? "587",
     smtpUser: s.smtpUser ?? null,
     smtpSecure: s.smtpSecure === 1 || s.smtpSecure === true,
-    // smtpPass is intentionally omitted from GET responses for security
     smtpConfigured: !!(s.smtpHost && s.smtpUser && s.smtpPass),
     mileageDefaultClassification: s.mileageDefaultClassification ?? "business",
     mileageUnits: s.mileageUnits ?? "miles",
@@ -334,31 +345,32 @@ function format(s: any) {
     bottomNavItems: parseJsonArray(s.bottomNavItems),
     complianceNotificationEmail: s.complianceNotificationEmail ?? null,
     complianceEmailEnabled: s.complianceEmailEnabled === 1 || s.complianceEmailEnabled === true,
-    taxFilingFrequency: s.taxFilingFrequency ?? "quarterly",
     invoiceReminderEnabled: s.invoiceReminderEnabled === 1 || s.invoiceReminderEnabled === true,
     invoiceReminderDay1: s.invoiceReminderDay1 ?? 7,
     invoiceReminderDay2: s.invoiceReminderDay2 ?? 14,
     calculatorDefaults: s.calculatorDefaults ?? null,
     taxAssumptions: s.taxAssumptions ?? null,
     quickLinks: Array.isArray(s.quickLinks) ? decryptQuickLinks(s.quickLinks) : [],
-    // P&L layout
+    signatureImage: toServingUrl(s.signatureImage),
+    taxFilingFrequency: s.taxFilingFrequency ?? "quarterly",
     ownerSplitPct: s.ownerSplitPct != null ? parseFloat(String(s.ownerSplitPct)) : 50,
     taxReservePct: s.taxReservePct != null ? parseFloat(String(s.taxReservePct)) : 25,
     growthReservePct: s.growthReservePct != null ? parseFloat(String(s.growthReservePct)) : 5,
     plStepOrder: !s.plStepOrder || s.plStepOrder === '["growth","labor","expenses"]'
       ? '["expenses","growth","labor"]'
       : s.plStepOrder,
-    // Tax Profile
     federalTaxElection: s.federalTaxElection ?? "sole_prop",
     taxElectionEffectiveDate: s.taxElectionEffectiveDate ?? null,
-    // Business Reserve Dashboard
     operatingReserveMode: s.operatingReserveMode ?? "0",
     operatingReserveCustom: s.operatingReserveCustom != null ? parseFloat(String(s.operatingReserveCustom)) : null,
     includeGrowthFundInReserve: s.includeGrowthFundInReserve === 1 || s.includeGrowthFundInReserve === true,
-    // Vehicle & fuel cost estimation
+    homeOfficeSettings: s.homeOfficeSettings ?? null,
     vehicleMpg: s.vehicleMpg ?? 17,
     fuelPricePerGallon: s.fuelPricePerGallon != null ? parseFloat(String(s.fuelPricePerGallon)) : null,
     fuelPriceUpdatedAt: s.fuelPriceUpdatedAt instanceof Date ? s.fuelPriceUpdatedAt.toISOString() : (s.fuelPriceUpdatedAt ?? null),
+    ownerUserId: s.ownerUserId,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
   };
 }
 
