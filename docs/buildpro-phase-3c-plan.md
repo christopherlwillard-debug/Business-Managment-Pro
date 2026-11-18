@@ -96,9 +96,9 @@ The selector stores All Businesses as `activeBusiness === null` with `hasSelecti
 - Team, Google, Wix, Payments, Notifications, and the other Settings panels also remain reachable in this context. Their effects are account, owner, platform, or environment scoped rather than edits to combined job/customer data.
 - The business selector is a frontend context, not an authorization boundary. Protected API routes use authentication/access checks and owner checks for writes; the `/api/settings` singleton has no business ID to scope against. Business-specific APIs perform their own route checks, but do not infer the selected frontend context.
 
-**Recommendation — minimal presentation and interaction policy:** Keep the All Businesses label for combined business records, but make Settings explicitly identify itself as account configuration. Show a clear notice such as: “All Businesses is read-only for business records. Account-wide settings below remain editable and affect all businesses. Select one business to change business-specific settings.” Keep account-wide settings editable because they have legitimate shared effects. In All Businesses, prevent edits to business-specific production catalog/pricing data and require selecting one business first; do not silently reinterpret a null business ID as permission to change a particular business. Keep owner-only access and existing server authorization unchanged for this UI-only phase. This recommendation is not implemented.
+**Approved All Businesses policy:** Show this notice: “All Businesses is read-only for business-specific records. Account-wide settings remain editable; changes apply across all businesses. Select one business before editing business-specific settings.” Keep account-wide settings editable because their shared effect is explicit. In All Businesses, Production Billing must be read-only: do not allow multi-business edits or creation of globally scoped entries from the combined context. Require an individual business selection before changing Production Billing. Keep owner-only access and server authorization unchanged. The owner approved this policy; implementation is not authorized.
 
-The source review establishes the current behavior, but does not independently exercise the owner UI or make any requests. A separate owner decision is still needed to accept this wording and the proposed restriction of business-scoped Production Billing edits in the combined context before Phase 3C implementation is approved.
+The source review establishes the current behavior, but does not independently exercise the owner UI or make any requests. The owner approved the policy above. This approves the policy only; implementation remains unauthorized.
 
 ### Per-tab scope and All Businesses matrix
 
@@ -111,7 +111,7 @@ The source review establishes the current behavior, but does not independently e
 | **Invoice Defaults** | Singleton `settings` row; defaults affect invoices across businesses, with per-invoice overrides where supported. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
 | **Financial** | Singleton `settings` row; tax, mileage-rate, and 1099 defaults used across the app. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
 | **P&L Layout** | Singleton `settings` row; affects shared job-profit/payroll calculations. | Visible and editable. | Owner-only writes; no business scope in the settings row. |
-| **Production Billing** | Dedicated service-type, price-override, and add-on-prompt tables support global and business-specific rows. | Visible and editable. Null business context lists all service types; new service types/prompts can be created globally. | Routes are owner-write protected, but the UI’s null context is not an authorization boundary. The service-type update route addresses a row by ID without checking it belongs to a selected business. |
+| **Production Billing** | Dedicated service-type, price-override, and add-on-prompt tables support global and business-specific rows. | Currently visible and editable. Null business context lists all service types; new service types/prompts can be created globally. Approved future policy: read-only until an individual business is selected; no global entries from All Businesses. | Routes are owner-write protected, but the UI’s null context is not an authorization boundary. The service-type update route addresses a row by ID without checking it belongs to a selected business. |
 | **Mileage — trip defaults** | Singleton `settings` row; applies across the account. | Visible and editable. | Owner-only settings writes; no business scope in the settings row. |
 | **Mileage — vehicle/fuel profiles** | `vehicles` table. The API currently lists all vehicles and its CRUD does not scope by business, despite a nullable `businessId` column. | Visible and editable; current route operates on the shared vehicle collection. | `/api/vehicles` is owner-only at mount; this route does not enforce active-business scope. |
 | **Modules** | `enabledFeatures` and bottom-navigation defaults in singleton `settings`; business overrides are stored on business records and managed separately from this page. | Global defaults are visible and editable; per-business overrides are not shown in this Settings panel. | Settings writes are owner-only; Business Selector business-record writes are separately owner-only. |
@@ -183,7 +183,7 @@ Additionally, the Settings GET route may create a default settings row if none e
 
 ### Objective
 
-Make the existing twelve Settings tabs easier to find by grouping them under short, owner-understandable headings. Keep the current Settings route, active panels, tab labels, and persistence unchanged.
+Make the existing twelve Settings tabs easier to find by grouping them under short, owner-understandable headings. Keep the current Settings route, active panels, tab labels, stored values, and setting effects unchanged; apply the separately approved UI policy for All Businesses.
 
 ### Proposed organization and exact headings
 
@@ -206,6 +206,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 
 - Group labels and spacing for the existing tab buttons.
 - Short explanations for the current settings areas and verified scope distinctions.
+- The approved All Businesses notice and read-only Production Billing behavior in All Businesses; require individual business selection before changes.
 - Responsive behavior so categories and all current tabs remain understandable on phone and desktop.
 - A source-only ownership map used to validate the labels before implementation.
 
@@ -220,7 +221,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 ### Preservation requirements
 
 - Preserve all twelve tabs and every existing control.
-- Preserve shared settings versus per-business profiles and overrides; never convert one scope into another.
+- Preserve shared settings versus per-business profiles and overrides; never convert one scope into another. In All Businesses, keep account-wide controls available and make Production Billing read-only, including blocking globally scoped entry creation.
 - Preserve financial/accounting formulas, effective values, source-of-truth records, tax and payroll behavior.
 - Preserve owner-only and staff permissions and all server-side checks.
 - Preserve Google, Square, Wix, Plaid, and other integration state, credentials, encryption, webhook behavior, and environment fallbacks.
@@ -229,7 +230,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 
 ### Risks and dependencies
 
-- **Owner decision required:** Accept or revise the recommended All Businesses notice and confirm that business-scoped Production Billing editing should require one selected business.
+- **Implementation authorization required:** The All Businesses policy is approved, but implementing its notice and Production Billing read-only guard still requires separate authorization.
 - **Security dependency:** Separately remediate the confirmed SMTP response exposure before authenticated Settings responses are used in browser validation.
 - **Scope dependency:** Confirm each category/scope label against its API and stored source before implementation. The settings schema alone does not tell a user which business owns a value.
 - **Integration dependency:** Map the owner and side effects of each provider panel before considering any relocation. Read-only GETs may have first-access or legacy-data side effects.
@@ -243,7 +244,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 4. Desktop and mobile layouts expose every tab without clipping or inaccessible horizontal scrolling.
 5. Settings and Integrations routes remain direct-accessible; owner/staff route behavior is unchanged.
 6. Settings reads and writes use the existing APIs and preserve all existing values; no schema or migration changes.
-7. Financial, tax, estimate/invoice, payroll, mileage, business-scoping, and permission behaviors remain unchanged.
+7. Financial, tax, estimate/invoice, payroll, mileage, business-scoping, and server authorization remain unchanged. Under All Businesses, show the approved account-wide notice and make Production Billing read-only, including blocking global-entry creation; require a selected business for edits.
 8. The Phase 3C UI change introduces no new credential display or response path. The already-confirmed SMTP response exposure remains a separate security blocker and is not considered fixed by this phase.
 9. No configuration records, integration connections, business records, or historical data are changed by the implementation verification.
 10. Tests explicitly report PASS, FAIL, or NOT RUN for each acceptance check; skipped authenticated or security-sensitive paths are not represented as passed.
@@ -252,8 +253,9 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 
 - Unit/component checks for the category-to-tab mapping and all existing tab labels.
 - Frontend typecheck and relevant Settings/Integrations tests.
-- Authenticated owner walkthrough on desktop and mobile using a safe development session, after resolving the scope and SMTP prerequisites.
+- Authenticated owner walkthrough on desktop and mobile using a safe development session, after separately resolving the SMTP response exposure.
 - Verify each tab opens the existing content and all visible actions remain reachable.
+- Verify the approved All Businesses notice and that Production Billing has no write actions (including global creation) while All Businesses is selected; verify the existing individual-business editing path without sending writes.
 - Compare business-specific and shared setting labels against source/API scope; check one business at a time without changing stored values.
 - Confirm owner/staff route permissions and API authorization remain unchanged.
 - Use network assertions to prove no settings, business, integration, or credential writes occur during the walkthrough; avoid test-email, OAuth, credential, upload/delete, and webhook actions.
@@ -263,7 +265,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 ## Deferred improvements
 
 - Field-level scope mapping for every settings API value and all consumers.
-- Owner approval of the proposed distinction between combined business records and account-wide settings, including the single-business requirement for business-scoped Production Billing changes.
+- Implement the approved All Businesses notice and read-only Production Billing behavior in the combined context, only after separate implementation authorization.
 - SMTP response redaction, encryption, logging, and regression tests under its separate security scope.
 - Provider-by-provider decision about whether setup belongs in Settings, Integrations, or both.
 - Any later relocation of controls, URL-backed tab selection, search, or advanced-control disclosure.
@@ -274,10 +276,11 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 - **Documentation created:** this Phase 3C planning document.
 - **Settings structure inspected:** twelve tabs and the specific panels and persistence boundaries listed above.
 - **Ranked opportunities:** tab grouping (recommended), scope explanation, and configuration-versus-health clarity.
-- **Recommended scope:** UI-only grouping of existing tabs and accurate short descriptions; no behavioral changes.
-- **All Businesses finding:** the read-only selector context does not disable all Settings controls; shared settings and Production Billing remain editable. Recommended a clear account-wide notice and a selected-business requirement for business-scoped Production Billing changes.
+- **Recommended scope:** UI-only grouping and accurate short descriptions, plus the explicitly approved All Businesses notice and Production Billing UI guard; no API, data, or server-authorization changes.
+- **All Businesses finding:** the read-only selector context does not disable all Settings controls; shared settings and Production Billing remain editable. The approved policy keeps account-wide settings editable with a clear across-all-businesses notice and makes Production Billing read-only in the combined context, blocking global-entry creation.
 - **SMTP finding:** current source confirms `smtpPass` can appear in owner and approved-staff GET responses and owner PUT responses when configured. Credential presence and deployment status remain unknown; no value was read.
-- **Unresolved owner input:** approve or revise the All Businesses presentation/Production Billing policy. SMTP remediation remains separate and is not part of Phase 3C.
+- **Owner decision:** approved the exact account-wide notice and the rule that Production Billing is read-only in All Businesses, with no globally scoped entry creation. This did not authorize implementation.
+- **Remaining blocker:** separate authorization is required before implementing Phase 3C. SMTP remediation remains separate and is not part of Phase 3C.
 - **Test evidence:** source inspection/search only; no application tests or authenticated workflow were run. No dedicated settings-response regression test was found in the searched test files.
 - **Changes made:** documentation only. No application code, configuration values, credentials, database records, migrations, or deployment were changed.
 - **Authorization:** wait for separate implementation approval.
