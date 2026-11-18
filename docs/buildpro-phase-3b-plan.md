@@ -1,6 +1,6 @@
 # BuildPro Simplification — Phase 3B Plan
 
-**Status:** Phase 3B presentation changes implemented and verified. The unsaved-editor blocker prompt was not independently triggered; Phase 3A remains closed.
+**Status:** Phase 3B presentation changes and the unsaved-editor navigation-blocker check are implemented and verified. Phase 3A remains closed.
 **Planning date:** 2026-11-17
 
 ## Phase 3B objective
@@ -175,12 +175,13 @@ The existing selector labels All Businesses as combined data but does not tell t
 
 ## Implementation results
 
-- **Changed files:** `artifacts/contractor-app/src/pages/BusinessSelector.tsx`, `artifacts/contractor-app/src/components/AppLayout.tsx`, and `artifacts/api-server/scripts/e2e-business-context-clarity-verify.ts`.
+- **Changed files:** `artifacts/contractor-app/src/pages/BusinessSelector.tsx`, `artifacts/contractor-app/src/components/AppLayout.tsx`, `artifacts/api-server/scripts/e2e-business-context-clarity-verify.ts`, and `artifacts/api-server/scripts/e2e-business-context-nav-blocker-verify.ts`.
 - **Selector copy:** the heading, subtitle, and All Businesses description match the approved wording exactly.
 - **Context labels:** All Businesses shows a visible Read-only badge on desktop and mobile and exposes `All Businesses, read-only` as its accessible name. A selected business keeps its existing name and has no Read-only badge.
 - **Automated verification:** `pnpm --filter @workspace/contractor-app run typecheck` — PASS. `pnpm --filter @workspace/api-server exec tsx scripts/e2e-business-context-clarity-verify.ts` — PASS, 10/10 authenticated checks.
 - **Behavior checked:** switching between All Businesses and an individual business, existing selection persistence after reload, in-app navigation, desktop/mobile labels, exact copy, and no writes during the authenticated check.
-- **Not independently verified:** the unsaved Website Editor prompt was not triggered. The switcher still calls the existing `guardNavigate` path; that handler and the blocker implementation were not changed.
+- **Navigation blocker:** PASS. A temporary browser-only editor change triggered the existing unsaved-changes prompt. Canceling preserved the edit, editor, and original business; choosing **Leave and discard** allowed switching to All Businesses.
+- **Write safety:** one `PUT /api/website` attempt was intercepted and aborted before reaching the server. No writes reached the server; the temporary browser edit was discarded. The existing `guardNavigate` handler and blocker implementation were not changed.
 - **Unchanged:** no selection logic, permissions, feature gates, routes, server authorization, ownership, financial calculations, database records, schemas, or deployment.
 
 ## Unresolved questions and assumptions
