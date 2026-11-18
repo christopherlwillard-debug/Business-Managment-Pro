@@ -128,6 +128,9 @@ describe("settings SMTP response security", () => {
     expectNoPasswordInResponse(response);
     expect(response.body.smtpConfigured).toBe(true);
     expect(response.body.smtpHost).toBe("mail.example.test");
+    expect(h.writes).toHaveLength(1);
+    expect(isSmtpCredentialEncrypted(h.settings?.smtpPass)).toBe(true);
+    expect(decryptSmtpCredential(h.settings?.smtpPass)).toBe("smtp-test-sentinel-do-not-return");
   });
 
   it("omits the SMTP password from an approved staff GET response", async () => {

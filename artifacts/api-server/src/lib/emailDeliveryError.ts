@@ -14,8 +14,8 @@ export class SafeEmailDeliveryError extends Error {
   }
 }
 
-const AUTH_CODES = new Set(["EAUTH", "ESOCKET"]);
-const CONNECTION_CODES = new Set(["ECONNECTION", "ECONNREFUSED", "ETIMEDOUT", "EDNS", "ECONNRESET"]);
+const AUTH_CODES = new Set(["EAUTH"]);
+const CONNECTION_CODES = new Set(["ESOCKET", "ECONNECTION", "ECONNREFUSED", "ETIMEDOUT", "EDNS", "ECONNRESET"]);
 
 export function sanitizeEmailDeliveryError(error: unknown): SafeEmailDeliveryError {
   if (error instanceof SafeEmailDeliveryError) return error;

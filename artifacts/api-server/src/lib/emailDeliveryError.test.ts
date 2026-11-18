@@ -21,4 +21,9 @@ describe("email delivery error sanitization", () => {
     expect(safe.message).not.toContain("provider response");
     expect(safe.message).not.toContain("secret-sentinel");
   });
+
+  it("classifies socket failures as connection errors", () => {
+    expect(sanitizeEmailDeliveryError(Object.assign(new Error("socket detail"), { code: "ESOCKET" })).errorCode)
+      .toBe("email_connection");
+  });
 });
