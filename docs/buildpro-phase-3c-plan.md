@@ -229,8 +229,8 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 
 ### Risks and dependencies
 
-- **Owner decision required:** Clarify what the owner may edit while All Businesses is selected, given that some settings are shared account defaults and the All Businesses context is described as read-only.
-- **Security dependency:** Resolve or independently verify the SMTP response-risk finding before authenticated Settings responses are used in browser validation.
+- **Owner decision required:** Accept or revise the recommended All Businesses notice and confirm that business-scoped Production Billing editing should require one selected business.
+- **Security dependency:** Separately remediate the confirmed SMTP response exposure before authenticated Settings responses are used in browser validation.
 - **Scope dependency:** Confirm each category/scope label against its API and stored source before implementation. The settings schema alone does not tell a user which business owns a value.
 - **Integration dependency:** Map the owner and side effects of each provider panel before considering any relocation. Read-only GETs may have first-access or legacy-data side effects.
 - **Usability limitation:** This source audit did not include an authenticated owner usability study. The headings are recommendations, not user-tested conclusions.
@@ -244,7 +244,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 5. Settings and Integrations routes remain direct-accessible; owner/staff route behavior is unchanged.
 6. Settings reads and writes use the existing APIs and preserve all existing values; no schema or migration changes.
 7. Financial, tax, estimate/invoice, payroll, mileage, business-scoping, and permission behaviors remain unchanged.
-8. No credentials are displayed, newly returned, logged, or sent to third parties.
+8. The Phase 3C UI change introduces no new credential display or response path. The already-confirmed SMTP response exposure remains a separate security blocker and is not considered fixed by this phase.
 9. No configuration records, integration connections, business records, or historical data are changed by the implementation verification.
 10. Tests explicitly report PASS, FAIL, or NOT RUN for each acceptance check; skipped authenticated or security-sensitive paths are not represented as passed.
 
@@ -263,7 +263,7 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 ## Deferred improvements
 
 - Field-level scope mapping for every settings API value and all consumers.
-- Owner decision and any separately approved policy for Settings while All Businesses is selected.
+- Owner approval of the proposed distinction between combined business records and account-wide settings, including the single-business requirement for business-scoped Production Billing changes.
 - SMTP response redaction, encryption, logging, and regression tests under its separate security scope.
 - Provider-by-provider decision about whether setup belongs in Settings, Integrations, or both.
 - Any later relocation of controls, URL-backed tab selection, search, or advanced-control disclosure.
@@ -275,6 +275,9 @@ Keep the existing tab labels as written. Add a short, plain-language subtitle un
 - **Settings structure inspected:** twelve tabs and the specific panels and persistence boundaries listed above.
 - **Ranked opportunities:** tab grouping (recommended), scope explanation, and configuration-versus-health clarity.
 - **Recommended scope:** UI-only grouping of existing tabs and accurate short descriptions; no behavioral changes.
-- **Unresolved owner input:** Settings behavior under All Businesses; security prerequisite: separate SMTP response review/remediation.
+- **All Businesses finding:** the read-only selector context does not disable all Settings controls; shared settings and Production Billing remain editable. Recommended a clear account-wide notice and a selected-business requirement for business-scoped Production Billing changes.
+- **SMTP finding:** current source confirms `smtpPass` can appear in owner and approved-staff GET responses and owner PUT responses when configured. Credential presence and deployment status remain unknown; no value was read.
+- **Unresolved owner input:** approve or revise the All Businesses presentation/Production Billing policy. SMTP remediation remains separate and is not part of Phase 3C.
+- **Test evidence:** source inspection/search only; no application tests or authenticated workflow were run. No dedicated settings-response regression test was found in the searched test files.
 - **Changes made:** documentation only. No application code, configuration values, credentials, database records, migrations, or deployment were changed.
 - **Authorization:** wait for separate implementation approval.
