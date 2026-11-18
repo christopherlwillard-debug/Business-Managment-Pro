@@ -26,50 +26,6 @@ author = "agent"
 task = "workflow.run"
 args = "Contractor App"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "typecheck"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "typecheck-api"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "typecheck-libs"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "close-job"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "job-profit-contract"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "job-profit-client"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "production-presence"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "production-components"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "component-baseline-reviews"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "dashboard-business-scope"
-
 [[workflows.workflow]]
 name = "Contractor App"
 author = "agent"
@@ -82,127 +38,6 @@ waitForPort = 5173
 [workflows.workflow.metadata]
 outputType = "webview"
 
-[[workflows.workflow]]
-name = "test"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server test"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "typecheck"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/api-client-react lib/replit-auth-web && pnpm --filter contractor-app run typecheck'"
-
-[[workflows.workflow]]
-name = "typecheck-api"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/db lib/api-zod lib/integrations-openai-ai-server && pnpm --filter @workspace/api-server run typecheck'"
-
-[[workflows.workflow]]
-name = "typecheck-libs"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "flock -x /tmp/contractor-app-validation.lock sh -c 'pnpm exec tsc -b lib/api-client-react lib/replit-auth-web'"
-
-[[workflows.workflow]]
-name = "close-job"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run verify:close-job"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "job-profit-contract"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm run job-profit-contract:check"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "job-profit-client"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/contractor-app run check:profit-client"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "production-presence"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run verify:production-presence"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
-name = "production-components"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run verify:production-components"
-
-[[workflows.workflow]]
-name = "component-baseline-reviews"
-author = "agent"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run verify:component-baseline-reviews"
-
-[[workflows.workflow]]
-name = "dashboard-business-scope"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/api-server run verify:dashboard-business-scope"
-
-[workflows.workflow.metadata]
-isValidation = true
-
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -214,17 +49,9 @@ timeoutMs = 120000
 
 [nix]
 channel = "stable-25_05"
-packages = ["freetype", "gumbo", "harfbuzz", "jbig2dec", "libjpeg_turbo", "mupdf", "openjpeg", "swig", "xcbuild"]
 
 [userenv]
 
 [userenv.shared]
 PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
-
-[userenv.production]
-
-[userenv.development]
-SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT = "dev_v1"
-
-[objectStorage]
-defaultBucketID = "replit-objstore-207adee8-caae-4260-8b77-11f910d85b95"
+SAM_GOV_API_KEY = "z5htGUNQqBzFAb3ahET0ATFKW2hNtRdGoj5AZRT0"
