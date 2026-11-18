@@ -91,6 +91,7 @@ function expectNoPasswordInResponse(response: request.Response) {
   expect(response.body).not.toHaveProperty("smtpPass");
   expect(JSON.stringify(response.body)).not.toContain("smtp-test-sentinel-do-not-return");
   expect(JSON.stringify(response.body)).not.toContain("smtp-new-test-sentinel");
+  expect(JSON.stringify(response.body)).not.toContain("smtp-nested-test-sentinel");
 }
 
 beforeEach(() => {
@@ -104,6 +105,9 @@ afterEach(() => {
 
 describe("settings SMTP response security", () => {
   it("omits the SMTP password from the owner GET response and keeps safe status", async () => {
+    h.settings = makeSettings({
+      diagnosticMetadata: { smtpPass: "smtp-nested-test-sentinel" },
+    });
     const response = await request(app).get("/settings").set("x-test-user", "owner");
 
     expect(response.status).toBe(200);

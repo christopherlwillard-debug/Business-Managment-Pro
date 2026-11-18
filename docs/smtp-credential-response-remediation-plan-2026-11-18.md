@@ -1,6 +1,6 @@
 # BuildPro SMTP Credential Response Remediation Plan
 
-**Status:** Planning only. No code, credential, database, or deployment changes are authorized.
+**Status:** Response redaction implemented and verified in development. Storage-at-rest hardening and any credential rotation remain separate and unperformed.
 **Prepared:** 2026-11-18
 **Relationship to Phase 3C:** Separate security work. Do not fold SMTP remediation into Settings simplification.
 
@@ -80,4 +80,16 @@ Use synthetic sentinel values only; never use or print a real SMTP credential.
 
 ## Approval boundary
 
-This document is a remediation proposal only. It does not authorize code changes, database changes, credential access, provider-side rotation, or deployment. The All Businesses policy approval for Phase 3C does not approve this SMTP work.
+The response-redaction implementation was separately authorized and is recorded below. This document does not authorize credential access, database changes, provider-side rotation, or deployment. The All Businesses policy approval for Phase 3C did not approve this SMTP work.
+
+## Completion record
+
+- Replaced database-row spreading in the settings formatter with an explicit safe response allowlist. The password is excluded from owner GET, approved-staff GET, and owner PUT responses; the non-secret owner `smtpConfigured` status remains available.
+- Preserved the existing update path: blank passwords retain the stored value, while a supplied password is still saved for server-side SMTP use. The response does not echo either value.
+- Removed unused SMTP password/status state from the Settings page; the frontend does not consume or need the password.
+- Source search found no other API response path directly references `smtpPass`. Other settings-table reads inspected use selected fields or server-side data; the settings formatter was the response path that spread the full record.
+- **Verification:** focused settings security tests PASS (5); API server tests PASS (132 files, 1,550 tests); API server typecheck PASS; contractor-app typecheck PASS. The API suite emitted a non-blocking missing `node-cron` sourcemap warning.
+- **Not verified:** no real SMTP credentials or email send were used; production credential presence and deployment status remain unknown. Existing invoice-email tests cover rendering, not a live SMTP transport.
+- **Additional finding:** the inspected settings update path stores the SMTP password directly in a database text column; application-level encryption was not found in that path. Provider-exception logging may include sensitive diagnostics, but password exposure in logs was not confirmed. Both are separate follow-up reviews, not changes made here.
+- Restarting the development API ran its existing startup reconciliation, which corrected two development subcontractor-payment status values (one paid-to-overpaid and one overpaid-to-paid). This was unrelated to SMTP. No production records were modified.
+- No production records or credentials were accessed or changed, no credential rotation occurred, and no deployment was performed.
