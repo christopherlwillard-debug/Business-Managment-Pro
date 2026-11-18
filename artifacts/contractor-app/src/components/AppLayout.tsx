@@ -77,6 +77,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   const bizBadge = activeBusiness
     ? (BIZ_BADGE[activeBusiness.type] ?? DEFAULT_BIZ_BADGE)
     : DEFAULT_BIZ_BADGE;
+  const businessContextName = activeBusiness?.name ?? "All Businesses";
+  const isAllBusinessesSelection = isOwner && hasSelection && !activeBusiness;
+  const businessContextAccessibleName = isAllBusinessesSelection
+    ? "All Businesses, read-only"
+    : businessContextName;
 
   interface NavItem {
     name: string;
@@ -324,6 +329,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className={cn("px-3 py-2 border-b border-primary-foreground/10", isStudioMode && "lg:hidden")}>
             <button
               data-testid="business-switcher"
+              aria-label={businessContextAccessibleName}
               onClick={openBusinessSwitcher}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-white transition-colors"
             >
@@ -332,7 +338,12 @@ export function AppLayout({ children }: AppLayoutProps) {
               ) : (
                 <Building2 className="w-3.5 h-3.5 flex-shrink-0 text-primary-foreground/50" />
               )}
-              <span className="truncate flex-1 text-left">{activeBusiness?.name ?? "All Businesses"}</span>
+              <span className="truncate flex-1 text-left">{businessContextName}</span>
+              {isAllBusinessesSelection && (
+                <span className="shrink-0 rounded-full border border-primary-foreground/20 bg-primary-foreground/10 px-1.5 py-0.5 text-[10px] font-bold leading-none text-primary-foreground/80">
+                  Read-only
+                </span>
+              )}
               <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-50" />
             </button>
           </div>
@@ -395,6 +406,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           {/* Mobile: business context badge (shown when a business is selected) */}
           {isOwner && hasSelection ? (
             <button
+              data-testid="business-context-mobile"
+              aria-label={businessContextAccessibleName}
               onClick={openBusinessSwitcher}
               className={cn(
                 "lg:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors",
@@ -402,7 +415,12 @@ export function AppLayout({ children }: AppLayoutProps) {
               )}
             >
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${bizBadge.dot}`} />
-              <span className="max-w-[120px] truncate">{activeBusiness?.name ?? "All Businesses"}</span>
+              <span className="max-w-[120px] truncate">{businessContextName}</span>
+              {isAllBusinessesSelection && (
+                <span className="shrink-0 rounded-full border border-current/20 bg-background/70 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                  Read-only
+                </span>
+              )}
             </button>
           ) : (
             /* Mobile: show logo mark centered when no business context badge */
@@ -425,6 +443,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           {/* Desktop: business context badge */}
           {isOwner && hasSelection ? (
             <button
+              data-testid="business-context-desktop"
+              aria-label={businessContextAccessibleName}
               onClick={openBusinessSwitcher}
               className={cn(
                 "hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors",
@@ -432,7 +452,12 @@ export function AppLayout({ children }: AppLayoutProps) {
               )}
             >
               <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${bizBadge.dot}`} />
-              {activeBusiness?.name ?? "All Businesses"}
+              <span>{businessContextName}</span>
+              {isAllBusinessesSelection && (
+                <span className="rounded-full border border-current/20 bg-background/70 px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                  Read-only
+                </span>
+              )}
             </button>
           ) : (
             <div className="flex-1 hidden lg:block" />

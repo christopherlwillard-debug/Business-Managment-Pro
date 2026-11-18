@@ -1,6 +1,6 @@
 # BuildPro Simplification — Phase 3B Plan
 
-**Status:** Planning only. Phase 3A is closed. The owner approved the proposed wording and unchanged selection behavior only; implementation is not authorized.
+**Status:** Phase 3B presentation changes implemented and verified. The unsaved-editor blocker prompt was not independently triggered; Phase 3A remains closed.
 **Planning date:** 2026-11-17
 
 ## Phase 3B objective
@@ -173,9 +173,19 @@ The existing selector labels All Businesses as combined data but does not tell t
 - Dashboard redesign remains excluded from Phase 3B by the current brief.
 - Staff navigation and role-specific usability remain deferred unless a concrete staff requirement is approved.
 
+## Implementation results
+
+- **Changed files:** `artifacts/contractor-app/src/pages/BusinessSelector.tsx`, `artifacts/contractor-app/src/components/AppLayout.tsx`, and `artifacts/api-server/scripts/e2e-business-context-clarity-verify.ts`.
+- **Selector copy:** the heading, subtitle, and All Businesses description match the approved wording exactly.
+- **Context labels:** All Businesses shows a visible Read-only badge on desktop and mobile and exposes `All Businesses, read-only` as its accessible name. A selected business keeps its existing name and has no Read-only badge.
+- **Automated verification:** `pnpm --filter @workspace/contractor-app run typecheck` — PASS. `pnpm --filter @workspace/api-server exec tsx scripts/e2e-business-context-clarity-verify.ts` — PASS, 10/10 authenticated checks.
+- **Behavior checked:** switching between All Businesses and an individual business, existing selection persistence after reload, in-app navigation, desktop/mobile labels, exact copy, and no writes during the authenticated check.
+- **Not independently verified:** the unsaved Website Editor prompt was not triggered. The switcher still calls the existing `guardNavigate` path; that handler and the blocker implementation were not changed.
+- **Unchanged:** no selection logic, permissions, feature gates, routes, server authorization, ownership, financial calculations, database records, schemas, or deployment.
+
 ## Unresolved questions and assumptions
 
-- **Confirmed:** The owner approved the exact wording and unchanged selection behavior for planning. This approval does not authorize implementation.
+- **Confirmed:** The owner approved the exact wording and unchanged selection behavior, then explicitly authorized implementation. No selection or authorization behavior changes are included.
 - **Not yet measured:** Whether business selection is a frequent source of confusion or mistakes.
 - **Requires implementation-time tracing:** Whether all existing write entry points consistently require a specific business; the plan does not assume uniform behavior across APIs.
 - **Assumption:** A presentation-focused change can improve clarity without changing business selection or mutation semantics. If that assumption proves false, stop and return for scope approval.
@@ -202,4 +212,4 @@ The existing selector labels All Businesses as combined data but does not tell t
 - `artifacts/api-server/src/routes/expenses.ts`
 - `artifacts/api-server/src/routes/invoices.ts`
 
-No application code, database schema, data records, workflows, or deployment were changed while preparing this plan. No implementation task was created.
+Implementation is limited to the approved presentation wording and active-context indicator. Verification results and changed files are recorded after implementation.

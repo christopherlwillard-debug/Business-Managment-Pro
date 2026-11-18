@@ -293,13 +293,14 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
     <div className="min-h-[60vh] flex flex-col items-center justify-center py-10 px-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-display font-bold text-foreground">Willard's Businesses</h1>
-          <p className="text-muted-foreground mt-1">Choose which business to work in</p>
+          <h1 className="text-3xl font-display font-bold text-foreground">Choose a business</h1>
+          <p className="text-muted-foreground mt-1">Choose one business to work in, or view combined information across businesses.</p>
         </div>
 
         <div className="space-y-3">
           {/* All Businesses card */}
           <button
+            data-testid="business-select-all"
             onClick={() => handleSelect(null)}
             className="w-full flex items-center gap-4 p-5 rounded-2xl border-2 border-border bg-card hover:border-primary/40 hover:shadow-md transition-all text-left group"
           >
@@ -308,7 +309,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-foreground text-base">All Businesses</p>
-              <p className="text-sm text-muted-foreground">View combined data across all businesses</p>
+              <p className="text-sm text-muted-foreground">View combined information across businesses. Read-only.</p>
             </div>
             <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
           </button>
