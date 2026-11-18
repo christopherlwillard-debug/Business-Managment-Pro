@@ -223,5 +223,8 @@ PUPPETEER_CACHE_DIR = "/home/runner/workspace/.puppeteer-cache"
 
 [userenv.production]
 
+[userenv.development]
+SMTP_ENCRYPTION_ACTIVE_KEY_ID_DEVELOPMENT = "dev_v1"
+
 [objectStorage]
 defaultBucketID = "replit-objstore-207adee8-caae-4260-8b77-11f910d85b95"
