@@ -5,6 +5,7 @@ import {
   invoicesTable,
   type InvoiceCommunicationEvent,
 } from "@workspace/db/schema";
+import { sanitizeEmailDeliveryError } from "./emailDeliveryError.js";
 
 export type InvoiceCommunicationStatus = "pending" | "accepted" | "failed" | "unknown";
 
@@ -481,15 +482,20 @@ export async function sendAndRecordInvoiceCommunication<T extends ProviderDelive
   try {
     delivery = await send();
   } catch (error) {
+    const safeError = sanitizeEmailDeliveryError(error);
     try {
       await finalizeInvoiceCommunication(pending.id, context.invoiceId, {
         status: "failed",
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorCode: safeError.errorCode,
+        errorMessage: safeError.message,
       });
     } catch (finalizeError) {
-      console.error("[invoice-communications] Could not finalize failed event:", finalizeError);
+      console.error("[invoice-communications] Could not finalize failed event.", {
+        eventId: pending.id,
+        invoiceId: context.invoiceId,
+      });
     }
-    throw error;
+    throw safeError;
   }
 
   try {

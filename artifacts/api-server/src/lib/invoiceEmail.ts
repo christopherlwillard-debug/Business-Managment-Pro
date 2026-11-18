@@ -7,6 +7,8 @@ import {
 } from "@workspace/api-zod";
 import { sendEmail, type EmailSendResult } from "./sendEmail.js";
 import { launchBrowser } from "./launchBrowser.js";
+import { decryptSmtpCredential } from "./smtpCredential.js";
+import { sanitizeEmailDeliveryError } from "./emailDeliveryError.js";
 
 export interface InvoiceEmailInv {
   invoiceNumber: string;
@@ -250,14 +252,17 @@ export async function sendInvoiceEmail(
   const pdfHtml = buildInvoiceEmailHtml(inv, settings, message);
   const pdfBuffer = await generateInvoicePdf(pdfHtml);
 
-  const smtpConfigured = !!(settings.smtpHost && settings.smtpUser && settings.smtpPass);
+  const smtpPassword = settings.smtpHost && settings.smtpUser && settings.smtpPass
+    ? decryptSmtpCredential(settings.smtpPass)
+    : null;
+  const smtpConfigured = !!(settings.smtpHost && settings.smtpUser && smtpPassword);
 
   if (smtpConfigured) {
     const transporter = nodemailer.createTransport({
       host: settings.smtpHost!,
       port: parseInt(settings.smtpPort ?? "587"),
       secure: settings.smtpSecure === 1,
-      auth: { user: settings.smtpUser!, pass: settings.smtpPass! },
+      auth: { user: settings.smtpUser!, pass: smtpPassword! },
     });
 
     const attachments: nodemailer.SendMailOptions["attachments"] = pdfBuffer
@@ -276,14 +281,19 @@ export async function sendInvoiceEmail(
       attachments.push({ filename: extra.filename, content: extra.buffer, contentType: extra.mimeType });
     }
 
-    const info = await transporter.sendMail({
-      from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
-      to,
-      subject,
-      html,
-      text,
-      attachments,
-    });
+    let info: nodemailer.SentMessageInfo;
+    try {
+      info = await transporter.sendMail({
+        from: `"${settings.companyName || "BuildPro"}" <${settings.companyEmail || settings.smtpUser}>`,
+        to,
+        subject,
+        html,
+        text,
+        attachments,
+      });
+    } catch (error) {
+      throw sanitizeEmailDeliveryError(error);
+    }
     return {
       provider: "smtp",
       messageId: info.messageId ?? null,

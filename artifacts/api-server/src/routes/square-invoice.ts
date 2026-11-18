@@ -143,9 +143,13 @@ router.post("/:id/payment-link", async (req, res) => {
           emailWarning = "Payment link was created and the provider accepted the email, but delivery history could not be finalized. Check the invoice timeline before retrying.";
         }
       } catch (emailErr: unknown) {
-        const msg = emailErr instanceof Error ? emailErr.message : "Unknown error";
+        const msg = emailErr instanceof Error ? emailErr.message : "Email delivery failed.";
         emailWarning = `Payment link created but email failed: ${msg}`;
-        console.error("Invoice payment link auto-email error:", emailErr);
+        console.error("Invoice payment link email failed.", {
+          invoiceId: id,
+          reference: (emailErr as { referenceId?: string })?.referenceId ?? null,
+          errorCode: (emailErr as { errorCode?: string })?.errorCode ?? "email_unknown",
+        });
       }
     }
 

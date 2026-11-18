@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
+import { decryptSmtpCredential, isSmtpCredentialEncrypted } from "../lib/smtpCredential.js";
+
+const smtpTestKey = Buffer.alloc(32, 19).toString("base64");
 
 const h = vi.hoisted(() => ({
   settings: undefined as Record<string, any> | undefined,
@@ -20,6 +23,13 @@ vi.mock("@workspace/db", () => ({
     },
     update: () => ({
       set: (patch: Record<string, any>) => ({
+        where: () => ({
+          returning: async () => {
+            h.writes.push(patch);
+            h.settings = { ...h.settings, ...patch };
+            return [h.settings];
+          },
+        }),
         returning: async () => {
           h.writes.push(patch);
           h.settings = { ...h.settings, ...patch };
@@ -95,12 +105,15 @@ function expectNoPasswordInResponse(response: request.Response) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("SMTP_ENCRYPTION_KEYS", JSON.stringify({ test_key: smtpTestKey }));
+  vi.stubEnv("SMTP_ENCRYPTION_ACTIVE_KEY_ID", "test_key");
   h.settings = makeSettings();
   h.writes.length = 0;
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("settings SMTP response security", () => {
@@ -133,8 +146,9 @@ describe("settings SMTP response security", () => {
     expect(response.status).toBe(200);
     expectNoPasswordInResponse(response);
     expect(h.writes).toHaveLength(1);
-    expect(h.writes[0].smtpPass).toBe("smtp-test-sentinel-do-not-return");
+    expect(h.writes[0]).not.toHaveProperty("smtpPass");
     expect(h.settings?.smtpPass).toBe("smtp-test-sentinel-do-not-return");
+    expect(isSmtpCredentialEncrypted(h.settings?.smtpPass)).toBe(false);
   });
 
   it("saves a newly supplied password without returning it", async () => {
@@ -145,7 +159,9 @@ describe("settings SMTP response security", () => {
 
     expect(response.status).toBe(200);
     expectNoPasswordInResponse(response);
-    expect(h.settings?.smtpPass).toBe("smtp-new-test-sentinel");
+    expect(isSmtpCredentialEncrypted(h.settings?.smtpPass)).toBe(true);
+    expect(h.settings?.smtpPass).not.toContain("smtp-new-test-sentinel");
+    expect(decryptSmtpCredential(h.settings?.smtpPass)).toBe("smtp-new-test-sentinel");
     expect(response.body.smtpConfigured).toBe(true);
   });
 

@@ -8,6 +8,7 @@ import multer from "multer";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { validateTaxAssumptionConfig } from "../lib/tax-estimate.js";
 import { findInvoiceBusiness, loadInvoiceBrand } from "../lib/invoiceBranding.js";
+import { decryptSmtpCredential, encryptSmtpCredential, hasSmtpEncryptionKeyring, isSmtpCredentialEncrypted } from "../lib/smtpCredential.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -382,6 +383,19 @@ router.get("/", async (req, res) => {
     }
     const userId = (req.user as { id?: string } | undefined)?.id;
     const isOwner = settings.ownerUserId === userId;
+    if (isOwner && settings.smtpPass && !isSmtpCredentialEncrypted(settings.smtpPass) && hasSmtpEncryptionKeyring()) {
+      try {
+        const encrypted = encryptSmtpCredential(settings.smtpPass);
+        if (decryptSmtpCredential(encrypted) !== settings.smtpPass) throw new Error("verification failed");
+        const [secured] = await db.update(settingsTable)
+          .set({ smtpPass: encrypted, updatedAt: new Date() })
+          .where(eq(settingsTable.id, settings.id))
+          .returning();
+        if (secured) settings = secured;
+      } catch {
+        console.error("[settings] Legacy SMTP credential encryption failed; stored value was preserved.");
+      }
+    }
     if (isOwner && Array.isArray(settings.quickLinks) && hasLegacyQuickLinkCredentials(settings.quickLinks)) {
       try {
         const encryptedLinks = encryptQuickLinks(settings.quickLinks);
@@ -475,7 +489,7 @@ router.put("/", async (req, res) => {
 
     let [settings] = await db.select().from(settingsTable).limit(1);
 
-    const patch = {
+    const patch: Record<string, any> = {
       companyName: body.companyName ?? settings?.companyName,
       companyAddress: body.companyAddress ?? settings?.companyAddress,
       companyCity: body.companyCity ?? settings?.companyCity,
@@ -496,7 +510,6 @@ router.put("/", async (req, res) => {
       smtpHost: body.smtpHost !== undefined ? (body.smtpHost || null) : settings?.smtpHost,
       smtpPort: body.smtpPort ?? settings?.smtpPort ?? "587",
       smtpUser: body.smtpUser !== undefined ? (body.smtpUser || null) : settings?.smtpUser,
-      smtpPass: body.smtpPass ? body.smtpPass : (settings?.smtpPass ?? null),
       smtpSecure: body.smtpSecure !== undefined ? (body.smtpSecure ? 1 : 0) : settings?.smtpSecure,
       mileageRate: body.mileageRate?.toString() ?? settings?.mileageRate,
       mileageDefaultClassification: body.mileageDefaultClassification ?? settings?.mileageDefaultClassification,
@@ -554,6 +567,12 @@ router.put("/", async (req, res) => {
         : (settings?.fuelPricePerGallon ?? null),
       updatedAt: new Date(),
     };
+
+    // Blank/omitted passwords preserve the saved value by leaving this column
+    // out of the update. New passwords are encrypted before any database write.
+    if (typeof body.smtpPass === "string" && body.smtpPass.length > 0) {
+      patch.smtpPass = encryptSmtpCredential(body.smtpPass);
+    }
 
     if (!settings) {
       [settings] = await db.insert(settingsTable).values({ ...DEFAULT_SETTINGS, ...patch } as any).returning();

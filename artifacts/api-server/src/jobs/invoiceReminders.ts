@@ -172,9 +172,9 @@ export async function processInvoiceReminders() {
           .set({ remindersSentAt: updatedReminders })
           .where(eq(invoicesTable.id, inv.id));
 
-        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice ${inv.invoiceNumber} to ${inv.clientEmail} (paymentLink=${hasPaymentLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
+        console.log(`[invoice-reminders] Reminder #${reminderNum} sent for invoice id=${inv.id} (paymentLink=${hasPaymentLink}, anchor=${inv.dueDate ? "dueDate" : "createdAt"})`);
       } catch (err) {
-        console.error(`[invoice-reminders] Failed to send reminder for invoice ${inv.invoiceNumber}:`, err);
+        console.error(`[invoice-reminders] Failed to send reminder for invoice id=${inv.id}.`);
       }
     }
   } catch (err) {

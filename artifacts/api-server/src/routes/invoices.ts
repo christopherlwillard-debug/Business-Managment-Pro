@@ -1407,7 +1407,7 @@ router.post("/:id/send", async (req, res) => {
     const [updated] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     res.json({ success: true, eventId: deliveryResult.event.id, invoice: fmt(updated) });
   } catch (err: any) {
-    console.error("Email send error:", err);
+    console.error("Email send failed.", { invoiceId: req.params.id, reference: err?.referenceId ?? null, errorCode: err?.errorCode ?? "email_unknown" });
     res.status(500).json({ error: err.message || "Failed to send email" });
   }
 });
@@ -1482,7 +1482,7 @@ router.post("/:id/send-reminder", async (req, res) => {
     const [withJoins] = await buildInvoiceQuery().where(eq(invoicesTable.id, id));
     res.json({ success: true, eventId: deliveryResult.event.id, sentAt, invoice: fmt(withJoins) });
   } catch (err: any) {
-    console.error("Send reminder error:", err);
+    console.error("Invoice reminder send failed.", { invoiceId: req.params.id, reference: err?.referenceId ?? null, errorCode: err?.errorCode ?? "email_unknown" });
     res.status(500).json({ error: err.message || "Failed to send reminder" });
   }
 });
