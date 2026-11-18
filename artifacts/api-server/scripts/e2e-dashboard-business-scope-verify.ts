@@ -104,7 +104,7 @@ async function waitForDashboard(page: Page) {
 
 async function waitForSelectorScreen(page: Page) {
   await page.waitForFunction(
-    () => document.body.innerText.includes("Choose which business to work in"),
+    () => document.body.innerText.includes("Choose a business"),
     { timeout: 30_000 },
   );
 }
@@ -203,7 +203,7 @@ async function assertScopeRequests(
 async function clickAllBusinesses(page: Page) {
   await page.evaluate(() => {
     const button = [...document.querySelectorAll("button")].find(element =>
-      element.textContent?.includes("View combined data across all businesses"),
+      element.textContent?.includes("View combined information across businesses."),
     );
     if (!button) throw new Error("All Businesses selector button was not found");
     (button as HTMLButtonElement).click();

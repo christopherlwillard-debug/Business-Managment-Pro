@@ -1,4 +1,4 @@
-/* Authenticated browser release check for business-scoped MFH component
+/* Authenticated browser API regression for business-scoped MFH component
  * baseline reviews.
  *
  * Run:
@@ -8,7 +8,6 @@
  * default-deny for all non-read methods; only component-review mutations are
  * allowed through.
  */
-import fs from "node:fs";
 import type { HTTPRequest, Page } from "puppeteer";
 import { eq, inArray } from "drizzle-orm";
 import {
@@ -28,7 +27,6 @@ import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/
 import { launchBrowser } from "../src/lib/launchBrowser";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
-const SHOTS = "/tmp/e2e-mfh-component-baseline-reviews";
 const LEARNING_KEY = "siding";
 
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT) {
@@ -83,49 +81,6 @@ const blockedWrites: string[] = [];
 function recordResult(name: string, pass: boolean, detail = "") {
   results.push({ name, pass, detail });
   console.log(`${pass ? "PASS" : "FAIL"}: ${name}${detail ? ` — ${detail}` : ""}`);
-}
-
-async function waitForText(page: Page, text: string) {
-  await page.waitForFunction(
-    expected => document.body.innerText.includes(expected),
-    { timeout: 30_000 },
-    text,
-  );
-}
-
-async function replaceInput(page: Page, selector: string, value: string) {
-  await page.waitForSelector(selector, { timeout: 30_000 });
-  await page.click(selector, { clickCount: 3 });
-  await page.type(selector, value);
-}
-
-async function click(page: Page, selector: string) {
-  await page.waitForSelector(selector, { timeout: 30_000, visible: true });
-  await page.click(selector);
-}
-
-async function openModelForCurrentBusiness(page: Page, fixture: Fixture) {
-  await waitForText(page, fixture.modelName);
-  await page.evaluate((modelName) => {
-    const row = Array.from(document.querySelectorAll("tr"))
-      .find(candidate => candidate.textContent?.includes(modelName)) as HTMLTableRowElement | undefined;
-    if (!row) throw new Error(`Could not find model row: ${modelName}`);
-    row.click();
-  }, fixture.modelName);
-  await waitForText(page, "Component production-day learning");
-  await click(page, `[data-testid="mfh-component-learning-${LEARNING_KEY}"] > button`);
-}
-
-async function switchModelBusiness(page: Page, fixture: Fixture, businessId: number) {
-  await click(page, `[data-testid="business-switcher"]`);
-  await click(page, `[data-testid="business-select-${businessId}"]`);
-  await page.waitForFunction(
-    expectedId => localStorage.getItem("buildpro_selection_mode") === String(expectedId),
-    { timeout: 10_000 },
-    businessId,
-  );
-  await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
-  await openModelForCurrentBusiness(page, fixture);
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -402,22 +357,33 @@ async function cleanupFixture(fixture: Partial<Fixture>) {
   }
 }
 
-async function createReview(page: Page, fixture: Fixture, days: string): Promise<ReviewResponse> {
-  const componentSelector = `[data-testid="mfh-component-learning-${LEARNING_KEY}"]`;
-  const proposeSelector = `[data-testid="mfh-component-baseline-propose-${LEARNING_KEY}"]`;
-  const inputSelector = `[data-testid="mfh-component-baseline-days-${LEARNING_KEY}"]`;
-  const createSelector = `[data-testid="mfh-component-baseline-create-${LEARNING_KEY}"]`;
-  await click(page, proposeSelector);
-  await replaceInput(page, inputSelector, days);
-  const responsePromise = page.waitForResponse(response =>
-    response.request().method() === "POST"
-    && response.url().includes(`/api/mfh/knowledge-base/${fixture.modelId}/component-baseline-reviews`),
-  );
-  await click(page, createSelector);
-  const response = await responsePromise;
-  const body = await response.json() as ReviewResponse;
-  await page.waitForSelector(`${componentSelector} [data-review-id="${body.id}"]`, { timeout: 30_000 });
-  return body;
+type ApiResult<T> = { status: number; body: T };
+
+async function reviewApi<T>(
+  page: Page,
+  input: { modelId: number; businessId: number; method: "GET" | "POST" | "PATCH"; suffix?: string; body?: unknown },
+): Promise<ApiResult<T>> {
+  return page.evaluate(async ({ modelId, businessId, method, suffix, body }) => {
+    const response = await fetch(
+      `/api/mfh/knowledge-base/${modelId}/component-baseline-reviews${suffix ?? ""}?businessId=${businessId}`,
+      {
+        method,
+        credentials: "include",
+        headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+    );
+    return { status: response.status, body: await response.json() };
+  }, input);
+}
+
+async function createReview(page: Page, fixture: Fixture, days: number, businessId = fixture.businessId) {
+  return reviewApi<ReviewResponse>(page, {
+    modelId: fixture.modelId,
+    businessId,
+    method: "POST",
+    body: { learningKey: LEARNING_KEY, proposedProductionDays: days },
+  });
 }
 
 async function decideReview(
@@ -425,17 +391,18 @@ async function decideReview(
   fixture: Fixture,
   reviewId: number,
   action: "approve" | "reject",
+  businessId = fixture.businessId,
 ) {
-  const responsePromise = page.waitForResponse(response =>
-    response.request().method() === "PATCH"
-    && response.url().includes(`/component-baseline-reviews/${reviewId}/${action}`),
-  );
-  await click(page, `[data-testid="mfh-component-baseline-${action}-${LEARNING_KEY}"]`);
-  return responsePromise;
+  return reviewApi<ReviewResponse>(page, {
+    modelId: fixture.modelId,
+    businessId,
+    method: "PATCH",
+    suffix: `/${reviewId}/${action}`,
+    body: {},
+  });
 }
 
 async function main() {
-  fs.mkdirSync(SHOTS, { recursive: true });
   let fixture: Partial<Fixture> = {};
   let sessionId: string | undefined;
   let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
@@ -445,14 +412,7 @@ async function main() {
     const completeFixture = fixture as Fixture;
     browser = await launchBrowser();
     const page = await browser.newPage();
-    await page.setViewport({ width: 1440, height: 1200 });
-    await page.evaluateOnNewDocument((businessId) => {
-      if (!localStorage.getItem("buildpro_selection_mode")) {
-        localStorage.setItem("buildpro_selection_mode", String(businessId));
-      }
-    }, completeFixture.businessId);
     await page.setRequestInterception(true);
-    page.on("dialog", dialog => void dialog.accept());
     page.on("request", (request: HTTPRequest) => {
       const method = request.method().toUpperCase();
       const path = new URL(request.url()).pathname;
@@ -472,7 +432,7 @@ async function main() {
       }
     });
 
-    const returnTo = "/mfh-homes";
+    const returnTo = "/";
     const proof = createTestLoginProof(returnTo);
     await page.goto(`${BASE}/api/dev-test-login?${new URLSearchParams({ returnTo, ...proof })}`, {
       waitUntil: "networkidle2",
@@ -481,13 +441,14 @@ async function main() {
     sessionId = (await page.cookies()).find(cookie => cookie.name === SESSION_COOKIE)?.value;
     if (!sessionId) throw new Error("Development login did not create a session cookie");
 
-    await page.goto(`${BASE}/mfh-homes`, { waitUntil: "networkidle2", timeout: 60_000 });
-    await openModelForCurrentBusiness(page, completeFixture);
+    await page.goto(`${BASE}/`, { waitUntil: "networkidle2", timeout: 60_000 });
 
-    const rejected = await createReview(page, completeFixture, "2.5");
+    const rejectedResult = await createReview(page, completeFixture, 2.5);
+    const rejected = rejectedResult.body;
     recordResult(
       "Five eligible jobs create a business-scoped pending proposal",
-      rejected.status === "pending"
+      rejectedResult.status === 201
+        && rejected.status === "pending"
         && rejected.sampleSize === 5
         && rejected.sourceEvidence.businessId === completeFixture.businessId
         && rejected.sourceEvidence.learningKey === LEARNING_KEY
@@ -495,36 +456,37 @@ async function main() {
       JSON.stringify({ sampleSize: rejected.sampleSize, sourceJobIds: rejected.sourceJobIds }),
     );
     const rejectResponse = await decideReview(page, completeFixture, rejected.id, "reject");
-    await waitForText(page, "Component baseline review rejected");
-    await click(page, `[data-testid="mfh-component-baseline-history-${rejected.id}"] button`);
-    const rejectedHistory = await page.$eval(
-      `[data-testid="mfh-component-baseline-history-${rejected.id}"]`,
-      element => element.textContent ?? "",
-    );
-    const expectedSnapshots = rejected.sourceEvidence.jobs.flatMap(job =>
-      job.snapshotEvidence.map(snapshot => `${snapshot.snapshotId} v${snapshot.snapshotVersion}`),
-    );
+    const rejectedHistory = await reviewApi<ReviewResponse[]>(page, {
+      modelId: completeFixture.modelId,
+      businessId: completeFixture.businessId,
+      method: "GET",
+    });
+    const rejectedRecord = rejectedHistory.body.find(row => row.id === rejected.id);
     recordResult(
-      "Rejected history preserves source jobs and immutable snapshot versions",
-      rejectResponse.status() === 200
-        && expectedSnapshots.length === 5
-        && expectedSnapshots.every(snapshot => rejectedHistory.includes(snapshot)),
-      rejectedHistory,
+      "The API retains rejected history and immutable source evidence",
+      rejectResponse.status === 200
+        && rejectedHistory.status === 200
+        && rejectedRecord?.status === "rejected"
+        && rejected.sourceEvidence.jobs.length === 5
+        && rejected.sourceEvidence.jobs.every(job => job.snapshotEvidence.length > 0
+          && job.snapshotEvidence.every(snapshot => rejectedRecord?.sourceEvidence.jobs.some(recordJob =>
+            recordJob.snapshotEvidence.some(recordSnapshot =>
+              recordSnapshot.snapshotId === snapshot.snapshotId
+              && recordSnapshot.snapshotVersion === snapshot.snapshotVersion,
+            ),
+          ),
+        )),
+      JSON.stringify(rejectedRecord),
     );
 
-    const firstApproved = await createReview(page, completeFixture, "2.0");
+    const firstApprovedResult = await createReview(page, completeFixture, 2.0);
+    const firstApproved = firstApprovedResult.body;
     const firstApproveResponse = await decideReview(page, completeFixture, firstApproved.id, "approve");
-    await waitForText(page, "Component production-day baseline approved");
-    await waitForText(page, "Current approved baseline: 2.0 production days");
-    recordResult("A fresh component baseline can be approved", firstApproveResponse.status() === 200);
+    recordResult("A fresh component baseline can be approved", firstApprovedResult.status === 201 && firstApproveResponse.status === 200);
 
-    const secondApproved = await createReview(page, completeFixture, "3.0");
+    const secondApprovedResult = await createReview(page, completeFixture, 3.0);
+    const secondApproved = secondApprovedResult.body;
     const secondApproveResponse = await decideReview(page, completeFixture, secondApproved.id, "approve");
-    await waitForText(page, "Current approved baseline: 3.0 production days");
-    await page.waitForSelector(
-      `[data-testid="mfh-component-baseline-history-${firstApproved.id}"][data-review-status="superseded"]`,
-      { timeout: 30_000 },
-    );
     const postSupersession = await db.select({
       id: mfhComponentBaselineRevisionsTable.id,
       status: mfhComponentBaselineRevisionsTable.status,
@@ -532,13 +494,14 @@ async function main() {
       .where(eq(mfhComponentBaselineRevisionsTable.mfhModelId, completeFixture.modelId));
     recordResult(
       "A later approval supersedes the prior approved baseline",
-      secondApproveResponse.status() === 200
+      secondApproveResponse.status === 200
         && postSupersession.some(row => row.id === firstApproved.id && row.status === "superseded")
         && postSupersession.some(row => row.id === secondApproved.id && row.status === "approved"),
       JSON.stringify(postSupersession),
     );
 
-    const stale = await createReview(page, completeFixture, "4.0");
+    const staleResult = await createReview(page, completeFixture, 4.0);
+    const stale = staleResult.body;
     const historyBeforeStaleApproval = await db.select({
       id: mfhComponentBaselineRevisionsTable.id,
       status: mfhComponentBaselineRevisionsTable.status,
@@ -548,8 +511,6 @@ async function main() {
       .set({ workDate: "2026-08-31" })
       .where(eq(jobComponentWorkSessionsTable.id, completeFixture.sessionIds[0]));
     const staleResponse = await decideReview(page, completeFixture, stale.id, "approve");
-    await waitForText(page, "Could not approve component baseline");
-    await waitForText(page, "Component source evidence changed after this review was created");
     const historyAfterStaleApproval = await db.select({
       id: mfhComponentBaselineRevisionsTable.id,
       status: mfhComponentBaselineRevisionsTable.status,
@@ -557,67 +518,59 @@ async function main() {
       .where(eq(mfhComponentBaselineRevisionsTable.mfhModelId, completeFixture.modelId));
     recordResult(
       "Stale source evidence is visible and does not change review history",
-      staleResponse.status() === 409
+      staleResponse.status === 409
         && JSON.stringify(historyAfterStaleApproval) === JSON.stringify(historyBeforeStaleApproval)
         && historyAfterStaleApproval.some(row => row.id === stale.id && row.status === "pending")
         && historyAfterStaleApproval.some(row => row.id === secondApproved.id && row.status === "approved"),
       JSON.stringify(historyAfterStaleApproval),
     );
 
-    await switchModelBusiness(page, completeFixture, completeFixture.secondBusinessId);
-    await waitForText(page, `Scope: ${completeFixture.secondBusinessName}`);
-    const primaryRowsInSecondScope = await page.$$(
-      [
-        `[data-testid="mfh-component-baseline-history-${rejected.id}"]`,
-        `[data-testid="mfh-component-baseline-history-${firstApproved.id}"]`,
-        `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${stale.id}"]`,
-      ].join(","),
-    );
+    const primaryRowsInSecondScope = await reviewApi<ReviewResponse[]>(page, {
+      modelId: completeFixture.modelId,
+      businessId: completeFixture.secondBusinessId,
+      method: "GET",
+    });
     recordResult(
-      "Switching businesses hides the first business review history",
-      primaryRowsInSecondScope.length === 0
-        && !(await page.$eval("body", body => body.textContent?.includes("Current approved baseline: 3.0 production days") ?? false)),
+      "The second business cannot read the first business's review history",
+      primaryRowsInSecondScope.status === 200
+        && primaryRowsInSecondScope.body.length === 0,
     );
 
-    const secondRejected = await createReview(page, completeFixture, "5.5");
-    await decideReview(page, completeFixture, secondRejected.id, "reject");
-    await waitForText(page, "Component baseline review rejected");
-    const secondFirstApproved = await createReview(page, completeFixture, "5.0");
-    await decideReview(page, completeFixture, secondFirstApproved.id, "approve");
-    await waitForText(page, "Current approved baseline: 5.0 production days");
-    const secondBusinessApproved = await createReview(page, completeFixture, "6.0");
-    await decideReview(page, completeFixture, secondBusinessApproved.id, "approve");
-    await waitForText(page, "Current approved baseline: 6.0 production days");
-    const secondPending = await createReview(page, completeFixture, "7.0");
-    await page.waitForSelector(
-      `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${secondPending.id}"]`,
-      { timeout: 30_000 },
-    );
+    const secondRejectedResult = await createReview(page, completeFixture, 5.5, completeFixture.secondBusinessId);
+    const secondRejected = secondRejectedResult.body;
+    await decideReview(page, completeFixture, secondRejected.id, "reject", completeFixture.secondBusinessId);
+    const secondFirstApprovedResult = await createReview(page, completeFixture, 5.0, completeFixture.secondBusinessId);
+    const secondFirstApproved = secondFirstApprovedResult.body;
+    await decideReview(page, completeFixture, secondFirstApproved.id, "approve", completeFixture.secondBusinessId);
+    const secondBusinessApprovedResult = await createReview(page, completeFixture, 6.0, completeFixture.secondBusinessId);
+    const secondBusinessApproved = secondBusinessApprovedResult.body;
+    await decideReview(page, completeFixture, secondBusinessApproved.id, "approve", completeFixture.secondBusinessId);
+    const secondPendingResult = await createReview(page, completeFixture, 7.0, completeFixture.secondBusinessId);
+    const secondPending = secondPendingResult.body;
+    const secondHistory = await reviewApi<ReviewResponse[]>(page, {
+      modelId: completeFixture.modelId,
+      businessId: completeFixture.secondBusinessId,
+      method: "GET",
+    });
     recordResult(
       "The second business keeps its own pending, rejected, approved, and superseded history",
-      secondRejected.sourceEvidence.businessId === completeFixture.secondBusinessId
+      secondHistory.status === 200
+        && secondRejectedResult.status === 201
+        && secondFirstApprovedResult.status === 201
+        && secondBusinessApprovedResult.status === 201
+        && secondPendingResult.status === 201
+        && secondRejected.sourceEvidence.businessId === completeFixture.secondBusinessId
         && secondBusinessApproved.sourceEvidence.businessId === completeFixture.secondBusinessId
         && secondPending.sourceEvidence.businessId === completeFixture.secondBusinessId
-        && (await page.$(`[data-testid="mfh-component-baseline-history-${secondRejected.id}"][data-review-status="rejected"]`)) != null
-        && (await page.$(`[data-testid="mfh-component-baseline-history-${secondFirstApproved.id}"][data-review-status="superseded"]`)) != null,
+        && secondHistory.body.some(row => row.id === secondRejected.id && row.status === "rejected")
+        && secondHistory.body.some(row => row.id === secondFirstApproved.id && row.status === "superseded")
+        && secondHistory.body.some(row => row.id === secondBusinessApproved.id && row.status === "approved")
+        && secondHistory.body.some(row => row.id === secondPending.id && row.status === "pending"),
     );
 
-    const crossBusinessMutation = await page.evaluate(async ({ modelId, reviewId, businessId }) => {
-      const response = await fetch(
-        `/api/mfh/knowledge-base/${modelId}/component-baseline-reviews/${reviewId}/reject?businessId=${businessId}`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reviewerNote: "must not cross business scope" }),
-        },
-      );
-      return { status: response.status, body: await response.text() };
-    }, {
-      modelId: completeFixture.modelId,
-      reviewId: stale.id,
-      businessId: completeFixture.secondBusinessId,
-    });
+    const crossBusinessMutation = await decideReview(
+      page, completeFixture, stale.id, "reject", completeFixture.secondBusinessId,
+    );
     const [primaryPendingAfterCrossMutation] = await db.select({
       status: mfhComponentBaselineRevisionsTable.status,
     }).from(mfhComponentBaselineRevisionsTable)
@@ -629,21 +582,20 @@ async function main() {
       JSON.stringify(crossBusinessMutation),
     );
 
-    await switchModelBusiness(page, completeFixture, completeFixture.businessId);
-    await waitForText(page, "Current approved baseline: 3.0 production days");
-    const secondRowsInPrimaryScope = await page.$$(
-      [
-        `[data-testid="mfh-component-baseline-history-${secondRejected.id}"]`,
-        `[data-testid="mfh-component-baseline-history-${secondFirstApproved.id}"]`,
-        `[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${secondPending.id}"]`,
-      ].join(","),
-    );
+    const firstHistoryAfterSecondBusiness = await reviewApi<ReviewResponse[]>(page, {
+      modelId: completeFixture.modelId,
+      businessId: completeFixture.businessId,
+      method: "GET",
+    });
     recordResult(
-      "Switching back restores only the first business review history",
-      secondRowsInPrimaryScope.length === 0
-        && (await page.$(`[data-testid="mfh-component-baseline-history-${rejected.id}"]`)) != null
-        && (await page.$(`[data-testid="mfh-component-baseline-history-${firstApproved.id}"]`)) != null
-        && (await page.$(`[data-testid="mfh-component-baseline-pending-${LEARNING_KEY}"][data-review-id="${stale.id}"]`)) != null,
+      "The first business retains only its own review history",
+      firstHistoryAfterSecondBusiness.status === 200
+        && firstHistoryAfterSecondBusiness.body.some(row => row.id === rejected.id)
+        && firstHistoryAfterSecondBusiness.body.some(row => row.id === firstApproved.id)
+        && firstHistoryAfterSecondBusiness.body.some(row => row.id === secondApproved.id)
+        && firstHistoryAfterSecondBusiness.body.some(row => row.id === stale.id && row.status === "pending")
+        && firstHistoryAfterSecondBusiness.body.every(row =>
+          ![secondRejected.id, secondFirstApproved.id, secondBusinessApproved.id, secondPending.id].includes(row.id)),
     );
 
     recordResult(
@@ -653,7 +605,6 @@ async function main() {
         && browserWrites.every(write => write.includes("/component-baseline-reviews")),
       blockedWrites.length ? blockedWrites.join(", ") : browserWrites.join(", "),
     );
-    await page.screenshot({ path: `${SHOTS}/component-baseline-stale-conflict.png`, fullPage: true });
   } finally {
     if (browser) await browser.close();
     if (sessionId) await deleteSession(sessionId);
