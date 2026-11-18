@@ -1,8 +1,10 @@
 /* Read-only authenticated checks for retained owner routes and job navigation. */
+import fs from "node:fs";
 import { createTestLoginProof, deleteSession, SESSION_COOKIE } from "../src/lib/auth";
 import { launchBrowser } from "../src/lib/launchBrowser";
 
 const BASE = process.env.BUILDPRO_E2E_BASE_URL ?? "http://localhost:80";
+const SHOTS = "/tmp/e2e-mfh-app-navigation";
 const url = new URL(BASE);
 if (process.env.NODE_ENV === "production" || process.env.REPLIT_DEPLOYMENT
   || url.protocol !== "http:"
@@ -17,6 +19,7 @@ function record(name: string, pass: boolean, detail = "") {
 }
 
 async function main() {
+  fs.mkdirSync(SHOTS, { recursive: true });
   const browser = await launchBrowser();
   let sessionId: string | undefined;
   const writes: string[] = [];
@@ -88,18 +91,34 @@ async function main() {
     await page.waitForFunction(() => {
       const drawer = Array.from(document.querySelectorAll("div.fixed.inset-y-0.left-0"))
         .find(node => node.className.includes("bg-primary"));
-      return Boolean(drawer?.className.includes("translate-x-0"));
+      const left = drawer?.getBoundingClientRect().left;
+      return Boolean(drawer?.classList.contains("translate-x-0") && left !== undefined && left >= -1);
     }, { timeout: 20_000 });
     const drawer = await page.evaluate(() => {
       const node = Array.from(document.querySelectorAll("div.fixed.inset-y-0.left-0"))
         .find(element => element.className.includes("bg-primary"));
-      return { isOpen: Boolean(node?.className.includes("translate-x-0")), text: node?.textContent ?? "" };
+      const rect = node?.getBoundingClientRect();
+      return {
+        isOpen: Boolean(node?.classList.contains("translate-x-0")),
+        text: node?.textContent ?? "",
+        width: rect?.width ?? 0,
+        left: rect?.left ?? 0,
+        right: rect?.right ?? 0,
+        viewportWidth: window.innerWidth,
+        scrollX: window.scrollX,
+      };
     });
     record("Mobile More drawer shows all approved groups",
-      drawer.isOpen && expectedGroups.every(group => drawer.text.includes(group)),
+      drawer.isOpen && drawer.width >= 240 && expectedGroups.every(group => drawer.text.includes(group)),
       drawer.isOpen
-        ? expectedGroups.filter(group => !drawer.text.includes(group)).join(", ") || "all groups present"
+        ? `width=${drawer.width}/${drawer.viewportWidth}; ${
+          expectedGroups.filter(group => !drawer.text.includes(group)).join(", ") || "all groups present"
+        }`
         : "drawer did not open");
+    record("Mobile More drawer fits within the viewport",
+      drawer.left >= -1 && drawer.right <= drawer.viewportWidth + 1,
+      `left=${drawer.left}; right=${drawer.right}; viewport=${drawer.viewportWidth}; scrollX=${drawer.scrollX}`);
+    await page.screenshot({ path: `${SHOTS}/mobile-more-drawer.png` });
 
     await page.goto(`${BASE}/jobs`, { waitUntil: "networkidle2", timeout: 60_000 });
     const jobsText = await page.evaluate(() => document.body.innerText);
