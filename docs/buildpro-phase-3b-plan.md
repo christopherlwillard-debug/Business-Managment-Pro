@@ -30,7 +30,7 @@ Phase 3A remains unchanged and closed. The prior audit’s recommendations to re
 
 1. **Current experience:** The header shows the selected business name or “All Businesses.” Selecting the header control returns the owner to a screen where the owner chooses All Businesses or one business. All Businesses is described as combined data, but not as read-only.
 2. **Why it may be complicated:** The owner must distinguish an unselected state, a combined reporting state, and a specific business state. The selector also contains business administration controls. The actual frequency of confusion is unknown.
-3. **What could be simplified:** Make the three states explicit in plain language; identify combined/read-only scope before entry; keep the active business visible in the desktop and mobile header; make the route from combined view to a specific business clear. Keep business administration available without making it look like part of selecting a work context.
+3. **What could be simplified:** Make the combined/read-only state explicit in plain language and keep the active context clear in the existing desktop and mobile header. Do not rearrange or redesign the selector or its business-management controls.
 4. **Functionality to retain:** All existing business cards, business creation/editing/reordering, the All Businesses view, selected-business persistence, LLC/division rollups, and all current navigation behavior.
 5. **Routes, UI, APIs, and data involved:** `/` and the existing header switcher; `AppLayout.tsx`, `BusinessSelector.tsx`, `BusinessContext.tsx`; the existing `/api/businesses` listing and current business-scoped page/API behavior. Existing `businesses` ownership and legal-business relationships remain the source of truth.
 6. **Risks:** Misstating combined versus selected scope could cause a user to misread reports or enter data under the wrong business. Kinora could be incorrectly included in Willard’s LLC view. Feature gates and business-specific configuration could change if selection semantics are altered.
@@ -64,9 +64,32 @@ Phase 3A remains unchanged and closed. The prior audit’s recommendations to re
 
 ## Recommended Phase 3B focus
 
-Choose **business selection and active-context clarity**. It follows the owner-first roadmap’s multi-business priority, addresses a cross-application decision that affects where the owner works, and can be scoped to the existing selector and header rather than redesigning multiple business workflows.
+Choose **business-context clarity**. It follows the owner-first roadmap’s multi-business priority and can be limited to clear wording in the existing selector and header, without redesigning the selector or changing business behavior.
 
-This recommendation is based on source evidence and architecture constraints, not measured user error. Before implementation, confirm the proposed wording and interaction with the owner. If investigation shows the problem requires changing business ownership, write permissions, legal-business rollups, or server-side mutation behavior, stop and request separate scope approval.
+This recommendation is based on source evidence and architecture constraints, not measured user error. The exact wording and unchanged interaction below require owner review before any implementation. If investigation shows that the problem requires changing business ownership, write permissions, legal-business rollups, or server-side mutation behavior, stop and request separate scope approval.
+
+### Exact wording and behavior proposed for review
+
+**Selector heading:** `Choose a business`
+
+**Selector subtitle:** `Choose one business to work in, or view combined information across businesses.`
+
+**All Businesses card**
+
+- Title: `All Businesses`
+- Description: `View combined information across businesses. Read-only.`
+
+**Active context in the header**
+
+- A specific business remains labeled with its existing business name.
+- The combined context remains labeled `All Businesses`, with a visible `Read-only` indicator beside it. Its accessible name should be `All Businesses, read-only`.
+
+**Behavior**
+
+- Clicking the existing header context control opens the current selector and keeps its navigation-blocker behavior.
+- Choosing All Businesses continues to show the existing combined view; choosing a named business continues to select that existing business.
+- Selection persistence, routes, permissions, feature gates, write resolution, and server-side authorization remain unchanged.
+- No new dialog, selector, confirmation step, disabled-action policy, or business-management layout is proposed.
 
 ## Proposed implementation scope
 
@@ -81,14 +104,12 @@ The existing selector labels All Businesses as combined data but does not tell t
 ### Desired user experience
 
 - The owner can identify the active context from the header on desktop and mobile.
-- The business selector clearly distinguishes “view combined data” from “work in this business.”
-- All Businesses is visibly described as read-only.
-- The owner can switch to a specific business without losing the existing business list, administration controls, or navigation safeguards.
+- The selector and header distinguish the combined read-only view from a named business using the wording above.
+- Existing selection, persistence, administration controls, and navigation safeguards behave exactly as they do today.
 
 ### Included work
 
-- Review and adjust only the existing business-selector and active-context presentation.
-- Improve labels, short explanatory copy, and separation between selecting a context and managing business records where needed.
+- Adjust only the wording and active-context indicator in the existing business selector and header.
 - Preserve current context persistence, selected-business feature filtering, routes, and business cards.
 - Add targeted authenticated tests for context visibility, switching, and read-only combined scope.
 
@@ -98,6 +119,7 @@ The existing selector labels All Businesses as combined data but does not tell t
 - No changes to business ownership, legal entity/division relationships, business IDs, or client/job ownership.
 - No changes to API authorization, write behavior, finance calculations, reports, or feature gates.
 - No new selector, business-management system, database fields, migrations, or records.
+- No selector redesign, rearrangement of business-management controls, new dialog, confirmation step, or change to which actions are enabled.
 - No changes to the Clients system, Job Workspace, invoices, payroll, or accounting workflows.
 
 ### Preservation requirements
@@ -124,14 +146,14 @@ The existing selector labels All Businesses as combined data but does not tell t
 
 ### Acceptance criteria
 
-1. The active business context is visible on desktop and mobile after selection and remains correct after navigation and refresh.
-2. The selector explains the difference between All Businesses and an individual business in plain language.
-3. All Businesses is explicitly identified as a read-only combined view.
-4. Switching to an individual business preserves current selection and feature-gate behavior.
-5. Existing business creation, editing, and ordering controls remain accessible and unchanged in behavior.
-6. Willard’s LLC/division view remains separated from Kinora; no cross-business data becomes visible or writable.
-7. No route, API authorization, data record, schema, calculation, permission, or production behavior changes.
-8. Authenticated browser checks pass for the affected desktop and mobile paths; no completion claim is made if a required path is not verified.
+1. The active business context remains visible on desktop and mobile after selection, navigation, and refresh.
+2. The selector uses the proposed heading, subtitle, and All Businesses description.
+3. The header labels the combined context `All Businesses` and visibly identifies it as `Read-only`; the accessible name is `All Businesses, read-only`.
+4. All selection, routing, persistence, write resolution, and navigation-guard behavior remains unchanged.
+5. Existing business creation, editing, and ordering controls remain available and unchanged.
+6. Willard’s LLC/division view remains separate from Kinora; no cross-business data becomes visible or writable.
+7. No API authorization, data record, schema, calculation, permission, feature gate, or production behavior changes.
+8. Authenticated browser checks pass on desktop and mobile; no completion claim is made if a required path is not verified.
 
 ### Testing and verification plan
 
@@ -153,7 +175,7 @@ The existing selector labels All Businesses as combined data but does not tell t
 
 ## Unresolved questions and assumptions
 
-- **Owner confirmation needed:** Approve the exact wording for the All Businesses read-only state before implementation.
+- **Owner confirmation needed:** Approve or revise the exact wording and unchanged selection behavior in this plan before implementation.
 - **Not yet measured:** Whether business selection is a frequent source of confusion or mistakes.
 - **Requires implementation-time tracing:** Whether all existing write entry points consistently require a specific business; the plan does not assume uniform behavior across APIs.
 - **Assumption:** A presentation-focused change can improve clarity without changing business selection or mutation semantics. If that assumption proves false, stop and return for scope approval.
