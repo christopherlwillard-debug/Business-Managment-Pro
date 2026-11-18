@@ -946,3 +946,15 @@ Created the four-document architecture governance system:
   navigation (9/9), Job Builder/workspace (31/31), closeout safeguards (17/17),
   and production components (4/4), including cleanup of disposable development
   fixtures. No deployment occurred.
+
+## 2026-11-18
+
+### Shared overhead allocation across operating divisions
+
+- Added amount-based division allocations linked to the existing expense row;
+  source expenses remain the only financial ledger entries.
+- Added same-legal-owner and source-total validation, expense create/edit UI,
+  and traceable allocated-overhead detail in division-scoped P&L.
+- Combined legal-owner P&L and tax calculations continue to count only the
+  original expense. Applied the additive schema to development only; no
+  production schema or data was changed.

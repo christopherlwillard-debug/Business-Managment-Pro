@@ -208,6 +208,21 @@ describe("Report business selector validation", () => {
 
 describe("P&L cash-basis — outstanding cost-booking exclusion and sub payment inclusion", () => {
 
+  it("counts the source expense once in the combined legal-owner P&L", async () => {
+    pushPL([{
+      category: "Other",
+      amount: "250.00",
+      description: "Shared office cost",
+      excludeFromNetProfit: false,
+      isWageAdvance: false,
+      isSharedOverhead: true,
+    }]);
+    const res = await request(app).get(`/reports/profit-loss?year=${YEAR}`);
+    expect(res.status).toBe(200);
+    expect(res.body.totalOperatingExpenses).toBe(250);
+    expect(res.body.netProfit).toBe(750);
+  });
+
   it("outstanding cost-booking row is excluded from P&L expenses and netProfit", async () => {
     // An expense with description ending in "(outstanding)" represents an accrual-style
     // cost-booking. Cash-basis P&L must NOT count it as a deduction.
@@ -782,6 +797,7 @@ describe("Cash-basis net-profit consistency across reports", () => {
       h.selectQueue.push(NO_MILEAGE);               // mileage
       h.selectQueue.push([]);                       // other income
       h.selectQueue.push([FILTERED_SUB_PAYMENT]);  // matching sub payment only
+      h.selectQueue.push([]);                       // allocated shared overhead for selected division
       h.selectQueue.push([]);                       // outstanding subs
       h.selectQueue.push([{ n: 0 }]);               // closed jobs
       h.selectQueue.push([]);                       // assets

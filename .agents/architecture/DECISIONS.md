@@ -644,6 +644,32 @@ or CRM ledger.
 
 ## ADR-037
 
+**Title:** Shared overhead allocations are division-only attribution
+
+**Decision:** Store amount-based division portions of a shared expense in
+`expense_division_allocations`, referencing the existing `expenses` row and a
+division owned by the same legal business. The sum cannot exceed the source
+expense. Division-scoped P&L includes the assigned amount and returns source
+details; the legal-owner P&L and tax calculations continue to use the original
+expense exactly once.
+
+**Reason:** A shared expense may support multiple operating divisions without
+being a new cash transaction. A separate attribution relationship is needed
+because `job_expense_allocations` only distributes expenses across jobs; it
+cannot represent division ownership. Keeping the canonical amount on `expenses`
+prevents duplicate ledger rows and preserves legal-owner totals.
+
+**Rejected Alternatives:**
+
+- Duplicating or splitting the source expense into additional expense rows
+- Repurposing job expense allocations for division attribution
+- Including allocation rows in legal-owner cash-basis or tax totals
+
+**Status:** Accepted
+**Date:** 2026-11-18
+
+## ADR-037
+
 **Title:** Contract work types reuse existing clients and checklist snapshots
 
 **Decision:** Keep contract programs linked to existing payer clients. Configure work types, checklist templates, evidence rules, and invoice-submission settings within the program. On acceptance, copy the selected requirements and submission settings into the existing job checklist tables. Preserve ordinary job and client-profile flows. Keep legacy SageHome behavior until parity is verified against the configured requirements.

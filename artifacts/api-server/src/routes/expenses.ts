@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isOwnerWithdrawalExpenseCategoryInsensitive } from "../lib/owner-withdrawals.js";
 import { db } from "@workspace/db";
-import { expensesTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
+import { expensesTable, expenseDivisionAllocationsTable, jobExpenseAllocationsTable, jobsTable, subcontractorsTable, jobSubcontractorsTable, businessesTable, subPaymentRecordsTable, businessTripsTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, sql, isNull, or, desc, getTableColumns, inArray } from "drizzle-orm";
 import multer from "multer";
 import sharp from "sharp";
@@ -10,6 +10,7 @@ import { reconcileExpense } from "../lib/matchingEngine.js";
 import { requestedBusiness, requestedBusinessReadScope, businessReadPredicate, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, sameLegalBusiness } from "../lib/business-scope.js";
 import { getTaxAssumptions } from "../lib/tax-estimate.js";
 import { settingsTable } from "@workspace/db/schema";
+import { validateDivisionAllocationAmounts } from "../lib/division-allocations.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -85,6 +86,65 @@ function formatExpense(e: any, jobTitle?: string | null, subcontractorName?: str
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
     receiptUrl: toServingUrl(e.receiptUrl),
   };
+}
+
+async function loadExpenseDivisionAllocations(expenseIds: number[]) {
+  if (expenseIds.length === 0) return new Map<number, any[]>();
+  const rows = await db.select({
+    expenseId: expenseDivisionAllocationsTable.expenseId,
+    businessId: expenseDivisionAllocationsTable.businessId,
+    businessName: businessesTable.name,
+    amount: expenseDivisionAllocationsTable.amount,
+  })
+    .from(expenseDivisionAllocationsTable)
+    .innerJoin(businessesTable, eq(expenseDivisionAllocationsTable.businessId, businessesTable.id))
+    .where(inArray(expenseDivisionAllocationsTable.expenseId, expenseIds));
+  const byExpense = new Map<number, any[]>();
+  for (const row of rows) {
+    const allocations = byExpense.get(row.expenseId) ?? [];
+    allocations.push({ businessId: row.businessId, businessName: row.businessName, amount: Number(row.amount) });
+    byExpense.set(row.expenseId, allocations);
+  }
+  return byExpense;
+}
+
+async function validateDivisionAllocations(
+  raw: unknown,
+  sourceBusinessId: number,
+  amount: unknown,
+  isSharedOverhead: boolean,
+  category: unknown,
+) {
+  if (raw === undefined) return undefined;
+  if (Array.isArray(raw) && raw.length > 0
+    && (isOwnerPayCategory(category) || String(category ?? "").trim().toLowerCase() === "mileage")) {
+    throw new Error("Owner withdrawals and mileage cannot be allocated as shared overhead");
+  }
+  const source = await db.select({
+    id: businessesTable.id,
+    legalBusinessId: businessesTable.legalBusinessId,
+  }).from(businessesTable).where(eq(businessesTable.id, sourceBusinessId)).limit(1);
+  const legalOwnerId = source[0]?.legalBusinessId ?? source[0]?.id;
+  if (!legalOwnerId) throw new Error("Expense legal owner could not be resolved");
+  const divisions = await db.select({ id: businessesTable.id })
+    .from(businessesTable)
+    .where(eq(businessesTable.legalBusinessId, legalOwnerId));
+  const allowed = new Set(divisions.map(row => row.id).filter(id => id !== legalOwnerId));
+  return validateDivisionAllocationAmounts(raw, amount, allowed, isSharedOverhead);
+}
+
+async function replaceExpenseDivisionAllocations(
+  tx: any,
+  expenseId: number,
+  allocations: { businessId: number; amount: string }[],
+) {
+  await tx.delete(expenseDivisionAllocationsTable)
+    .where(eq(expenseDivisionAllocationsTable.expenseId, expenseId));
+  if (allocations.length) {
+    await tx.insert(expenseDivisionAllocationsTable).values(
+      allocations.map(allocation => ({ expenseId, ...allocation })),
+    );
+  }
 }
 
 const expenseSelect = {
@@ -233,7 +293,11 @@ router.get("/", async (req, res) => {
         : Promise.resolve([]),
     ]);
 
-    const formatted = expenses.map(e => formatExpense(e, e.jobTitle, e.subcontractorName));
+    const divisionAllocations = await loadExpenseDivisionAllocations(expenses.map(e => e.id));
+    const formatted = expenses.map(e => ({
+      ...formatExpense(e, e.jobTitle, e.subcontractorName),
+      divisionAllocations: divisionAllocations.get(e.id) ?? [],
+    }));
 
     const sprFormatted = (sprRows as any[]).map(spr => ({
       // Use negative id to guarantee no collision with real expense ids
@@ -357,6 +421,7 @@ router.post("/", async (req, res) => {
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
        excludeFromNetProfit, countsTowardJobProfit, isSharedOverhead,
+      divisionAllocations,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
@@ -420,7 +485,20 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const [expense] = await db.insert(expensesTable).values({
+    let validatedDivisionAllocations;
+    try {
+      validatedDivisionAllocations = await validateDivisionAllocations(
+        divisionAllocations,
+        resolvedBusinessId ?? owner.id,
+        parsedAmount,
+        isSharedOverhead === true,
+        category,
+      );
+    } catch (err) {
+      return res.status(400).json({ error: (err as Error).message });
+    }
+    const expense = await db.transaction(async tx => {
+      const [created] = await tx.insert(expensesTable).values({
       description, amount: parsedAmount.toString(), category, date,
       vendor, jobId: jobId || null, subcontractorId: subcontractorId || null, receiptUrl, notes: resolvedNotes,
       excludeFromNetProfit: excludeFromNetProfit === true,
@@ -440,7 +518,12 @@ router.post("/", async (req, res) => {
       paidBy: paidBy || null,
       receiptStatus: receiptStatus || "uploaded",
       receiptMissingExplanation: receiptMissingExplanation || null,
-    }).returning();
+      }).returning();
+      if (validatedDivisionAllocations !== undefined) {
+        await replaceExpenseDivisionAllocations(tx, created.id, validatedDivisionAllocations);
+      }
+      return created;
+    });
 
     if (expense.category?.toLowerCase() === "subcontractor" && expense.jobId && expense.subcontractorId) {
       await syncJobSubPayment(expense.jobId, expense.subcontractorId);
@@ -450,7 +533,11 @@ router.post("/", async (req, res) => {
     reconcileExpense(expense.id).catch(() => {});
 
     // Client derives jobTitle/subcontractorName from its own loaded lists — skip the JOIN
-    res.status(201).json(formatExpense(expense, null, null));
+    const allocations = await loadExpenseDivisionAllocations([expense.id]);
+    res.status(201).json({
+      ...formatExpense(expense, null, null),
+      divisionAllocations: allocations.get(expense.id) ?? [],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create expense" });
@@ -462,7 +549,11 @@ router.get("/:id", async (req, res) => {
     const id = Number(req.params.id);
     const [expense] = await buildExpenseQuery().where(eq(expensesTable.id, id));
     if (!expense) return res.status(404).json({ error: "Expense not found" });
-    res.json(formatExpense(expense, expense.jobTitle, expense.subcontractorName));
+    const allocations = await loadExpenseDivisionAllocations([id]);
+    res.json({
+      ...formatExpense(expense, expense.jobTitle, expense.subcontractorName),
+      divisionAllocations: allocations.get(id) ?? [],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch expense" });
@@ -475,6 +566,7 @@ router.put("/:id", async (req, res) => {
     const {
       description, amount, category, date, vendor, jobId, subcontractorId, receiptUrl, notes,
        excludeFromNetProfit, countsTowardJobProfit, isSharedOverhead,
+      divisionAllocations,
       tripId, overnightTravel, isPotentiallyNondeductible,
       mealTotal, deductibleAmount, nonDeductibleAmount, tipAmount, taxAmount,
       numPeople, paidBy, receiptStatus, receiptMissingExplanation,
@@ -551,6 +643,28 @@ router.put("/:id", async (req, res) => {
     if (effectiveSharedOverhead && effectiveJobId) {
       return res.status(400).json({ error: "Shared overhead cannot be linked to a job" });
     }
+    const existingDivisionAllocations = await db.select({
+      businessId: expenseDivisionAllocationsTable.businessId,
+      amount: expenseDivisionAllocationsTable.amount,
+    }).from(expenseDivisionAllocationsTable)
+      .where(eq(expenseDivisionAllocationsTable.expenseId, before.id));
+    const targetDivisionAllocations = divisionAllocations !== undefined
+      ? divisionAllocations
+      : effectiveSharedOverhead
+        ? existingDivisionAllocations
+        : [];
+    let validatedDivisionAllocations;
+    try {
+      validatedDivisionAllocations = await validateDivisionAllocations(
+        targetDivisionAllocations,
+        resolvedBusinessId,
+        amount !== undefined ? amount : before.amount,
+        effectiveSharedOverhead,
+        category !== undefined ? category : before.category,
+      );
+    } catch (err) {
+      return res.status(400).json({ error: (err as Error).message });
+    }
     if (isOwnerPayCategory(effectiveCat)) {
       return res.status(400).json({
         error: "Owner withdrawals are managed in their own ledger. Historical owner expense rows must be migrated and voided, not edited.",
@@ -568,7 +682,8 @@ router.put("/:id", async (req, res) => {
     const computedDeductible = parsedMealTotal != null ? parsedMealTotal * mealRate : null;
     const computedNonDeductible = parsedMealTotal != null ? parsedMealTotal * (1 - mealRate) : null;
 
-    const [updated] = await db.update(expensesTable).set({
+    const updated = await db.transaction(async tx => {
+      const [row] = await tx.update(expensesTable).set({
       ...(description !== undefined && { description }),
       ...(amount !== undefined && { amount: amount.toString() }),
       ...(category !== undefined && { category }),
@@ -597,7 +712,12 @@ router.put("/:id", async (req, res) => {
       ...(paidBy !== undefined && { paidBy: paidBy || null }),
       ...(receiptStatus !== undefined && { receiptStatus }),
       ...(receiptMissingExplanation !== undefined && { receiptMissingExplanation: receiptMissingExplanation || null }),
-    }).where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, owner))).returning();
+      }).where(and(eq(expensesTable.id, id), mutationBusinessPredicate(expensesTable, owner))).returning();
+      if (divisionAllocations !== undefined || !effectiveSharedOverhead || existingDivisionAllocations.length > 0) {
+        await replaceExpenseDivisionAllocations(tx, id, validatedDivisionAllocations ?? []);
+      }
+      return row;
+    });
     if (!updated) return res.status(404).json({ error: "Expense not found" });
 
     // Recompute sub payment totals for any affected (jobId, subcontractorId) pairs.
@@ -619,7 +739,11 @@ router.put("/:id", async (req, res) => {
     reconcileExpense(updated.id).catch(() => {});
 
     const [joined] = await buildExpenseQuery().where(eq(expensesTable.id, updated.id));
-    res.json(formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName));
+    const allocationRows = await loadExpenseDivisionAllocations([updated.id]);
+    res.json({
+      ...formatExpense(joined ?? updated, joined?.jobTitle, joined?.subcontractorName),
+      divisionAllocations: allocationRows.get(updated.id) ?? [],
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update expense" });

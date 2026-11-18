@@ -6,6 +6,7 @@ export * from "./invoices";
 export * from "./invoice-communication-events";
 export * from "./estimate-quote-events";
 export * from "./expenses";
+export * from "./expense-division-allocations";
 export * from "./job-expense-allocations";
 export * from "./job-mileage-reimbursements";
 export * from "./recurring-expenses";

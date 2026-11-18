@@ -59,6 +59,16 @@ interface ProfitLossReport {
     ownerOverWithdrawal: number;
   };
   closedJobCount?: number;
+  allocatedOverhead?: {
+    expenseId: number;
+    description: string;
+    category: string;
+    date: string;
+    vendor: string | null;
+    businessId: number;
+    businessName: string;
+    amount: number;
+  }[];
 }
 
 function useProfitLoss(year: number, businessLine?: string, businessId?: number) {
@@ -104,7 +114,7 @@ function DivisionComparison({ year, ownerId, divisions }: {
       <div className="mb-3">
         <h3 className="font-semibold text-foreground">Division performance</h3>
         <p className="text-xs text-muted-foreground mt-1">
-          Uses the same source-based P&amp;L calculation for each division. Shared overhead is shown separately at the legal-owner level and is not assigned to a division here.
+          Uses the same source-based P&amp;L calculation for each division. Allocated shared overhead is included and listed below; any remainder stays at the legal-owner level.
         </p>
       </div>
       {loading ? (
@@ -354,6 +364,26 @@ function ProfitLossTab({ year }: { year: number }) {
                   )}
                 </div>
               ))}
+              {(report.allocatedOverhead?.length ?? 0) > 0 && (
+                <>
+                  <PLSection title="Allocated Shared Overhead" />
+                  <p className="text-xs text-muted-foreground px-2">
+                    These source expenses are included in the totals above; this list is detail only.
+                  </p>
+                  {report.allocatedOverhead!.map(allocation => (
+                    <div key={`${allocation.expenseId}-${allocation.businessId}`} className="flex items-start justify-between gap-3 border-b border-border/30 py-2 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground">{allocation.description}</p>
+                        <p className="text-muted-foreground">
+                          {allocation.date}{allocation.vendor ? ` · ${allocation.vendor}` : ""} · {allocation.category}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">Source expense #{allocation.expenseId}</p>
+                      </div>
+                      <span className="shrink-0 font-semibold tabular-nums text-foreground">{formatCurrency(allocation.amount)}</span>
+                    </div>
+                  ))}
+                </>
+              )}
               <PLRow label="Total Operating Expenses" amount={report.totalOperatingExpenses} bold separator />
 
               <PLRow label="Net Operating Income" amount={report.netOperatingIncome} bold highlight separator />

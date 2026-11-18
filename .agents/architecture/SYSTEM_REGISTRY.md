@@ -64,6 +64,18 @@ Before implementing any financial, schema, or business logic feature — consult
 
 ---
 
+## Shared Expense Division Allocations
+
+- **Table:** `expense_division_allocations`
+- **Schema:** `lib/db/src/schema/expense-division-allocations.ts`
+- **API:** `artifacts/api-server/src/routes/expenses.ts`
+- **UI:** Expenses allocation editor; Accounting → Profit & Loss division detail
+- **Reports:** Division-scoped P&L only
+- **Source of truth:** `expenses` owns the financial transaction and full legal-owner amount; `expense_division_allocations` owns management-only portions attributed to same-legal-owner divisions.
+- **Rule:** Allocations require a shared-overhead expense, must target a division under the same legal owner, and may not exceed the source amount. They are never additional expenses; legal-owner and tax reports continue to count the source row once.
+
+---
+
 ## Mileage
 
 - **Tables:** `mileage_logs`, `mileage_imports`

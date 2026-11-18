@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reportBusinessContains, type ReportBusiness } from "./reports";
+import { addAllocatedOverheadToBuckets, reportBusinessContains, type ReportBusiness } from "./reports";
 
 const willards: ReportBusiness = {
   id: 1,
@@ -31,5 +31,16 @@ describe("legal business report scope", () => {
     expect(reportBusinessContains({ businessId: 1, businessLine: "general_contracting" }, asphalt)).toBe(false);
     expect(reportBusinessContains({ businessId: 2, businessLine: "kinora" }, asphalt)).toBe(false);
     expect(reportBusinessContains({ businessId: null, businessLine: "general_contracting" }, asphalt)).toBe(false);
+  });
+
+  it("adds allocated overhead to division categories without creating a second source expense", () => {
+    const buckets = addAllocatedOverheadToBuckets(
+      { supplies: 80, utilities: 20 },
+      [
+        { category: "Tools/Equipment", amount: "25.50" },
+        { category: "Utilities", amount: 10 },
+      ],
+    );
+    expect(buckets).toEqual({ supplies: 105.5, utilities: 30 });
   });
 });

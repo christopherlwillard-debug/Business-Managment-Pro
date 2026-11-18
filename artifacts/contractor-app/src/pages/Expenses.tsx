@@ -2606,6 +2606,12 @@ export default function Expenses() {
   const businessLineOptions = activeBusiness && isLegalOwnerSelection
     ? businesses.filter(b => (b.legalBusinessId ?? b.id) === activeBusiness.id)
     : businesses;
+  const allocationOwnerId = activeBusiness
+    ? (activeBusiness.legalBusinessId ?? activeBusiness.id)
+    : null;
+  const allocationDivisionOptions = allocationOwnerId == null
+    ? []
+    : businesses.filter(b => b.id !== allocationOwnerId && (b.legalBusinessId ?? b.id) === allocationOwnerId);
   const { toast } = useToast();
   const { isConfigured: googleConfigured, isConnected: googleConnected, signIn: googleSignIn, getToken } = useGoogleAuth();
   const [drivePickingNew, setDrivePickingNew] = useState(false);
@@ -2691,6 +2697,7 @@ export default function Expenses() {
   const [countsTowardJobProfit, setCountsTowardJobProfit] = useState(true);
   const [formJobId, setFormJobId] = useState("");
   const [isSharedOverhead, setIsSharedOverhead] = useState(false);
+  const [divisionAllocationAmounts, setDivisionAllocationAmounts] = useState<Record<number, string>>({});
   const [formExpenseDate, setFormExpenseDate] = useState(localDateString());
   const [businessLine, setBusinessLine]               = useState<string | undefined>(
     activeBusiness?.slug ?? undefined
@@ -2707,7 +2714,7 @@ export default function Expenses() {
   const [tipAmount,     setTipAmount]                 = useState("");
   const [taxAmount,     setTaxAmount]                 = useState("");
   const [viewExpense,   setViewExpense]                = useState<any | null>(null);
-  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; isSharedOverhead: boolean; businessLine: string; businessId: number | null} | null>(null);
+  const [editingRow,    setEditingRow]                = useState<{id: number; description: string; amount: string; date: string; category: string; vendor: string; jobId: string; notes: string; excludeFromNetProfit: boolean; countsTowardJobProfit: boolean; isSharedOverhead: boolean; businessLine: string; businessId: number | null; divisionAllocations: {businessId:number; amount:string}[]} | null>(null);
   const [editReceiptFile, setEditReceiptFile]         = useState<File | null>(null);
   const [editLightboxUrl, setEditLightboxUrl]         = useState<string | null>(null);
   const [editLightboxImgError, setEditLightboxImgError] = useState(false);
@@ -2897,6 +2904,7 @@ export default function Expenses() {
     setCountsTowardJobProfit(true);
     setFormJobId("");
     setIsSharedOverhead(false);
+    setDivisionAllocationAmounts({});
     setBusinessLine(activeBusiness?.slug ?? undefined);
     setPrefillTripId(null);
     setPaidBy("");
@@ -3063,6 +3071,17 @@ export default function Expenses() {
       }
       const rawCategory = fd.get("category") as string;
       const rawAmount = parseFloat(fd.get("amount") as string);
+      const requestedDivisionAllocations = allocationDivisionOptions
+        .map(business => ({
+          businessId: business.id,
+          amount: Number(divisionAllocationAmounts[business.id] || 0),
+        }))
+        .filter(allocation => allocation.amount > 0);
+      const allocatedTotal = requestedDivisionAllocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+      if (allocatedTotal > rawAmount + 0.001) {
+        toast({ title: "Allocation exceeds expense", description: "Division allocations cannot exceed the expense amount.", variant: "destructive" });
+        return;
+      }
       const expense = await createMutation.mutateAsync({
         data: {
           description:    fd.get("description") as string,
@@ -3076,6 +3095,7 @@ export default function Expenses() {
           excludeFromNetProfit,
           countsTowardJobProfit,
           isSharedOverhead,
+          divisionAllocations: requestedDivisionAllocations,
           businessLine: businessLine || null,
           businessId: businessLine
             ? businesses.find(b => b.slug === businessLine)?.id ?? activeBusiness?.id ?? null
@@ -3130,6 +3150,7 @@ export default function Expenses() {
       setVendor("");
       setSubcontractorId("");
       setExcludeFromNetProfit(false);
+      setDivisionAllocationAmounts({});
       setBusinessLine(activeBusiness?.slug ?? undefined);
       setPrefillTripId(null);
       setPaidBy("");
@@ -3758,6 +3779,12 @@ export default function Expenses() {
                                             isSharedOverhead: (exp as any).isSharedOverhead === true,
                                             businessId: (exp as any).businessId ?? null,
                                             businessLine: exp.businessLine ?? "",
+                                            divisionAllocations: Array.isArray((exp as any).divisionAllocations)
+                                              ? (exp as any).divisionAllocations.map((allocation: any) => ({
+                                                  businessId: allocation.businessId,
+                                                  amount: String(allocation.amount ?? ""),
+                                                }))
+                                              : [],
                                           }); }}
                                           className="text-muted-foreground hover:text-amber-500 transition-colors" title="Edit expense">
                                           <Pencil className="w-4 h-4" />
@@ -4224,10 +4251,38 @@ export default function Expenses() {
                 type="checkbox"
                 checked={isSharedOverhead}
                 disabled={!!formJobId}
-                onChange={e => setIsSharedOverhead(e.target.checked)}
+                onChange={e => {
+                  setIsSharedOverhead(e.target.checked);
+                  if (!e.target.checked) setDivisionAllocationAmounts({});
+                }}
               />
               <span>Shared / Company Overhead</span>
             </label>
+            {isSharedOverhead && allocationDivisionOptions.length > 0 && (
+              <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Allocate to divisions</p>
+                  <p className="text-[11px] text-muted-foreground">Enter dollar amounts. Any unallocated remainder stays at the General Contracting level.</p>
+                </div>
+                {allocationDivisionOptions.map(division => (
+                  <label key={division.id} className="flex items-center justify-between gap-3 text-xs">
+                    <span>{division.name}</span>
+                    <div className="relative w-32">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={divisionAllocationAmounts[division.id] ?? ""}
+                        onChange={e => setDivisionAllocationAmounts(current => ({ ...current, [division.id]: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background py-1.5 pl-6 pr-2 text-right tabular-nums"
+                        aria-label={`Amount allocated to ${division.name}`}
+                      />
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
 
             {category === "Owner Draw" ? (
               <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl border border-amber-200 bg-amber-50/60">
@@ -4454,11 +4509,49 @@ export default function Expenses() {
                   checked={editingRow!.isSharedOverhead}
                   onChange={e => {
                     if (e.target.checked && editingRow!.jobId) return;
-                    setEditingRow(r => r && ({ ...r, isSharedOverhead: e.target.checked }));
+                    setEditingRow(r => r && ({
+                      ...r,
+                      isSharedOverhead: e.target.checked,
+                      divisionAllocations: e.target.checked ? r.divisionAllocations : [],
+                    }));
                   }}
                 />
                 Shared / Company Overhead
               </label>
+              {editingRow!.isSharedOverhead && allocationDivisionOptions.length > 0 && (
+                <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-2">
+                  <div>
+                    <p className="text-xs font-semibold text-foreground">Allocate to divisions</p>
+                    <p className="text-[11px] text-muted-foreground">Enter dollar amounts. Any unallocated remainder stays at the legal-owner level.</p>
+                  </div>
+                  {allocationDivisionOptions.map(division => {
+                    const allocation = editingRow!.divisionAllocations.find(row => row.businessId === division.id);
+                    return (
+                      <label key={division.id} className="flex items-center justify-between gap-3 text-xs">
+                        <span>{division.name}</span>
+                        <div className="relative w-32">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={allocation?.amount ?? ""}
+                            onChange={e => setEditingRow(row => row && ({
+                              ...row,
+                              divisionAllocations: [
+                                ...row.divisionAllocations.filter(item => item.businessId !== division.id),
+                                ...(e.target.value ? [{ businessId: division.id, amount: e.target.value }] : []),
+                              ],
+                            }))}
+                            className="w-full rounded-lg border border-border bg-background py-1.5 pl-6 pr-2 text-right tabular-nums"
+                            aria-label={`Amount allocated to ${division.name}`}
+                          />
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
               <label className={`flex items-center gap-3 py-1 ${["Owner Pay", "Owner Draw", "Owner Compensation", "Owner Withdrawal"].includes(editingRow!.category ?? "") ? "opacity-80" : "cursor-pointer"}`}>
                 <input type="checkbox" checked={editingRow!.excludeFromNetProfit}
                   onChange={e => {
@@ -4526,6 +4619,12 @@ export default function Expenses() {
               <button
                 onClick={async () => {
                   if (!editingRow) return;
+                  const allocatedTotal = editingRow.divisionAllocations
+                    .reduce((sum, allocation) => sum + Number(allocation.amount || 0), 0);
+                  if (allocatedTotal > Number(editingRow.amount) + 0.001) {
+                    toast({ title: "Allocation exceeds expense", description: "Division allocations cannot exceed the expense amount.", variant: "destructive" });
+                    return;
+                  }
                   await updateExpense.mutateAsync({
                     id: editingRow!.id,
                     data: {
@@ -4540,6 +4639,9 @@ export default function Expenses() {
                       excludeFromNetProfit: editingRow!.excludeFromNetProfit,
                       countsTowardJobProfit: editingRow!.countsTowardJobProfit,
                       isSharedOverhead: editingRow!.isSharedOverhead,
+                      divisionAllocations: editingRow!.divisionAllocations
+                        .map(allocation => ({ businessId: allocation.businessId, amount: Number(allocation.amount) }))
+                        .filter(allocation => allocation.amount > 0),
                       businessLine: editingRow!.businessLine || null,
                       businessId: editingRow!.businessId,
                     },

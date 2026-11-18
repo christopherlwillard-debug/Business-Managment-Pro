@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "@workspace/db";
-import { jobsTable, invoicesTable, invoiceCommunicationEventsTable, expensesTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
+import { jobsTable, invoicesTable, invoiceCommunicationEventsTable, expensesTable, expenseDivisionAllocationsTable, mileageLogsTable, subcontractorsTable, clientsTable, settingsTable, otherIncomeTable, assetsTable, estimatedTaxPaymentsTable, assetBusinessUseTable, businessesTable, jobSubHoursTable, jobSubcontractorsTable, ownerCapitalEntriesTable, growthFundDeploymentsTable, recurringExpensesTable, subPaymentRecordsTable } from "@workspace/db/schema";
 import { plaidConnectionsTable } from "@workspace/db";
 import { eq, and, or, gte, lte, desc, ne, inArray, sql, count, isNull, getTableColumns } from "drizzle-orm";
 import { computeYtd } from "./subcontractors";
@@ -1757,6 +1757,17 @@ const PL_CATEGORY_MAP: Record<string, "cogs" | "advertising" | "carTruck" | "con
   "depreciation":          "depreciation",
 };
 
+export function addAllocatedOverheadToBuckets(
+  buckets: Record<string, number>,
+  rows: { category: string | null; amount: string | number | null }[],
+) {
+  for (const row of rows) {
+    const key = PL_CATEGORY_MAP[row.category ?? "Other"] ?? "other";
+    buckets[key] = (buckets[key] ?? 0) + Number(row.amount ?? 0);
+  }
+  return buckets;
+}
+
 const PL_OPEX_LABELS: Record<string, string> = {
   advertising:      "Advertising",
   carTruck:         "Fuel / Travel",
@@ -1796,6 +1807,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         description: expensesTable.description,
         excludeFromNetProfit: expensesTable.excludeFromNetProfit,
         isWageAdvance: expensesTable.isWageAdvance,
+        isSharedOverhead: expensesTable.isSharedOverhead,
       })
         .from(expensesTable)
         .where(and(gte(expensesTable.date, startDate), lte(expensesTable.date, endDate), ne(expensesTable.category, "mileage"), blWhere(expensesTable.businessLine, expensesTable.businessId), isNull(expensesTable.voidedAt))),
@@ -1824,6 +1836,31 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
           blWhere(jobsTable.businessLine, jobsTable.businessId),
         )),
     ]);
+    const allocatedOverheadRows = reportBusiness?.divisionSlug
+      ? await db.select({
+          expenseId: expenseDivisionAllocationsTable.expenseId,
+          amount: expenseDivisionAllocationsTable.amount,
+          businessId: expenseDivisionAllocationsTable.businessId,
+          businessName: businessesTable.name,
+          description: expensesTable.description,
+          category: expensesTable.category,
+          date: expensesTable.date,
+          vendor: expensesTable.vendor,
+        })
+          .from(expenseDivisionAllocationsTable)
+          .innerJoin(expensesTable, eq(expenseDivisionAllocationsTable.expenseId, expensesTable.id))
+          .innerJoin(businessesTable, eq(expenseDivisionAllocationsTable.businessId, businessesTable.id))
+          .where(and(
+            eq(expenseDivisionAllocationsTable.businessId, reportBusiness.divisionBusinessIds[reportBusiness.divisionSlug]?.[0] ?? -1),
+            gte(expensesTable.date, startDate),
+            lte(expensesTable.date, endDate),
+            eq(expensesTable.isSharedOverhead, true),
+            ne(expensesTable.category, "mileage"),
+            isNull(expensesTable.voidedAt),
+            sql`${expensesTable.isWageAdvance} IS NOT TRUE`,
+            sql`NOT (${expensesTable.description} LIKE '%(outstanding)')`,
+          ))
+      : [];
 
     // Outstanding sub liability — all comp types with unpaid/partial status.
     // For fixed/allocation subs: amount comes from amountOwed or fixedAmount.
@@ -1919,7 +1956,9 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
     // already fully captured in jsh auto-expense accruals — counting them would double the cost.
     // This mirrors the isWageAdvance filter applied in the Accounting, Dashboard, and Year-End routes.
     const plExpRows = expRows.filter(e =>
-      !(e.description ?? "").endsWith("(outstanding)") && !e.isWageAdvance,
+      !(e.description ?? "").endsWith("(outstanding)")
+      && !e.isWageAdvance
+      && !(reportBusiness?.divisionSlug && e.isSharedOverhead),
     );
 
     // All expenses count toward P&L categories (excludeFromNetProfit only affects job panels).
@@ -1936,6 +1975,7 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
       const key = PL_CATEGORY_MAP[cat] ?? "other";
       buckets[key] = (buckets[key] ?? 0) + parseFloat(e.amount ?? "0");
     }
+    addAllocatedOverheadToBuckets(buckets, allocatedOverheadRows);
 
     // Fixed/allocation sub payments from pay-worker: Contract Labor.
     // These live only in sub_payment_records after Task #892, so we add them here separately.
@@ -2029,6 +2069,16 @@ router.get("/profit-loss", sectionGuard("invoices"), async (req, res) => {
         ownerRetained: plOwnerRetained,
         ownerOverWithdrawal: plOwnerOverWithdrawal,
       },
+      allocatedOverhead: allocatedOverheadRows.map(row => ({
+        expenseId: row.expenseId,
+        description: row.description,
+        category: row.category,
+        date: row.date,
+        vendor: row.vendor,
+        businessId: row.businessId,
+        businessName: row.businessName,
+        amount: Number(row.amount ?? 0),
+      })),
       outstandingSubLiability,
       closedJobCount,
     });
