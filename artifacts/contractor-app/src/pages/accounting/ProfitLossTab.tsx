@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Receipt, Printer, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -63,7 +63,7 @@ interface ProfitLossReport {
 
 function useProfitLoss(year: number, businessLine?: string, businessId?: number) {
   return useQuery<ProfitLossReport>({
-    queryKey: ["profit-loss", year, businessLine ?? "all"],
+    queryKey: ["profit-loss", year, businessLine ?? "all", businessId ?? null],
     queryFn: async () => {
       const params = new URLSearchParams({ year: String(year) });
       if (businessLine) params.set("businessLine", businessLine);
@@ -74,6 +74,70 @@ function useProfitLoss(year: number, businessLine?: string, businessId?: number)
     },
     staleTime: 1000 * 60 * 2,
   });
+}
+
+function DivisionComparison({ year, ownerId, divisions }: {
+  year: number;
+  ownerId: number;
+  divisions: { id: number; name: string; slug: string }[];
+}) {
+  const results = useQueries({
+    queries: divisions.map(division => ({
+      queryKey: ["profit-loss", year, division.slug, division.id],
+      queryFn: async (): Promise<ProfitLossReport> => {
+        const params = new URLSearchParams({
+          year: String(year),
+          businessId: String(ownerId),
+          businessLine: division.slug,
+        });
+        const res = await fetch(`${BASE}/api/reports/profit-loss?${params}`);
+        if (!res.ok) throw new Error(`Failed to load ${division.name} report`);
+        return res.json();
+      },
+      staleTime: 1000 * 60 * 2,
+    })),
+  });
+  const loading = results.some(result => result.isLoading);
+  const failed = results.some(result => result.isError);
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+      <div className="mb-3">
+        <h3 className="font-semibold text-foreground">Division performance</h3>
+        <p className="text-xs text-muted-foreground mt-1">
+          Uses the same source-based P&amp;L calculation for each division. Shared overhead is shown separately at the legal-owner level and is not assigned to a division here.
+        </p>
+      </div>
+      {loading ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading division totals…</p>
+      ) : failed ? (
+        <p className="py-4 text-sm text-destructive">Could not load every division total.</p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {results.map((result, index) => {
+            const division = divisions[index];
+            const report = result.data;
+            return (
+              <div key={division.id} className="rounded-xl border border-border/70 bg-muted/20 p-3">
+                <p className="text-sm font-medium text-foreground">{division.name}</p>
+                <div className="mt-2 flex justify-between gap-3 text-xs text-muted-foreground">
+                  <span>Revenue</span>
+                  <span className="font-medium tabular-nums text-foreground">
+                    {report ? formatCurrency(report.revenue.grossRevenue) : "—"}
+                  </span>
+                </div>
+                <div className="mt-1 flex justify-between gap-3 text-xs text-muted-foreground">
+                  <span>Net profit</span>
+                  <span className={`font-semibold tabular-nums ${report && report.netProfit < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                    {report ? formatCurrency(report.netProfit) : "—"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function fmtAmt(n: number) {
@@ -165,9 +229,12 @@ function OwnerActivityCard({
 }
 
 function ProfitLossTab({ year }: { year: number }) {
-  const { activeBusiness } = useBusiness();
+  const { activeBusiness, businesses } = useBusiness();
   const isLegalBusinessSelection = !!activeBusiness
     && (activeBusiness.legalBusinessId ?? activeBusiness.id) === activeBusiness.id;
+  const divisions = isLegalBusinessSelection
+    ? businesses.filter(b => b.id !== activeBusiness.id && (b.legalBusinessId ?? b.id) === activeBusiness.id)
+    : [];
   const { data: report, isLoading, error } = useProfitLoss(
     year,
     activeBusiness && !isLegalBusinessSelection ? activeBusiness.slug : undefined,
@@ -220,6 +287,9 @@ function ProfitLossTab({ year }: { year: number }) {
 
   return (
     <div className="space-y-4">
+      {isLegalBusinessSelection && divisions.length > 0 && (
+        <DivisionComparison year={year} ownerId={activeBusiness.id} divisions={divisions} />
+      )}
       {isLoading && <div className="text-center py-20 text-muted-foreground animate-pulse">Loading Profit & Loss…</div>}
       {error && <div className="text-center py-20 text-destructive">Failed to load report. Check that the API is running.</div>}
 

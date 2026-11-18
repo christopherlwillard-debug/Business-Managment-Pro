@@ -87,7 +87,20 @@ router.post("/", async (req, res) => {
     const { name, slug, type, logoUrl, invoiceLogoLayout, address, city, state, zip, phone, email, website, defaultQuoteTerms, defaultQuoteValidityDays, licenseNumber, taxId, enabledFeatures, parentBusinessId } = req.body;
     if (!name || !slug) return res.status(400).json({ error: "name and slug are required" });
     const resolvedType = (typeof type === "string" && type.trim()) ? type.trim() : "other";
-    const parentId = parentBusinessId ? parseInt(parentBusinessId) : null;
+    const parentId = parentBusinessId == null || parentBusinessId === "" ? null : Number(parentBusinessId);
+    if (parentId != null && (!Number.isSafeInteger(parentId) || parentId <= 0)) {
+      return res.status(400).json({ error: "parentBusinessId must be a positive integer" });
+    }
+    if (parentId != null) {
+      const [parent] = await db.select({
+        id: businessesTable.id,
+        legalBusinessId: businessesTable.legalBusinessId,
+      }).from(businessesTable).where(eq(businessesTable.id, parentId)).limit(1);
+      if (!parent) return res.status(400).json({ error: "Parent business not found" });
+      if ((parent.legalBusinessId ?? parent.id) !== parent.id) {
+        return res.status(400).json({ error: "Divisions must be added directly under a legal business" });
+      }
+    }
     const business = await db.transaction(async (tx) => {
       const [created] = await tx.insert(businessesTable).values({
         name, slug, type: resolvedType, logoUrl,
@@ -144,7 +157,7 @@ router.put("/:id", async (req, res) => {
       updates.enabledFeatures = Array.isArray(enabledFeatures) ? enabledFeatures : null;
     }
     if ("parentBusinessId" in req.body) {
-      updates.parentBusinessId = parentBusinessId ? parseInt(parentBusinessId) : null;
+      return res.status(400).json({ error: "A business’s legal owner cannot be changed after creation" });
     }
     const [updated] = await db.update(businessesTable).set(updates).where(eq(businessesTable.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "Business not found" });

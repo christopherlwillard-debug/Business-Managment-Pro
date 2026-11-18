@@ -61,7 +61,7 @@ function BusinessCardStats({ business }: { business: Business }) {
   );
 }
 
-const EMPTY_FORM = { name: "", type: "", address: "", city: "", state: "", zip: "", phone: "", email: "", licenseNumber: "", taxId: "" };
+const EMPTY_FORM = { name: "", type: "", parentBusinessId: "", address: "", city: "", state: "", zip: "", phone: "", email: "", licenseNumber: "", taxId: "" };
 
 export default function BusinessSelector({ onSelect }: { onSelect: (b: Business | null) => void }) {
   const { businesses, setActiveBusiness, refresh } = useBusiness();
@@ -139,6 +139,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
           name: form.name.trim(),
           slug: slugify(form.name.trim()),
           type: form.type.trim() || "other",
+          parentBusinessId: form.parentBusinessId || null,
           address: form.address || null,
           city: form.city || null,
           state: form.state || null,
@@ -169,6 +170,7 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
     setEditForm({
       name: b.name,
       type: b.type,
+      parentBusinessId: "",
       address: b.address ?? "",
       city: b.city ?? "",
       state: b.state ?? "",
@@ -560,6 +562,18 @@ export default function BusinessSelector({ onSelect }: { onSelect: (b: Business 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">Type</label>
                   <input type="text" className={inp} placeholder="e.g. General Contracting, Roofing, HVAC…" value={form.type} onChange={e => setF("type", e.target.value)} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1">Legal owner</label>
+                  <select className={inp} value={form.parentBusinessId} onChange={e => setF("parentBusinessId", e.target.value)}>
+                    <option value="">Create as a separate legal business</option>
+                    {businesses
+                      .filter(b => (b.legalBusinessId ?? b.id) === b.id)
+                      .map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Choose General Contracting to add an operating division such as Asphalt Sealing. This does not create a new legal entity.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-muted-foreground mb-1">Phone</label>
