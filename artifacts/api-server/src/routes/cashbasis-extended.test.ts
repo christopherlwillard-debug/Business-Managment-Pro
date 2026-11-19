@@ -155,6 +155,20 @@ const PAID_INVOICE = {
 
 const NO_MILEAGE: any[] = [];
 
+function containsInactiveStatusColumn(value: unknown, seen = new Set<object>()): boolean {
+  if (Array.isArray(value)) {
+    return value.some(item => containsInactiveStatusColumn(item, seen));
+  }
+  if (!value || typeof value !== "object" || seen.has(value)) return false;
+  seen.add(value);
+  const node = value as Record<string, unknown>;
+  if (typeof node.name === "string") return node.name === "is_active";
+  if (Array.isArray(node.queryChunks)) return containsInactiveStatusColumn(node.queryChunks, seen);
+  return Object.keys(node)
+    .filter(key => key !== "table")
+    .some(key => containsInactiveStatusColumn(node[key], seen));
+}
+
 /**
  * Push the 12 slots consumed by GET /profit-loss (no blFilter, no hourly subs).
  * Updated for Task #1913: computeOwnerWaterfall paidInvs slot added at [11].
@@ -1107,6 +1121,125 @@ describe("Inactive divisions remain in historical dashboard reports", () => {
     // The legal-member and breakdown business queries must remain unfiltered:
     // adding an is_active predicate there would hide historical divisions.
     expect(h.businessSelectFilters.slice(-2)).toEqual([undefined, undefined]);
+  });
+});
+
+describe("Inactive divisions remain in P&L and year-end reports", () => {
+  const root = {
+    id: 1,
+    slug: "general_contracting",
+    legalBusinessId: 1,
+    isActive: true,
+  };
+  const inactiveDivision = {
+    id: 2,
+    slug: "asphalt_sealing",
+    legalBusinessId: 1,
+    isActive: false,
+  };
+
+  function pushInactiveDivisionSelection() {
+    h.selectQueue.push([inactiveDivision], [root, inactiveDivision]);
+  }
+
+  function expectBusinessSelectionHasNoActiveFilter() {
+    expect(h.businessSelectFilters).toHaveLength(2);
+    expect(h.businessSelectFilters.some(condition => containsInactiveStatusColumn(condition))).toBe(false);
+  }
+
+  it("retains inactive-division revenue and operating expenses in Profit & Loss", async () => {
+    pushInactiveDivisionSelection();
+    h.selectQueue.push(
+      [{
+        ...PAID_INVOICE,
+        amountPaid: "1000.00",
+        businessId: 2,
+        businessLine: "asphalt_sealing",
+      }], // invoice receipts
+      [{
+        id: 901,
+        date: `${YEAR}-06-02`,
+        category: "Tools/Equipment",
+        amount: "125.00",
+        description: "Asphalt supplies",
+        isWageAdvance: false,
+        isSharedOverhead: false,
+        voidedAt: null,
+        businessId: 2,
+        businessLine: "asphalt_sealing",
+      }], // operating expenses
+      [], // mileage
+      [], // other income
+      [], // fixed/allocation subcontractor payments
+      [], // allocated overhead
+      [], // outstanding subcontractor rows
+      [{ n: 0 }], // closed jobs
+      [], // depreciation assets
+      [], // business-use rows
+      [], // owner-waterfall paid invoices
+      [], // owner capital
+      [{}], // settings
+    );
+
+    const response = await request(app)
+      .get(`/reports/profit-loss?year=${YEAR}&businessLine=asphalt_sealing`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.revenue).toEqual(expect.objectContaining({
+      grossReceipts: 1000,
+      grossRevenue: 1000,
+    }));
+    expect(response.body.totalOperatingExpenses).toBe(125);
+    expect(response.body.operatingExpenses).toContainEqual(expect.objectContaining({
+      key: "supplies",
+      amount: 125,
+    }));
+    expectBusinessSelectionHasNoActiveFilter();
+  });
+
+  it("retains inactive-division revenue and expenses in the year-end report", async () => {
+    pushInactiveDivisionSelection();
+    h.selectQueue.push(
+      [{
+        ...PAID_INVOICE,
+        amountPaid: "1000.00",
+        businessId: 2,
+        businessLine: "asphalt_sealing",
+      }], // paid invoices
+      [{
+        id: 902,
+        date: `${YEAR}-06-02`,
+        category: "Tools/Equipment",
+        amount: "125.00",
+        description: "Asphalt supplies",
+        isWageAdvance: false,
+        voidedAt: null,
+        businessId: 2,
+        businessLine: "asphalt_sealing",
+      }], // expenses
+      [], // mileage
+      [], // other income
+      [], // assets
+      [], // estimated tax payments
+      [], // subcontractors
+      [{}], // settings
+      [], // asset business-use rows
+      [], // fixed/allocation payments
+      [], // owner capital
+      [], // owner-waterfall paid invoices
+    );
+
+    const response = await request(app)
+      .get(`/reports/year-end?year=${YEAR}&businessLine=asphalt_sealing`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.summary.totalRevenue).toBe(1000);
+    expect(response.body.summary.totalExpenses).toBe(125);
+    expect(response.body.expensesBySchedC).toContainEqual(expect.objectContaining({
+      amount: 125,
+      count: 1,
+    }));
+    expectBusinessSelectionHasNoActiveFilter();
   });
 });
 
