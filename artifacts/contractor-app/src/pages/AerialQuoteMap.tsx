@@ -7,7 +7,6 @@ import {
   Polyline,
   TileLayer,
   useMap,
-  useMapEvents,
 } from "react-leaflet";
 import * as turf from "@turf/turf";
 import "leaflet/dist/leaflet.css";
@@ -81,11 +80,21 @@ function FlyTo({ center, zoom }: { center: LatLng | null; zoom: number }) {
 }
 
 function DrawClicks({ active, onPoint }: { active: boolean; onPoint: (point: LatLng) => void }) {
-  useMapEvents({
-    click(event) {
-      if (active) onPoint([event.latlng.lat, event.latlng.lng]);
-    },
-  });
+  const map = useMap();
+  const drawingRef = useRef({ active, onPoint });
+  drawingRef.current = { active, onPoint };
+
+  useEffect(() => {
+    const handleMapClick = (event: L.LeafletMouseEvent) => {
+      const drawing = drawingRef.current;
+      if (drawing.active) drawing.onPoint([event.latlng.lat, event.latlng.lng]);
+    };
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [map]);
+
   return null;
 }
 

@@ -48,6 +48,7 @@ try {
       const page = await browser.newPage();
       await page.setViewport({ width: viewport.width, height: viewport.height });
       const blockedWrites: string[] = [];
+      const writeBodies: Array<{ path: string; body: Record<string, unknown> }> = [];
       const pageErrors: string[] = [];
       page.on("pageerror", error => pageErrors.push(error.message));
       await page.setRequestInterception(true);
@@ -59,6 +60,38 @@ try {
           contentType: "application/json",
           body: JSON.stringify(data),
         });
+        if (method === "POST" && url.pathname.endsWith("/measurement-revisions")) {
+          const body = JSON.parse(request.postData() ?? "{}");
+          writeBodies.push({ path: url.pathname, body });
+          respond({
+            id: 334,
+            propertyId: scenario.propertyId,
+            revision: scenario.hasRevision ? 2 : 1,
+            source: body.source,
+            entries: body.entries,
+            notes: body.notes,
+            createdAt: "2026-01-02T00:00:00.000Z",
+          });
+          return;
+        }
+        if (method === "POST" && url.pathname === "/api/aerial-quote/calculate") {
+          const body = JSON.parse(request.postData() ?? "{}");
+          writeBodies.push({ path: url.pathname, body });
+          respond({
+            serviceKey: body.serviceKey,
+            profileVersion: body.profileVersion,
+            lineItems: [{ category: "Service", description: "Mowing", quantity: 1000, unit: "sq_ft", unitCost: 0.1, total: 100 }],
+            subtotal: 100,
+            calculationSnapshot: { test: true },
+          });
+          return;
+        }
+        if (method === "POST" && url.pathname === "/api/aerial-quote/estimates") {
+          const body = JSON.parse(request.postData() ?? "{}");
+          writeBodies.push({ path: url.pathname, body });
+          respond({ id: 900, title: body.title, businessId, propertyId: body.propertyId, total: 100 });
+          return;
+        }
         if (method === "GET" && url.pathname === "/api/aerial-quote/properties") {
           respond([{
             id: scenario.propertyId,
@@ -127,6 +160,15 @@ try {
       await page.goto(`${previewUrl}/aerial-quote?${params.toString()}`, { waitUntil: "domcontentloaded" });
       await page.waitForFunction(() => [...document.querySelectorAll("h1")].some(item => item.textContent?.trim() === "Aerial Quote"), { timeout: 30000 });
       await page.waitForSelector(".leaflet-container", { timeout: 30000 });
+      await page.waitForFunction(hasRevision => hasRevision
+        ? [...document.querySelectorAll("input[aria-label='Measurement name']")]
+          .some(input => (input as HTMLInputElement).value === "Front lawn")
+        : [...document.querySelectorAll("button")].some(button =>
+          button.textContent?.trim() === "Save new measurement revision" && !button.disabled),
+      { timeout: 30000 }, scenario.hasRevision);
+      await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button =>
+        button.textContent?.trim() === "Find property" && !button.disabled), { timeout: 30000 });
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const layout = await page.evaluate(() => {
         const headings = [...document.querySelectorAll("h2")];
@@ -166,48 +208,62 @@ try {
         drawButton?.click();
       });
       await page.waitForFunction(() => document.body.innerText.includes("0 points · need 3"), { timeout: 5000 });
-      const mapBounds = await page.$eval(".leaflet-container", element => {
-        const rect = element.getBoundingClientRect();
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+      await page.evaluate(() => {
+        const cancelButton = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Cancel");
+        cancelButton?.click();
       });
-      const mapHitTarget = await page.evaluate(({ x, y }) => {
-        const target = document.elementFromPoint(x, y);
-        return { tag: target?.tagName, className: (target as HTMLElement | null)?.className };
-      }, { x: mapBounds.x + mapBounds.width * 0.3, y: mapBounds.y + mapBounds.height * 0.3 });
-      for (const [x, y] of [[0.3, 0.3], [0.55, 0.38], [0.4, 0.6]]) {
-        await page.evaluate(({ x: clientX, y: clientY }) => {
-          document.elementFromPoint(clientX, clientY)?.dispatchEvent(new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            view: window,
-            clientX,
-            clientY,
-          }));
-        }, { x: mapBounds.x + mapBounds.width * x, y: mapBounds.y + mapBounds.height * y });
+      await page.waitForFunction(() => document.body.innerText.includes("Drawing cancelled."), { timeout: 5000 });
+      const drawingControls = await page.evaluate(() => ({
+        name: (document.querySelector("input[aria-label='Measurement name']") as HTMLInputElement | null)?.value ?? "",
+      }));
+      if (scenario.hasRevision && drawingControls.name !== "Front lawn") {
+        throw new Error(`Saved measurement was not loaded for ${scenario.label}: ${drawingControls.name}`);
       }
-      await page.waitForFunction(() => document.body.innerText.includes("3 points · need 3"), { timeout: 10000 })
-        .catch(async () => {
-          const visible = await page.evaluate(() => document.body.innerText.slice(-500));
-          throw new Error(`Map clicks did not add vertices; hit target ${JSON.stringify(mapHitTarget)}; visible ${visible}`);
+
+      if (!scenario.hasRevision) {
+        await page.locator("input[aria-label='Measurement name']").fill("Front lawn");
+        await page.locator("input[aria-label='Measurement category']").fill("Lawn");
+        await page.locator("input[aria-label='Quantity']").fill("1000");
+        await page.evaluate(() => {
+          const button = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Save new measurement revision");
+          button?.click();
         });
+        await page.waitForFunction(() => document.body.innerText.includes("Measurement revision 1 saved"), { timeout: 10000 });
+      }
+
+      const profileSelectorFound = await page.evaluate(() => {
+        const profileSelect = [...document.querySelectorAll("select")].find(select =>
+          [...select.options].some(option => option.textContent?.includes("Test mowing profile")));
+        if (!profileSelect) return false;
+        profileSelect.setAttribute("data-e2e-profile", "true");
+        return true;
+      });
+      if (!profileSelectorFound) throw new Error("Saved pricing profile is missing.");
+      await page.select("select[data-e2e-profile='true']", "55");
       await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button =>
-        button.textContent?.trim() === "Finish drawing" && !button.disabled), { timeout: 10000 });
+        button.textContent?.trim() === "Calculate estimate" && !button.disabled), { timeout: 10000 });
       await page.evaluate(() => {
-        const finishButton = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Finish drawing");
-        finishButton?.click();
+        const button = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Calculate estimate");
+        button?.click();
       });
-      await page.waitForFunction(() => document.body.innerText.includes("Area 1"));
+      await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button =>
+        button.textContent?.trim() === "Create draft estimate" && !button.disabled), { timeout: 10000 });
       await page.evaluate(() => {
-        const addButton = [...document.querySelectorAll("button")].find(button => button.textContent?.trim() === "Add map measurements");
-        addButton?.click();
+        const button = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Create draft estimate");
+        button?.click();
       });
-      await page.waitForFunction(() => [...document.querySelectorAll("input[aria-label='Measurement name']")]
-        .some(input => (input as HTMLInputElement).value === "Aerial area 1"));
+      await page.waitForFunction(() => document.body.innerText.includes("Draft estimate created"), { timeout: 10000 });
+      const estimateRequest = writeBodies.find(item => item.path === "/api/aerial-quote/estimates")?.body;
+      if (!estimateRequest || estimateRequest.propertyId !== scenario.propertyId
+        || estimateRequest.clientId !== scenario.clientId
+        || estimateRequest.prospectId !== (scenario.prospectId ?? undefined)) {
+        throw new Error(`Estimate association was incorrect for ${scenario.label}: ${JSON.stringify(estimateRequest)}`);
+      }
 
       if (blockedWrites.length || pageErrors.length) {
         throw new Error(`${scenario.label} ${viewport.name} had writes or browser errors: ${JSON.stringify({ blockedWrites, pageErrors })}`);
       }
-      results.push({ scenario: scenario.label, viewport: viewport.name, ...layout, polygonApplied: true, blockedWrites: 0, pageErrors: 0 });
+      results.push({ scenario: scenario.label, viewport: viewport.name, ...layout, drawingModeAndCancel: true, savedMeasurementLoaded: scenario.hasRevision, measurementRevisionSaved: !scenario.hasRevision, estimateAssociationsVerified: true, blockedWrites: 0, pageErrors: 0 });
       await page.close();
     }
   }
