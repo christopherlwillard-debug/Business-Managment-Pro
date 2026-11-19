@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   calculateAerialQuoteService,
   createAerialQuoteEstimate,
@@ -42,6 +43,7 @@ export function ClientPropertiesTab({
   clientId: number;
   onCreateJob?: (clientId: number, propertyId: number) => void;
 }) {
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
@@ -211,8 +213,15 @@ export function ClientPropertiesTab({
                   {isSelected ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
                 </button>
 
-                {onCreateJob && (
-                  <div className="flex justify-end border-t px-4 py-2">
+                <div className="flex flex-wrap justify-end gap-2 border-t px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setLocation(`/aerial-quote?propertyId=${property.id}`)}
+                    className="min-h-10 rounded-lg border border-primary/30 px-3 text-xs font-semibold text-primary hover:bg-primary/5"
+                  >
+                    Measure &amp; Quote
+                  </button>
+                  {onCreateJob && (
                     <button
                       type="button"
                       onClick={() => onCreateJob(clientId, property.id)}
@@ -220,8 +229,8 @@ export function ClientPropertiesTab({
                     >
                       Create job at this property
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {isSelected && (
                   <div className="border-t p-4 space-y-4">
@@ -236,7 +245,7 @@ export function ClientPropertiesTab({
                       <div className="rounded-lg border border-dashed p-5 text-center">
                         <Ruler className="mx-auto h-6 w-6 text-muted-foreground/50" />
                         <p className="mt-2 text-sm font-medium">No measurement revisions yet</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Measurements can be entered manually or on site in Aerial Quote. Map-based measurement remains unavailable until licensing is verified.</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Open this property in Aerial Quote to add its first measurement revision.</p>
                       </div>
                     ) : (
                       <div>

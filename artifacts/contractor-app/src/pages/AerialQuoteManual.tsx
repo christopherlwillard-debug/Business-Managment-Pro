@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useListProspects, useCreateProspect } from "@workspace/api-client-react";
 import { useBusiness } from "@/contexts/BusinessContext";
 import { useToast } from "@/hooks/use-toast";
+import AerialQuoteMap from "./AerialQuoteMap";
+import { aerialMapGeometryNote, getAerialMapGeometryJson } from "./aerialQuoteMapUtils";
+import {
+  latestMeasurementRevision,
+  parseAerialQuoteLaunch,
+  shouldShowNewPropertyForm,
+} from "./aerialQuoteLaunchUtils";
 import {
   calculateAerialQuoteService,
   createAerialQuoteEstimate,
@@ -56,6 +63,7 @@ const emptyEntry = (): Entry => ({
 });
 
 export default function AerialQuoteManual() {
+  const [launchParams] = useState(() => parseAerialQuoteLaunch(window.location.search));
   const { activeBusiness, businesses } = useBusiness();
   const prospectsQuery = useListProspects();
   const createProspectMutation = useCreateProspect();
@@ -63,24 +71,21 @@ export default function AerialQuoteManual() {
   const businessId = business?.id;
   const { toast } = useToast();
   const [properties, setProperties] = useState<any[]>([]);
+  const revisionsRequestId = useRef(0);
   const [estimates, setEstimates] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [revisions, setRevisions] = useState<any[]>([]);
+  const [revisionsForPropertyId, setRevisionsForPropertyId] = useState<number | null>(null);
+  const [revisionSelectionInitializedFor, setRevisionSelectionInitializedFor] = useState<number | null>(null);
   const [accessGrants, setAccessGrants] = useState<any[]>([]);
   const [shareBusinessId, setShareBusinessId] = useState("");
   const [sharePermission, setSharePermission] = useState<"view" | "measure" | "estimate" | "manage">("estimate");
-  const [propertyId, setPropertyId] = useState<number | null>(() => {
-    const value = Number(new URLSearchParams(window.location.search).get("propertyId"));
-    return Number.isSafeInteger(value) && value > 0 ? value : null;
-  });
-  const [prospectId, setProspectId] = useState<number | null>(() => {
-    const value = Number(new URLSearchParams(window.location.search).get("prospectId"));
-    return Number.isSafeInteger(value) && value > 0 ? value : null;
-  });
+  const [propertyId, setPropertyId] = useState<number | null>(launchParams.propertyId);
+  const [prospectId, setProspectId] = useState<number | null>(launchParams.prospectId);
   const [newProspect, setNewProspect] = useState(false);
   const [prospectContact, setProspectContact] = useState(() => ({
-    name: new URLSearchParams(window.location.search).get("name") ?? "",
+    name: launchParams.name,
     phone: "",
     email: "",
   }));
@@ -92,19 +97,18 @@ export default function AerialQuoteManual() {
   const [error, setError] = useState("");
 
   const [propertyForm, setPropertyForm] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
     return {
-      label: params.get("address") ?? "",
-      street: params.get("address") ?? "",
-      city: params.get("city") ?? "",
-      state: params.get("state") ?? "",
-      zip: params.get("zip") ?? "",
+      label: launchParams.address,
+      street: launchParams.address,
+      city: launchParams.city,
+      state: launchParams.state,
+      zip: launchParams.zip,
       clientId: "",
       notes: "",
     };
   });
   const [isEditingProperty, setIsEditingProperty] = useState(false);
-  const [showPropertyForm, setShowPropertyForm] = useState(true);
+  const [showPropertyForm, setShowPropertyForm] = useState(() => shouldShowNewPropertyForm(launchParams));
   const [measurementSource, setMeasurementSource] = useState<"manual" | "on_site">("manual");
   const [entries, setEntries] = useState<Entry[]>([emptyEntry()]);
   const [measurementNotes, setMeasurementNotes] = useState("");
@@ -133,6 +137,8 @@ export default function AerialQuoteManual() {
     || (prospectId != null && estimate.prospectId === prospectId),
   );
   const selectedProfile = profiles.find(item => item.id === profileId);
+  const mapAddress = showPropertyForm ? propertyForm : selectedProperty ?? {};
+  const mapGeometryJson = useMemo(() => getAerialMapGeometryJson(entries), [entries]);
   const activeServiceProfiles = useMemo(
     () => profiles.filter(item => item.serviceKey === serviceKey),
     [profiles, serviceKey],
@@ -141,6 +147,49 @@ export default function AerialQuoteManual() {
 
   function updateEntry(index: number, patch: Partial<Entry>) {
     setEntries(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
+    setMeasurementDirty(true);
+    setCalculation(null);
+  }
+
+  function applyMapMeasurements(result: {
+    polygons: Array<{ points: [number, number][]; squareFeet: number; perimeterFeet: number }>;
+    lines: Array<{ points: [number, number][]; feet: number }>;
+  }) {
+    const components = (selectedProfile?.rules as { components?: DraftComponent[] } | undefined)?.components ?? [];
+    const areaComponent = components.find(component => component.kind === "area");
+    const lengthComponent = components.find(component => component.kind === "length");
+    const currentAreaCategory = entries.find(entry => entry.kind === "area" && entry.category.trim())?.category;
+    const currentLengthCategory = entries.find(entry => entry.kind === "length" && entry.category.trim())?.category;
+    const areaUnit = areaComponent?.unit ?? "sq_ft";
+    const lengthUnit = lengthComponent?.unit ?? "ft";
+    const areaDivisor = areaUnit === "acre" ? 43560 : areaUnit === "sq_yd" ? 9 : 1;
+    const lengthDivisor = lengthUnit === "yd" ? 3 : lengthUnit === "mile" ? 5280 : 1;
+    const nextEntries: Entry[] = [
+      ...result.polygons.map((area, index) => ({
+        label: `Aerial area ${index + 1}`,
+        category: areaComponent?.measurementCategory ?? currentAreaCategory ?? "",
+        kind: "area" as const,
+        quantity: Number((area.squareFeet / areaDivisor).toFixed(2)),
+        unit: areaUnit as Entry["unit"],
+        notes: aerialMapGeometryNote("area", area.points),
+      })),
+      ...result.lines.map((line, index) => ({
+        label: `Aerial length ${index + 1}`,
+        category: lengthComponent?.measurementCategory ?? currentLengthCategory ?? "",
+        kind: "length" as const,
+        quantity: Number((line.feet / lengthDivisor).toFixed(2)),
+        unit: lengthUnit as Entry["unit"],
+        notes: aerialMapGeometryNote("length", line.points),
+      })),
+    ];
+    setEntries(current => [
+      ...current.filter(entry => !entry.notes?.startsWith("aerial-map-geometry:")),
+      ...nextEntries,
+    ]);
+    setMeasurementSource("manual");
+    setMeasurementNotes(current => current.includes("Aerial map estimate")
+      ? current
+      : [current, "Aerial map estimate; verify measurements on site."].filter(Boolean).join("\n"));
     setMeasurementDirty(true);
     setCalculation(null);
   }
@@ -157,11 +206,27 @@ export default function AerialQuoteManual() {
     setProfiles(profileRows);
     setClients(clientRows);
     setEstimates(estimateRows);
+    if (propertyId != null) {
+      const requestedProperty = propertyRows.find(item => item.id === propertyId);
+      if (requestedProperty) {
+        setShowPropertyForm(false);
+        if (requestedProperty.prospectId !== prospectId) {
+          setProspectId(requestedProperty.prospectId ?? null);
+        }
+      } else {
+        setPropertyId(null);
+        setShowPropertyForm(true);
+        setError("That saved property is unavailable in the selected business. Choose another property or add one.");
+      }
+    }
   }
 
   async function refreshRevisions(id: number) {
+    const requestId = ++revisionsRequestId.current;
     const rows = await listPropertyMeasurementRevisions(id, { businessId: businessId! });
+    if (requestId !== revisionsRequestId.current) return;
     setRevisions(rows);
+    setRevisionsForPropertyId(id);
   }
 
   async function refreshAccess(id: number) {
@@ -175,15 +240,38 @@ export default function AerialQuoteManual() {
 
   useEffect(() => {
     if (!propertyId) {
+      revisionsRequestId.current += 1;
       setRevisions([]);
+      setRevisionsForPropertyId(null);
+      setRevisionSelectionInitializedFor(null);
       setAccessGrants([]);
       setRevisionId(null);
       return;
     }
+    setRevisions([]);
+    setRevisionsForPropertyId(null);
+    setRevisionSelectionInitializedFor(null);
+    setRevisionId(null);
+    setEntries([emptyEntry()]);
+    setMeasurementNotes("");
+    setMeasurementDirty(true);
+    setCalculation(null);
     void refreshRevisions(propertyId).catch(err => setError(err instanceof Error ? err.message : "Could not load measurements."));
     void refreshAccess(propertyId).catch(() => setAccessGrants([]));
   }, [propertyId]);
 
+  useEffect(() => {
+    if (!propertyId || revisionsForPropertyId !== propertyId || revisionSelectionInitializedFor === propertyId) return;
+    const latest = latestMeasurementRevision(revisions);
+    if (latest) {
+      setRevisionId(latest.id);
+      setEntries(latest.entries);
+      setMeasurementSource(latest.source);
+      setMeasurementNotes(latest.notes ?? "");
+      setMeasurementDirty(false);
+    }
+    setRevisionSelectionInitializedFor(propertyId);
+  }, [propertyId, revisions, revisionsForPropertyId, revisionSelectionInitializedFor]);
   useEffect(() => {
     setProfileId(null);
     setProfileComponents([]);
@@ -401,13 +489,14 @@ export default function AerialQuoteManual() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><p className="text-sm font-medium text-primary">Manual-first estimating</p><h1 className="text-3xl font-bold tracking-tight">Aerial Quote</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Save property measurements and build service estimates. Measurements are manual or on-site; map-based measurement is unavailable until its access and licensing gates are cleared.</p></div>
+        <div><p className="text-sm font-medium text-primary">Property-based estimating</p><h1 className="text-3xl font-bold tracking-tight">Aerial Quote</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Find a property, measure areas and paths on aerial imagery, then save a measurement revision and build a quote.</p></div>
         <span className="rounded-full border px-3 py-1 text-sm">{business.name}</span>
       </header>
 
       {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
 
-      <section className="grid gap-5 lg:grid-cols-2">
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.9fr)]">
+      <section className="grid gap-5 xl:col-start-2 xl:row-start-1">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
           <h2 className="text-lg font-semibold">1. Property</h2>
           <label className="mt-4 block text-sm font-medium">Quote for prospect</label>
@@ -467,6 +556,7 @@ export default function AerialQuoteManual() {
               <p className="font-semibold">{selectedProperty.label}</p>
               <p className="mt-1 text-muted-foreground">{[selectedProperty.street, selectedProperty.city, selectedProperty.state, selectedProperty.zip].filter(Boolean).join(", ") || "No address entered"}</p>
               {selectedProperty.prospectId && <p className="mt-1 text-muted-foreground">Prospect: {prospectRows.find(item => item.id === selectedProperty.prospectId)?.contactName ?? "Linked prospect"}</p>}
+              {selectedProperty.clientId && <p className="mt-1 text-muted-foreground">Client: {clients.find(item => item.id === selectedProperty.clientId)?.name ?? "Linked client"}</p>}
               <button type="button" className="mt-2 min-h-9 rounded-md border px-3 text-sm" onClick={() => { setShowPropertyForm(true); setPropertyForm({ label: selectedProperty.label ?? "", street: selectedProperty.street ?? "", city: selectedProperty.city ?? "", state: selectedProperty.state ?? "", zip: selectedProperty.zip ?? "", clientId: selectedProperty.clientId ? String(selectedProperty.clientId) : "", notes: selectedProperty.notes ?? "" }); setIsEditingProperty(true); }}>Edit selected property</button>
               <button type="button" className="ml-2 mt-2 min-h-9 rounded-md border px-3 text-sm" onClick={() => { setPropertyId(null); setRevisionId(null); setCalculation(null); setShowPropertyForm(true); setIsEditingProperty(false); setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" }); }}>Add another property</button>
             </div>
@@ -500,9 +590,20 @@ export default function AerialQuoteManual() {
           </div>}
         </div>
 
+      </section>
+
+      <AerialQuoteMap
+        className="xl:col-start-1 xl:row-start-1 xl:row-span-4"
+        address={mapAddress}
+        autoLocateKey={propertyId ? String(propertyId) : prospectId ? `prospect-${prospectId}` : ""}
+        savedGeometryJson={mapGeometryJson}
+        onApply={applyMapMeasurements}
+      />
+
+      <section className="grid gap-5 xl:col-start-2 xl:row-start-2">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-          <h2 className="text-lg font-semibold">2. Manual measurements</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Saved revisions are permanent. Save edits as a new revision before calculating.</p>
+          <h2 className="text-lg font-semibold">3. Measurements</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Map measurements are added here. Adjust names, categories, or quantities as needed. Saved revisions are permanent; save edits as a new revision before calculating.</p>
           <label className="mt-4 block text-sm font-medium">Measurement source</label>
           <select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementSource} onChange={e => { setMeasurementSource(e.target.value as typeof measurementSource); setMeasurementDirty(true); setCalculation(null); }}><option value="manual">Manual</option><option value="on_site">On-site</option></select>
           {entries.map((entry,index)=><div key={index} className="mt-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
@@ -513,14 +614,14 @@ export default function AerialQuoteManual() {
           </div>)}
           <button type="button" onClick={()=>{setEntries(current=>[...current,emptyEntry()]);setMeasurementDirty(true);setCalculation(null);}} className="mt-3 min-h-11 rounded-md border px-4 font-medium">Add measurement</button>
           <label className="mt-3 block text-sm font-medium">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border bg-background p-3" value={measurementNotes} onChange={e=>{setMeasurementNotes(e.target.value);setMeasurementDirty(true);setCalculation(null);}}/></label>
-          <label className="mt-3 block text-sm font-medium">Saved revision<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={revisionId ?? ""} onChange={e=>{const id=e.target.value?Number(e.target.value):null;setRevisionId(id);const revision=revisions.find(item=>item.id===id);if(revision){setEntries(revision.entries);setMeasurementSource(revision.source);setMeasurementNotes(revision.notes??"");setMeasurementDirty(false);}else{setMeasurementDirty(true);}setCalculation(null);}}><option value="">Choose a revision</option>{revisions.map(revision=><option key={revision.id} value={revision.id}>Revision {revision.revision} · {revision.source} · {new Date(revision.createdAt).toLocaleDateString()}</option>)}</select></label>
+          <label className="mt-3 block text-sm font-medium">Saved revision<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={revisionId ?? ""} onChange={e=>{const id=e.target.value?Number(e.target.value):null;setRevisionSelectionInitializedFor(propertyId);setRevisionId(id);const revision=revisions.find(item=>item.id===id);if(revision){setEntries(revision.entries);setMeasurementSource(revision.source);setMeasurementNotes(revision.notes??"");setMeasurementDirty(false);}else{setEntries([emptyEntry()]);setMeasurementNotes("");setMeasurementDirty(true);}setCalculation(null);}}><option value="">Choose a revision</option>{revisions.map(revision=><option key={revision.id} value={revision.id}>Revision {revision.revision} · {revision.source} · {new Date(revision.createdAt).toLocaleDateString()}</option>)}</select></label>
           {measurementDirty && <p role="status" className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Unsaved measurement changes. Save a new revision before calculating.</p>}
-          <button type="button" disabled={busy || !propertyId || !measurementDirty} onClick={()=>void saveMeasurements()} className="mt-4 min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">Save new revision</button>
+          <button type="button" disabled={busy || !propertyId || revisionsForPropertyId !== propertyId || !measurementDirty} onClick={()=>void saveMeasurements()} className="mt-4 min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">Save new revision</button>
         </div>
       </section>
 
-      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-        <h2 className="text-lg font-semibold">3. Services & pricing</h2>
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 xl:col-start-2 xl:row-start-3">
+        <h2 className="text-lg font-semibold">4. Services & pricing</h2>
         <p className="mt-1 text-sm text-muted-foreground">Profiles are business-specific and versioned. Rates are not prefilled; an owner must enter approved values.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">Service<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={serviceKey} onChange={e=>{const key=e.target.value as typeof serviceKey;setServiceKey(key);setProfileName(services.find(s=>s[0]===key)?.[1]??"Service");}}>{services.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
@@ -548,8 +649,8 @@ export default function AerialQuoteManual() {
         </details>
       </section>
 
-      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-        <h2 className="text-lg font-semibold">4. Calculate and create estimate</h2>
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 xl:col-start-2 xl:row-start-4">
+        <h2 className="text-lg font-semibold">5. Calculate and create estimate</h2>
         {propertyEstimates.length > 0 && <div className="mt-3 rounded-lg border p-3">
           <p className="text-sm font-semibold">Quotation history for this property</p>
           <div className="mt-2 divide-y">{propertyEstimates.map(estimate => <div key={estimate.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
@@ -561,6 +662,7 @@ export default function AerialQuoteManual() {
         <div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={busy||!selectedProperty||!revisionId||!selectedProfile||measurementDirty} onClick={()=>void calculate()} className="min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">{busy?"Working…":"Calculate estimate"}</button>{calculation&&!measurementDirty&&<button type="button" disabled={busy||!estimateTitle.trim()} onClick={()=>void createEstimate()} className="min-h-11 rounded-md border px-4 font-medium disabled:opacity-50">Create draft estimate</button>}</div>
         {calculation&&!measurementDirty&&<div className="mt-5 overflow-hidden rounded-lg border"><div className="divide-y">{calculation.lineItems.map((line:any,index:number)=><div key={index} className="flex flex-wrap justify-between gap-2 p-3 text-sm"><span>{line.description} <span className="text-muted-foreground">({line.quantity} {line.unit})</span></span><strong>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(line.total)}</strong></div>)}</div><div className="flex justify-between bg-muted/40 p-3 font-semibold"><span>Pre-tax total</span><span>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(calculation.subtotal)}</span></div></div>}
       </section>
+      </div>
     </main>
   );
 }

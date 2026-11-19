@@ -85,3 +85,4 @@
 - [Aerial Quote nationwide coverage](aerial-quote-nationwide-coverage.md) — territory may expand anywhere in the U.S.; never restrict property search or measurement to fixed ZIP, county, or state lists
 - [Client profile-centered workflow](client-profile-centered-workflow.md) — keep customer work in the existing Client Profile, composing existing systems instead of adding a standalone Property Library or estimator
 - [Browser validation contention](browser-validation-contention.md) — task completion runs browser E2Es concurrently; navigation timeouts can be harness contention when each check passes alone
+- [Aerial Quote map direction](aerial-quote-map-direction.md) — keep the map-first workflow; focus changes on imagery detail and true native zoom.
