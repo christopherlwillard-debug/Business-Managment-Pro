@@ -969,3 +969,12 @@ Created the four-document architecture governance system:
 - Added a confirmation before deactivation and a reactivation path. The additive
   schema migration is included for normal development/publish schema sync; no
   production data was changed.
+
+### Block new financial records in inactive divisions
+
+- Added server-side active-division checks to new mileage entries and imports,
+  bank-filed income and expenses, estimates, invoices, expense imports,
+  recurring-expense setup, other income, owner withdrawals, tax payments, and
+  asset creation.
+- Kept existing-record editing and historical reads available. No ledger,
+  calculation, report, or database schema was changed.

@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { otherIncomeTable } from "@workspace/db/schema";
 import { eq, and, gte, lte, desc, isNull, or, inArray } from "drizzle-orm";
 import { jobsTable } from "@workspace/db/schema";
-import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, sameLegalBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, sameLegalBusiness, isBusinessActive } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -131,6 +131,9 @@ router.post("/", async (req, res) => {
       data.businessLine = job.businessLine ?? owner.slug;
     }
     data.businessId = data.businessId ?? String(owner.id);
+    if (!(await isBusinessActive(Number(data.businessId)))) {
+      return res.status(400).json({ error: "Income cannot be recorded in an inactive business" });
+    }
     data.businessLine = owner.slug;
     const [row] = await db.insert(otherIncomeTable).values(data).returning();
     res.status(201).json(row);

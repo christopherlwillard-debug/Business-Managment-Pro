@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { businessesTable, jobsTable, ownerCapitalEntriesTable } from "@workspace/db/schema";
 import { eq, desc, and, isNull } from "drizzle-orm";
 import { ownerGuard } from "./guards.js";
-import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness, isBusinessActive } from "../lib/business-scope.js";
 
 const router = Router();
 router.use(ownerGuard());
@@ -114,6 +114,9 @@ router.post("/", async (req, res) => {
         return res.status(404).json({ error: "Job not found" });
       }
       parsedBusinessId = job.businessId;
+    }
+    if (!(await isBusinessActive(parsedBusinessId))) {
+      return res.status(400).json({ error: "Owner withdrawals cannot be created in an inactive business" });
     }
 
      // New user-facing transactions are withdrawals only. Historical positive

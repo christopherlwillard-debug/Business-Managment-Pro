@@ -5,7 +5,7 @@ import { eq, and, gte, lte, isNull, inArray, getTableColumns } from "drizzle-orm
 import { getRequestUserId } from "./guards";
 import { calculateMileageDeduction, getIrsRateForDate, summarizeMileageRecords } from "../lib/irs-rates.js";
 import { partitionMileageImportTrips, type MileageImportTrip } from "../lib/mileage-import-dedup.js";
-import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, mutationBusinessPredicate, belongsToBusiness, isBusinessActive } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -201,6 +201,9 @@ router.post("/", async (req, res) => {
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const owner = ownership.business;
     const bizId = owner.id;
+    if (!(await isBusinessActive(bizId))) {
+      return res.status(400).json({ error: "Mileage cannot be created in an inactive business" });
+    }
 
     if (jobId) {
       const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
@@ -491,6 +494,9 @@ router.post("/bulk", async (req, res) => {
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const bizId = ownership.business.id;
+    if (!(await isBusinessActive(bizId))) {
+      return res.status(400).json({ error: "Mileage imports cannot be created in an inactive business" });
+    }
     const userId = getRequestUserId(req) ?? null;
 
     let fileAlreadyImported = false;

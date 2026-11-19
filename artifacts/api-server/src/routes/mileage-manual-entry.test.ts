@@ -151,7 +151,18 @@ afterEach(() => {
 
 describe("POST /mileage — rate derived from trip date", () => {
   beforeEach(() => {
-    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }], [{ isActive: true }]);
+  });
+
+  it("rejects a new mileage entry for an inactive division before ledger writes", async () => {
+    h.selectQueue.length = 0;
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }], [{ isActive: false }]);
+    const res = await request(app).post("/mileage").send({
+      date: "2026-11-18", miles: 12, classification: "business", businessId: 1,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/inactive business/i);
+    expect(h.committedWrites).toHaveLength(0);
   });
 
   it("H1 2026 trip (Jun 30) uses $0.725/mile and correct deductionAmount", async () => {
@@ -237,7 +248,7 @@ describe("POST /mileage — rate derived from trip date", () => {
       .post("/mileage")
       .send({ date: "2026-06-30", miles: milesValue, classification: "business", businessId: 1 });
 
-    h.selectQueue.push([{ id: 1, slug: "general_contracting" }]);
+    h.selectQueue.push([{ id: 1, slug: "general_contracting" }], [{ isActive: true }]);
     const h2Res = await request(app)
       .post("/mileage")
       .send({ date: "2026-07-01", miles: milesValue, classification: "business", businessId: 1 });

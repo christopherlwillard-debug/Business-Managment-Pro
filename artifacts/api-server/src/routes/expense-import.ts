@@ -2,7 +2,7 @@ import { Router } from "express";
 import { jobsTable, expensesTable } from "@workspace/db/schema";
 import { db } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
-import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, belongsToBusiness, isBusinessActive } from "../lib/business-scope.js";
 import multer from "multer";
 import ExcelJS from "exceljs";
 import { parseReceiptFile, CATEGORIES, guessCategory, normalizeAmount } from "./receipt-parser";
@@ -140,6 +140,9 @@ router.post("/bulk", async (req, res) => {
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const owner = ownership.business;
+    if (!(await isBusinessActive(owner.id))) {
+      return res.status(400).json({ error: "Expenses cannot be imported into an inactive business" });
+    }
     const today = new Date().toISOString().slice(0, 10);
     const values = [];
     for (const r of rows) {

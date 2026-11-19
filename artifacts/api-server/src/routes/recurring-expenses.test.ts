@@ -47,6 +47,7 @@ vi.mock("drizzle-orm", () => ({
   getTableColumns: () => ({}),
 }));
 vi.mock("../lib/business-scope.js", () => ({
+  isBusinessActive: async () => true,
   resolveMutationBusiness: h.resolveMutationBusiness,
   belongsToBusiness: h.belongsToBusiness,
 }));

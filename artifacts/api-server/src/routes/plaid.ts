@@ -14,7 +14,7 @@ import { getSuggestions, attemptAutoMatch } from "../lib/matchingEngine.js";
 import { getPlaidClient, isPlaidConfigured, extractPlaidError } from "../lib/plaid.js";
 import { CountryCode, Products } from "plaid";
 import { wrapAsync, getOwnerId, getRequestUserId } from "./guards.js";
-import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, belongsToBusiness, isBusinessActive } from "../lib/business-scope.js";
 
 // Extract a payment reference code from a description (e.g. "JPM99clqfe2r" from Zelle).
 function extractRefCode(desc: string): string | null {
@@ -577,6 +577,9 @@ router.post("/transactions/:txnId/file-as-expense", wrapAsync(async (req, res) =
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const owner = ownership.business;
+  if (!(await isBusinessActive(owner.id))) {
+    return res.status(400).json({ error: "Bank transactions cannot be filed to an inactive business" });
+  }
 
   const VALID_CATEGORIES = [
     "Materials", "Advertising", "Fuel/Travel", "Travel/Lodging", "Meals", "Parking/Tolls",
@@ -681,6 +684,9 @@ router.post("/transactions/:txnId/file-as-income", wrapAsync(async (req, res) =>
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
   const owner = ownership.business;
+  if (!(await isBusinessActive(owner.id))) {
+    return res.status(400).json({ error: "Bank transactions cannot be filed to an inactive business" });
+  }
 
   const [txn] = await db
     .select()

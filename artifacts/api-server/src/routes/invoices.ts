@@ -26,7 +26,7 @@ import {
   syncMaterialsToInvoice,
   syncMaterialsToJobInvoice,
 } from "./material-lists.js";
-import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, belongsToBusinessReadScope, businessReadPredicate, sameLegalBusiness } from "../lib/business-scope.js";
+import { requestedBusiness, requestedBusinessReadScope, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, canonicalRecordBusiness, generalContractingBusiness, belongsToBusiness, belongsToBusinessReadScope, businessReadPredicate, sameLegalBusiness, isBusinessActive } from "../lib/business-scope.js";
 import { calculateInvoiceTotals } from "@workspace/api-zod";
 import {
   createPendingInvoiceCommunication,
@@ -371,6 +371,9 @@ router.post("/", async (req, res) => {
         return res.status(409).json({ error: "Invoice business conflicts with the linked job" });
       }
       owner = jobOwner;
+    }
+    if (!(await isBusinessActive(owner.id))) {
+      return res.status(400).json({ error: "Invoices cannot be created in an inactive business" });
     }
 
     if (jobId) await initializeLegacyMaterialAssignments(jobId, req.user?.id);

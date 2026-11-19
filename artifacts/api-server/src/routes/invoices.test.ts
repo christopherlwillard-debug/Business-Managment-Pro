@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   inserts: [] as any[],
   mutationResolution: undefined as any,
+  inactiveBusinessId: null as number | null,
   updateReturningOverride: undefined as any[] | undefined,
   canonicalOwner: undefined as any,
   // Controls whether isSquareConfigured() returns true in a given test.
@@ -143,6 +144,7 @@ vi.mock("../lib/business-scope.js", () => ({
   sameLegalBusiness: async () => false,
   invalidBusinessScope: () => false,
   resolveMutationBusiness: async () => h.mutationResolution,
+  isBusinessActive: async (businessId: number) => businessId !== h.inactiveBusinessId,
   canonicalRecordBusiness: async () => h.canonicalOwner,
   generalContractingBusiness: async () => ({ id: 1, slug: "general_contracting" }),
   belongsToBusiness: () => true,
@@ -238,6 +240,7 @@ beforeEach(() => {
   };
   h.updateReturningOverride = undefined;
   h.canonicalOwner = { state: "blank" };
+  h.inactiveBusinessId = null;
   h.squareConfigured = false;
   h.gmailProxy.mockReset();
   h.sendContext = undefined;
@@ -330,6 +333,17 @@ describe("POST / — line item validation", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("draft");
+  });
+
+  it("rejects a new invoice for an inactive division before inserting", async () => {
+    h.inactiveBusinessId = 1;
+    const res = await request(app).post("/").send({
+      issueDate: "2026-07-10",
+      lineItems: [{ description: "Sealing", quantity: 1, unitPrice: 500 }],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/inactive business/i);
+    expect(h.inserts).toHaveLength(0);
   });
 
   it("creates a draft invoice when lineItems is omitted (defaults to empty)", async () => {

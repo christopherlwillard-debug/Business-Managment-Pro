@@ -5,7 +5,7 @@ import { eq, and, gte, lte, sum, or, isNull } from "drizzle-orm";
 import { wrapAsync } from "./guards";
 import { calculateMileageDeduction } from "../lib/irs-rates.js";
 import { computeTaxEstimate, getTaxAssumptions } from "../lib/tax-estimate.js";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, mutationBusinessPredicate, type BusinessScope } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, mutationBusinessPredicate, isBusinessActive, type BusinessScope } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -304,6 +304,10 @@ router.post("/", wrapAsync(async (req, res) => {
   }
   const ownership = await resolveMutationBusiness(req);
   if (!ownership.ok) { res.status(400).json({ error: ownership.error }); return; }
+  if (!(await isBusinessActive(ownership.business.id))) {
+    res.status(400).json({ error: "Tax payments cannot be created in an inactive business" });
+    return;
+  }
   const [row] = await db.insert(estimatedTaxPaymentsTable).values({
     businessId: ownership.business.id,
     year: parsedYear,

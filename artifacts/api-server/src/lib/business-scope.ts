@@ -72,6 +72,17 @@ export async function resolveMutationBusiness(req: Request): Promise<MutationBus
   return business ? { ok: true, business, explicit: selector.explicit } : { ok: false, error: "Unknown business" };
 }
 
+/** Check whether a resolved business may receive a new record. Historical
+ * records remain editable through their existing mutation routes. */
+export async function isBusinessActive(businessId: number): Promise<boolean> {
+  const [business] = await db
+    .select({ isActive: businessesTable.isActive })
+    .from(businessesTable)
+    .where(eq(businessesTable.id, businessId))
+    .limit(1);
+  return business?.isActive === true;
+}
+
 /** The permanent parent/default owner, identified only by its stable slug. */
 export async function generalContractingBusiness(): Promise<BusinessScope | null> {
   const [business] = await db.select({ id: businessesTable.id, slug: businessesTable.slug })

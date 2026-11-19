@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   lockCount: 0,
   missingSelects: 0,
+  businessActive: true,
 }));
 
 vi.mock("@workspace/db", () => {
@@ -108,6 +109,7 @@ vi.mock("../lib/auth", () => ({
 }));
 
 vi.mock("../lib/business-scope.js", () => ({
+  isBusinessActive: vi.fn(async () => h.businessActive),
   resolveMutationBusiness: vi.fn(async () => ({
     ok: true,
     business: { id: 8, slug: "general_contracting" },
@@ -163,6 +165,7 @@ beforeEach(() => {
   h.updates.length = 0;
   h.lockCount = 0;
   h.missingSelects = 0;
+  h.businessActive = true;
 });
 
 afterEach(() => {
@@ -199,6 +202,19 @@ describe("POST /transactions/:txnId/file-as-expense", () => {
       .send({ ...validBody(), category: "Not a real category" });
 
     expect(response.status).toBe(400);
+    expect(h.inserts).toHaveLength(0);
+    expect(h.updates).toHaveLength(0);
+    expect(h.lockCount).toBe(0);
+  });
+
+  it("rejects bank filing for an inactive division before reading or writing the bank row", async () => {
+    h.businessActive = false;
+    const response = await request(app)
+      .post("/transactions/41/file-as-expense")
+      .set("Cookie", "sid=owner-session")
+      .send(validBody());
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/inactive business/i);
     expect(h.inserts).toHaveLength(0);
     expect(h.updates).toHaveLength(0);
     expect(h.lockCount).toBe(0);

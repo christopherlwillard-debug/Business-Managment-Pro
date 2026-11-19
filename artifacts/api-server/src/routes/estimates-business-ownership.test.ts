@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   updates: [] as any[],
   whereClauses: [] as unknown[],
   snapshotHash: "test-hash",
+  inactiveBusinessId: null as number | null,
 }));
 
 const generalContracting = { id: 7, slug: "general_contracting" };
@@ -91,6 +92,7 @@ vi.mock("../lib/business-scope.js", () => ({
       business: byId ?? bySlug ?? generalContracting,
     };
   },
+  isBusinessActive: async (businessId: number) => businessId !== h.inactiveBusinessId,
   canonicalRecordBusiness: async (record: any) => {
     const byId = record.businessId == null
       ? undefined
@@ -139,6 +141,7 @@ beforeEach(() => {
   h.updates.length = 0;
   h.whereClauses.length = 0;
   h.snapshotHash = "test-hash";
+  h.inactiveBusinessId = null;
 });
 
 afterEach(() => {
@@ -170,6 +173,18 @@ describe("estimate canonical business ownership", () => {
       businessLine: asphalt.slug,
     });
     expect(response.body.businessId).toBe(asphalt.id);
+  });
+
+  it("rejects a new quote for an inactive division before inserting", async () => {
+    h.inactiveBusinessId = asphalt.id;
+    const response = await request(app).post("/estimates").send({
+      title: "Inactive division quote",
+      businessLine: asphalt.slug,
+      lineItems: [],
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/inactive business/i);
+    expect(h.inserts).toHaveLength(0);
   });
 
   it("inherits the linked job owner instead of defaulting a job-card estimate to General Contracting", async () => {

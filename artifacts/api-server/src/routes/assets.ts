@@ -6,7 +6,7 @@ import multer from "multer";
 import sharp from "sharp";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { sendEmail } from "../lib/sendEmail";
-import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate } from "../lib/business-scope.js";
+import { requestedBusiness, hasRequestedBusiness, invalidBusinessScope, resolveMutationBusiness, belongsToBusiness, mutationBusinessPredicate, isBusinessActive } from "../lib/business-scope.js";
 
 const router = Router();
 const objectStorage = new ObjectStorageService();
@@ -92,6 +92,9 @@ router.post("/", async (req, res) => {
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const scope = ownership.business;
+    if (!(await isBusinessActive(scope.id))) {
+      return res.status(400).json({ error: "Assets cannot be created in an inactive business" });
+    }
 
     if (!name || !purchaseDate || purchasePrice == null) {
       return res.status(400).json({ error: "name, purchaseDate, and purchasePrice are required" });

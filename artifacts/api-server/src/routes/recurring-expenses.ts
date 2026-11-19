@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { recurringExpensesTable, expensesTable, jobsTable } from "@workspace/db/schema";
 import { eq, and, getTableColumns } from "drizzle-orm";
-import { resolveMutationBusiness, belongsToBusiness } from "../lib/business-scope.js";
+import { resolveMutationBusiness, belongsToBusiness, isBusinessActive } from "../lib/business-scope.js";
 
 const router = Router();
 
@@ -159,6 +159,9 @@ router.post("/", async (req, res) => {
     const ownership = await resolveMutationBusiness(req);
     if (!ownership.ok) return res.status(400).json({ error: ownership.error });
     const owner = ownership.business;
+    if (!(await isBusinessActive(owner.id))) {
+      return res.status(400).json({ error: "Recurring expenses cannot be created in an inactive business" });
+    }
     if (parsedJobId != null) {
       const [job] = await db.select({ businessId: jobsTable.businessId, businessLine: jobsTable.businessLine })
         .from(jobsTable).where(eq(jobsTable.id, parsedJobId)).limit(1);

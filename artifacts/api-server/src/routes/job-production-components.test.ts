@@ -42,6 +42,9 @@ vi.mock("@workspace/db", async () => {
       const job = currentJob();
       return job ? [{ ...job, subcontractorId: null, subcontractorName: null }] : [];
     }
+    if (name === "businesses") {
+      return [{ id: 1, isActive: true }];
+    }
     if (name === "production_service_types") {
       const job = currentJob();
       const selected = new Set(

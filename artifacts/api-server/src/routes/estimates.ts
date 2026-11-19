@@ -20,6 +20,7 @@ import {
   sameLegalBusiness,
   generalContractingBusiness,
   resolveMutationBusiness,
+  isBusinessActive,
   type BusinessScope,
 } from "../lib/business-scope.js";
 import { calculateEstimateTotals, estimateLineAmount, expandEstimateLinesForInvoice } from "../lib/estimate-totals.js";
@@ -174,6 +175,9 @@ router.post("/", async (req, res) => {
         return res.status(409).json({ error: "Estimate business conflicts with the linked job" });
       }
       owner = linkedOwner.business;
+    }
+    if (!(await isBusinessActive(owner.id))) {
+      return res.status(400).json({ error: "Quotes cannot be created in an inactive business" });
     }
 
     const { subtotal, total } = calculateEstimateTotals(lineItems, markupPercent, contingencyPercent);
