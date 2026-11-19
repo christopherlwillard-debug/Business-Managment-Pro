@@ -41,20 +41,26 @@ const h = vi.hoisted(() => ({
   missingSlots: [] as number[],
   strict: true,
   scenario: "no request",
+  businessSelectFilters: [] as unknown[],
 }));
 
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
 vi.mock("@workspace/db", () => {
   function makeChain() {
+    let table: any;
+    let whereClause: unknown;
     const c: any = {
-      from:      () => c,
-      where:     () => c,
+      from:      (value: any) => { table = value; return c; },
+      where:     (condition: unknown) => { whereClause = condition; return c; },
       leftJoin:  () => c,
       innerJoin: () => c,
       orderBy:   () => c,
       groupBy:   () => c,
       limit:     () => c,
       then(resolve: (v: any) => any, reject: (e: any) => any) {
+        if (table?.[Symbol.for("drizzle:Name")] === "businesses") {
+          h.businessSelectFilters.push(whereClause);
+        }
         const slot = h.consumedSlots++;
         const queued = h.selectQueue.shift();
         if (queued === undefined) {
@@ -119,6 +125,7 @@ beforeEach(() => {
   h.missingSlots.length = 0;
   h.strict = true;
   h.scenario = "no request";
+  h.businessSelectFilters.length = 0;
 });
 
 afterEach(() => {
@@ -1012,6 +1019,94 @@ describe("Dashboard revenue — verified send-period attribution", () => {
     const { sumCashReceipts } = await import("../lib/cash-revenue.js");
     expect(sumCashReceipts(paidInvoices, `${PAYMENT_MONTH}-01`, `${PAYMENT_MONTH}-31`)).toBeCloseTo(1500, 10);
     expect(sumCashReceipts(paidInvoices, `${SENT_MONTH}-01`, `${SENT_MONTH}-31`)).toBeCloseTo(0, 10);
+  });
+});
+
+describe("Inactive divisions remain in historical dashboard reports", () => {
+  it("keeps revenue, expenses, and active jobs when an inactive division is selected", async () => {
+    const root = {
+      id: 1,
+      slug: "general_contracting",
+      name: "General Contracting",
+      legalBusinessId: 1,
+      isActive: true,
+    };
+    const inactiveDivision = {
+      id: 2,
+      slug: "asphalt_sealing",
+      name: "Asphalt Sealing",
+      legalBusinessId: 1,
+      isActive: false,
+    };
+    const invoice = {
+      id: 801,
+      status: "paid",
+      total: "200.00",
+      amountPaid: "200.00",
+      issueDate: `${CURRENT_MONTH_STR}-05`,
+      businessId: 2,
+      businessLine: "asphalt_sealing",
+      verifiedSentAt: null,
+      stripePaidAt: null,
+      squarePaidAt: null,
+      lastManualPaidAt: null,
+    };
+    const expense = {
+      id: 802,
+      date: `${CURRENT_MONTH_STR}-06`,
+      amount: "120.00",
+      category: "Other",
+      description: "Historical asphalt supplies",
+      businessId: 2,
+      businessLine: "asphalt_sealing",
+      voidedAt: null,
+    };
+    const job = {
+      id: 803,
+      status: "in_progress",
+      title: "Historical asphalt job",
+      businessId: 2,
+      businessLine: "asphalt_sealing",
+    };
+
+    h.selectQueue.push([inactiveDivision], [root, inactiveDivision]); // selected division and legal-owner members
+    h.selectQueue.push(
+      [invoice], // KPI paid invoices
+      [], // KPI non-paid invoices
+      [expense], // KPI expenses
+      [], // KPI mileage
+      [], // KPI other income
+      [job], // KPI active jobs
+      [], // recent jobs
+      [], // recent invoices
+      [], // owner capital
+      [], // subcontractor payments
+      [invoice], // unfiltered paid invoices
+      [], // unfiltered non-paid invoices
+      [expense], // unfiltered expenses
+      [], // unfiltered other income
+      [job], // unfiltered active jobs
+      [], // YTD mileage
+      [], // outstanding subcontractor balances
+      [root, inactiveDivision], // all businesses, including inactive history
+    );
+    for (let i = 0; i < 24; i++) h.selectQueue.push([]); // six-month chart
+
+    const response = await request(app).get("/reports/dashboard?businessId=2");
+
+    expect(response.status).toBe(200);
+    expect(response.body.totalRevenue).toBe(200);
+    expect(response.body.totalExpenses).toBe(120);
+    expect(response.body.activeJobs).toBe(1);
+    expect(response.body.byBusinessLine).toContainEqual(expect.objectContaining({
+      businessLine: "asphalt_sealing",
+      totalRevenue: 200,
+      totalExpenses: 120,
+      activeJobs: 1,
+    }));
+    // The legal-member and breakdown business queries must remain unfiltered:
+    // adding an is_active predicate there would hide historical divisions.
+    expect(h.businessSelectFilters.slice(-2)).toEqual([undefined, undefined]);
   });
 });
 
