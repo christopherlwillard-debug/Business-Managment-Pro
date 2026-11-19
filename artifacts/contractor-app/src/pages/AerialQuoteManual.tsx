@@ -132,19 +132,33 @@ export default function AerialQuoteManual() {
   const [estimateTitle, setEstimateTitle] = useState("");
 
   const selectedProperty = properties.find(item => item.id === propertyId);
+  const prospectRows = prospectsQuery.data ?? [];
   const propertyEstimates = estimates.filter(estimate =>
     (propertyId != null && estimate.propertyId === propertyId)
     || (prospectId != null && estimate.prospectId === prospectId),
   );
   const selectedProfile = profiles.find(item => item.id === profileId);
   const mapAddress = showPropertyForm ? propertyForm : selectedProperty ?? {};
+  const mapPropertyLabel = showPropertyForm
+    ? propertyForm.label.trim() || propertyForm.street.trim() || "New property"
+    : selectedProperty?.label ?? selectedProperty?.street ?? "Select a property";
+  const mapClientId = showPropertyForm && propertyForm.clientId
+    ? Number(propertyForm.clientId)
+    : selectedProperty?.clientId;
+  const mapProspect = prospectRows.find(item => item.id === (selectedProperty?.prospectId ?? prospectId));
+  const mapClient = clients.find(item => item.id === mapClientId);
+  const mapAssociationLabel = newProspect
+    ? `Prospect: ${prospectContact.name.trim() || "New prospect"}`
+    : mapClient
+      ? `Client: ${mapClient.name}`
+      : mapProspect
+        ? `Prospect: ${mapProspect.contactName || mapProspect.companyName || "Linked prospect"}`
+        : undefined;
   const mapGeometryJson = useMemo(() => getAerialMapGeometryJson(entries), [entries]);
   const activeServiceProfiles = useMemo(
     () => profiles.filter(item => item.serviceKey === serviceKey),
     [profiles, serviceKey],
   );
-  const prospectRows = prospectsQuery.data ?? [];
-
   function updateEntry(index: number, patch: Partial<Entry>) {
     setEntries(current => current.map((row, i) => i === index ? { ...row, ...patch } : row));
     setMeasurementDirty(true);
@@ -498,7 +512,7 @@ export default function AerialQuoteManual() {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.9fr)]">
       <section className="grid gap-5 lg:col-start-2 lg:row-start-1">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-          <h2 className="text-lg font-semibold">1. Choose a property</h2>
+          <h2 className="text-lg font-semibold">Property</h2>
           <p className="mt-1 text-sm text-muted-foreground">Select a prospect or saved address, or enter a new property.</p>
           <label className="mt-4 block text-sm font-medium">Prospect</label>
           <div className="mt-1 flex flex-wrap gap-2">
@@ -594,6 +608,8 @@ export default function AerialQuoteManual() {
       <AerialQuoteMap
         className="order-first lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-4"
         address={mapAddress}
+        propertyLabel={mapPropertyLabel}
+        associationLabel={mapAssociationLabel}
         autoLocateKey={propertyId ? String(propertyId) : prospectId ? `prospect-${prospectId}` : ""}
         savedGeometryJson={mapGeometryJson}
         onApply={applyMapMeasurements}
@@ -601,7 +617,7 @@ export default function AerialQuoteManual() {
 
       <section className="grid gap-5 lg:col-start-2 lg:row-start-2">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-          <h2 className="text-lg font-semibold">3. Review measurements</h2>
+          <h2 className="text-lg font-semibold">Measurements</h2>
           <p className="mt-1 text-sm text-muted-foreground">Check the map quantities below. Save changes as a new revision; earlier revisions stay unchanged.</p>
           <label className="mt-4 block text-sm font-medium">Measurement source</label>
           <select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementSource} onChange={e => { setMeasurementSource(e.target.value as typeof measurementSource); setMeasurementDirty(true); setCalculation(null); }}><option value="manual">Manual entry</option><option value="on_site">On site</option></select>
@@ -620,7 +636,7 @@ export default function AerialQuoteManual() {
       </section>
 
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-3">
-        <h2 className="text-lg font-semibold">4. Choose service and pricing</h2>
+        <h2 className="text-lg font-semibold">Services and pricing</h2>
         <p className="mt-1 text-sm text-muted-foreground">Choose a saved pricing profile or create a new version below.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">Service<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={serviceKey} onChange={e=>{const key=e.target.value as typeof serviceKey;setServiceKey(key);setProfileName(services.find(s=>s[0]===key)?.[1]??"Service");}}>{services.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
@@ -629,20 +645,40 @@ export default function AerialQuoteManual() {
         <div className="mt-4 rounded-lg border p-3">
           <h3 className="font-medium">Create a pricing profile version</h3>
           <p className="mt-1 text-sm text-muted-foreground">Enter approved rates. Saving creates a new version and keeps earlier versions available.</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="text-sm font-medium">Profile name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={profileName} onChange={e=>setProfileName(e.target.value)}/></label>
-          <label className="text-sm font-medium">Component name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentLabel} onChange={e=>setComponentLabel(e.target.value)} placeholder="e.g. Mowing"/></label>
-          <label className="text-sm font-medium">Component category<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentCategory} onChange={e=>setComponentCategory(e.target.value)} placeholder="e.g. Service"/></label>
-          <label className="text-sm font-medium">Rate basis<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentBasis} onChange={e=>setComponentBasis(e.target.value as typeof componentBasis)}><option value="customer_rate">Customer rate</option><option value="direct_cost">Direct cost</option></select></label>
-          <label className="text-sm font-medium">Charge type<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={chargeType} onChange={e=>setChargeType(e.target.value as typeof chargeType)}><option value="per_unit">Per unit</option><option value="fixed">Fixed</option></select></label>
-          <label className="text-sm font-medium">Rate<input type="number" min="0" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={rate} onChange={e=>setRate(e.target.value)} placeholder="Enter approved rate"/></label>
-          {chargeType==="per_unit"&&<><label className="text-sm font-medium">Measurement category<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementCategory} onChange={e=>setMeasurementCategory(e.target.value)} placeholder="Must match entry category"/></label><label className="text-sm font-medium">Measurement type<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementKind} onChange={e=>setMeasurementKind(e.target.value as typeof measurementKind)}><option value="area">Area</option><option value="length">Length</option><option value="count">Count / time</option></select></label><label className="text-sm font-medium">Unit<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={unit} onChange={e=>setUnit(e.target.value as Entry["unit"])}>{(["sq_ft","acre","sq_yd","ft","yd","mile","item","hour"] as const).map(value=><option key={value}>{value}</option>)}</select></label></>}
-          <label className="text-sm font-medium">Profit mode<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={marginMode} onChange={e=>setMarginMode(e.target.value as typeof marginMode)}><option value="none">None</option><option value="markup">Markup</option><option value="target_margin">Target margin</option></select></label>
-          <label className="text-sm font-medium">Profit rate (%)<input type="number" min="0" max="99.99" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={marginPercent} onChange={e=>setMarginPercent(e.target.value)} placeholder="0"/></label>
-          <label className="text-sm font-medium">Minimum service charge<input type="number" min="0" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={minimumCharge} onChange={e=>setMinimumCharge(e.target.value)} placeholder="0"/></label>
-          <label className="text-sm font-medium">Quantity rounding<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={quantityRounding} onChange={e=>setQuantityRounding(e.target.value as typeof quantityRounding)}><option value="none">None</option><option value="up">Up</option><option value="nearest">Nearest</option><option value="down">Down</option></select></label>
-          <label className="text-sm font-medium">Rounding increment<input type="number" min="0.000001" step="any" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={roundingIncrement} onChange={e=>setRoundingIncrement(e.target.value)}/></label>
-        </div>
+          <div className="mt-4">
+            <h4 className="text-sm font-semibold">Profile and component</h4>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-sm font-medium">Profile name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={profileName} onChange={e=>setProfileName(e.target.value)}/></label>
+              <label className="text-sm font-medium">Component name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentLabel} onChange={e=>setComponentLabel(e.target.value)} placeholder="e.g. Mowing"/></label>
+              <label className="text-sm font-medium">Component category<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentCategory} onChange={e=>setComponentCategory(e.target.value)} placeholder="e.g. Service"/></label>
+            </div>
+          </div>
+          <div className="mt-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">Rate and profit</h4>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-sm font-medium">Rate basis<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentBasis} onChange={e=>setComponentBasis(e.target.value as typeof componentBasis)}><option value="customer_rate">Customer rate</option><option value="direct_cost">Direct cost</option></select></label>
+              <label className="text-sm font-medium">Charge type<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={chargeType} onChange={e=>setChargeType(e.target.value as typeof chargeType)}><option value="per_unit">Per unit</option><option value="fixed">Fixed</option></select></label>
+              <label className="text-sm font-medium">Rate<input type="number" min="0" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={rate} onChange={e=>setRate(e.target.value)} placeholder="Enter approved rate"/></label>
+              <label className="text-sm font-medium">Profit mode<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={marginMode} onChange={e=>setMarginMode(e.target.value as typeof marginMode)}><option value="none">None</option><option value="markup">Markup</option><option value="target_margin">Target margin</option></select></label>
+              <label className="text-sm font-medium">Profit rate (%)<input type="number" min="0" max="99.99" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={marginPercent} onChange={e=>setMarginPercent(e.target.value)} placeholder="0"/></label>
+              <label className="text-sm font-medium">Minimum service charge<input type="number" min="0" step="0.01" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={minimumCharge} onChange={e=>setMinimumCharge(e.target.value)} placeholder="0"/></label>
+            </div>
+          </div>
+          {chargeType === "per_unit" && <div className="mt-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">Match the rate to a measurement</h4>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="text-sm font-medium">Measurement category<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementCategory} onChange={e=>setMeasurementCategory(e.target.value)} placeholder="Must match entry category"/></label>
+              <label className="text-sm font-medium">Measurement type<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementKind} onChange={e=>setMeasurementKind(e.target.value as typeof measurementKind)}><option value="area">Area</option><option value="length">Length</option><option value="count">Count / time</option></select></label>
+              <label className="text-sm font-medium">Unit<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={unit} onChange={e=>setUnit(e.target.value as Entry["unit"])}>{(["sq_ft","acre","sq_yd","ft","yd","mile","item","hour"] as const).map(value=><option key={value}>{value}</option>)}</select></label>
+            </div>
+          </div>}
+          <div className="mt-4 border-t pt-4">
+            <h4 className="text-sm font-semibold">Quantity rounding</h4>
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-medium">Quantity rounding<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={quantityRounding} onChange={e=>setQuantityRounding(e.target.value as typeof quantityRounding)}><option value="none">None</option><option value="up">Up</option><option value="nearest">Nearest</option><option value="down">Down</option></select></label>
+              <label className="text-sm font-medium">Rounding increment<input type="number" min="0.000001" step="any" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={roundingIncrement} onChange={e=>setRoundingIncrement(e.target.value)}/></label>
+            </div>
+          </div>
         {profileComponents.length > 0 && <div className="mt-4 rounded-lg border p-3"><p className="text-sm font-semibold">Profile components</p><ul className="mt-2 space-y-1 text-sm">{profileComponents.map((component,index)=><li key={index} className="flex flex-wrap justify-between gap-2"><span>{component.label} · {component.basis} · {component.chargeType}</span><span>{component.amount} {component.unit??"fixed"} <button type="button" className="ml-2 text-destructive underline" onClick={()=>setProfileComponents(profileComponents.filter((_,i)=>i!==index))}>Remove</button></span></li>)}</ul></div>}
         <button type="button" disabled={!componentLabel.trim()||!componentCategory.trim()||!rate} onClick={()=>{setProfileComponents([...profileComponents,{label:componentLabel.trim(),category:componentCategory.trim(),basis:componentBasis,chargeType,amount:Number(rate),...(chargeType==="per_unit"?{measurementCategory:measurementCategory.trim(),kind:measurementKind,unit}:{})}]);setComponentLabel("");setComponentCategory("");setRate("");}} className="mt-3 min-h-11 rounded-md border px-4 font-medium disabled:opacity-50">Add another component</button>
           <button type="button" disabled={busy||!businessId||(!profileComponents.length&&(!componentLabel.trim()||!componentCategory.trim()||!rate))} onClick={()=>void saveProfile()} className="mt-4 min-h-11 rounded-md border border-primary px-4 font-medium text-primary disabled:opacity-50">Save new profile version</button>
@@ -650,7 +686,7 @@ export default function AerialQuoteManual() {
       </section>
 
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-4">
-        <h2 className="text-lg font-semibold">5. Calculate and create estimate</h2>
+        <h2 className="text-lg font-semibold">Estimate</h2>
         <p className="mt-1 text-sm text-muted-foreground">Save a measurement revision and choose a pricing profile before calculating.</p>
         {propertyEstimates.length > 0 && <div className="mt-3 rounded-lg border p-3">
           <p className="text-sm font-semibold">Quotation history for this property</p>

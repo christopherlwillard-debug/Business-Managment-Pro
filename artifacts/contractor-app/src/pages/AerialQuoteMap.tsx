@@ -8,6 +8,7 @@ import {
   TileLayer,
   useMap,
 } from "react-leaflet";
+import type { DoneCallback, GridLayerOptions } from "leaflet";
 import * as turf from "@turf/turf";
 import "leaflet/dist/leaflet.css";
 import {
@@ -15,6 +16,12 @@ import {
   type AerialMapResult,
   type LatLng,
 } from "./aerialQuoteMapUtils";
+import {
+  buildArcGisImageTileUrl,
+  getStateImagerySource,
+  type AerialImageryMode,
+  type StateImagerySource,
+} from "./aerialQuoteImagery";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const DEFAULT_CENTER: LatLng = [37.7719, -87.1111];
@@ -22,6 +29,7 @@ const ESRI_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Ima
 const ESRI_ATTRIBUTION = "Tiles © Esri, Vantor, Earthstar Geographics, and the GIS User Community";
 const OSM_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const OSM_ATTRIBUTION = "&copy; OpenStreetMap contributors";
+const TRANSPARENT_IMAGE = L.Util.emptyImageUrl;
 const AREA_COLORS = ["#f59e0b", "#10b981", "#8b5cf6", "#ec4899"];
 const LINE_COLORS = ["#2563eb", "#dc2626", "#0891b2", "#7c3aed"];
 const VERTEX_ICON = L.divIcon({
@@ -40,6 +48,8 @@ type AddressParts = {
 
 type Props = {
   address: AddressParts;
+  propertyLabel: string;
+  associationLabel?: string;
   autoLocateKey: string;
   savedGeometryJson: string;
   onApply: (result: AerialMapResult) => void;
@@ -98,24 +108,75 @@ function DrawClicks({ active, onPoint }: { active: boolean; onPoint: (point: Lat
   return null;
 }
 
+class ArcGisImageGridLayer extends L.GridLayer {
+  private readonly serviceUrl: string;
+
+  constructor(serviceUrl: string, options: GridLayerOptions) {
+    super(options);
+    this.serviceUrl = serviceUrl;
+  }
+
+  createTile(coords: L.Coords, done: DoneCallback): HTMLElement {
+    const tile = L.DomUtil.create("img", "leaflet-tile") as HTMLImageElement;
+    tile.alt = "";
+    tile.setAttribute("role", "presentation");
+    tile.decoding = "async";
+    tile.onload = () => done(undefined, tile);
+    tile.onerror = () => {
+      tile.onload = null;
+      tile.onerror = null;
+      tile.src = TRANSPARENT_IMAGE;
+      done(undefined, tile);
+    };
+    tile.src = buildArcGisImageTileUrl(this.serviceUrl, coords, this.getTileSize().x);
+    return tile;
+  }
+}
+
+function ArcGisImageLayer({ source }: { source: StateImagerySource }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const layer = new ArcGisImageGridLayer(source.url, {
+      tileSize: 256,
+      maxZoom: 20,
+      maxNativeZoom: source.maxNativeZoom,
+      attribution: source.attribution,
+      zIndex: 2,
+    });
+    layer.addTo(map);
+    return () => {
+      map.removeLayer(layer);
+    };
+  }, [map, source]);
+
+  return null;
+}
+
 function addressString(address: AddressParts) {
   return [address.street, address.city, address.state, address.zip].filter(Boolean).join(", ");
 }
 
-export default function AerialQuoteMap({ address, autoLocateKey, savedGeometryJson, onApply, className = "" }: Props) {
+export default function AerialQuoteMap({ address, propertyLabel, associationLabel, autoLocateKey, savedGeometryJson, onApply, className = "" }: Props) {
   const [polygons, setPolygons] = useState<LatLng[][]>(() => parseAerialMapGeometry(savedGeometryJson).polygons);
   const [lines, setLines] = useState<LatLng[][]>(() => parseAerialMapGeometry(savedGeometryJson).lines);
   const [activePoints, setActivePoints] = useState<LatLng[]>([]);
   const [drawMode, setDrawMode] = useState<"area" | "length">("area");
   const [isDrawing, setIsDrawing] = useState(false);
-  const [satelliteView, setSatelliteView] = useState(true);
+  const [imageryMode, setImageryMode] = useState<AerialImageryMode>("current");
   const [center, setCenter] = useState<LatLng | null>(null);
   const [searching, setSearching] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [message, setMessage] = useState("");
   const propertyAddress = addressString(address);
+  const stateImagery = getStateImagerySource(address.state);
+  const selectedImageryMode = imageryMode === "state" && !stateImagery ? "current" : imageryMode;
   const lastAutoLocateKey = useRef("");
   const [appliedSignature, setAppliedSignature] = useState(savedGeometryJson);
+
+  useEffect(() => {
+    if (imageryMode === "state" && !stateImagery) setImageryMode("current");
+  }, [imageryMode, stateImagery]);
 
   useEffect(() => {
     const restored = parseAerialMapGeometry(savedGeometryJson);
@@ -231,13 +292,27 @@ export default function AerialQuoteMap({ address, autoLocateKey, savedGeometryJs
     <section className={`overflow-hidden rounded-xl border bg-card shadow-sm ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4 sm:p-5">
         <div>
-          <h2 className="text-lg font-semibold">2. Map measurements</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Draw areas or paths on aerial imagery, then add the results to this property’s measurement revision.</p>
+          <h2 className="text-lg font-semibold">Map measurements</h2>
+          <p data-testid="text-map-property" className="mt-1 text-sm font-medium break-words">{propertyLabel}</p>
+          <p data-testid="text-map-address" className="text-sm text-muted-foreground break-words">{propertyAddress || "Enter or select a property address to locate it."}</p>
+          {associationLabel && <p data-testid="text-map-association" className="mt-1 text-xs text-muted-foreground">{associationLabel}</p>}
+          <p className="mt-2 text-sm text-muted-foreground">Draw areas or paths, then add the results to this property’s measurement revision.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="min-h-11 rounded-md border px-3 text-sm font-medium" onClick={() => setSatelliteView(value => !value)}>
-            {satelliteView ? "Show street map" : "Show satellite"}
-          </button>
+          <label className="flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm font-medium">
+            <span>Map imagery</span>
+            <select
+              aria-label="Map imagery"
+              data-testid="select-map-imagery"
+              className="min-h-9 max-w-[230px] rounded border bg-background px-2 font-normal"
+              value={selectedImageryMode}
+              onChange={event => setImageryMode(event.target.value as AerialImageryMode)}
+            >
+              <option value="current">Current aerial imagery</option>
+              <option value="state" disabled={!stateImagery}>{stateImagery?.optionLabel ?? "State imagery unavailable"}</option>
+              <option value="street">Street map</option>
+            </select>
+          </label>
           <button type="button" disabled={searching || !propertyAddress} className="min-h-11 rounded-md border px-3 text-sm font-medium disabled:opacity-50" onClick={() => void locateProperty()}>
             {searching ? "Finding property…" : "Find property"}
           </button>
@@ -251,15 +326,35 @@ export default function AerialQuoteMap({ address, autoLocateKey, savedGeometryJs
             Measure length
           </button>
         </div>
+        {selectedImageryMode === "state" && stateImagery && (
+          <p role="status" data-testid="status-state-imagery" className="basis-full rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            <strong>{stateImagery.name}:</strong> {stateImagery.details}. {stateImagery.coverageNote}
+          </p>
+        )}
       </div>
 
       <div className="relative">
         <MapContainer center={DEFAULT_CENTER} zoom={14} style={{ width: "100%", height: "min(76vh, 760px)", minHeight: "430px" }} zoomControl>
-          <TileLayer
-            url={satelliteView ? ESRI_URL : OSM_URL}
-            attribution={satelliteView ? ESRI_ATTRIBUTION : OSM_ATTRIBUTION}
-            maxZoom={20}
-          />
+          {selectedImageryMode === "street" ? (
+            <TileLayer url={OSM_URL} attribution={OSM_ATTRIBUTION} maxZoom={20} />
+          ) : (
+            <>
+              <TileLayer url={ESRI_URL} attribution={ESRI_ATTRIBUTION} maxZoom={20} />
+              {selectedImageryMode === "state" && stateImagery && (
+                stateImagery.kind === "tiled" ? (
+                  <TileLayer
+                    url={stateImagery.url}
+                    attribution={stateImagery.attribution}
+                    maxZoom={20}
+                    maxNativeZoom={stateImagery.maxNativeZoom}
+                    zIndex={2}
+                  />
+                ) : (
+                  <ArcGisImageLayer source={stateImagery} />
+                )
+              )}
+            </>
+          )}
           <FlyTo center={center} zoom={19} />
           <DrawClicks active={isDrawing} onPoint={point => setActivePoints(current => [...current, point])} />
           {polygons.map((points, index) => (
