@@ -489,7 +489,7 @@ export default function AerialQuoteManual() {
   return (
     <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto space-y-6 p-4 pb-24 sm:p-6 lg:pb-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
-        <div><p className="text-sm font-medium text-primary">Property-based estimating</p><h1 className="text-3xl font-bold tracking-tight">Aerial Quote</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Find a property, measure areas and paths on aerial imagery, then save a measurement revision and build a quote.</p></div>
+        <div><h1 className="text-3xl font-bold tracking-tight">Aerial Quote</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Choose a property, measure it, save a revision, then price the work.</p></div>
         <span className="rounded-full border px-3 py-1 text-sm">{business.name}</span>
       </header>
 
@@ -498,8 +498,9 @@ export default function AerialQuoteManual() {
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.9fr)]">
       <section className="grid gap-5 lg:col-start-2 lg:row-start-1">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-          <h2 className="text-lg font-semibold">1. Property</h2>
-          <label className="mt-4 block text-sm font-medium">Quote for prospect</label>
+          <h2 className="text-lg font-semibold">1. Choose a property</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Select a prospect or saved address, or enter a new property.</p>
+          <label className="mt-4 block text-sm font-medium">Prospect</label>
           <div className="mt-1 flex flex-wrap gap-2">
             <select className="h-11 min-w-0 flex-1 rounded-md border bg-background px-3" value={prospectId ?? ""} onChange={e => {
               const nextId = e.target.value ? Number(e.target.value) : null;
@@ -537,7 +538,7 @@ export default function AerialQuoteManual() {
               <label className="text-sm sm:col-span-2">Email<input type="email" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={prospectContact.email} onChange={e => setProspectContact({ ...prospectContact, email: e.target.value })} /></label>
             </div>
           )}
-          <label className="mt-4 block text-sm font-medium">Saved property</label>
+          <label className="mt-4 block text-sm font-medium">Saved property or client address</label>
           <select className="mt-1 h-11 w-full rounded-md border bg-background px-3" value={propertyId ?? ""} onChange={e => {
             const nextId = e.target.value ? Number(e.target.value) : null;
             const nextProperty = properties.find(item => item.id === nextId);
@@ -561,9 +562,8 @@ export default function AerialQuoteManual() {
               <button type="button" className="ml-2 mt-2 min-h-9 rounded-md border px-3 text-sm" onClick={() => { setPropertyId(null); setRevisionId(null); setCalculation(null); setShowPropertyForm(true); setIsEditingProperty(false); setPropertyForm({ label: "", street: "", city: "", state: "", zip: "", clientId: "", notes: "" }); }}>Add another property</button>
             </div>
           )}
-          {selectedProperty?.businessId === businessId && <details className="mt-3 rounded-lg border p-3">
-            <summary className="cursor-pointer text-sm font-semibold">Property access and sharing</summary>
-            <div className="mt-2">
+          {selectedProperty?.businessId === businessId && <div className="mt-3 rounded-lg border p-3">
+            <h3 className="text-sm font-semibold">Property access and sharing</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               <select aria-label="Division to share with" className="h-10 rounded-md border bg-background px-3" value={shareBusinessId} onChange={e=>setShareBusinessId(e.target.value)}><option value="">Choose division</option>{businesses.filter(item=>item.isActive && item.id!==businessId).map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select>
               <select aria-label="Access permission" className="h-10 rounded-md border bg-background px-3" value={sharePermission} onChange={e=>setSharePermission(e.target.value as typeof sharePermission)}><option value="view">View</option><option value="measure">Measure</option><option value="estimate">Estimate</option><option value="manage">Manage</option></select>
@@ -571,8 +571,7 @@ export default function AerialQuoteManual() {
             </div>
             {accessGrants.filter(grant=>grant.businessId!==businessId).map(grant=><div key={grant.id} className="mt-2 flex items-center justify-between gap-2 text-sm"><span>{grant.businessSlug} · {grant.permission}</span><button type="button" onClick={()=>void revokePropertyShare(grant.businessId)} className="text-destructive underline">Revoke</button></div>)}
             <p className="mt-2 text-xs text-muted-foreground">Sharing is limited to divisions under the same legal business.</p>
-            </div>
-          </details>}
+          </div>}
           {showPropertyForm && <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium sm:col-span-2">Property name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={propertyForm.label} onChange={e => setPropertyForm({...propertyForm,label:e.target.value})} /></label>
             <label className="text-sm font-medium sm:col-span-2">Street address<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={propertyForm.street} onChange={e => setPropertyForm({...propertyForm,street:e.target.value})} /></label>
@@ -602,10 +601,10 @@ export default function AerialQuoteManual() {
 
       <section className="grid gap-5 lg:col-start-2 lg:row-start-2">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
-          <h2 className="text-lg font-semibold">3. Measurements</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Map measurements are added here. Adjust names, categories, or quantities as needed. Saved revisions are permanent; save edits as a new revision before calculating.</p>
+          <h2 className="text-lg font-semibold">3. Review measurements</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Check the map quantities below. Save changes as a new revision; earlier revisions stay unchanged.</p>
           <label className="mt-4 block text-sm font-medium">Measurement source</label>
-          <select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementSource} onChange={e => { setMeasurementSource(e.target.value as typeof measurementSource); setMeasurementDirty(true); setCalculation(null); }}><option value="manual">Manual</option><option value="on_site">On-site</option></select>
+          <select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={measurementSource} onChange={e => { setMeasurementSource(e.target.value as typeof measurementSource); setMeasurementDirty(true); setCalculation(null); }}><option value="manual">Manual entry</option><option value="on_site">On site</option></select>
           {entries.map((entry,index)=><div key={index} className="mt-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-2">
             <input aria-label="Measurement name" className="h-10 rounded-md border bg-background px-3" placeholder="Name, e.g. Front lawn" value={entry.label} onChange={e=>updateEntry(index,{label:e.target.value})}/>
             <input aria-label="Measurement category" className="h-10 rounded-md border bg-background px-3" placeholder="Category, e.g. mowable_area" value={entry.category} onChange={e=>updateEntry(index,{category:e.target.value})}/>
@@ -613,22 +612,23 @@ export default function AerialQuoteManual() {
             <div className="flex gap-2"><input aria-label="Quantity" type="number" min="0" step="any" className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3" value={entry.quantity} onChange={e=>updateEntry(index,{quantity:Number(e.target.value)})}/><select aria-label="Unit" className="h-10 rounded-md border bg-background px-2" value={entry.unit} onChange={e=>updateEntry(index,{unit:e.target.value as Entry["unit"]})}>{(["sq_ft","acre","sq_yd","ft","yd","mile","item","hour"] as const).map(value=><option key={value}>{value}</option>)}</select></div>
           </div>)}
           <button type="button" onClick={()=>{setEntries(current=>[...current,emptyEntry()]);setMeasurementDirty(true);setCalculation(null);}} className="mt-3 min-h-11 rounded-md border px-4 font-medium">Add measurement</button>
-          <label className="mt-3 block text-sm font-medium">Notes<textarea className="mt-1 min-h-20 w-full rounded-md border bg-background p-3" value={measurementNotes} onChange={e=>{setMeasurementNotes(e.target.value);setMeasurementDirty(true);setCalculation(null);}}/></label>
-          <label className="mt-3 block text-sm font-medium">Saved revision<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={revisionId ?? ""} onChange={e=>{const id=e.target.value?Number(e.target.value):null;setRevisionSelectionInitializedFor(propertyId);setRevisionId(id);const revision=revisions.find(item=>item.id===id);if(revision){setEntries(revision.entries);setMeasurementSource(revision.source);setMeasurementNotes(revision.notes??"");setMeasurementDirty(false);}else{setEntries([emptyEntry()]);setMeasurementNotes("");setMeasurementDirty(true);}setCalculation(null);}}><option value="">Choose a revision</option>{revisions.map(revision=><option key={revision.id} value={revision.id}>Revision {revision.revision} · {revision.source} · {new Date(revision.createdAt).toLocaleDateString()}</option>)}</select></label>
+          <label className="mt-3 block text-sm font-medium">Measurement notes<textarea className="mt-1 min-h-20 w-full rounded-md border bg-background p-3" value={measurementNotes} onChange={e=>{setMeasurementNotes(e.target.value);setMeasurementDirty(true);setCalculation(null);}}/></label>
+          <label className="mt-3 block text-sm font-medium">Start from a saved revision<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={revisionId ?? ""} onChange={e=>{const id=e.target.value?Number(e.target.value):null;setRevisionSelectionInitializedFor(propertyId);setRevisionId(id);const revision=revisions.find(item=>item.id===id);if(revision){setEntries(revision.entries);setMeasurementSource(revision.source);setMeasurementNotes(revision.notes??"");setMeasurementDirty(false);}else{setEntries([emptyEntry()]);setMeasurementNotes("");setMeasurementDirty(true);}setCalculation(null);}}><option value="">Choose a revision</option>{revisions.map(revision=><option key={revision.id} value={revision.id}>Revision {revision.revision} · {revision.source} · {new Date(revision.createdAt).toLocaleDateString()}</option>)}</select></label>
           {measurementDirty && <p role="status" className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Unsaved measurement changes. Save a new revision before calculating.</p>}
-          <button type="button" disabled={busy || !propertyId || revisionsForPropertyId !== propertyId || !measurementDirty} onClick={()=>void saveMeasurements()} className="mt-4 min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">Save new revision</button>
+          <button type="button" disabled={busy || !propertyId || revisionsForPropertyId !== propertyId || !measurementDirty} onClick={()=>void saveMeasurements()} className="mt-4 min-h-11 rounded-md bg-primary px-4 font-medium text-primary-foreground disabled:opacity-50">Save new measurement revision</button>
         </div>
       </section>
 
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-3">
-        <h2 className="text-lg font-semibold">4. Services & pricing</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Profiles are business-specific and versioned. Rates are not prefilled; an owner must enter approved values.</p>
+        <h2 className="text-lg font-semibold">4. Choose service and pricing</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Choose a saved pricing profile or create a new version below.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">Service<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={serviceKey} onChange={e=>{const key=e.target.value as typeof serviceKey;setServiceKey(key);setProfileName(services.find(s=>s[0]===key)?.[1]??"Service");}}>{services.map(([key,name])=><option key={key} value={key}>{name}</option>)}</select></label>
           <label className="text-sm font-medium">Saved profile<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={profileId??""} onChange={e=>{setProfileId(e.target.value?Number(e.target.value):null);setCalculation(null);}}><option value="">Choose profile version</option>{activeServiceProfiles.map(profile=><option key={profile.id} value={profile.id}>{profile.displayName} · v{profile.version}</option>)}</select></label>
         </div>
-        <details className="mt-4 rounded-lg border p-3">
-          <summary className="cursor-pointer font-medium">Manage service pricing profiles</summary>
+        <div className="mt-4 rounded-lg border p-3">
+          <h3 className="font-medium">Create a pricing profile version</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Enter approved rates. Saving creates a new version and keeps earlier versions available.</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="text-sm font-medium">Profile name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={profileName} onChange={e=>setProfileName(e.target.value)}/></label>
           <label className="text-sm font-medium">Component name<input className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={componentLabel} onChange={e=>setComponentLabel(e.target.value)} placeholder="e.g. Mowing"/></label>
@@ -645,12 +645,13 @@ export default function AerialQuoteManual() {
         </div>
         {profileComponents.length > 0 && <div className="mt-4 rounded-lg border p-3"><p className="text-sm font-semibold">Profile components</p><ul className="mt-2 space-y-1 text-sm">{profileComponents.map((component,index)=><li key={index} className="flex flex-wrap justify-between gap-2"><span>{component.label} · {component.basis} · {component.chargeType}</span><span>{component.amount} {component.unit??"fixed"} <button type="button" className="ml-2 text-destructive underline" onClick={()=>setProfileComponents(profileComponents.filter((_,i)=>i!==index))}>Remove</button></span></li>)}</ul></div>}
         <button type="button" disabled={!componentLabel.trim()||!componentCategory.trim()||!rate} onClick={()=>{setProfileComponents([...profileComponents,{label:componentLabel.trim(),category:componentCategory.trim(),basis:componentBasis,chargeType,amount:Number(rate),...(chargeType==="per_unit"?{measurementCategory:measurementCategory.trim(),kind:measurementKind,unit}:{})}]);setComponentLabel("");setComponentCategory("");setRate("");}} className="mt-3 min-h-11 rounded-md border px-4 font-medium disabled:opacity-50">Add another component</button>
-        <button type="button" disabled={busy||!businessId||(!profileComponents.length&&(!componentLabel.trim()||!componentCategory.trim()||!rate))} onClick={()=>void saveProfile()} className="mt-4 min-h-11 rounded-md border border-primary px-4 font-medium text-primary disabled:opacity-50">Save as new profile version</button>
-        </details>
+          <button type="button" disabled={busy||!businessId||(!profileComponents.length&&(!componentLabel.trim()||!componentCategory.trim()||!rate))} onClick={()=>void saveProfile()} className="mt-4 min-h-11 rounded-md border border-primary px-4 font-medium text-primary disabled:opacity-50">Save new profile version</button>
+        </div>
       </section>
 
       <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-4">
         <h2 className="text-lg font-semibold">5. Calculate and create estimate</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Save a measurement revision and choose a pricing profile before calculating.</p>
         {propertyEstimates.length > 0 && <div className="mt-3 rounded-lg border p-3">
           <p className="text-sm font-semibold">Quotation history for this property</p>
           <div className="mt-2 divide-y">{propertyEstimates.map(estimate => <div key={estimate.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
