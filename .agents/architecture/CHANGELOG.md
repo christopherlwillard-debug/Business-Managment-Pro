@@ -978,3 +978,11 @@ Created the four-document architecture governance system:
   asset creation.
 - Kept existing-record editing and historical reads available. No ledger,
   calculation, report, or database schema was changed.
+
+### Prevent job reassignment into inactive divisions
+
+- The job update API now checks the target division when ownership changes and
+  rejects inactive targets before updating the job.
+- Existing jobs in inactive divisions can still be edited without changing
+  their division; the job form continues to show the current division only for
+  that existing job.

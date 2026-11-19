@@ -2995,6 +2995,13 @@ router.put("/:id", async (req, res) => {
       existingOwnership.business.id !== requestedOwner.business.id
     );
     if (ownershipWouldChange) {
+      const [targetBusiness] = await db.select({ isActive: businessesTable.isActive })
+        .from(businessesTable)
+        .where(eq(businessesTable.id, requestedOwner.business.id))
+        .limit(1);
+      if (!targetBusiness?.isActive) {
+        return res.status(400).json({ error: "Jobs cannot be reassigned to an inactive business" });
+      }
       if (await hasJobLinkedFinancialRecords(id)) {
         return res.status(409).json({
           error: "Job business cannot be changed while financial or cost records are linked",

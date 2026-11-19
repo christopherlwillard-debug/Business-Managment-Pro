@@ -427,6 +427,7 @@ describe("job business reassignment protects linked financial records", () => {
     fixture.selectQueue.push(
       [{ id: -1 }],
       [currentOwnership],
+      [{ isActive: true }],
       ...Array.from({ length: 12 }, (_, index) => index === recordIndex ? [record] : []),
     );
   };
@@ -456,6 +457,18 @@ describe("job business reassignment protects linked financial records", () => {
     expect(fixture.updatedValues[0]).toMatchObject({ businessId: 1, businessLine: "asphalt_sealing" });
   });
 
+  it("rejects reassignment to an inactive division before checking linked records or updating", async () => {
+    fixture.selectQueue.push([{ id: -1 }], [currentOwnership], [{ isActive: false }]);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ businessId: 1 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toMatch(/reassigned to an inactive business/i);
+    expect(fixture.updatedValues).toHaveLength(0);
+  });
+
   it("allows an ordinary edit when the requested owner is unchanged", async () => {
     const sameOwner = { ...currentOwnership, businessId: 1, businessLine: "asphalt_sealing" };
     fixture.selectQueue.push(
@@ -477,5 +490,24 @@ describe("job business reassignment protects linked financial records", () => {
 
     expect(response.status).toBe(200);
     expect(fixture.updatedValues[0]).toMatchObject({ businessId: 1, title: "Updated title" });
+  });
+
+  it("allows editing an existing job in an inactive division without changing its owner", async () => {
+    const currentInactiveJob = { ...currentOwnership, businessId: 1, businessLine: "asphalt_sealing" };
+    const updatedJob = { ...reassignedJob, businessId: 1, businessLine: "asphalt_sealing", title: "Updated inactive-division job" };
+    fixture.selectQueue.push([{ id: -1 }], [currentInactiveJob], [updatedJob], [updatedJob]);
+    fixture.updateQueue.push([updatedJob]);
+
+    const response = await request(app)
+      .put("/jobs/101")
+      .send({ title: "Updated inactive-division job" });
+
+    expect(response.status).toBe(200);
+    expect(fixture.updatedValues[0]).toMatchObject({
+      title: "Updated inactive-division job",
+      businessId: 1,
+      businessLine: "asphalt_sealing",
+    });
+    expect(fixture.consumed).toBe(4);
   });
 });
