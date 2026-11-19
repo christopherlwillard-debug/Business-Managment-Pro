@@ -484,10 +484,10 @@ export default function AerialQuoteManual() {
     } catch (err) { notifyError(err); } finally { setBusy(false); }
   }
 
-  if (!businessId) return <main className="mx-auto max-w-5xl p-6"><h1 className="text-2xl font-semibold">Aerial Quote</h1><p className="mt-3 text-muted-foreground">Choose a business to manage properties and service profiles.</p></main>;
+  if (!businessId) return <div className="mx-auto min-h-0 w-full max-w-5xl flex-1 overflow-y-auto p-6"><h1 className="text-2xl font-semibold">Aerial Quote</h1><p className="mt-3 text-muted-foreground">Choose a business to manage properties and service profiles.</p></div>;
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto space-y-6 p-4 pb-24 sm:p-6 lg:pb-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div><p className="text-sm font-medium text-primary">Property-based estimating</p><h1 className="text-3xl font-bold tracking-tight">Aerial Quote</h1><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Find a property, measure areas and paths on aerial imagery, then save a measurement revision and build a quote.</p></div>
         <span className="rounded-full border px-3 py-1 text-sm">{business.name}</span>
@@ -495,8 +495,8 @@ export default function AerialQuoteManual() {
 
       {error && <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</div>}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.9fr)]">
-      <section className="grid gap-5 xl:col-start-2 xl:row-start-1">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.9fr)]">
+      <section className="grid gap-5 lg:col-start-2 lg:row-start-1">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
           <h2 className="text-lg font-semibold">1. Property</h2>
           <label className="mt-4 block text-sm font-medium">Quote for prospect</label>
@@ -593,14 +593,14 @@ export default function AerialQuoteManual() {
       </section>
 
       <AerialQuoteMap
-        className="xl:col-start-1 xl:row-start-1 xl:row-span-4"
+        className="lg:col-start-1 lg:row-start-1 lg:row-span-4"
         address={mapAddress}
         autoLocateKey={propertyId ? String(propertyId) : prospectId ? `prospect-${prospectId}` : ""}
         savedGeometryJson={mapGeometryJson}
         onApply={applyMapMeasurements}
       />
 
-      <section className="grid gap-5 xl:col-start-2 xl:row-start-2">
+      <section className="grid gap-5 lg:col-start-2 lg:row-start-2">
         <div className="rounded-xl border bg-card p-4 shadow-sm sm:p-5">
           <h2 className="text-lg font-semibold">3. Measurements</h2>
           <p className="mt-1 text-sm text-muted-foreground">Map measurements are added here. Adjust names, categories, or quantities as needed. Saved revisions are permanent; save edits as a new revision before calculating.</p>
@@ -620,7 +620,7 @@ export default function AerialQuoteManual() {
         </div>
       </section>
 
-      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 xl:col-start-2 xl:row-start-3">
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-3">
         <h2 className="text-lg font-semibold">4. Services & pricing</h2>
         <p className="mt-1 text-sm text-muted-foreground">Profiles are business-specific and versioned. Rates are not prefilled; an owner must enter approved values.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -649,7 +649,7 @@ export default function AerialQuoteManual() {
         </details>
       </section>
 
-      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 xl:col-start-2 xl:row-start-4">
+      <section className="rounded-xl border bg-card p-4 shadow-sm sm:p-5 lg:col-start-2 lg:row-start-4">
         <h2 className="text-lg font-semibold">5. Calculate and create estimate</h2>
         {propertyEstimates.length > 0 && <div className="mt-3 rounded-lg border p-3">
           <p className="text-sm font-semibold">Quotation history for this property</p>
@@ -663,6 +663,6 @@ export default function AerialQuoteManual() {
         {calculation&&!measurementDirty&&<div className="mt-5 overflow-hidden rounded-lg border"><div className="divide-y">{calculation.lineItems.map((line:any,index:number)=><div key={index} className="flex flex-wrap justify-between gap-2 p-3 text-sm"><span>{line.description} <span className="text-muted-foreground">({line.quantity} {line.unit})</span></span><strong>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(line.total)}</strong></div>)}</div><div className="flex justify-between bg-muted/40 p-3 font-semibold"><span>Pre-tax total</span><span>{new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(calculation.subtotal)}</span></div></div>}
       </section>
       </div>
-    </main>
+    </div>
   );
 }
