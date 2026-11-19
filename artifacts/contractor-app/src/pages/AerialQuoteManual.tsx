@@ -593,7 +593,7 @@ export default function AerialQuoteManual() {
       </section>
 
       <AerialQuoteMap
-        className="lg:col-start-1 lg:row-start-1 lg:row-span-4"
+        className="order-first lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-4"
         address={mapAddress}
         autoLocateKey={propertyId ? String(propertyId) : prospectId ? `prospect-${prospectId}` : ""}
         savedGeometryJson={mapGeometryJson}
